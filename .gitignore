@@ -1,0 +1,13 @@
+# SwiftPM
+.build/
+.swiftpm/
+
+# 打包产物
+dist/
+
+# macOS
+.DS_Store
+
+# Xcode（本仓库不使用，防御性忽略）
+*.xcodeproj
+xcuserdata/

@@ -1,0 +1,113 @@
+# KnowFlick
+
+<div align="center">
+
+**macOS 冷知识卡片应用 — 打开即学，左右划卡**
+
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
+[![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
+[![SwiftUI](https://img.shields.io/badge/SwiftUI-%E5%8E%9F%E7%94%9F-blue?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/bitterSmilezzz/knowflick?include_prereleases&logo=github)](https://github.com/bitterSmilezzz/knowflick/releases)
+
+<img src="assets/screenshot.png" width="720" alt="KnowFlick 截图"/>
+
+</div>
+
+---
+
+KnowFlick 是一个用 SwiftUI 编写的 macOS 桌面应用（最低支持 macOS 14），采用「卡片 + 手势」的方式快速刷冷知识：每次随机展示一张知识卡片，左划/右划跳过或标记，按 `⏎` 展开详情和来源链接，历史记录自动保留。卡片不足时可选接入 AI（DeepSeek 等 OpenAI 兼容端点）自动生成新卡。
+
+## 功能
+
+- **随机刷卡**：从本地卡片库随机抽取，左右划快速浏览
+- **详情 + 链接**：按 `⏎` 展开详情、查看来源链接
+- **历史记录**：自动保存浏览历史，随时回看
+- **撤销**：`⌘Z` 撤销上一张卡片
+- **AI 生成**：卡片不足时，用 DeepSeek 等模型自动补充新卡（可选，需配置 API key）
+- **偏好过滤**：按分类过滤感兴趣的卡片（可选）
+
+## 键盘快捷键
+
+| 快捷键 | 功能 |
+| --- | --- |
+| `←` / `→` | 左右划卡（上一张 / 下一张） |
+| `⏎` | 展开 / 关闭详情 |
+| `⌘Z` | 撤销上一张 |
+| `⌘N` | 生成一张新卡（需配置 AI） |
+| `Esc` | 关闭详情 / 历史 / 设置 |
+
+## 下载安装
+
+从 [Releases](https://github.com/bitterSmilezzz/knowflick/releases) 页面下载最新 `KnowFlick.app.zip`，解压后拖入「应用程序」即可。
+
+> 提示：未签名应用首次打开时，若被 Gatekeeper 拦截，请在「系统设置 → 隐私与安全性」中点击「仍要打开」；或执行 `xattr -dr com.apple.quarantine /Applications/KnowFlick.app`。
+
+## 构建与运行
+
+### 直接运行（开发）
+
+```bash
+cd KnowFlick
+swift run
+```
+
+### 打包成 .app
+
+```bash
+cd KnowFlick
+./build_app.sh
+```
+
+脚本会执行 `swift build -c release`，并把可执行文件、`Info.plist` 和资源 bundle 手工组装为 `dist/KnowFlick.app`（无需 Xcode 工程）。
+
+### 安装使用
+
+- 双击 `dist/KnowFlick.app` 直接运行；或
+- 把它拖到 `/Applications` 后从「启动台」/「应用程序」打开
+
+## AI 配置（可选）
+
+在应用内点击「设置」（齿轮按钮，主界面右上角）填写：
+
+| 字段 | 说明 | 示例 |
+| --- | --- | --- |
+| Base URL | OpenAI 兼容端点地址 | `https://api.deepseek.com` |
+| Model | 模型名称 | `deepseek-chat` |
+| API Key | 密钥（仅保存在钥匙串） | — |
+
+- 默认配置为 DeepSeek；也可以填任意 OpenAI 兼容端点（如 OpenRouter、本地 Ollama 等）的 `base_url` 与模型名
+- **API key 不会写入本地配置文件**，只存入 macOS 钥匙串（Keychain），base_url 与 model 存于 UserDefaults
+- 设置界面中可开启/关闭「卡片不足时自动生成」与「偏好分类」
+
+## 数据存储
+
+| 内容 | 位置 |
+| --- | --- |
+| 卡片数据（含历史） | `~/Library/Application Support/KnowFlick/cards.json` |
+| AI 设置（base_url / model） | `UserDefaults`（`com.knowflick.app`） |
+| AI 密钥 | macOS 钥匙串（Keychain） |
+
+内置种子卡数据随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlick.bundle/seed_cards.json`）。
+
+## 项目结构
+
+```
+KnowFlick/
+├── Package.swift            # SwiftPM 清单（macOS 14+）
+├── build_app.sh             # 打包脚本 → dist/KnowFlick.app
+├── Sources/KnowFlick/
+│   ├── KnowFlickApp.swift   # 应用入口
+│   ├── Models/              # 卡片 / AI 设置模型
+│   ├── Services/            # AI 服务、钥匙串存取
+│   ├── Stores/              # 应用状态、卡片存储
+│   ├── Views/               # 刷卡、详情、历史、设置界面
+│   └── Resources/           # seed_cards.json（种子卡数据）
+└── dist/KnowFlick.app       # 打包产物（由 build_app.sh 生成）
+```
+
+## 技术说明
+
+- 纯 SwiftPM 工程，无 Xcode 工程文件；`swift build -c release` 即可编译
+- 使用 `Bundle.module` 加载内置资源（seed_cards.json）
+- 目标平台：macOS 14.0+（Apple Silicon / Intel 均可）
