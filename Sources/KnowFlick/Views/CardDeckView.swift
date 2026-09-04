@@ -198,10 +198,17 @@ struct CardDeckView: View {
                 Text("KnowFlick")
                     .font(.custom("Songti SC Black", size: 21))
                     .foregroundStyle(Color(red: 0.96, green: 0.95, blue: 0.92))
-                Text("今天也想学点新东西")
-                    .font(.system(size: 11.5, weight: .medium))
-                    .tracking(0.5)
-                    .foregroundStyle(.white.opacity(0.48))
+                HStack(spacing: 6) {
+                    Text("今天也想学点新东西")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .tracking(0.5)
+                        .foregroundStyle(.white.opacity(0.48))
+                    if store.deck.count > 0 {
+                        Text("· \(store.deck.count) 张待刷")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
+                }
             }
 
             Spacer()
@@ -268,8 +275,12 @@ struct CardDeckView: View {
             }
             .keyboardShortcut(.rightArrow, modifiers: [])
 
-            roundButton("dice", size: 42, tint: Color(red: 0.95, green: 0.72, blue: 0.42), help: "AI 生成 3 张新卡 ⌘N") {
-                Task { await store.generateNewCards(count: 3) }
+            roundButton("dice", size: 42, tint: Color(red: 0.95, green: 0.72, blue: 0.42), help: store.settings.apiKey.isEmpty ? "配置 AI 后可生成新卡" : "AI 生成 3 张新卡 ⌘N") {
+                if store.settings.apiKey.isEmpty {
+                    showSettings = true
+                } else {
+                    Task { await store.generateNewCards(count: 3) }
+                }
             }
             .keyboardShortcut("n", modifiers: .command)
         }

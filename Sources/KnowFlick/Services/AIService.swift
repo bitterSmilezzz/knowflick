@@ -61,23 +61,22 @@ struct AIService {
             ["role": "user", "content": userPrompt]
         ]
 
-        let raw = try await chatCompletion(messages: messages, settings: settings)
+        let raw = try await chatCompletionWithRetry(messages: messages, settings: settings)
 
         // 解析 JSON（AI 可能包 ```json 代码块，先清理）
         let cleaned = cleanJSON(from: raw)
         guard let data = cleaned.data(using: .utf8) else { throw AIError.parse("无法编码响应") }
-        let payloads: [AICardPayload]
-        do {
-            payloads = try JSONDecoder().decode([AICardPayload].self, from: data)
-        } catch {
-            // 兜底：尝试解析单个对象
-            let single = try JSONDecoder().decode(AICardPayload.self, from: data)
-            payloads = [single]
-        }
+        let payloads: [AICardPayload] = try Self.parsePayloads(data)
 
         let now = Date()
-        return payloads.map { p in
-            KnowledgeCard(
+        // 去重：跳过与已有标题重复/内容过短的卡片
+        let excluded = Set(excludeHeadlines.map(Self.normalizeHeadline))
+        var seen = Set<String>()
+        return payloads.compactMap { p in
+            let key = Self.normalizeHeadline(p.headline)
+            guard !key.isEmpty, !excluded.contains(key), seen.insert(key).inserted else { return nil }
+            guard p.details.count >= 80 else { return nil }   // 内容过短视为失败输出
+            return KnowledgeCard(
                 category: p.category,
                 headline: p.headline,
                 summary: p.summary,
@@ -87,6 +86,75 @@ struct AIService {
                 createdAt: now
             )
         }
+    }
+
+    /// 解析 AI 返回的卡片数组；整体解析失败时逐对象提取，尽量挽回部分结果
+    static func parsePayloads(_ data: Data) throws -> [AICardPayload] {
+        let decoder = JSONDecoder()
+        if let arr = try? decoder.decode([AICardPayload].self, from: data), !arr.isEmpty {
+            return arr
+        }
+        if let single = try? decoder.decode(AICardPayload.self, from: data) {
+            return [single]
+        }
+        // 逐对象扫描（AI 输出常见：数组里混入非法字段/尾逗号）
+        guard let raw = String(data: data, encoding: .utf8) else { throw AIError.parse("无法编码响应") }
+        var results: [AICardPayload] = []
+        var depth = 0
+        var start = raw.startIndex
+        var inString = false
+        var escape = false
+        var i = raw.startIndex
+        while i < raw.endIndex {
+            let ch = raw[i]
+            if escape { escape = false }
+            else if ch == "\\" && inString { escape = true }
+            else if ch == "\"" { inString.toggle() }
+            else if !inString {
+                if ch == "{" {
+                    if depth == 0 { start = i }
+                    depth += 1
+                } else if ch == "}" {
+                    depth -= 1
+                    if depth == 0 {
+                        let objText = String(raw[start...i])
+                        if let objData = objText.data(using: .utf8),
+                           let obj = try? decoder.decode(AICardPayload.self, from: objData) {
+                            results.append(obj)
+                        }
+                    }
+                }
+            }
+            i = raw.index(after: i)
+        }
+        if results.isEmpty { throw AIError.parse("AI 返回格式无法解析") }
+        return results
+    }
+
+    /// 标题归一化：去空白/标点差异后比较
+    static func normalizeHeadline(_ s: String) -> String {
+        s.lowercased()
+            .filter { !$0.isWhitespace && $0 != "，" && $0 != "。" && $0 != "！" && $0 != "？" && $0 != "「" && $0 != "」" }
+    }
+
+    /// 网络调用：429/5xx 自动重试（最多 2 次，指数退避）
+    private func chatCompletionWithRetry(messages: [[String: String]], settings: AISettings) async throws -> String {
+        var lastError: Error = AIError.network("未知错误")
+        for attempt in 0..<3 {
+            do {
+                return try await chatCompletion(messages: messages, settings: settings)
+            } catch let e as AIError {
+                guard case let .httpStatus(code, _) = e, code == 429 || (500...599).contains(code), attempt < 2 else {
+                    throw e
+                }
+                lastError = e
+                try? await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+            } catch {
+                lastError = error
+                throw error
+            }
+        }
+        throw lastError
     }
 
     // MARK: - 基础调用
@@ -111,7 +179,7 @@ struct AIService {
             "model": settings.model,
             "messages": messages,
             "temperature": 1.0,
-            "max_tokens": 2048,
+            "max_tokens": 4000,
             "stream": false
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

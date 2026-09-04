@@ -88,7 +88,7 @@ cd KnowFlick
 | AI 设置（base_url / model） | `UserDefaults`（`com.knowflick.app`） |
 | AI 密钥 | macOS 钥匙串（Keychain） |
 
-内置种子卡数据随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlick.bundle/seed_cards.json`）。
+内置种子知识库（77 张）随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlick.bundle/seed_cards.json`），覆盖 21 个分类：通识（物理/生物/天文/数学/化学/历史/心理/脑科学/语言/科技/生活/地理）+ 技术向（AI/算法/数据结构/架构/Rust/Python/编程）+ 备考向（中级会计/学习方法）。
 
 卡片背景图来自 [Unsplash](https://unsplash.com)（Unsplash License，可免费商用），已做压暗与底部渐变处理以保证文字可读性。
 

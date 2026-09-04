@@ -23,8 +23,8 @@ struct CardView: View {
                 .font(.custom("Songti SC Black", size: 33))
                 .foregroundStyle(Color(red: 0.97, green: 0.96, blue: 0.93))
                 .lineSpacing(7)
-                .lineLimit(4)
-                .minimumScaleFactor(0.72)
+                .lineLimit(5)
+                .minimumScaleFactor(0.62)
                 .shadow(color: .black.opacity(0.55), radius: 8, y: 2)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -39,7 +39,7 @@ struct CardView: View {
                 .font(.system(size: 15.5, weight: .medium, design: .serif))
                 .foregroundStyle(Color.white.opacity(0.85))
                 .lineSpacing(4.5)
-                .lineLimit(3)
+                .lineLimit(4)
                 .shadow(color: .black.opacity(0.5), radius: 5, y: 1)
 
             HStack {
