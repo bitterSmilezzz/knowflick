@@ -17,7 +17,9 @@ struct Storage {
 
     static func loadCards() -> [KnowledgeCard] {
         guard let data = try? Data(contentsOf: fileURL("cards.json")) else { return [] }
-        return (try? JSONDecoder().decode([KnowledgeCard].self, from: data)) ?? []
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([KnowledgeCard].self, from: data)) ?? []
     }
 
     static func saveCards(_ cards: [KnowledgeCard]) {

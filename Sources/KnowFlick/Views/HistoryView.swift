@@ -15,25 +15,30 @@ struct HistoryView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [.black.opacity(0.9), .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+            LinearGradient(
+                colors: [Color(red: 0.085, green: 0.095, blue: 0.12), Color(red: 0.045, green: 0.05, blue: 0.065)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            NoiseOverlay().ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // 头部
                 HStack(spacing: 16) {
                     Button(action: onClose) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white.opacity(0.8))
-                            .frame(width: 32, height: 32)
-                            .background(.white.opacity(0.1), in: Circle())
+                            .frame(width: 30, height: 30)
+                            .background(Color.white.opacity(0.07), in: Circle())
+                            .overlay(Circle().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     .keyboardShortcut(.escape, modifiers: [])
 
                     Text("历史记录")
-                        .font(.title2.bold())
-                        .foregroundStyle(.white)
+                        .font(.custom("Songti SC Black", size: 20))
+                        .foregroundStyle(Color(red: 0.96, green: 0.95, blue: 0.92))
 
                     Spacer()
 
@@ -43,36 +48,38 @@ struct HistoryView: View {
                         Text("不喜欢").tag(Optional<SwipeDirection>.some(.left))
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 260)
+                    .frame(width: 250)
 
-                    Button(role: .destructive) {
+                    Button {
                         showConfirmClear = true
                     } label: {
                         Label("清空", systemImage: "trash")
-                            .font(.callout)
-                            .foregroundStyle(.white.opacity(0.7))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     .disabled(store.history.isEmpty)
                 }
-                .padding(20)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 18)
 
-                Divider().opacity(0.25)
+                Divider().overlay(Color.white.opacity(0.08))
 
                 // 列表
                 if items.isEmpty {
                     Spacer()
                     VStack(spacing: 12) {
                         Image(systemName: "clock")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .font(.system(size: 38))
+                            .foregroundStyle(.white.opacity(0.3))
                         Text(store.history.isEmpty ? "还没有刷过卡片" : "该筛选下暂无记录")
-                            .foregroundStyle(.white.opacity(0.6))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
                     }
                     Spacer()
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 10) {
+                        LazyVStack(spacing: 8) {
                             ForEach(items) { card in
                                 historyRow(card)
                             }
@@ -96,6 +103,7 @@ struct HistoryView: View {
             Text("所有卡片会回到待刷队列，此操作不可撤销。")
         }
         .preferredColorScheme(.dark)
+        .frame(minWidth: 680, minHeight: 480)
     }
 
     private func historyRow(_ card: KnowledgeCard) -> some View {
@@ -104,43 +112,49 @@ struct HistoryView: View {
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: card.swiped == .right ? "heart.fill" : "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(card.swiped == .right ? .green : .red)
-                    .frame(width: 34, height: 34)
-                    .background(.white.opacity(0.08), in: Circle())
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(card.swiped == .right ? Color(red: 0.45, green: 0.80, blue: 0.55) : Color(red: 0.92, green: 0.48, blue: 0.45))
+                    .frame(width: 32, height: 32)
+                    .background(Color.white.opacity(0.06), in: Circle())
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(card.headline)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.95))
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
-                    HStack(spacing: 8) {
+                    HStack(spacing: 7) {
                         Text(card.category)
-                            .font(.caption)
+                            .font(.system(size: 11.5))
                             .foregroundStyle(.white.opacity(0.5))
-                        Text("·")
-                            .foregroundStyle(.white.opacity(0.3))
+                        dot
                         Text(card.seenAt?.formatted(date: .abbreviated, time: .shortened) ?? "")
-                            .font(.caption)
+                            .font(.system(size: 11.5))
                             .foregroundStyle(.white.opacity(0.4))
-                        Text("·")
-                            .foregroundStyle(.white.opacity(0.3))
+                        dot
                         Text(card.source == .ai ? "AI" : "预置")
-                            .font(.caption)
-                            .foregroundStyle(card.source == .ai ? .orange.opacity(0.8) : .green.opacity(0.8))
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(card.source == .ai ? .orange.opacity(0.75) : .white.opacity(0.45))
                     }
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.3))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.25))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 15)
+            .padding(.vertical, 11)
+            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(scale: 0.99))
+    }
+
+    private var dot: some View {
+        Circle().fill(Color.white.opacity(0.25)).frame(width: 2.5, height: 2.5)
     }
 }

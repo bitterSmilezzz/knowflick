@@ -90,6 +90,8 @@ cd KnowFlick
 
 内置种子卡数据随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlick.bundle/seed_cards.json`）。
 
+卡片背景图来自 [Unsplash](https://unsplash.com)（Unsplash License，可免费商用），已做压暗与底部渐变处理以保证文字可读性。
+
 ## 项目结构
 
 ```

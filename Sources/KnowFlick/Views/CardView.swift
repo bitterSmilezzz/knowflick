@@ -1,92 +1,127 @@
 import SwiftUI
+import AppKit
 
-/// 单张知识卡片（正面）
+/// 单张知识卡片（正面）：分类摄影背景图 + 衬线大标题
 struct CardView: View {
     let card: KnowledgeCard
+    @State private var theme: CategoryTheme = .empty
+    @State private var hovering = false
 
     var body: some View {
+        // 前景内容层（决定布局），背景图放 .background 不参与布局
         VStack(alignment: .leading, spacing: 0) {
-            // 顶部：分类徽章 + 来源
-            HStack {
-                Text(card.category)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(.white.opacity(0.18), in: Capsule())
-
+            HStack(spacing: 8) {
+                categoryBadge
+                sourceMark
                 Spacer()
-
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(card.source == .ai ? Color.orange : Color.green)
-                        .frame(width: 6, height: 6)
-                    Text(card.source == .ai ? "AI 生成" : "预置精选")
-                        .font(.caption2)
-                        .opacity(0.8)
-                }
             }
-
-            Spacer(minLength: 24)
-
-            // 主标题
-            Text(card.headline)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .lineLimit(4)
-                .minimumScaleFactor(0.7)
-
-            Spacer(minLength: 12)
-
-            // 摘要
-            Text(card.summary)
-                .font(.system(size: 17, design: .rounded))
-                .foregroundStyle(.white.opacity(0.85))
-                .lineLimit(3)
 
             Spacer(minLength: 20)
 
-            // 底部提示
+            // 衬线大标题
+            Text(card.headline)
+                .font(.custom("Songti SC Black", size: 33))
+                .foregroundStyle(Color(red: 0.97, green: 0.96, blue: 0.93))
+                .lineSpacing(7)
+                .lineLimit(4)
+                .minimumScaleFactor(0.72)
+                .shadow(color: .black.opacity(0.55), radius: 8, y: 2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Rectangle()
+                .fill(theme.accent)
+                .frame(width: 34, height: 3)
+                .cornerRadius(1.5)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
+
+            Text(card.summary)
+                .font(.system(size: 15.5, weight: .medium, design: .serif))
+                .foregroundStyle(Color.white.opacity(0.85))
+                .lineSpacing(4.5)
+                .lineLimit(3)
+                .shadow(color: .black.opacity(0.5), radius: 5, y: 1)
+
             HStack {
-                Label("点击查看详情", systemImage: "hand.tap")
+                Label("详情", systemImage: "arrow.up.left.and.arrow.down.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.55))
                 Spacer()
-                Label("左右拖动换一张", systemImage: "arrow.left.and.right")
+                Text("拖动换一张")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.42))
             }
-            .font(.caption)
-            .foregroundStyle(.white.opacity(0.6))
+            .padding(.top, 22)
         }
-        .padding(28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: categoryColors,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding(26)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .background(backgroundLayer)
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(.white.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .strokeBorder(Color.white.opacity(hovering ? 0.22 : 0.13), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
+        .shadow(color: theme.ambient.last?.opacity(0.85) ?? .black.opacity(0.5), radius: 34, y: 16)
+        .onHover { hovering = $0 }
+        .task(id: card.category) {
+            withAnimation(.easeIn(duration: 0.3)) {
+                theme = CategoryTheme.theme(for: card.category, cache: .shared)
+            }
+        }
     }
 
-    /// 分类 → 渐变色
-    private var categoryColors: [Color] {
-        switch card.category {
-        case "物理": [Color.blue, Color.indigo]
-        case "生物": [Color.green, Color.teal]
-        case "天文": [Color.purple, Color.indigo]
-        case "数学": [Color.orange, Color.red]
-        case "化学": [Color.mint, Color.cyan]
-        case "历史": [Color.brown, Color.orange]
-        case "心理": [Color.pink, Color.purple]
-        case "脑科学": [Color.pink, Color.red]
-        case "语言": [Color.cyan, Color.blue]
-        case "科技": [Color.cyan, Color.mint]
-        case "生活": [Color.yellow, Color.orange]
-        case "地理": [Color.green, Color.mint]
-        default: [Color.gray, Color.blue]
+    // MARK: - 背景层（不参与前景布局）
+
+    @ViewBuilder
+    private var backgroundLayer: some View {
+        ZStack {
+            if let img = theme.image {
+                GeometryReader { geo in
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
+            } else {
+                LinearGradient(colors: theme.ambient, startPoint: .top, endPoint: .bottom)
+            }
+
+            // 顶部压暗，保证徽章可读
+            LinearGradient(
+                colors: [Color.black.opacity(0.50), .clear],
+                startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.40)
+            )
+
+            // 底部加重，标题区始终可读
+            LinearGradient(
+                colors: [.clear, Color.black.opacity(0.46)],
+                startPoint: UnitPoint(x: 0.5, y: 0.45), endPoint: .bottom
+            )
         }
+    }
+
+    private var categoryBadge: some View {
+        Text(card.category)
+            .font(.system(size: 12.5, weight: .bold))
+            .tracking(1.5)
+            .foregroundStyle(Color.black.opacity(0.82))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(theme.accent, in: Capsule())
+    }
+
+    private var sourceMark: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(card.source == .ai ? Color.orange : Color.white.opacity(0.55))
+                .frame(width: 5, height: 5)
+            Text(card.source == .ai ? "AI 生成" : "精选")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.62))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.28), in: Capsule())
     }
 }
