@@ -3,6 +3,7 @@ import SwiftUI
 /// 历史记录：看过的卡片列表，支持筛选与回看
 struct HistoryView: View {
     let store: AppStore
+    var categoryFilter: String? = nil   // 非nil=只看该分类（从统计页跳转进来）
     let onClose: () -> Void
 
     @State private var filter: SwipeDirection? = nil
@@ -10,7 +11,10 @@ struct HistoryView: View {
     @State private var showConfirmClear = false
 
     private var items: [KnowledgeCard] {
-        store.history.filter { filter == nil || $0.swiped == filter }
+        store.history.filter { card in
+            (filter == nil || card.swiped == filter)
+                && (categoryFilter == nil || card.category == categoryFilter)
+        }
     }
 
     var body: some View {
@@ -39,6 +43,16 @@ struct HistoryView: View {
                     Text("历史记录")
                         .font(.custom("Songti SC Black", size: 20))
                         .foregroundStyle(Color(red: 0.96, green: 0.95, blue: 0.92))
+
+                    if let cat = categoryFilter {
+                        Text(cat)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(CategoryTheme.theme(for: cat, cache: .shared).accent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.white.opacity(0.07), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                    }
 
                     Spacer()
 

@@ -99,9 +99,13 @@ final class AppStore {
                 count: count,
                 excludeHeadlines: existing
             )
-            cards.append(contentsOf: newCards)
-            Storage.saveCards(cards)
-            lastError = nil
+            if newCards.isEmpty {
+                lastError = "AI 没有生成有效的新卡片，请再试一次"
+            } else {
+                cards.append(contentsOf: newCards)
+                Storage.saveCards(cards)
+                lastError = nil
+            }
         } catch {
             lastError = error.localizedDescription
         }

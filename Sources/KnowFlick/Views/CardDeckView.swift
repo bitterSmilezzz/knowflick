@@ -10,6 +10,7 @@ struct CardDeckView: View {
     @State private var selectedCard: KnowledgeCard? = nil
     @State private var showSettings = false
     @State private var showHistory = false
+    @State private var showStats = false
     @State private var errorBanner = false
     @State private var currentTheme: CategoryTheme = .empty
 
@@ -78,6 +79,11 @@ struct CardDeckView: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(store: store)
+        }
+        .sheet(isPresented: $showStats) {
+            StatsView(store: store) {
+                showStats = false
+            }
         }
         .sheet(item: $selectedCard) { card in
             DetailView(card: card, store: store) {
@@ -227,6 +233,7 @@ struct CardDeckView: View {
                     .background(Color.white.opacity(0.09), in: Capsule())
                 }
 
+                iconButton("chart.bar", help: "学习统计") { showStats = true }
                 iconButton("clock.arrow.circlepath", help: "历史记录") { showHistory = true }
                 iconButton("arrow.clockwise", help: "换一批新知识") { Task { await store.refreshDeck() } }
                 iconButton("gearshape", help: "设置") { showSettings = true }
