@@ -12,6 +12,7 @@ struct CardDeckView: View {
     @State private var showSettings = false
     @State private var showHistory = false
     @State private var showStats = false
+    @State private var showHelp = false
     @State private var errorBanner = false
     @State private var currentTheme: CategoryTheme = .empty
 
@@ -84,6 +85,11 @@ struct CardDeckView: View {
         .sheet(isPresented: $showStats) {
             StatsView(store: store) {
                 showStats = false
+            }
+        }
+        .sheet(isPresented: $showHelp) {
+            HelpView {
+                showHelp = false
             }
         }
         .sheet(item: $selectedCard) { card in
@@ -252,6 +258,8 @@ struct CardDeckView: View {
                 iconButton("clock.arrow.circlepath", help: "历史记录") { showHistory = true }
                 iconButton("arrow.clockwise", help: "换一批新知识") { Task { await store.refreshDeck() } }
                 iconButton("gearshape", help: "设置") { showSettings = true }
+                iconButton("questionmark.circle", help: "快捷键 ⌘?") { showHelp = true }
+                    .keyboardShortcut("?", modifiers: .command)
             }
         }
         .foregroundStyle(.white)

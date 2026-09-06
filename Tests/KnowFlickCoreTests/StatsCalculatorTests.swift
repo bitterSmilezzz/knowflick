@@ -115,6 +115,27 @@ final class StatsCalculatorTests: XCTestCase {
         XCTAssertEqual(stats.streakDays, 2)
     }
 
+    // MARK: - 每日趋势
+
+    func testDailyCountsLastSevenDays() {
+        let now = Date(timeIntervalSince1970: 1_752_870_000)
+        let cards = [
+            makeCard(seenAt: now),                       // 今天 1 张
+            makeCard(seenAt: now.addingTimeInterval(60)),
+            makeCard(seenAt: daysBefore(1, from: now)),  // 昨天 1 张
+            makeCard(seenAt: daysBefore(4, from: now)),  // 4 天前 1 张
+            makeCard(seenAt: nil)                        // 未刷不计
+        ]
+        let daily = StatsCalculator.dailyCounts(cards: cards, calendar: calendar, days: 7, endingAt: now)
+        XCTAssertEqual(daily.count, 7)
+        XCTAssertEqual(daily[6].count, 2)    // 今天
+        XCTAssertEqual(daily[5].count, 1)    // 昨天
+        XCTAssertEqual(daily[2].count, 1)    // 4 天前
+        XCTAssertEqual(daily[0].count, 0)    // 6 天前
+        // 顺序从最旧到最新
+        XCTAssertLessThan(daily[0].day, daily[6].day)
+    }
+
     // MARK: - 分类统计
 
     func testCategoryGroupingSortedBySeenDesc() {

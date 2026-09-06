@@ -25,9 +25,14 @@ public final class AppStore {
 
     // MARK: - 计算属性
 
-    /// 待刷卡片队列（未看过的，按加入时间）
+    /// 待刷卡片队列（未看过的，按加入时间）。
+    /// 偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量（不藏死其他卡）
     public var deck: [KnowledgeCard] {
-        cards.filter { $0.seenAt == nil }
+        let unseen = cards.filter { $0.seenAt == nil }
+        let prefs = settings.preferredCategories
+        guard !prefs.isEmpty else { return unseen }
+        let preferred = unseen.filter { prefs.contains($0.category) }
+        return preferred.isEmpty ? unseen : preferred
     }
 
     /// 历史记录（看过的，最新在前）
@@ -58,9 +63,20 @@ public final class AppStore {
 
     // MARK: - 持久化
 
-    /// 唯一落盘入口：所有变异方法统一走这里，避免「记住要调 save」的逐方法约定
+    private var persistTask: Task<Void, Never>?
+
+    /// 唯一落盘入口：所有变异方法统一走这里。
+    /// 节流合并（350ms 内的连续刷卡只写最后一次）+ 后台线程执行（JSON 编码与文件 IO 不卡主线程）。
+    /// Task.detached 不随 MainActor 取消，应用退出前未完成的写盘仍会跑完。
     private func persist() {
-        storage.saveCards(cards)
+        persistTask?.cancel()
+        let snapshot = cards
+        let storage = self.storage
+        persistTask = Task.detached {
+            try? await Task.sleep(for: .seconds(0.35))
+            guard !Task.isCancelled else { return }
+            storage.saveCards(snapshot)
+        }
     }
 
     // MARK: - 刷卡动作

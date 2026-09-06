@@ -44,6 +44,7 @@ struct StatsView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 26) {
                             overview
+                            trendSection
                             categorySection
                         }
                         .padding(22)
@@ -133,6 +134,49 @@ struct StatsView: View {
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
         )
+    }
+
+    // MARK: - 近 7 天趋势
+
+    private var trendSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("近 7 天")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.55))
+
+            let daily = StatsCalculator.dailyCounts(cards: store.cards)
+            let maxCount = max(daily.map(\.count).max() ?? 1, 1)
+            HStack(alignment: .bottom, spacing: 12) {
+                ForEach(daily) { item in
+                    VStack(spacing: 6) {
+                        Text("\(item.count)")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(item.count > 0 ? 0.75 : 0.3))
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(item.count > 0 ? Color(red: 0.45, green: 0.78, blue: 0.55).opacity(0.85) : Color.white.opacity(0.06))
+                            .frame(height: max(4, CGFloat(item.count) / CGFloat(maxCount) * 64))
+                        Text(dayLabel(item.day))
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.white.opacity(0.4))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+            )
+        }
+    }
+
+    private func dayLabel(_ day: Date) -> String {
+        if Calendar.current.isDateInToday(day) { return "今天" }
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "zh_CN")
+        fmt.dateFormat = "E"
+        return fmt.string(from: day)
     }
 
     // MARK: - 分类统计

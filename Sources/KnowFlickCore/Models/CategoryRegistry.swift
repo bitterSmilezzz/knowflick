@@ -45,42 +45,47 @@ public enum CategoryRegistry {
         "太空": "天文",
         "航空航天": "天文",
         "地理学": "地理",
-        "学习方法": "学习方法",
         "教育": "学习方法",
     ]
 
-    /// 可包含匹配的别名（仅中文，避免英文别名如 "ai" 误伤）
-    private static let inclusiveAliases: [String: String] = [
-        "人工智能": "AI",
-        "神经科学": "脑科学",
-        "计算机": "科技",
-        "算法": "算法",
-        "数据结构": "数据结构",
-        "编程": "编程",
-        "心理": "心理",
-        "会计": "会计",
-        "语言": "语言",
-        "化学": "化学",
-        "生物": "生物",
-        "物理": "物理",
-        "天文": "天文",
-        "历史": "历史",
-        "数学": "数学",
-        "地理": "地理",
-        "学习": "学习方法",
+    /// 可包含匹配的别名（仅中文，避免英文别名如 "ai" 误伤）。
+    /// 有序数组保证匹配确定性（先出现者优先）。
+    private static let inclusiveAliases: [(alias: String, target: String)] = [
+        ("人工智能", "AI"),
+        ("神经科学", "脑科学"),
+        ("计算机", "科技"),
+        ("数据结构", "数据结构"),
+        ("算法", "算法"),
+        ("编程", "编程"),
+        ("心理学", "心理"),
+        ("会计", "会计"),
+        ("语言学", "语言"),
+        ("物理", "物理"),
+        ("化学", "化学"),
+        ("生物", "生物"),
+        ("天文", "天文"),
+        ("历史", "历史"),
+        ("数学", "数学"),
+        ("地理", "地理"),
+        ("学习", "学习方法"),
     ]
 
-    /// 未知分类的兜底
+    /// 未知分类的兜底（仅卡片生成场景使用；用户偏好解析见 `resolve`）
     public static let fallback = "科技"
 
-    /// 归一化：自由文本 → 白名单分类；无法识别归入 fallback
-    public static func normalize(_ raw: String) -> String {
+    /// 解析到白名单分类；无法识别返回 nil（偏好设置等场景应剔除而非兜底）
+    public static func resolve(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if canonical.contains(trimmed) { return trimmed }
-        if let hit = exactAliases[trimmed.lowercased()] ?? exactAliases[trimmed] { return hit }
-        // 包含匹配：别名（中文）或规范名出现在输入中，如「AI 算法」「物理与化学」
-        for (alias, target) in inclusiveAliases where trimmed.contains(alias) { return target }
+        let lower = trimmed.lowercased()
+        if let hit = exactAliases[lower] ?? exactAliases[trimmed] { return hit }
+        for entry in inclusiveAliases where trimmed.contains(entry.alias) { return entry.target }
         for c in canonical where trimmed.contains(c) { return c }
-        return fallback
+        return nil
+    }
+
+    /// 归一化：自由文本 → 白名单分类；无法识别归入 fallback（用于 AI 生成卡片）
+    public static func normalize(_ raw: String) -> String {
+        resolve(raw) ?? fallback
     }
 }

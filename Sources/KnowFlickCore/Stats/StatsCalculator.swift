@@ -24,6 +24,19 @@ public struct LearningStats: Equatable {
         }
     }
 
+    /// 单日已刷数量（用于趋势图）
+    public struct DailyCount: Equatable, Identifiable {
+        public let day: Date   // 当日 startOfDay
+        public let count: Int  // 当天已刷卡数（含跳过）
+
+        public var id: Date { day }
+
+        public init(day: Date, count: Int) {
+            self.day = day
+            self.count = count
+        }
+    }
+
     public init(seenCount: Int, likedCount: Int, skipCount: Int, streakDays: Int, categories: [CategoryStat]) {
         self.seenCount = seenCount
         self.likedCount = likedCount
@@ -36,6 +49,26 @@ public struct LearningStats: Equatable {
 
 /// 统计计算器：输入浏览记录，输出统计快照
 public enum StatsCalculator {
+    /// 最近 days 天（含今天）每天已刷数量，从最旧到最新
+    public static func dailyCounts(
+        cards: [KnowledgeCard],
+        calendar: Calendar = .current,
+        days: Int = 7,
+        endingAt now: Date = Date()
+    ) -> [LearningStats.DailyCount] {
+        let today = calendar.startOfDay(for: now)
+        let counts = Dictionary(
+            grouping: cards.compactMap { $0.seenAt }.map { calendar.startOfDay(for: $0) },
+            by: { $0 }
+        ).mapValues(\.count)
+        return (0..<days).reversed().map { offset in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else {
+                return LearningStats.DailyCount(day: today, count: 0)
+            }
+            return LearningStats.DailyCount(day: day, count: counts[day] ?? 0)
+        }
+    }
+
     /// 从卡片数组派生统计。calendar / now 可注入以便测试边界情况。
     public static func compute(
         from cards: [KnowledgeCard],

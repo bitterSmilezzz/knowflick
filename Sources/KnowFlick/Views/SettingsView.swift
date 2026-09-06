@@ -10,7 +10,7 @@ struct SettingsView: View {
     @State private var model = ""
     @State private var apiKey = ""
     @State private var autoGenerate = true
-    @State private var categoryFilter = ""
+    @State private var selectedCategories: Set<String> = []   // 偏好分类（白名单多选）
     @State private var savedToast = false
     @State private var testResult: String?
     @State private var isTesting = false
@@ -58,9 +58,20 @@ struct SettingsView: View {
                             .frame(width: 320)
                     }
                     LabeledContent("偏好分类") {
-                        TextField("留空=全部（如：物理, 天文）", text: $categoryFilter)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 320)
+                        VStack(alignment: .leading, spacing: 6) {
+                            ScrollView {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 6)], alignment: .leading, spacing: 6) {
+                                    ForEach(CategoryRegistry.canonical, id: \.self) { cat in
+                                        categoryChip(cat)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                            .frame(maxHeight: 104)
+                            Text("选中后刷卡优先这些分类，刷完自动回退其他；全不选 = 全部")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     Toggle("卡片不足时自动让 AI 补充", isOn: $autoGenerate)
                 }
@@ -96,13 +107,13 @@ struct SettingsView: View {
             }
             .padding(16)
         }
-        .frame(width: 560, height: 420)
+        .frame(width: 560, height: 480)
         .onAppear {
             baseURL = store.settings.baseURL
             model = store.settings.model
             apiKey = store.settings.apiKey
             autoGenerate = store.settings.autoGenerate
-            categoryFilter = store.settings.categoryFilter
+            selectedCategories = Set(store.settings.preferredCategories)
         }
         .overlay(alignment: .bottom) {
             if savedToast {
@@ -123,7 +134,7 @@ struct SettingsView: View {
         updated.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.autoGenerate = autoGenerate
-        updated.categoryFilter = categoryFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.setPreferredCategories(Array(selectedCategories))
         updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             try store.saveSettings(updated)
@@ -136,6 +147,27 @@ struct SettingsView: View {
             // 钥匙串写入失败等错误要显式可见，不再静默
             testResult = error.localizedDescription
         }
+    }
+
+    /// 偏好分类选择 chip
+    private func categoryChip(_ cat: String) -> some View {
+        let selected = selectedCategories.contains(cat)
+        return Button {
+            if selected {
+                selectedCategories.remove(cat)
+            } else {
+                selectedCategories.insert(cat)
+            }
+        } label: {
+            Text(cat)
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(selected ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.06), in: Capsule())
+                .overlay(Capsule().strokeBorder(selected ? Color.accentColor.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1))
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.96))
     }
 
     /// 连通测试：轻量 ping 请求，不消耗 AI 额度

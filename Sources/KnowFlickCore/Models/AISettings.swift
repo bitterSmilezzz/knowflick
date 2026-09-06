@@ -29,4 +29,20 @@ public struct AISettings: Codable, Equatable {
         autoGenerate: true,
         categoryFilter: ""
     )
+
+    /// 偏好分类解析：逗号分隔 → 白名单归一化后的分类数组（去重；无法识别的输入剔除，不兜底）
+    public var preferredCategories: [String] {
+        var seen = Set<String>()
+        return categoryFilter
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .compactMap { CategoryRegistry.resolve($0) }
+            .filter { seen.insert($0).inserted }
+    }
+
+    /// 用偏好分类数组回写 categoryFilter（保持字符串存储格式兼容）
+    public mutating func setPreferredCategories(_ categories: [String]) {
+        categoryFilter = Array(Set(categories)).sorted().joined(separator: ", ")
+    }
 }

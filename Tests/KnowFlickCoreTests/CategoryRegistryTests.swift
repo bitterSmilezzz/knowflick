@@ -29,3 +29,21 @@ final class CategoryRegistryTests: XCTestCase {
         XCTAssertEqual(CategoryRegistry.normalize(""), "科技")
     }
 }
+
+final class AISettingsPreferredTests: XCTestCase {
+    func testPreferredCategoriesParsingAndNormalization() {
+        var settings = AISettings.default
+        settings.categoryFilter = "物理, 人工智能, 不存在的分类, 物理"
+        XCTAssertEqual(settings.preferredCategories, ["物理", "AI"])   // 归一化 + 去重 + 未知剔除
+    }
+
+    func testSetPreferredCategoriesRoundTrip() {
+        var settings = AISettings.default
+        settings.setPreferredCategories(["天文", "物理"])
+        XCTAssertEqual(settings.preferredCategories, ["天文", "物理"])   // sorted() 字典序
+    }
+
+    func testEmptyPrefersMeansAll() {
+        XCTAssertEqual(AISettings.default.preferredCategories, [])
+    }
+}
