@@ -125,6 +125,7 @@ cd KnowFlick
 KnowFlick/
 ├── Package.swift            # SwiftPM 清单（macOS 14+）
 ├── build_app.sh             # 打包脚本 → dist/KnowFlick.app
+├── CHANGELOG.md             # 完整版本更新日志
 ├── Resources/               # 原生应用图标（AppIcon.icns / AppIcon.png）
 ├── Sources/
 │   ├── KnowFlick/           # 应用层
@@ -138,6 +139,10 @@ KnowFlick/
 │       └── Resources/           # seed_cards.json（种子卡数据）与分类底图
 └── dist/KnowFlick.app       # 打包产物（由 build_app.sh 生成）
 ```
+
+## 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md) 查看完整的版本迭代与演进记录。
 
 ## 技术说明
 

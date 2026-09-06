@@ -489,6 +489,29 @@ struct SettingsView: View {
                     .foregroundStyle(EditorialColor.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Divider().overlay(EditorialColor.glassDivider)
+
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "app.badge.checkmark")
+                        .font(.system(size: 13))
+                        .foregroundStyle(EditorialColor.aiAmber)
+                    Text("KnowFlick v2.1.0")
+                        .font(EditorialFont.captionSmall)
+                        .foregroundStyle(EditorialColor.textSecondary)
+                }
+                Spacer()
+                Link(destination: URL(string: "https://github.com/bitterSmilezzz/knowflick")!) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 11))
+                        Text("版本与更新说明")
+                            .font(EditorialFont.captionSmall)
+                    }
+                    .foregroundStyle(EditorialColor.aiAmber.opacity(0.85))
+                }
+            }
         }
         .padding(16)
         .editorialGlassCard(cornerRadius: EditorialRadius.container)
