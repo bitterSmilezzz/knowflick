@@ -14,7 +14,7 @@
 规则：对 `seenAt`/`swiped` 的任何写入都必须经由 AppStore 的意图化方法（`swipe` / `undoLastSwipe` / `clearHistory` / `refreshDeck`），视图不得直接改字段。
 
 ## 卡堆 / 队列（Deck）
-未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。
+未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关（enableSeed/enableAI）在偏好过滤前生效**：只开其一则只看该来源，全关则队列为空。
 
 ## 历史（History）
 看过（`seenAt != nil`）的卡片，按时间倒序。
@@ -31,4 +31,6 @@
 ## AI 服务（AIService）
 OpenAI 兼容端点客户端，**流式生成**：SSE 逐行接收 + 增量对象扫描，拿到目标数量即提前终止（省时省额度）；429/5xx 自动重试。失败通道统一为抛 `AIError`：传输/解析层失败抛对应 case；「请求成功但无可用产出」抛 `noUsableCards`。排除标题截断上限（100）由服务单点决定；max_tokens 按生成数量动态计算（≈900/张 + 400 缓冲）。
 
-生成质量链：分类经 `CategoryRegistry` 归一化到受控 21 类（未知兜底「科技」）→ 字面去重（normalizeHeadline）→ 近重复抑制（bigram Jaccard > 0.35 丢弃）→ 内容 ≥80 字门槛。链接用「关键词 + 权威来源站名」构造 Bing 检索（AI 只给来源名不给 URL，防幻觉）。`ping` 为轻量连通性探测（max_tokens=1，非流式）。
+生成质量链：分类经 `CategoryRegistry` 归一化到受控 21 类（未知兜底「科技」）→ 字面去重（normalizeHeadline）→ 近重复抑制（bigram Jaccard > 0.35 丢弃）→ 内容 ≥80 字门槛。链接用「关键词 + 权威来源站名」构造 Bing 检索（AI 给的 `sources` 优先，缺失时用设置里 `aiSources` 站点偏好兜底）。`ping` 为轻量连通性探测（max_tokens=1，非流式）。
+
+**AI 内容标记（showAIMark）**：AI 卡片正面显示橙色徽章、详情页显示「由 AI 生成，请核实」提示条、历史列表标注 AI；关闭开关后全部隐藏。

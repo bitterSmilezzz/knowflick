@@ -26,9 +26,13 @@ public final class AppStore {
     // MARK: - 计算属性
 
     /// 待刷卡片队列（未看过的，按加入时间）。
-    /// 偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量（不藏死其他卡）
+    /// 过滤顺序：来源开关（预置/AI）→ 偏好分类优先（耗尽回退全量）
     public var deck: [KnowledgeCard] {
-        let unseen = cards.filter { $0.seenAt == nil }
+        var unseen = cards.filter { $0.seenAt == nil }
+        // 来源开关：只开其一则只看该来源；全关则队列为空
+        if !settings.enableSeed || !settings.enableAI {
+            unseen = unseen.filter { settings.enableSeed ? $0.source == .seed : $0.source == .ai }
+        }
         let prefs = settings.preferredCategories
         guard !prefs.isEmpty else { return unseen }
         let preferred = unseen.filter { prefs.contains($0.category) }
@@ -55,8 +59,8 @@ public final class AppStore {
         // 读回 Keychain 里的 key
         settings.apiKey = KeychainHelper.read() ?? ""
         isLoadingSeed = false
-        // 卡片不足时尝试自动生成
-        if deck.count < 3 && settings.autoGenerate && !settings.apiKey.isEmpty {
+        // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）
+        if deck.count < 5 && settings.autoGenerate && !settings.apiKey.isEmpty && settings.enableAI {
             await generateNewCards()
         }
     }
@@ -140,8 +144,8 @@ public final class AppStore {
             cards[idx].swiped = .skip
         }
         persist()
-        if settings.autoGenerate && !settings.apiKey.isEmpty {
-            await generateNewCards(count: 5)
+        if settings.autoGenerate && !settings.apiKey.isEmpty && settings.enableAI {
+            await generateNewCards(count: 6)
         }
     }
 

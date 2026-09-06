@@ -55,7 +55,7 @@ struct StatsView: View {
         .preferredColorScheme(.dark)
         .frame(minWidth: 660, minHeight: 520)
         .sheet(item: $historyCategory) { nav in
-            HistoryView(store: store, categoryFilter: nav.category) {
+            HistoryView(store: store, showAIMark: store.settings.showAIMark, categoryFilter: nav.category) {
                 historyCategory = nil
             }
         }

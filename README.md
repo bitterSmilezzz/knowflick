@@ -25,6 +25,8 @@ KnowFlick 是一个用 SwiftUI 编写的 macOS 桌面应用（最低支持 macOS
 - **历史记录**：自动保存浏览历史，随时回看（支持按感兴趣/不喜欢筛选）
 - **撤销**：`⌘Z` 撤销上一张卡片
 - **AI 生成**：卡片不足时，用 DeepSeek 等模型自动补充新卡（可选，需配置 API key）；流式生成、够数即停，自动做分类规范化与近重复去重
+- **来源配置**：设置页可分别开关「预置精选库」与「AI 生成内容」两种信息来源，并配置 AI 引用站点偏好（生成内容与检索链接都优先这些站点）
+- **AI 内容标记**：AI 生成的卡片在正面显示橙色徽章、详情页显示核实提示条，可一键关闭
 - **偏好过滤**：设置里从 21 个分类多选偏好，刷卡队列优先偏好分类，刷完自动回退其他分类
 - **学习统计**：已刷/感兴趣率/连续天数 + 分类分布 + 近 7 天趋势
 
@@ -88,7 +90,7 @@ cd KnowFlick
 
 - 默认配置为 DeepSeek；也可以填任意 OpenAI 兼容端点（如 OpenRouter、本地 Ollama 等）的 `base_url` 与模型名
 - **API key 不会写入本地配置文件**，只存入 macOS 钥匙串（Keychain），base_url 与 model 存于 UserDefaults
-- 设置界面中可开启/关闭「卡片不足时自动生成」，并可**从 21 个分类多选偏好分类**（AI 生成会优先偏好分类，刷卡队列也会优先推送）
+- 设置界面中可开启/关闭「卡片不足时自动生成」，**从 21 个分类多选偏好分类**（AI 生成会优先偏好分类，刷卡队列也会优先推送），并分别控制「预置精选库 / AI 生成内容」两种信息来源与 AI 引用站点偏好
 
 ## 数据存储
 
@@ -98,7 +100,7 @@ cd KnowFlick
 | AI 设置（base_url / model） | `UserDefaults`（`com.knowflick.app`） |
 | AI 密钥 | macOS 钥匙串（Keychain） |
 
-内置种子知识库（77 张）随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlick.bundle/seed_cards.json`），覆盖 21 个分类：通识（物理/生物/天文/数学/化学/历史/心理/脑科学/语言/科技/生活/地理）+ 技术向（AI/算法/数据结构/架构/Rust/Python/编程）+ 备考向（中级会计/学习方法）。
+内置种子知识库（160 张）随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlickCore.bundle/seed_cards.json`），覆盖 21 个分类：通识（物理/生物/天文/数学/化学/历史/心理/脑科学/语言/科技/生活/地理）+ 技术向（AI/算法/数据结构/架构/Rust/Python/编程）+ 备考向（中级会计/学习方法）。
 
 卡片背景图来自 [Unsplash](https://unsplash.com)（Unsplash License，可免费商用），已做压暗与底部渐变处理以保证文字可读性。
 

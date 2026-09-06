@@ -5,6 +5,7 @@ import KnowFlickCore
 /// 单张知识卡片（正面）：分类摄影背景图 + 衬线大标题
 struct CardView: View {
     let card: KnowledgeCard
+    let showAIMark: Bool   // 设置：显示 AI 内容标记
     @State private var theme: CategoryTheme = .empty
     @State private var hovering = false
 
@@ -112,17 +113,31 @@ struct CardView: View {
             .background(theme.accent, in: Capsule())
     }
 
+    /// 来源标记：AI 卡显示醒目的橙色徽章（可按设置隐藏）；精选卡保持低调
+    @ViewBuilder
     private var sourceMark: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(card.source == .ai ? Color.orange : Color.white.opacity(0.55))
-                .frame(width: 5, height: 5)
-            Text(card.source == .ai ? "AI 生成" : "精选")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
+        if card.source == .ai {
+            if showAIMark {
+                Label("AI 生成", systemImage: "sparkles")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color(red: 0.98, green: 0.72, blue: 0.38))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.18), in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.orange.opacity(0.5), lineWidth: 1))
+            }
+        } else {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.white.opacity(0.55))
+                    .frame(width: 5, height: 5)
+                Text("精选")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.black.opacity(0.28), in: Capsule())
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Color.black.opacity(0.28), in: Capsule())
     }
 }

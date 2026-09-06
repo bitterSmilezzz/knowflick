@@ -6,6 +6,7 @@ import KnowFlickCore
 /// 内嵌刷卡循环：操作按钮 swipe 后由父视图切到下一张；←/→ 直接导航
 struct DetailView: View {
     let card: KnowledgeCard
+    let showAIMark: Bool   // 设置：显示 AI 内容标记
     let hasPrevious: Bool   // 有可回看的上一张
     let hasNext: Bool       // 后面还有卡
     let onSwipe: (SwipeDirection) -> Void   // 刷卡意图上抛，不持有整个 store
@@ -88,6 +89,24 @@ struct DetailView: View {
                             .frame(width: 34, height: 3)
                             .cornerRadius(1.5)
                             .padding(.top, 14)
+
+                        // AI 内容核实提示条（可按设置隐藏）
+                        if showAIMark && card.source == .ai {
+                            HStack(spacing: 8) {
+                                Image(systemName: "sparkles")
+                                Text("由 AI 生成，请通过「延伸阅读」链接核实内容")
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color(red: 0.98, green: 0.72, blue: 0.38))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+                            )
+                            .padding(.top, 14)
+                        }
 
                         // 正文
                         VStack(alignment: .leading, spacing: 16) {

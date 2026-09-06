@@ -47,3 +47,48 @@ final class AISettingsPreferredTests: XCTestCase {
         XCTAssertEqual(AISettings.default.preferredCategories, [])
     }
 }
+
+final class AISettingsSourcesTests: XCTestCase {
+    func testPreferredSourcesParsing() {
+        var settings = AISettings.default
+        settings.aiSources = "维基百科, 国家地理, 维基百科, "
+        XCTAssertEqual(settings.preferredSources, ["维基百科", "国家地理"])   // 去空去重
+    }
+
+    func testEmptySourcesFallsBackToDefault() {
+        var settings = AISettings.default
+        settings.aiSources = ""
+        XCTAssertEqual(settings.preferredSources, [])
+    }
+
+    // MARK: - 旧版 settings.json 兼容（无新字段）
+
+    func testDecodeLegacySettingsWithoutNewFields() throws {
+        // v1.4.0 及更早版本的 settings.json 没有 enableSeed/enableAI/aiSources/showAIMark
+        let legacyJSON = """
+        {"baseURL":"https://api.deepseek.com","model":"deepseek-chat","apiKey":"","autoGenerate":true,"categoryFilter":"物理"}
+        """
+        let settings = try JSONDecoder().decode(AISettings.self, from: Data(legacyJSON.utf8))
+        XCTAssertEqual(settings.baseURL, "https://api.deepseek.com")
+        XCTAssertEqual(settings.categoryFilter, "物理")
+        XCTAssertTrue(settings.enableSeed)     // 默认开启
+        XCTAssertTrue(settings.enableAI)       // 默认开启
+        XCTAssertFalse(settings.aiSources.isEmpty)   // 默认站点偏好
+        XCTAssertTrue(settings.showAIMark)     // 默认显示标记
+    }
+
+    func testDecodeFullSettingsRoundTrip() throws {
+        var settings = AISettings.default
+        settings.enableSeed = false
+        settings.enableAI = true
+        settings.aiSources = "NASA"
+        settings.showAIMark = false
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AISettings.self, from: data)
+        XCTAssertEqual(decoded, settings)
+        XCTAssertFalse(decoded.enableSeed)
+        XCTAssertTrue(decoded.enableAI)
+        XCTAssertEqual(decoded.aiSources, "NASA")
+        XCTAssertFalse(decoded.showAIMark)
+    }
+}

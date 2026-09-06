@@ -11,6 +11,10 @@ struct SettingsView: View {
     @State private var apiKey = ""
     @State private var autoGenerate = true
     @State private var selectedCategories: Set<String> = []   // 偏好分类（白名单多选）
+    @State private var enableSeed = true
+    @State private var enableAI = true
+    @State private var aiSources = ""
+    @State private var showAIMark = true
     @State private var savedToast = false
     @State private var testResult: String?
     @State private var isTesting = false
@@ -76,6 +80,23 @@ struct SettingsView: View {
                     Toggle("卡片不足时自动让 AI 补充", isOn: $autoGenerate)
                 }
 
+                Section("信息来源") {
+                    Toggle("预置精选库", isOn: $enableSeed)
+                    Toggle("AI 生成内容", isOn: $enableAI)
+                    LabeledContent("AI 引用站点") {
+                        TextField("维基百科, 国家地理, NASA", text: $aiSources)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 280)
+                    }
+                    Text("AI 生成卡片时只从这些站点中引用来源，检索链接优先命中。留空则使用默认权威站点。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle("显示 AI 内容标记", isOn: $showAIMark)
+                    Text("开启后 AI 生成的卡片会在正面和详情页标注「AI 生成」，方便区分内容来源。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("说明") {
                     Text("默认对接 DeepSeek（openai 兼容接口）。API Key 仅存入本机钥匙串，不会写进配置文件。")
                         .font(.caption)
@@ -107,13 +128,17 @@ struct SettingsView: View {
             }
             .padding(16)
         }
-        .frame(width: 560, height: 480)
+        .frame(width: 560, height: 560)
         .onAppear {
             baseURL = store.settings.baseURL
             model = store.settings.model
             apiKey = store.settings.apiKey
             autoGenerate = store.settings.autoGenerate
             selectedCategories = Set(store.settings.preferredCategories)
+            enableSeed = store.settings.enableSeed
+            enableAI = store.settings.enableAI
+            aiSources = store.settings.aiSources
+            showAIMark = store.settings.showAIMark
         }
         .overlay(alignment: .bottom) {
             if savedToast {
@@ -135,6 +160,10 @@ struct SettingsView: View {
         updated.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.autoGenerate = autoGenerate
         updated.setPreferredCategories(Array(selectedCategories))
+        updated.enableSeed = enableSeed
+        updated.enableAI = enableAI
+        updated.aiSources = aiSources.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.showAIMark = showAIMark
         updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             try store.saveSettings(updated)

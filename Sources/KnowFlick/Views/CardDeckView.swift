@@ -33,7 +33,7 @@ struct CardDeckView: View {
                 ZStack {
                     if let top = store.topCard {
                         ForEach(Array(visibleStack.enumerated()), id: \.element.id) { index, card in
-                            CardView(card: card)
+                            CardView(card: card, showAIMark: store.settings.showAIMark)
                                 .scaleEffect(scaleFor(index: index))
                                 .offset(y: offsetYFor(index: index))
                                 .offset(index == 0 ? dragOffset : .zero)
@@ -95,6 +95,7 @@ struct CardDeckView: View {
         .sheet(item: $selectedCard) { card in
             DetailView(
                 card: card,
+                showAIMark: store.settings.showAIMark,
                 hasPrevious: store.history.first != nil,
                 hasNext: store.deck.count > 1,
                 onSwipe: { direction in
@@ -112,7 +113,7 @@ struct CardDeckView: View {
             )
         }
         .sheet(isPresented: $showHistory) {
-            HistoryView(store: store) {
+            HistoryView(store: store, showAIMark: store.settings.showAIMark) {
                 showHistory = false
             }
         }

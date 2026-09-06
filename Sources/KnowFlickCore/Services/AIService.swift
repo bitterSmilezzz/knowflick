@@ -55,6 +55,11 @@ public struct AIService {
         let excludeList = Array(excludeHeadlines.prefix(100))
         let excludedKeys = Set(excludeList.map(Self.normalizeHeadline))
         let excludedBigrams = excludeList.map(Self.bigramSet)
+        // 用户配置的 AI 引用站点偏好（生成内容与检索链接都优先这些站点）
+        let preferredSources = settings.preferredSources
+        let sourcesHint = preferredSources.isEmpty
+            ? "维基百科、国家地理、NASA 等权威科普站点"
+            : preferredSources.joined(separator: "、")
 
         let systemPrompt = """
         你是一个严谨的知识卡片编辑，为中文读者生成真实、可查证的冷知识。
@@ -66,7 +71,8 @@ public struct AIService {
         - 详情 3-6 段，每段讲一个角度（机制解释、历史背景、冷门细节、相关现象），用 \\n\\n 分段
         - 分类必须从下列白名单中选择，不要发明新分类：
           物理、生物、天文、数学、化学、历史、心理、脑科学、语言、科技、生活、地理、AI、算法、数据结构、架构、Rust、Python、编程、会计、学习方法
-        - sources 给出 1-2 个权威来源站点名（如：维基百科、NASA、国家地理、Nature、BBC、中国科普网、果壳网），不要编造具体文章 URL
+        - sources 从下列用户偏好站点中选择 1-2 个（只允许用列表内的，不要编造其他站点名）：
+          \(sourcesHint)
         - 每次返回 count 条，避免与已有标题重复或高度相似
 
         示例输出（仅示范结构与字段，内容请原创）：
@@ -132,7 +138,11 @@ public struct AIService {
                 headline: p.headline,
                 summary: p.summary,
                 details: p.details,
-                links: Self.buildSearchLinks(keywords: p.searchKeywords, sources: p.sources),
+                // 链接：AI 给了站点用 AI 的；没给则用用户站点偏好兜底
+                links: Self.buildSearchLinks(
+                    keywords: p.searchKeywords,
+                    sources: p.sources.isEmpty ? preferredSources : p.sources
+                ),
                 source: .ai,
                 createdAt: now
             )

@@ -4,6 +4,7 @@ import KnowFlickCore
 /// 历史记录：看过的卡片列表，支持筛选与回看
 struct HistoryView: View {
     let store: AppStore
+    let showAIMark: Bool   // 设置：显示 AI 内容标记
     var categoryFilter: String? = nil   // 非nil=只看该分类（从统计页跳转进来）
     let onClose: () -> Void
 
@@ -107,6 +108,7 @@ struct HistoryView: View {
         .sheet(item: $selectedCard) { card in
             DetailView(
                 card: card,
+                showAIMark: showAIMark,
                 hasPrevious: false,
                 hasNext: nextHistoryCard(after: card) != nil,
                 onSwipe: { direction in
@@ -157,10 +159,19 @@ struct HistoryView: View {
                         Text(card.seenAt?.formatted(date: .abbreviated, time: .shortened) ?? "")
                             .font(.system(size: 11.5))
                             .foregroundStyle(.white.opacity(0.4))
-                        dot
-                        Text(card.source == .ai ? "AI" : "预置")
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundStyle(card.source == .ai ? .orange.opacity(0.75) : .white.opacity(0.45))
+                        if card.source == .ai {
+                            if showAIMark {
+                                dot
+                                Text("AI")
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .foregroundStyle(.orange.opacity(0.75))
+                            }
+                        } else {
+                            dot
+                            Text("预置")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.45))
+                        }
                     }
                 }
 
