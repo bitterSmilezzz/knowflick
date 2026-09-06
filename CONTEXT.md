@@ -26,13 +26,22 @@
 从 `store.cards` 纯派生的快照（`LearningStats`，`StatsCalculator.compute`），视图只做格式化。连续天数按日去重、允许「今天未刷从昨天起算」的空档。`skip` 计入已刷，不计入喜欢。`dailyCounts` 提供近 7 天趋势（纯计算）。
 
 ## 分类主题（CategoryTheme）
-分类名 → 视觉主题（背景图 key / accent / ambient）。内置「冷知识」用专属学习主题；自定义分类按**分类名稳定哈希**映射到 21 张内置背景图之一（同一分类每次同图同色）；旧分类名（物理等）兼容查找。视觉资源表仅此一份。
+卡片内容/分类名 → 视觉主题（背景图 key / accent / ambient）。采用**语义识别 + 标题哈希兜底**的多维映射机制：先扫描标题与摘要中的 21 种学科关键词（天文、物理、生物、化学、历史、心理、脑科学、AI、算法、架构、Rust等）直达对应摄影背景；若无明显关键词，则基于卡片标题稳定哈希在 21 张内置精选高清摄影底图中均匀轮巡，彻底消除同一分类下背景千篇一律的问题。主窗口环境背景光（ambient）与当前卡片及划卡飞出动画实时深度联动。
 
 ## 存储（Storage）
-`Storage` 实例可注入目录。卡片文件三级回退：cards.json → cards.backup.json（轮转保留上一版）→ 重播种。API key 单独存 Keychain，不入 JSON。AppStore 内所有落盘统一经 `persist()` 单入口：**350ms 节流合并 + Task.detached 后台执行**（连续刷卡只写最后一次，JSON 编码与文件 IO 不卡主线程）。
+`Storage` 实例可注入目录。卡片文件三级回退：cards.json → cards.backup.json（轮转保留上一版）→ 重播种。API key 单独存 Keychain，不入 JSON。AppStore 内所有落盘统一经 `persist()` 单入口：**350ms 节流合并 + Task.detached 后台执行**（连续刷卡只写最后一次，JSON 编码与文件 IO 不卡主线程）。应用启动时自动执行**种子库增量合并**，自动引入新版本内置扩充的卡片，老用户无缝获得全新内容。
 
-## AI 服务（AIService）
+## AI 服务与服务商预设（AIService / AIProviderPreset）
 OpenAI 兼容端点客户端，**流式生成**：SSE 逐行接收 + 增量对象扫描，拿到目标数量即提前终止（省时省额度）；429/5xx 自动重试。失败通道统一为抛 `AIError`：传输/解析层失败抛对应 case；「请求成功但无可用产出」抛 `noUsableCards`。排除标题截断上限（100）由服务单点决定；max_tokens 按生成数量动态计算（≈900/张 + 400 缓冲）。
+
+内置主流大模型服务商预设（`AIProviderPreset`）：
+- **DeepSeek**（官方高性价比模型）
+- **硅基流动 (SiliconFlow)**（聚合主流开源与满血版模型，内置模型前缀）
+- **Kimi (月之暗面)**（Moonshot 大模型端点）
+- **智谱 GLM**（GLM-4 系列模型端点）
+- **OpenAI**（官方 GPT 系列模型）
+- **Ollama**（本地私有部署端点，自动识别无需填写 API Key）
+- **自定义**（灵活配置任意第三方 OpenAI 兼容网关与专有端点）
 
 生成质量链：分类经 `CategoryRegistry` 归一化到受控 21 类（未知兜底「科技」）→ 字面去重（normalizeHeadline）→ 近重复抑制（bigram Jaccard > 0.35 丢弃）→ 内容 ≥80 字门槛。链接用「关键词 + 权威来源站名」构造 Bing 检索（AI 给的 `sources` 优先，缺失时用设置里 `aiSources` 站点偏好兜底）。`ping` 为轻量连通性探测（max_tokens=1，非流式）。
 

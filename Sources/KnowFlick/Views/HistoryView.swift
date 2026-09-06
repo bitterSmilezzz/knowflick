@@ -141,7 +141,7 @@ struct HistoryView: View {
 
     private func historyRow(_ card: KnowledgeCard) -> some View {
         let mark = directionMark(card.swiped)
-        let catAccent = CategoryTheme.theme(for: card.category, cache: .shared).accent
+        let catAccent = CategoryTheme.theme(for: card, cache: .shared).accent
         return Button {
             selectedCard = card
         } label: {

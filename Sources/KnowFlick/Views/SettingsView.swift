@@ -22,7 +22,21 @@ struct SettingsView: View {
     @State private var testResult: String?
     @State private var isTesting = false
 
-    private let presetModels = ["deepseek-chat", "deepseek-reasoner"]
+    @State private var selectedProviderId = "deepseek"
+
+    private var currentPreset: AIProviderPreset {
+        AIProviderPreset.presets.first(where: { $0.id == selectedProviderId }) ?? AIProviderPreset.presets.last!
+    }
+
+    private func selectProvider(_ preset: AIProviderPreset) {
+        selectedProviderId = preset.id
+        if preset.id != "custom" {
+            baseURL = preset.defaultBaseURL
+            if !preset.models.contains(model) {
+                model = preset.defaultModel
+            }
+        }
+    }
 
     /// 当前编辑中的分类体系（内置「冷知识」+ 自定义），偏好 chips 与分类管理共用
     private var editingCategoryNames: [String] {
@@ -54,11 +68,12 @@ struct SettingsView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .frame(width: 620, height: 700)
+        .frame(width: 620, height: 720)
         .onAppear {
             baseURL = store.settings.baseURL
             model = store.settings.model
             apiKey = store.settings.apiKey
+            selectedProviderId = AIProviderPreset.match(baseURL: store.settings.baseURL).id
             autoGenerate = store.settings.autoGenerate
             selectedCategories = Set(store.settings.preferredCategories)
             enableSeed = store.settings.enableSeed
@@ -128,8 +143,46 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
+                // 1. 服务商预设切换
+                fieldRow(label: "服务商预设") {
+                    Menu {
+                        ForEach(AIProviderPreset.presets) { preset in
+                            Button {
+                                selectProvider(preset)
+                            } label: {
+                                Label(preset.name, systemImage: preset.icon)
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: currentPreset.icon)
+                                .foregroundStyle(EditorialColor.aiAmber)
+                                .frame(width: 18)
+                            Text(currentPreset.name)
+                                .font(EditorialFont.label)
+                                .foregroundStyle(EditorialColor.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 11))
+                                .foregroundStyle(EditorialColor.textTertiary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    }
+                }
+
+                if !currentPreset.helpText.isEmpty {
+                    Text(currentPreset.helpText)
+                        .font(EditorialFont.captionSmall)
+                        .foregroundStyle(EditorialColor.textTertiary)
+                        .padding(.top, -3)
+                }
+
+                // 2. API 地址
                 fieldRow(label: "API 地址") {
-                    TextField("https://api.deepseek.com", text: $baseURL)
+                    TextField(currentPreset.defaultBaseURL.isEmpty ? "https://..." : currentPreset.defaultBaseURL, text: $baseURL)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -138,35 +191,77 @@ struct SettingsView: View {
                         .foregroundStyle(EditorialColor.textPrimary)
                 }
 
+                // 3. 模型选择
                 fieldRow(label: "模型选择") {
-                    HStack(spacing: 8) {
-                        Picker("", selection: $model) {
-                            ForEach(presetModels, id: \.self) { Text($0) }
-                            Text("自定义…").tag("")
-                        }
-                        .labelsHidden()
-                        .frame(width: 170)
-
-                        if !presetModels.contains(model) {
-                            TextField("模型名", text: $model)
-                                .textFieldStyle(.plain)
+                    if currentPreset.models.isEmpty {
+                        TextField("例如：deepseek-chat、gpt-4o、qwen-plus", text: $model)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                            .foregroundStyle(EditorialColor.textPrimary)
+                    } else {
+                        HStack(spacing: 8) {
+                            Menu {
+                                ForEach(currentPreset.models, id: \.self) { m in
+                                    Button(m) {
+                                        model = m
+                                    }
+                                }
+                                Divider()
+                                Button("手动输入其他模型…") {
+                                    if currentPreset.models.contains(model) {
+                                        model = ""
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text(currentPreset.models.contains(model) ? model : (model.isEmpty ? "选择模型…" : "自定义模型"))
+                                        .font(EditorialFont.labelSmall)
+                                        .foregroundStyle(EditorialColor.textPrimary)
+                                    Spacer()
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(EditorialColor.textTertiary)
+                                }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
+                                .frame(width: 190)
                                 .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                                .foregroundStyle(EditorialColor.textPrimary)
+                            }
+
+                            if !currentPreset.models.contains(model) {
+                                TextField("输入具体模型名", text: $model)
+                                    .textFieldStyle(.plain)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                                    .foregroundStyle(EditorialColor.textPrimary)
+                            }
                         }
                     }
                 }
 
+                // 4. API Key
                 fieldRow(label: "API Key") {
-                    SecureField("sk-...", text: $apiKey)
-                        .textFieldStyle(.plain)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        SecureField(currentPreset.apiKeyPlaceholder, text: $apiKey)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                            .foregroundStyle(EditorialColor.textPrimary)
+
+                        if !currentPreset.requiresKey {
+                            Text("本地离线模型（Ollama 等），无需在应用中配置 Key")
+                                .font(EditorialFont.captionSmall)
+                                .foregroundStyle(EditorialColor.textMuted)
+                        }
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -351,20 +446,52 @@ struct SettingsView: View {
         .editorialGlassCard(cornerRadius: EditorialRadius.container)
     }
 
-    // MARK: - 卡片 4：说明
+    // MARK: - 卡片 4：知识库状态与安全说明
 
     private var aboutCard: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "shield.lefthalf.filled")
-                .font(.system(size: 15))
-                .foregroundStyle(EditorialColor.textTertiary)
-            Text("API Key 仅安全存储于 macOS 原生钥匙串（Keychain），绝不会明文保存在本地 JSON 或向外部泄露。")
-                .font(EditorialFont.captionSmall)
-                .foregroundStyle(EditorialColor.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "square.stack.3d.up.fill")
+                    .foregroundStyle(EditorialColor.aiAmber)
+                Text("知识库状态")
+                    .font(EditorialFont.sectionTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+                Spacer()
+                Text("共 \(store.cards.count) 张 · 待探索 \(store.deck.count) 张")
+                    .font(EditorialFont.captionSmall)
+                    .foregroundStyle(EditorialColor.textSecondary)
+            }
+
+            HStack {
+                Text("已刷完想再次回顾，或想重新体验全新的分类背景，可随时重置探索状态。")
+                    .font(EditorialFont.captionSmall)
+                    .foregroundStyle(EditorialColor.textTertiary)
+                Spacer()
+                Button("重新探索全部卡片") {
+                    store.clearHistory()
+                }
+                .font(EditorialFont.labelSmall)
+                .foregroundStyle(EditorialColor.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+            }
+
+            Divider().overlay(EditorialColor.glassDivider)
+
+            HStack(spacing: 10) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: 14))
+                    .foregroundStyle(EditorialColor.textTertiary)
+                Text("API Key 仅安全存储于 macOS 原生钥匙串（Keychain），绝不会明文保存在本地 JSON 或向外部泄露。")
+                    .font(EditorialFont.captionSmall)
+                    .foregroundStyle(EditorialColor.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(14)
-        .editorialGlassCard(cornerRadius: EditorialRadius.control)
+        .padding(16)
+        .editorialGlassCard(cornerRadius: EditorialRadius.container)
     }
 
     // MARK: - 底栏操作

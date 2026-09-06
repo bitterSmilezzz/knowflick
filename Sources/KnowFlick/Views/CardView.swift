@@ -9,7 +9,7 @@ struct CardView: View {
     @State private var hovering = false
 
     private var theme: CategoryTheme {
-        CategoryTheme.theme(for: card.category, cache: .shared)
+        CategoryTheme.theme(for: card, cache: .shared)
     }
 
     var body: some View {

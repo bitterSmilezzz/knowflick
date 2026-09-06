@@ -16,7 +16,7 @@ struct DetailView: View {
 
     @Environment(\.openURL) private var openURL
     private var theme: CategoryTheme {
-        CategoryTheme.theme(for: card.category, cache: .shared)
+        CategoryTheme.theme(for: card, cache: .shared)
     }
 
     var body: some View {

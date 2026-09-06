@@ -124,3 +124,142 @@ public struct AISettings: Codable, Equatable {
         customCategories = try c.decodeIfPresent([CategoryConfig].self, forKey: .customCategories) ?? AISettings.defaultCustomCategories
     }
 }
+
+/// 主流 AI 服务商预设：DeepSeek、硅基流动、Kimi、智谱GLM、OpenAI、Ollama、自定义
+public struct AIProviderPreset: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let icon: String
+    public let defaultBaseURL: String
+    public let models: [String]
+    public let defaultModel: String
+    public let helpText: String
+    public let apiKeyPlaceholder: String
+    public let requiresKey: Bool
+
+    public init(
+        id: String,
+        name: String,
+        icon: String,
+        defaultBaseURL: String,
+        models: [String],
+        defaultModel: String,
+        helpText: String,
+        apiKeyPlaceholder: String,
+        requiresKey: Bool
+    ) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.defaultBaseURL = defaultBaseURL
+        self.models = models
+        self.defaultModel = defaultModel
+        self.helpText = helpText
+        self.apiKeyPlaceholder = apiKeyPlaceholder
+        self.requiresKey = requiresKey
+    }
+
+    public static let presets: [AIProviderPreset] = [
+        .init(
+            id: "deepseek",
+            name: "DeepSeek",
+            icon: "sparkles",
+            defaultBaseURL: "https://api.deepseek.com",
+            models: ["deepseek-chat", "deepseek-reasoner"],
+            defaultModel: "deepseek-chat",
+            helpText: "性价比最高，推荐用于生成常识与领域知识卡片",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "siliconflow",
+            name: "硅基流动 (SiliconFlow)",
+            icon: "bolt.fill",
+            defaultBaseURL: "https://api.siliconflow.cn/v1",
+            models: [
+                "deepseek-ai/DeepSeek-V3",
+                "deepseek-ai/DeepSeek-R1",
+                "Qwen/Qwen2.5-7B-Instruct",
+                "THUDM/glm-4-9b-chat"
+            ],
+            defaultModel: "deepseek-ai/DeepSeek-V3",
+            helpText: "国内高可用云服务，提供 DeepSeek-V3/R1 与 Qwen 等海量模型",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "kimi",
+            name: "Kimi (月之暗面)",
+            icon: "moon.stars.fill",
+            defaultBaseURL: "https://api.moonshot.cn/v1",
+            models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-auto"],
+            defaultModel: "moonshot-v1-8k",
+            helpText: "Moonshot 开放平台，擅长长文本与知识综合总结",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "zhipu",
+            name: "智谱 GLM",
+            icon: "brain.head.profile",
+            defaultBaseURL: "https://open.bigmodel.cn/api/paas/v4",
+            models: ["glm-4-flash", "glm-4-plus", "glm-4-air"],
+            defaultModel: "glm-4-flash",
+            helpText: "清华智谱大模型，其中 glm-4-flash 免费且极速",
+            apiKeyPlaceholder: "API Key (如 id.secret)",
+            requiresKey: true
+        ),
+        .init(
+            id: "openai",
+            name: "OpenAI",
+            icon: "globe",
+            defaultBaseURL: "https://api.openai.com/v1",
+            models: ["gpt-4o-mini", "gpt-4o", "o3-mini"],
+            defaultModel: "gpt-4o-mini",
+            helpText: "OpenAI 官方 API，支持 GPT-4o 等系列模型",
+            apiKeyPlaceholder: "sk-proj-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "ollama",
+            name: "Ollama (本地私有)",
+            icon: "desktopcomputer",
+            defaultBaseURL: "http://localhost:11434/v1",
+            models: ["qwen2.5:7b", "deepseek-r1:7b", "llama3.1:8b"],
+            defaultModel: "qwen2.5:7b",
+            helpText: "本地离线大模型，无需消耗 Token 与联网，无需填 Key",
+            apiKeyPlaceholder: "本地运行无需填 Key",
+            requiresKey: false
+        ),
+        .init(
+            id: "custom",
+            name: "自定义服务商",
+            icon: "slider.horizontal.3",
+            defaultBaseURL: "",
+            models: [],
+            defaultModel: "",
+            helpText: "支持任意兼容 OpenAI 接口规范的第三方中转或网关服务",
+            apiKeyPlaceholder: "输入对应平台的 API Key",
+            requiresKey: true
+        )
+    ]
+
+    public static func match(baseURL: String) -> AIProviderPreset {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.contains("api.deepseek.com") {
+            return presets[0]
+        } else if trimmed.contains("siliconflow.cn") {
+            return presets[1]
+        } else if trimmed.contains("moonshot.cn") {
+            return presets[2]
+        } else if trimmed.contains("bigmodel.cn") {
+            return presets[3]
+        } else if trimmed.contains("api.openai.com") {
+            return presets[4]
+        } else if trimmed.contains("11434") || trimmed.contains("localhost") {
+            return presets[5]
+        } else {
+            return presets[6] // custom
+        }
+    }
+}

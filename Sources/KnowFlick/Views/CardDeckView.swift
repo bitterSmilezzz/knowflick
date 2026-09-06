@@ -38,14 +38,14 @@ struct CardDeckView: View {
 
     // 同步计算当前主题，绝不在 .task 异步延迟加载，杜绝换卡时背景与边框闪烁
     private var currentTheme: CategoryTheme {
-        CategoryTheme.theme(for: store.topCard?.category ?? "", cache: .shared)
+        CategoryTheme.theme(for: swipingCard ?? store.topCard, cache: .shared)
     }
 
     var body: some View {
         ZStack {
             ambientBackground
                 .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.45), value: store.topCard?.category)
+                .animation(.easeInOut(duration: 0.45), value: (swipingCard ?? store.topCard)?.id.uuidString ?? "")
 
             VStack(spacing: 0) {
                 topBar

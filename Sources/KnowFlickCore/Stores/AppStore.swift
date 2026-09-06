@@ -51,6 +51,14 @@ public final class AppStore {
     public func bootstrap() async {
         if storage.hasSeeded() {
             cards = storage.loadCards()
+            // 自动同步增量种子卡：若内置 seed 库有新扩充卡片，增量合并到用户卡库
+            let existingHeadlines = Set(cards.map(\.headline))
+            let seeds = loadSeedCards()
+            let newSeeds = seeds.filter { !existingHeadlines.contains($0.headline) }
+            if !newSeeds.isEmpty {
+                cards.append(contentsOf: newSeeds)
+                persist()
+            }
         } else {
             cards = loadSeedCards()
             persist()
