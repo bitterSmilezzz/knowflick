@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**macOS 冷知识卡片应用 — 打开即学，左右划卡**
+**macOS 领域知识卡片应用 — 打开即学，左右划卡**
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
@@ -16,7 +16,7 @@
 
 ---
 
-KnowFlick 是一个用 SwiftUI 编写的 macOS 桌面应用（最低支持 macOS 14），采用「卡片 + 手势」的方式快速刷冷知识：每次随机展示一张知识卡片，左划/右划跳过或标记，按 `⏎` 展开详情和来源链接，历史记录自动保留。卡片不足时可选接入 AI（DeepSeek 等 OpenAI 兼容端点）自动生成新卡。
+KnowFlick 是一个用 SwiftUI 编写的 macOS 桌面应用（最低支持 macOS 14），采用「卡片 + 手势」的方式快速刷**你关心的领域知识**：每次随机展示一张知识卡片，左划/右划跳过或标记，按 `⏎` 展开详情和来源链接，历史记录自动保留。分类体系由你掌控——内置「冷知识」库之外，可以自定义分类（如 AI、AI 开发、AI Agent、中级会计、投资理财），AI（DeepSeek 等 OpenAI 兼容端点）按分类内容方向自动生成新卡。
 
 ## 功能
 
@@ -24,10 +24,11 @@ KnowFlick 是一个用 SwiftUI 编写的 macOS 桌面应用（最低支持 macOS
 - **详情 + 链接**：按 `⏎` 展开详情、查看来源链接；详情页内可连续刷卡（点操作自动切下一张，`←`/`→` 直接切换）
 - **历史记录**：自动保存浏览历史，随时回看（支持按感兴趣/不喜欢筛选）
 - **撤销**：`⌘Z` 撤销上一张卡片
+- **分类自定义**：设置页可增删改分类（名称 + 内容方向描述），内置「冷知识」分类收纳预置知识库；AI 生成按每个分类的内容方向产出对应领域卡片
 - **AI 生成**：卡片不足时，用 DeepSeek 等模型自动补充新卡（可选，需配置 API key）；流式生成、够数即停，自动做分类规范化与近重复去重
 - **来源配置**：设置页可分别开关「预置精选库」与「AI 生成内容」两种信息来源，并配置 AI 引用站点偏好（生成内容与检索链接都优先这些站点）
 - **AI 内容标记**：AI 生成的卡片在正面显示橙色徽章、详情页显示核实提示条，可一键关闭
-- **偏好过滤**：设置里从 21 个分类多选偏好，刷卡队列优先偏好分类，刷完自动回退其他分类
+- **偏好过滤**：设置里多选偏好分类，刷卡队列优先偏好分类，刷完自动回退其他分类
 - **学习统计**：已刷/感兴趣率/连续天数 + 分类分布 + 近 7 天趋势
 
 ## 键盘快捷键
@@ -90,7 +91,7 @@ cd KnowFlick
 
 - 默认配置为 DeepSeek；也可以填任意 OpenAI 兼容端点（如 OpenRouter、本地 Ollama 等）的 `base_url` 与模型名
 - **API key 不会写入本地配置文件**，只存入 macOS 钥匙串（Keychain），base_url 与 model 存于 UserDefaults
-- 设置界面中可开启/关闭「卡片不足时自动生成」，**从 21 个分类多选偏好分类**（AI 生成会优先偏好分类，刷卡队列也会优先推送），并分别控制「预置精选库 / AI 生成内容」两种信息来源与 AI 引用站点偏好
+- 设置界面中可**增删改自定义分类**（名称 + 内容方向描述，内置「冷知识」不可删改），**多选偏好分类**（AI 生成会优先偏好分类，刷卡队列也会优先推送），并分别控制「预置精选库 / AI 生成内容」两种信息来源与 AI 引用站点偏好
 
 ## 数据存储
 
@@ -100,9 +101,11 @@ cd KnowFlick
 | AI 设置（base_url / model） | `UserDefaults`（`com.knowflick.app`） |
 | AI 密钥 | macOS 钥匙串（Keychain） |
 
-内置种子知识库（160 张）随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlickCore.bundle/seed_cards.json`），覆盖 21 个分类：通识（物理/生物/天文/数学/化学/历史/心理/脑科学/语言/科技/生活/地理）+ 技术向（AI/算法/数据结构/架构/Rust/Python/编程）+ 备考向（中级会计/学习方法）。
+内置种子知识库（214 张）随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlickCore.bundle/seed_cards.json`）：
+- **冷知识（160 张）**：通识（物理/生物/天文/数学/化学/历史/心理/脑科学/语言/科技/生活/地理）+ 技术向（AI/算法/数据结构/架构/Rust/Python/编程）+ 备考向（中级会计/学习方法），全部并入内置「冷知识」分类
+- **AI（10 张）/ AI 开发（10 张）/ AI Agent（9 张）/ 中级会计（12 张）/ 投资理财（13 张）**：领域初始卡，覆盖机器学习原理、提示工程与 RAG、Agent 架构、会计实务、理财基础
 
-卡片背景图来自 [Unsplash](https://unsplash.com)（Unsplash License，可免费商用），已做压暗与底部渐变处理以保证文字可读性。
+卡片背景图来自 [Unsplash](https://unsplash.com)（Unsplash License，可免费商用），已做压暗与底部渐变处理以保证文字可读性；自定义分类自动复用内置视觉资源（按分类名稳定映射）。
 
 ## 项目结构
 

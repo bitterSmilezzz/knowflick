@@ -60,17 +60,28 @@ public struct AIService {
         let sourcesHint = preferredSources.isEmpty
             ? "维基百科、国家地理、NASA 等权威科普站点"
             : preferredSources.joined(separator: "、")
+        // 分类体系：内置「冷知识」+ 自定义分类；生成时只允许这些分类名
+        let categoryWhitelist = settings.allCategoryNames.joined(separator: "、")
+        // 每类内容方向（自定义分类的描述，让生成内容贴合该分类主题）
+        let categoryGuides = settings.customCategories
+            .map { "分类「\($0.name)」的内容方向：\($0.description)。" }
+            .joined(separator: "\n")
+        // 无偏好时要求平均覆盖自定义分类，避免全部落到冷知识
+        let customHint = settings.customCategories.isEmpty
+            ? ""
+            : "若没有偏好分类，请尽量平均覆盖以下分类：\(settings.customCategoryNames.joined(separator: "、"))。"
 
         let systemPrompt = """
-        你是一个严谨的知识卡片编辑，为中文读者生成真实、可查证的冷知识。
+        你是一个严谨的知识卡片编辑，为中文读者生成真实、可查证的领域知识卡。
 
         硬性要求：
-        - 每条知识必须真实可查证；不确定的事实宁可不写，严禁编造数字、人名、年份
-        - 标题一句话点出反直觉或有趣的点，如「香蕉是浆果，草莓不是」
+        - 每条内容必须真实准确；不确定的事实宁可不写，严禁编造数字、人名、年份
+        - 标题一句话点出反直觉、有趣或有用的点（如「香蕉是浆果，草莓不是」）
         - 摘要一句话概括核心
-        - 详情 3-6 段，每段讲一个角度（机制解释、历史背景、冷门细节、相关现象），用 \\n\\n 分段
+        - 详情 3-6 段，每段讲一个角度（机制解释、历史背景、冷门细节、相关现象/实操要点），用 \\n\\n 分段
         - 分类必须从下列白名单中选择，不要发明新分类：
-          物理、生物、天文、数学、化学、历史、心理、脑科学、语言、科技、生活、地理、AI、算法、数据结构、架构、Rust、Python、编程、会计、学习方法
+          \(categoryWhitelist)
+        \(categoryGuides)
         - sources 从下列用户偏好站点中选择 1-2 个（只允许用列表内的，不要编造其他站点名）：
           \(sourcesHint)
         - 每次返回 count 条，避免与已有标题重复或高度相似
@@ -78,18 +89,18 @@ public struct AIService {
         示例输出（仅示范结构与字段，内容请原创）：
         [
           {
-            "category": "生物",
-            "headline": "香蕉是浆果，草莓不是",
-            "summary": "植物学定义下，浆果来自单一子房且果皮肉质化",
+            "category": "AI",
+            "headline": "过拟合：模型把「背题」当成了「学会」",
+            "summary": "训练集上满分、新题上失分，是机器学习最常见的翻车现场",
             "details": "第一段。\\n\\n第二段。",
-            "searchKeywords": ["香蕉", "浆果", "植物学分类"],
+            "searchKeywords": ["过拟合", "正则化", "泛化"],
             "sources": ["维基百科"]
           }
         ]
         """
 
         let userPrompt = """
-        请生成 \(count) 条不重复的冷知识卡片，严格按 JSON 数组格式输出，不要输出任何其他文字：
+        请生成 \(count) 条不重复的领域知识卡片，严格按 JSON 数组格式输出，不要输出任何其他文字：
         [
           {
             "category": "分类（白名单内）",
@@ -100,6 +111,8 @@ public struct AIService {
             "sources": ["权威来源站名1"]
           }
         ]
+
+        \(customHint)
 
         已存在标题（避免重复或高度相似）：
         \(excludeList.joined(separator: "\n"))
@@ -134,7 +147,7 @@ public struct AIService {
             seenBigrams.append(bigram)
             guard p.details.count >= 80 else { return nil }   // 内容过短视为失败输出
             return KnowledgeCard(
-                category: CategoryRegistry.normalize(p.category),   // 分类归一化到白名单
+                category: CategoryRegistry.normalize(p.category, custom: settings.customCategoryNames),   // 归一化到分类体系
                 headline: p.headline,
                 summary: p.summary,
                 details: p.details,

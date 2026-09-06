@@ -10,16 +10,24 @@ struct SettingsView: View {
     @State private var model = ""
     @State private var apiKey = ""
     @State private var autoGenerate = true
-    @State private var selectedCategories: Set<String> = []   // 偏好分类（白名单多选）
+    @State private var selectedCategories: Set<String> = []   // 偏好分类（分类体系多选）
     @State private var enableSeed = true
     @State private var enableAI = true
     @State private var aiSources = ""
     @State private var showAIMark = true
+    @State private var customCategories: [CategoryConfig] = []   // 自定义分类（编辑副本）
+    @State private var newCategoryName = ""
+    @State private var newCategoryDesc = ""
     @State private var savedToast = false
     @State private var testResult: String?
     @State private var isTesting = false
 
     private let presetModels = ["deepseek-chat", "deepseek-reasoner"]
+
+    /// 当前编辑中的分类体系（内置「冷知识」+ 自定义），偏好 chips 与分类管理共用
+    private var editingCategoryNames: [String] {
+        [CategoryRegistry.builtinCategory] + customCategories.map(\.name)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -65,7 +73,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             ScrollView {
                                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 6)], alignment: .leading, spacing: 6) {
-                                    ForEach(CategoryRegistry.canonical, id: \.self) { cat in
+                                    ForEach(editingCategoryNames, id: \.self) { cat in
                                         categoryChip(cat)
                                     }
                                 }
@@ -78,6 +86,67 @@ struct SettingsView: View {
                         }
                     }
                     Toggle("卡片不足时自动让 AI 补充", isOn: $autoGenerate)
+                }
+
+                Section("分类管理") {
+                    // 内置分类（不可删改）
+                    HStack {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Text(CategoryRegistry.builtinCategory)
+                            .font(.system(size: 13, weight: .medium))
+                        Text("内置 · 收纳预置知识库")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 3)
+
+                    // 自定义分类列表
+                    ForEach(customCategories) { cat in
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(cat.name)
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(cat.description.isEmpty ? "未填写内容方向" : cat.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Button {
+                                selectedCategories.remove(cat.name)
+                                customCategories.removeAll { $0.name == cat.name }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.red.opacity(0.75))
+                            }
+                            .buttonStyle(.plain)
+                            .help("删除该分类")
+                        }
+                        .padding(.vertical, 2)
+                    }
+
+                    // 添加分类
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            TextField("分类名（如：前端开发）", text: $newCategoryName)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 170)
+                            TextField("内容方向描述（AI 生成时参考，可留空）", text: $newCategoryDesc)
+                                .textFieldStyle(.roundedBorder)
+                            Button("添加") {
+                                addCategory()
+                            }
+                            .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                        Text("自定义分类可增删改；AI 生成时按分类内容方向产出对应领域卡片")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
                 }
 
                 Section("信息来源") {
@@ -128,7 +197,7 @@ struct SettingsView: View {
             }
             .padding(16)
         }
-        .frame(width: 560, height: 560)
+        .frame(width: 580, height: 640)
         .onAppear {
             baseURL = store.settings.baseURL
             model = store.settings.model
@@ -139,6 +208,7 @@ struct SettingsView: View {
             enableAI = store.settings.enableAI
             aiSources = store.settings.aiSources
             showAIMark = store.settings.showAIMark
+            customCategories = store.settings.customCategories
         }
         .overlay(alignment: .bottom) {
             if savedToast {
@@ -159,6 +229,9 @@ struct SettingsView: View {
         updated.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.autoGenerate = autoGenerate
+        updated.customCategories = customCategories
+        // 偏好中已被删除的分类自动清理
+        selectedCategories = selectedCategories.intersection(editingCategoryNames)
         updated.setPreferredCategories(Array(selectedCategories))
         updated.enableSeed = enableSeed
         updated.enableAI = enableAI
@@ -176,6 +249,22 @@ struct SettingsView: View {
             // 钥匙串写入失败等错误要显式可见，不再静默
             testResult = error.localizedDescription
         }
+    }
+
+    /// 添加自定义分类（去重、trim；描述可空）
+    private func addCategory() {
+        let name = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        guard name != CategoryRegistry.builtinCategory, !customCategories.contains(where: { $0.name == name }) else {
+            testResult = "分类「\(name)」已存在"
+            return
+        }
+        customCategories.append(CategoryConfig(
+            name: name,
+            description: newCategoryDesc.trimmingCharacters(in: .whitespacesAndNewlines)
+        ))
+        newCategoryName = ""
+        newCategoryDesc = ""
     }
 
     /// 偏好分类选择 chip

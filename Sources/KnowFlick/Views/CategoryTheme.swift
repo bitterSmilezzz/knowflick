@@ -23,10 +23,42 @@ struct CategoryTheme {
         ambient: [Color(red: 0.08, green: 0.13, blue: 0.18), Color(red: 0.03, green: 0.06, blue: 0.09)]
     )
 
-    /// 分类名 → 主题（含预加载的背景图）
+    /// 内置「冷知识」分类的专属主题（学习主题图）
+    private static let builtinSpec = Spec(
+        key: "study",
+        accent: Color(red: 0.80, green: 0.72, blue: 0.55),
+        ambient: [Color(red: 0.16, green: 0.14, blue: 0.10), Color(red: 0.07, green: 0.06, blue: 0.04)]
+    )
+
+    /// 视觉资源键的有序列表（供自定义分类稳定哈希索引）
+    private static let specOrder: [String] = [
+        "physics", "biology", "astronomy", "math", "chemistry", "history", "psychology",
+        "neuroscience", "language", "tech", "life", "geography", "ai", "algorithm",
+        "datastructure", "architecture", "rust", "python", "coding", "accounting", "study"
+    ]
+
+    /// 自定义分类 → 稳定映射到某个内置视觉资源（同一分类每次同图同色）
+    private static func hashedSpec(for name: String) -> Spec {
+        var h = 0
+        for scalar in name.unicodeScalars {
+            h = (h &* 31 &+ Int(scalar.value)) & 0x7fffffff
+        }
+        let key = specOrder[h % specOrder.count]
+        return specs.values.first { $0.key == key } ?? fallbackSpec
+    }
+
+    /// 分类名 → 主题（含预加载的背景图）。
+    /// 内置「冷知识」用专属主题；自定义分类按名字稳定哈希到内置视觉资源
     @MainActor
     static func theme(for category: String, cache: BackgroundImageCache) -> CategoryTheme {
-        let spec = specs[category] ?? fallbackSpec
+        let spec: Spec
+        if category == CategoryRegistry.builtinCategory {
+            spec = builtinSpec
+        } else if let s = specs[category] {
+            spec = s   // 兼容旧卡（物理/生物等历史分类名）
+        } else {
+            spec = hashedSpec(for: category)
+        }
         return CategoryTheme(category: category, image: cache.image(named: spec.key), accent: spec.accent, ambient: spec.ambient)
     }
 

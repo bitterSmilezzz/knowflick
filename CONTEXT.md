@@ -3,7 +3,10 @@
 > 单文件领域术语表（无 ADR）。架构评审与实现以此语言为准。
 
 ## 卡片（Card）
-一条冷知识：`category` / `headline` / `summary` / `details` / `links`，来源 `source`（seed 预置 / ai 生成）。内容与浏览状态在同一结构上（`KnowledgeCard`），浏览状态字段见下。
+一条领域知识（不限冷知识）：`category` / `headline` / `summary` / `details` / `links`，来源 `source`（seed 预置 / ai 生成）。内容与浏览状态在同一结构上（`KnowledgeCard`），浏览状态字段见下。
+
+## 分类体系（CategoryRegistry）
+**内置「冷知识」分类（不可删改，收纳 160 张预置卡）+ 用户自定义分类（可增删改，默认预置：AI / AI 开发 / AI Agent / 中级会计 / 投资理财，各带内容方向描述）**。`resolve(_:custom:)` 解析到有效分类（别名映射仅在目标分类存在时生效）；`normalize` 无法识别时兜底到第一个自定义分类（无自定义则冷知识）——偏好解析用 resolve（剔除未知），AI 生成用 normalize。AI 生成白名单 = `allCategoryNames`（内置+自定义），每类按描述定制内容方向。
 
 ## 刷卡（Swipe）
 用户把当前卡片划走的行为，记录为 `seenAt` + `swiped`。
@@ -23,7 +26,7 @@
 从 `store.cards` 纯派生的快照（`LearningStats`，`StatsCalculator.compute`），视图只做格式化。连续天数按日去重、允许「今天未刷从昨天起算」的空档。`skip` 计入已刷，不计入喜欢。`dailyCounts` 提供近 7 天趋势（纯计算）。
 
 ## 分类主题（CategoryTheme）
-分类名 → 视觉主题（背景图 key / accent / ambient）。specs 表是唯一视觉事实源，未知分类统一回退 tech 主题。**分类身份的模型层事实源是 `CategoryRegistry`**（受控 21 类 + 别名归一化，AI 生成卡片在服务内即完成归一化，UI 侧几乎不会遇到未知分类）。
+分类名 → 视觉主题（背景图 key / accent / ambient）。内置「冷知识」用专属学习主题；自定义分类按**分类名稳定哈希**映射到 21 张内置背景图之一（同一分类每次同图同色）；旧分类名（物理等）兼容查找。视觉资源表仅此一份。
 
 ## 存储（Storage）
 `Storage` 实例可注入目录。卡片文件三级回退：cards.json → cards.backup.json（轮转保留上一版）→ 重播种。API key 单独存 Keychain，不入 JSON。AppStore 内所有落盘统一经 `persist()` 单入口：**350ms 节流合并 + Task.detached 后台执行**（连续刷卡只写最后一次，JSON 编码与文件 IO 不卡主线程）。
