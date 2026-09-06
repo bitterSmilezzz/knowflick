@@ -25,8 +25,8 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 BINARY_SRC="$PROJECT_DIR/.build/release/$APP_NAME"
-# SwiftPM 生成的资源 bundle, 命名规则: <Target>_<Package>.bundle
-RESOURCE_BUNDLE_SRC="$PROJECT_DIR/.build/release/${APP_NAME}_${APP_NAME}.bundle"
+# SwiftPM 生成的资源 bundle, library target 命名规则: <Package>_<Target>.bundle
+RESOURCE_BUNDLE_SRC="$PROJECT_DIR/.build/release/${APP_NAME}_${APP_NAME}Core.bundle"
 RESOURCE_BUNDLE_NAME="$(basename "$RESOURCE_BUNDLE_SRC")"
 
 # ---------- 1. 构建 ----------

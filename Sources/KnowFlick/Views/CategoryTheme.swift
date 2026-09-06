@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import KnowFlickCore
 
 /// 分类视觉主题：背景图 + 主色 + ambient 色温
 struct CategoryTheme {
@@ -15,32 +16,18 @@ struct CategoryTheme {
         ambient: [Color(red: 0.10, green: 0.11, blue: 0.14), Color(red: 0.05, green: 0.05, blue: 0.07)]
     )
 
+    /// 未知分类（AI 新分类）统一回退到 tech 主题
+    private static let fallbackSpec = Spec(
+        key: "tech",
+        accent: Color(red: 0.45, green: 0.75, blue: 0.90),
+        ambient: [Color(red: 0.08, green: 0.13, blue: 0.18), Color(red: 0.03, green: 0.06, blue: 0.09)]
+    )
+
     /// 分类名 → 主题（含预加载的背景图）
     @MainActor
     static func theme(for category: String, cache: BackgroundImageCache) -> CategoryTheme {
-        guard let spec = specs[category] else {
-            // 未知分类（AI 新分类）→ 按归组映射
-            let group = fallbackGroup(category)
-            if let s = specs[group] {
-                return CategoryTheme(category: category, image: cache.image(named: group), accent: s.accent, ambient: s.ambient)
-            }
-            return .empty
-        }
+        let spec = specs[category] ?? fallbackSpec
         return CategoryTheme(category: category, image: cache.image(named: spec.key), accent: spec.accent, ambient: spec.ambient)
-    }
-
-    private static func fallbackGroup(_ category: String) -> String {
-        switch category {
-        case "脑科学": return "neuroscience"
-        case "AI": return "ai"
-        case "算法", "数据结构": return "algorithm"
-        case "架构": return "architecture"
-        case "Rust", "Python", "编程": return "coding"
-        case "会计": return "accounting"
-        case "学习方法": return "study"
-        case "物理", "化学", "数学", "生物", "天文", "历史", "心理", "语言", "科技", "生活", "地理": return category
-        default: return "tech"
-        }
     }
 
     private struct Spec { let key: String; let accent: Color; let ambient: [Color] }
@@ -107,8 +94,8 @@ final class BackgroundImageCache {
 
     func image(named key: String) -> NSImage? {
         if let hit = cache.object(forKey: key as NSString) { return hit }
-        guard let url = Bundle.module.url(forResource: key, withExtension: "jpg", subdirectory: nil)
-                ?? Bundle.module.urls(forResourcesWithExtension: "jpg", subdirectory: nil)?.first(where: { $0.lastPathComponent == "\(key).jpg" }) else {
+        guard let url = CoreResources.bundle.url(forResource: key, withExtension: "jpg", subdirectory: nil)
+                ?? CoreResources.bundle.urls(forResourcesWithExtension: "jpg", subdirectory: nil)?.first(where: { $0.lastPathComponent == "\(key).jpg" }) else {
             return nil
         }
         guard let img = Self.downsampledImage(url: url, maxPixel: maxPixel) else { return nil }

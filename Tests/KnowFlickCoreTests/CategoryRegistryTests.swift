@@ -1,0 +1,31 @@
+import XCTest
+@testable import KnowFlickCore
+
+final class CategoryRegistryTests: XCTestCase {
+    func testCanonicalPassesThrough() {
+        XCTAssertEqual(CategoryRegistry.normalize("物理"), "物理")
+        XCTAssertEqual(CategoryRegistry.normalize(" 生物 "), "生物")   // 去空白
+        XCTAssertEqual(CategoryRegistry.normalize("学习方法"), "学习方法")
+    }
+
+    func testExactAliases() {
+        XCTAssertEqual(CategoryRegistry.normalize("人工智能"), "AI")
+        XCTAssertEqual(CategoryRegistry.normalize("机器学习"), "AI")
+        XCTAssertEqual(CategoryRegistry.normalize("神经科学"), "脑科学")
+        XCTAssertEqual(CategoryRegistry.normalize("计算机科学"), "科技")
+        XCTAssertEqual(CategoryRegistry.normalize("统计学"), "数学")
+        XCTAssertEqual(CategoryRegistry.normalize("英语"), "语言")
+        XCTAssertEqual(CategoryRegistry.normalize("会计学"), "会计")
+    }
+
+    func testInclusiveMatching() {
+        XCTAssertEqual(CategoryRegistry.normalize("AI 算法应用"), "算法")   // 包含别名「算法」优先
+        XCTAssertEqual(CategoryRegistry.normalize("物理与化学"), "物理")
+        XCTAssertEqual(CategoryRegistry.normalize("Python 编程技巧"), "编程")   // 包含别名「编程」
+    }
+
+    func testUnknownFallsBack() {
+        XCTAssertEqual(CategoryRegistry.normalize("完全随机的分类"), "科技")
+        XCTAssertEqual(CategoryRegistry.normalize(""), "科技")
+    }
+}

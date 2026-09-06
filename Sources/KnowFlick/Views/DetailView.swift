@@ -1,10 +1,16 @@
 import SwiftUI
 import AppKit
+import KnowFlickCore
 
 /// 详情页：顶部摄影横幅 + 展开解释 + 科普链接
+/// 内嵌刷卡循环：操作按钮 swipe 后由父视图切到下一张；←/→ 直接导航
 struct DetailView: View {
     let card: KnowledgeCard
-    let store: AppStore
+    let hasPrevious: Bool   // 有可回看的上一张
+    let hasNext: Bool       // 后面还有卡
+    let onSwipe: (SwipeDirection) -> Void   // 刷卡意图上抛，不持有整个 store
+    let onNext: () -> Void
+    let onPrevious: () -> Void
     let onClose: () -> Void
 
     @Environment(\.openURL) private var openURL
@@ -110,16 +116,28 @@ struct DetailView: View {
                             .padding(.top, 26)
                         }
 
-                        // 操作
-                        HStack(spacing: 12) {
-                            actionButton(title: "不喜欢", icon: "xmark", tint: Color(red: 0.92, green: 0.48, blue: 0.45)) {
-                                onClose()
-                                store.swipe(card, direction: .left)
+                        // 操作：上一张 | 不喜欢 | 跳过 | 感兴趣 | 下一张（连续刷卡）
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                navButton(icon: "chevron.left", help: "上一张 ←", disabled: !hasPrevious, shortcut: .leftArrow) {
+                                    onPrevious()
+                                }
+                                actionButton(title: "不喜欢", icon: "xmark", tint: Color(red: 0.92, green: 0.48, blue: 0.45)) {
+                                    onSwipe(.left)
+                                }
+                                actionButton(title: "跳过", icon: "forward.fill", tint: Color(white: 0.65)) {
+                                    onSwipe(.skip)
+                                }
+                                actionButton(title: "感兴趣", icon: "heart.fill", tint: Color(red: 0.45, green: 0.80, blue: 0.55)) {
+                                    onSwipe(.right)
+                                }
+                                navButton(icon: "chevron.right", help: "下一张 →", disabled: !hasNext, shortcut: .rightArrow) {
+                                    onNext()
+                                }
                             }
-                            actionButton(title: "感兴趣", icon: "heart.fill", tint: Color(red: 0.45, green: 0.80, blue: 0.55)) {
-                                onClose()
-                                store.swipe(card, direction: .right)
-                            }
+                            Text("⏎ / Esc 关闭 · ⌘Z 撤销上一张")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.32))
                         }
                         .padding(.top, 28)
                         .padding(.bottom, 36)
@@ -131,6 +149,14 @@ struct DetailView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .background(
+            // ⏎ 关闭（与主界面 ⏎ 开详情形成开合对）
+            Button("") { onClose() }
+                .keyboardShortcut(.return, modifiers: [])
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        )
         .task {
             theme = CategoryTheme.theme(for: card.category, cache: .shared)
         }
@@ -193,6 +219,25 @@ struct DetailView: View {
                 )
         }
         .buttonStyle(PressableButtonStyle(scale: 0.97))
+    }
+
+    /// 左右导航按钮：键盘 ←/→ 直接切卡
+    private func navButton(icon: String, help: String, disabled: Bool, shortcut: KeyEquivalent, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white.opacity(disabled ? 0.2 : 0.75))
+                .frame(width: 44, height: 44)
+                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                )
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .disabled(disabled)
+        .keyboardShortcut(shortcut, modifiers: [])
+        .help(help)
     }
 
     private var paragraphs: [String] {

@@ -1,4 +1,5 @@
 import SwiftUI
+import KnowFlickCore
 
 @main
 struct KnowFlickApp: App {

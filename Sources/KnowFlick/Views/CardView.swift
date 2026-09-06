@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import KnowFlickCore
 
 /// 单张知识卡片（正面）：分类摄影背景图 + 衬线大标题
 struct CardView: View {

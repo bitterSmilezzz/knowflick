@@ -1,4 +1,5 @@
 import SwiftUI
+import KnowFlickCore
 
 /// 卡片堆叠主界面：左右拖动划走、点击看详情
 struct CardDeckView: View {
@@ -86,9 +87,23 @@ struct CardDeckView: View {
             }
         }
         .sheet(item: $selectedCard) { card in
-            DetailView(card: card, store: store) {
-                selectedCard = nil
-            }
+            DetailView(
+                card: card,
+                hasPrevious: store.history.first != nil,
+                hasNext: store.deck.count > 1,
+                onSwipe: { direction in
+                    store.swipe(card, direction: direction)
+                    // 连续刷卡：直接切到下一张；刷完则关闭
+                    if let next = store.topCard { selectedCard = next } else { selectedCard = nil }
+                },
+                onNext: {
+                    if let next = store.topCard, next.id != card.id { selectedCard = next }
+                },
+                onPrevious: {
+                    if let prev = store.history.first { selectedCard = prev }
+                },
+                onClose: { selectedCard = nil }
+            )
         }
         .sheet(isPresented: $showHistory) {
             HistoryView(store: store) {
@@ -112,7 +127,7 @@ struct CardDeckView: View {
                     : (value.translation.width < -30 ? .left : nil)
             }
             .onEnded { value in
-                let threshold: CGFloat = 110
+                let threshold: CGFloat = 92   // 手感：更容易划走
                 if value.translation.width > threshold {
                     performSwipe(.right)
                 } else if value.translation.width < -threshold {
@@ -146,8 +161,8 @@ struct CardDeckView: View {
     // MARK: - 布局参数
 
     private var rotationAngle: Angle {
-        let degrees = Double(dragOffset.width / 22)
-        return .degrees(min(max(degrees, -14), 14))
+        let degrees = Double(dragOffset.width / 18)   // 更跟手的倾斜响应
+        return .degrees(min(max(degrees, -16), 16))
     }
 
     private func scaleFor(index: Int) -> CGFloat {
@@ -157,7 +172,7 @@ struct CardDeckView: View {
     }
 
     private func offsetYFor(index: Int) -> CGFloat {
-        guard index == 0 else { return CGFloat(index) * 16 }
+        guard index == 0 else { return CGFloat(index) * 20 }   // 层叠错位更明显
         return -abs(dragOffset.width) * 0.04
     }
 
@@ -177,7 +192,7 @@ struct CardDeckView: View {
                     Spacer()
                 }
                 .padding(22)
-                .opacity(min(1, abs(dragOffset.width) / 160))
+                .opacity(min(1, abs(dragOffset.width) / 140))   // 徽章更早浮现
             }
         }
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import KnowFlickCore
 
 /// 设置页：AI 服务配置
 struct SettingsView: View {
@@ -90,11 +91,6 @@ struct SettingsView: View {
 
                 Button("保存") {
                     save()
-                    savedToast = true
-                    Task {
-                        try? await Task.sleep(for: .seconds(1.5))
-                        savedToast = false
-                    }
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -121,35 +117,38 @@ struct SettingsView: View {
         }
     }
 
+    /// 保存：key 进 Keychain + 其余进 JSON，由 AppStore 单点负责分置落盘
     private func save() {
-        store.settings.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        store.settings.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        store.settings.autoGenerate = autoGenerate
-        store.settings.categoryFilter = categoryFilter.trimmingCharacters(in: .whitespacesAndNewlines)
-        store.settings.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        // key 单独进 Keychain
-        KeychainHelper.save(store.settings.apiKey)
-        var persisted = store.settings
-        persisted.apiKey = ""
-        Storage.saveSettings(persisted)
+        var updated = store.settings
+        updated.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.autoGenerate = autoGenerate
+        updated.categoryFilter = categoryFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try store.saveSettings(updated)
+            savedToast = true
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                savedToast = false
+            }
+        } catch {
+            // 钥匙串写入失败等错误要显式可见，不再静默
+            testResult = error.localizedDescription
+        }
     }
 
+    /// 连通测试：轻量 ping 请求，不消耗 AI 额度
     private func testConnection() {
         isTesting = true
         testResult = nil
-        // 用当前输入值组一个临时设置做轻量请求
+        // 用当前输入值组一个临时设置做探测
         var temp = store.settings
         temp.baseURL = baseURL
         temp.model = model
         temp.apiKey = apiKey
         Task {
-            let service = AIService()
-            do {
-                _ = try await service.generateCards(settings: temp, count: 1, excludeHeadlines: [])
-                testResult = "连接成功，AI 可正常生成"
-            } catch {
-                testResult = error.localizedDescription
-            }
+            testResult = await store.testConnection(settings: temp)
             isTesting = false
         }
     }

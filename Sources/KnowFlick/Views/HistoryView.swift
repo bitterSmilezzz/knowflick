@@ -1,4 +1,5 @@
 import SwiftUI
+import KnowFlickCore
 
 /// 历史记录：看过的卡片列表，支持筛选与回看
 struct HistoryView: View {
@@ -104,9 +105,20 @@ struct HistoryView: View {
             }
         }
         .sheet(item: $selectedCard) { card in
-            DetailView(card: card, store: store) {
-                selectedCard = nil
-            }
+            DetailView(
+                card: card,
+                hasPrevious: false,
+                hasNext: nextHistoryCard(after: card) != nil,
+                onSwipe: { direction in
+                    store.swipe(card, direction: direction)
+                    if let next = nextHistoryCard(after: card) { selectedCard = next } else { selectedCard = nil }
+                },
+                onNext: {
+                    if let next = nextHistoryCard(after: card) { selectedCard = next }
+                },
+                onPrevious: {},
+                onClose: { selectedCard = nil }
+            )
         }
         .alert("清空历史记录？", isPresented: $showConfirmClear) {
             Button("清空", role: .destructive) {
@@ -121,13 +133,14 @@ struct HistoryView: View {
     }
 
     private func historyRow(_ card: KnowledgeCard) -> some View {
-        Button {
+        let mark = directionMark(card.swiped)
+        return Button {
             selectedCard = card
         } label: {
             HStack(spacing: 14) {
-                Image(systemName: card.swiped == .right ? "heart.fill" : "xmark")
+                Image(systemName: mark.icon)
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(card.swiped == .right ? Color(red: 0.45, green: 0.80, blue: 0.55) : Color(red: 0.92, green: 0.48, blue: 0.45))
+                    .foregroundStyle(mark.color)
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.06), in: Circle())
 
@@ -166,6 +179,26 @@ struct HistoryView: View {
             )
         }
         .buttonStyle(PressableButtonStyle(scale: 0.99))
+    }
+
+    /// 当前筛选下位于 card 之后的下一条记录；若 card 已被筛选移出（如筛选「感兴趣」时点了「不喜欢」），从列表头继续
+    private func nextHistoryCard(after card: KnowledgeCard) -> KnowledgeCard? {
+        guard let idx = items.firstIndex(where: { $0.id == card.id }) else {
+            return items.first
+        }
+        return idx + 1 < items.count ? items[idx + 1] : nil
+    }
+
+    /// 方向标记：右划=心形绿，左划=叉红，跳过/无意图=前进灰
+    private func directionMark(_ swiped: SwipeDirection?) -> (icon: String, color: Color) {
+        switch swiped {
+        case .right:
+            ("heart.fill", Color(red: 0.45, green: 0.80, blue: 0.55))
+        case .left:
+            ("xmark", Color(red: 0.92, green: 0.48, blue: 0.45))
+        case .skip, nil:
+            ("forward.fill", Color.white.opacity(0.35))
+        }
     }
 
     private var dot: some View {
