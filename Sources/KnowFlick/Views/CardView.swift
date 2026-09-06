@@ -6,8 +6,11 @@ import KnowFlickCore
 struct CardView: View {
     let card: KnowledgeCard
     let showAIMark: Bool   // 设置：显示 AI 内容标记
-    @State private var theme: CategoryTheme = .empty
     @State private var hovering = false
+
+    private var theme: CategoryTheme {
+        CategoryTheme.theme(for: card.category, cache: .shared)
+    }
 
     var body: some View {
         // 前景内容层（决定布局），背景图放 .background 不参与布局
@@ -22,54 +25,50 @@ struct CardView: View {
 
             // 衬线大标题
             Text(card.headline)
-                .font(.custom("Songti SC Black", size: 33))
-                .foregroundStyle(Color(red: 0.97, green: 0.96, blue: 0.93))
-                .lineSpacing(7)
+                .font(EditorialFont.heroHeadline)
+                .foregroundStyle(EditorialColor.textPrimary)
+                .lineSpacing(7.5)
                 .lineLimit(5)
-                .minimumScaleFactor(0.62)
-                .shadow(color: .black.opacity(0.55), radius: 8, y: 2)
+                .minimumScaleFactor(0.65)
+                .shadow(color: .black.opacity(0.65), radius: 10, y: 3)
                 .fixedSize(horizontal: false, vertical: true)
 
             Rectangle()
                 .fill(theme.accent)
-                .frame(width: 34, height: 3)
-                .cornerRadius(1.5)
-                .padding(.top, 14)
-                .padding(.bottom, 12)
+                .frame(width: 36, height: 3.5)
+                .cornerRadius(1.75)
+                .padding(.top, 16)
+                .padding(.bottom, 14)
 
             Text(card.summary)
-                .font(.system(size: 15.5, weight: .medium, design: .serif))
-                .foregroundStyle(Color.white.opacity(0.85))
-                .lineSpacing(4.5)
+                .font(EditorialFont.summarySerif)
+                .foregroundStyle(EditorialColor.textSecondary)
+                .lineSpacing(5.5)
                 .lineLimit(4)
-                .shadow(color: .black.opacity(0.5), radius: 5, y: 1)
+                .shadow(color: .black.opacity(0.55), radius: 6, y: 1.5)
 
             HStack {
                 Label("详情", systemImage: "arrow.up.left.and.arrow.down.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .font(EditorialFont.caption.weight(.semibold))
+                    .foregroundStyle(EditorialColor.textTertiary)
                 Spacer()
                 Text("拖动换一张")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.42))
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.textMuted)
             }
-            .padding(.top, 22)
+            .padding(.top, 24)
         }
-        .padding(26)
+        .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .background(backgroundLayer)
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .strokeBorder(Color.white.opacity(hovering ? 0.22 : 0.13), lineWidth: 1)
+            RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous)
+                .strokeBorder(hovering ? EditorialColor.glassBorderHover : EditorialColor.glassBorder, lineWidth: 1.2)
         )
-        .shadow(color: theme.ambient.last?.opacity(0.85) ?? .black.opacity(0.5), radius: 34, y: 16)
+        .shadow(color: (theme.ambient.last ?? .black).opacity(0.88), radius: 36, y: 18)
+        .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
         .onHover { hovering = $0 }
-        .task(id: card.category) {
-            withAnimation(.easeIn(duration: 0.3)) {
-                theme = CategoryTheme.theme(for: card.category, cache: .shared)
-            }
-        }
     }
 
     // MARK: - 背景层（不参与前景布局）
@@ -89,28 +88,20 @@ struct CardView: View {
                 LinearGradient(colors: theme.ambient, startPoint: .top, endPoint: .bottom)
             }
 
-            // 顶部压暗，保证徽章可读
-            LinearGradient(
-                colors: [Color.black.opacity(0.50), .clear],
-                startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.40)
-            )
-
-            // 底部加重，标题区始终可读
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.46)],
-                startPoint: UnitPoint(x: 0.5, y: 0.45), endPoint: .bottom
-            )
+            // 多阶非线性动态遮罩
+            DynamicScrimOverlay()
         }
     }
 
     private var categoryBadge: some View {
         Text(card.category)
-            .font(.system(size: 12.5, weight: .bold))
+            .font(EditorialFont.badge)
             .tracking(1.5)
-            .foregroundStyle(Color.black.opacity(0.82))
-            .padding(.horizontal, 12)
+            .foregroundStyle(Color.black.opacity(0.85))
+            .padding(.horizontal, 13)
             .padding(.vertical, 6)
             .background(theme.accent, in: Capsule())
+            .shadow(color: theme.accent.opacity(0.35), radius: 8, y: 2)
     }
 
     /// 来源标记：AI 卡显示醒目的橙色徽章（可按设置隐藏）；精选卡保持低调
@@ -119,25 +110,26 @@ struct CardView: View {
         if card.source == .ai {
             if showAIMark {
                 Label("AI 生成", systemImage: "sparkles")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color(red: 0.98, green: 0.72, blue: 0.38))
+                    .font(EditorialFont.caption.weight(.bold))
+                    .foregroundStyle(EditorialColor.aiAmber)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color.orange.opacity(0.18), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.orange.opacity(0.5), lineWidth: 1))
+                    .background(EditorialColor.aiAmberBg, in: Capsule())
+                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
             }
         } else {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Circle()
-                    .fill(Color.white.opacity(0.55))
+                    .fill(Color.white.opacity(0.6))
                     .frame(width: 5, height: 5)
                 Text("精选")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.62))
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.textSecondary)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(Color.black.opacity(0.28), in: Capsule())
+            .background(Color.black.opacity(0.35), in: Capsule())
+            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 0.8))
         }
     }
 }

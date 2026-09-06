@@ -21,11 +21,8 @@ struct HistoryView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.085, green: 0.095, blue: 0.12), Color(red: 0.045, green: 0.05, blue: 0.065)],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            EditorialColor.canvasGradient
+                .ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -34,26 +31,31 @@ struct HistoryView: View {
                     Button(action: onClose) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.8))
-                            .frame(width: 30, height: 30)
-                            .background(Color.white.opacity(0.07), in: Circle())
-                            .overlay(Circle().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                            .foregroundStyle(EditorialColor.textPrimary)
+                            .frame(width: 32, height: 32)
+                            .background(EditorialColor.glassSurface, in: Circle())
+                            .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
                     }
                     .buttonStyle(PressableButtonStyle())
                     .keyboardShortcut(.escape, modifiers: [])
 
-                    Text("历史记录")
-                        .font(.custom("Songti SC Black", size: 20))
-                        .foregroundStyle(Color(red: 0.96, green: 0.95, blue: 0.92))
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(EditorialColor.textSecondary)
+                        Text("历史足迹")
+                            .font(EditorialFont.modalTitle)
+                            .foregroundStyle(EditorialColor.textPrimary)
+                    }
 
                     if let cat = categoryFilter {
                         Text(cat)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(EditorialFont.caption.weight(.semibold))
                             .foregroundStyle(CategoryTheme.theme(for: cat, cache: .shared).accent)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.07), in: Capsule())
-                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                            .background(EditorialColor.glassSurface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(CategoryTheme.theme(for: cat, cache: .shared).accent.opacity(0.4), lineWidth: 1))
                     }
 
                     Spacer()
@@ -64,43 +66,46 @@ struct HistoryView: View {
                         Text("不喜欢").tag(Optional<SwipeDirection>.some(.left))
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 250)
+                    .frame(width: 240)
 
                     Button {
                         showConfirmClear = true
                     } label: {
                         Label("清空", systemImage: "trash")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.6))
+                            .font(EditorialFont.labelSmall)
+                            .foregroundStyle(store.history.isEmpty ? EditorialColor.textMuted : EditorialColor.dislikeRed.opacity(0.85))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     .buttonStyle(PressableButtonStyle())
                     .disabled(store.history.isEmpty)
                 }
-                .padding(.horizontal, 22)
+                .padding(.horizontal, 24)
                 .padding(.vertical, 18)
 
-                Divider().overlay(Color.white.opacity(0.08))
+                Divider().overlay(EditorialColor.glassDivider)
 
                 // 列表
                 if items.isEmpty {
                     Spacer()
-                    VStack(spacing: 12) {
+                    VStack(spacing: 14) {
                         Image(systemName: "clock")
-                            .font(.system(size: 38))
-                            .foregroundStyle(.white.opacity(0.3))
+                            .font(.system(size: 42))
+                            .foregroundStyle(EditorialColor.textMuted)
                         Text(store.history.isEmpty ? "还没有刷过卡片" : "该筛选下暂无记录")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .font(EditorialFont.bodySerif)
+                            .foregroundStyle(EditorialColor.textTertiary)
                     }
                     Spacer()
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: 10) {
                             ForEach(items) { card in
                                 historyRow(card)
                             }
                         }
-                        .padding(20)
+                        .padding(24)
                     }
                 }
             }
@@ -131,46 +136,48 @@ struct HistoryView: View {
             Text("所有卡片会回到待刷队列，此操作不可撤销。")
         }
         .preferredColorScheme(.dark)
-        .frame(minWidth: 680, minHeight: 480)
+        .frame(minWidth: 700, minHeight: 520)
     }
 
     private func historyRow(_ card: KnowledgeCard) -> some View {
         let mark = directionMark(card.swiped)
+        let catAccent = CategoryTheme.theme(for: card.category, cache: .shared).accent
         return Button {
             selectedCard = card
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: mark.icon)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(mark.color)
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.06), in: Circle())
+                    .frame(width: 36, height: 36)
+                    .background(mark.color.opacity(0.14), in: Circle())
+                    .overlay(Circle().strokeBorder(mark.color.opacity(0.3), lineWidth: 1))
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(card.headline)
-                        .font(.system(size: 14.5, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .font(EditorialFont.label)
+                        .foregroundStyle(EditorialColor.textPrimary)
                         .lineLimit(1)
-                    HStack(spacing: 7) {
+                    HStack(spacing: 8) {
                         Text(card.category)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .font(EditorialFont.captionSmall.weight(.semibold))
+                            .foregroundStyle(catAccent)
                         dot
                         Text(card.seenAt?.formatted(date: .abbreviated, time: .shortened) ?? "")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .font(EditorialFont.captionSmall)
+                            .foregroundStyle(EditorialColor.textTertiary)
                         if card.source == .ai {
                             if showAIMark {
                                 dot
                                 Text("AI")
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundStyle(.orange.opacity(0.75))
+                                    .font(EditorialFont.captionSmall.weight(.bold))
+                                    .foregroundStyle(EditorialColor.aiAmber)
                             }
                         } else {
                             dot
-                            Text("预置")
-                                .font(.system(size: 11.5, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.45))
+                            Text("精选")
+                                .font(EditorialFont.captionSmall)
+                                .foregroundStyle(EditorialColor.textMuted)
                         }
                     }
                 }
@@ -179,15 +186,11 @@ struct HistoryView: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(EditorialColor.textMuted)
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 11)
-            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .editorialGlassCard(cornerRadius: EditorialRadius.control)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.99))
     }
@@ -204,15 +207,15 @@ struct HistoryView: View {
     private func directionMark(_ swiped: SwipeDirection?) -> (icon: String, color: Color) {
         switch swiped {
         case .right:
-            ("heart.fill", Color(red: 0.45, green: 0.80, blue: 0.55))
+            ("heart.fill", EditorialColor.likeGreen)
         case .left:
-            ("xmark", Color(red: 0.92, green: 0.48, blue: 0.45))
+            ("xmark", EditorialColor.dislikeRed)
         case .skip, nil:
-            ("forward.fill", Color.white.opacity(0.35))
+            ("forward.fill", EditorialColor.skipGray)
         }
     }
 
     private var dot: some View {
-        Circle().fill(Color.white.opacity(0.25)).frame(width: 2.5, height: 2.5)
+        Circle().fill(EditorialColor.glassDivider.opacity(0.8)).frame(width: 3, height: 3)
     }
 }

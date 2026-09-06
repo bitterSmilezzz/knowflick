@@ -15,23 +15,24 @@ struct DetailView: View {
     let onClose: () -> Void
 
     @Environment(\.openURL) private var openURL
-    @State private var theme: CategoryTheme = .empty
+    private var theme: CategoryTheme {
+        CategoryTheme.theme(for: card.category, cache: .shared)
+    }
 
     var body: some View {
         ZStack {
-            // ambient 背景
+            // ambient 背景平滑过渡
             LinearGradient(colors: theme.ambient, startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // 顶部横幅：摄影图 + 渐隐
+                    // 顶部横幅：摄影大图 + 渐变自然晕染
                     ZStack(alignment: .bottomLeading) {
-                        // 固定高度容器，图片不参与布局
                         Rectangle()
-                            .fill(theme.ambient.last ?? .black)
-                            .frame(height: 210)
+                            .fill(theme.ambient.last ?? EditorialColor.canvasDark)
+                            .frame(height: 230)
 
                         if let img = theme.image {
                             GeometryReader { geo in
@@ -42,12 +43,18 @@ struct DetailView: View {
                                     .clipped()
                                     .overlay(
                                         LinearGradient(
-                                            colors: [.clear, theme.ambient.last ?? .black],
-                                            startPoint: .center, endPoint: .bottom
+                                            stops: [
+                                                .init(color: Color.black.opacity(0.35), location: 0.0),
+                                                .init(color: .clear, location: 0.35),
+                                                .init(color: (theme.ambient.last ?? EditorialColor.canvasDark).opacity(0.85), location: 0.82),
+                                                .init(color: theme.ambient.last ?? EditorialColor.canvasDark, location: 1.0)
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
                                         )
                                     )
                             }
-                            .frame(height: 210)
+                            .frame(height: 230)
                         }
 
                         // 关闭按钮浮层
@@ -58,112 +65,133 @@ struct DetailView: View {
                             }
                             Spacer()
                         }
-                        .padding(18)
+                        .padding(20)
                     }
-                    .frame(height: 210)
+                    .frame(height: 230)
 
                     VStack(alignment: .leading, spacing: 0) {
-                        // 头部
+                        // 头部徽章行
                         HStack(spacing: 10) {
                             Text(card.category)
-                                .font(.system(size: 12.5, weight: .bold))
+                                .font(EditorialFont.badge)
                                 .tracking(1.5)
-                                .foregroundStyle(Color.black.opacity(0.82))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 5)
+                                .foregroundStyle(Color.black.opacity(0.85))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
                                 .background(theme.accent, in: Capsule())
-                            Text(card.source == .ai ? "AI 生成" : "预置精选")
-                                .font(.system(size: 11.5, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.45))
+                                .shadow(color: theme.accent.opacity(0.35), radius: 6, y: 2)
+
+                            if card.source == .ai {
+                                Label("AI 生成", systemImage: "sparkles")
+                                    .font(EditorialFont.caption.weight(.bold))
+                                    .foregroundStyle(EditorialColor.aiAmber)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(EditorialColor.aiAmberBg, in: Capsule())
+                                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                            } else {
+                                Text("预置精选")
+                                    .font(EditorialFont.caption)
+                                    .foregroundStyle(EditorialColor.textTertiary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(EditorialColor.glassSurface, in: Capsule())
+                            }
                         }
 
+                        // 衬线大标题
                         Text(card.headline)
-                            .font(.custom("Songti SC Black", size: 28))
-                            .foregroundStyle(Color(red: 0.97, green: 0.96, blue: 0.93))
-                            .lineSpacing(6)
+                            .font(EditorialFont.detailHeadline)
+                            .foregroundStyle(EditorialColor.textPrimary)
+                            .lineSpacing(7.5)
                             .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 14)
+                            .padding(.top, 18)
 
                         Rectangle()
                             .fill(theme.accent)
-                            .frame(width: 34, height: 3)
-                            .cornerRadius(1.5)
-                            .padding(.top, 14)
+                            .frame(width: 38, height: 3.5)
+                            .cornerRadius(1.75)
+                            .padding(.top, 16)
 
                         // AI 内容核实提示条（可按设置隐藏）
                         if showAIMark && card.source == .ai {
-                            HStack(spacing: 8) {
+                            HStack(spacing: 9) {
                                 Image(systemName: "sparkles")
-                                Text("由 AI 生成，请通过「延伸阅读」链接核实内容")
+                                    .foregroundStyle(EditorialColor.aiAmber)
+                                Text("由 AI 生成，请通过下方「延伸阅读」链接核实内容真实性")
+                                    .font(EditorialFont.caption)
+                                    .foregroundStyle(EditorialColor.textSecondary)
                             }
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color(red: 0.98, green: 0.72, blue: 0.38))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(EditorialColor.aiAmberBg, in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                                    .strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1)
                             )
-                            .padding(.top, 14)
+                            .padding(.top, 16)
                         }
 
-                        // 正文
-                        VStack(alignment: .leading, spacing: 16) {
+                        // 正文段落（人文排版）
+                        VStack(alignment: .leading, spacing: 18) {
                             ForEach(paragraphs, id: \.self) { para in
                                 Text(para)
-                                    .font(.system(size: 15.5, design: .serif))
-                                    .lineSpacing(7)
-                                    .foregroundStyle(.white.opacity(0.86))
+                                    .font(EditorialFont.bodySerif)
+                                    .lineSpacing(8.5)
+                                    .foregroundStyle(EditorialColor.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
-                        .padding(.top, 22)
+                        .padding(.top, 24)
 
                         // 科普链接
                         if !card.links.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("延伸阅读")
-                                    .font(.system(size: 12.5, weight: .bold))
-                                    .tracking(2)
-                                    .foregroundStyle(.white.opacity(0.5))
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "book.pages")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(theme.accent)
+                                    Text("延伸阅读")
+                                        .font(EditorialFont.sectionTitle)
+                                        .foregroundStyle(EditorialColor.textPrimary)
+                                }
+                                .padding(.top, 30)
 
                                 ForEach(card.links, id: \.self) { link in
                                     linkRow(link)
                                 }
                             }
-                            .padding(.top, 26)
                         }
 
-                        // 操作：上一张 | 不喜欢 | 跳过 | 感兴趣 | 下一张（连续刷卡）
-                        VStack(spacing: 12) {
+                        // 操作底栏：上一张 | 不喜欢 | 跳过 | 感兴趣 | 下一张
+                        VStack(spacing: 14) {
                             HStack(spacing: 12) {
                                 navButton(icon: "chevron.left", help: "上一张 ←", disabled: !hasPrevious, shortcut: .leftArrow) {
                                     onPrevious()
                                 }
-                                actionButton(title: "不喜欢", icon: "xmark", tint: Color(red: 0.92, green: 0.48, blue: 0.45)) {
+                                actionButton(title: "不喜欢", icon: "xmark", tint: EditorialColor.dislikeRed) {
                                     onSwipe(.left)
                                 }
-                                actionButton(title: "跳过", icon: "forward.fill", tint: Color(white: 0.65)) {
+                                actionButton(title: "跳过", icon: "forward.fill", tint: EditorialColor.skipGray) {
                                     onSwipe(.skip)
                                 }
-                                actionButton(title: "感兴趣", icon: "heart.fill", tint: Color(red: 0.45, green: 0.80, blue: 0.55)) {
+                                actionButton(title: "感兴趣", icon: "heart.fill", tint: EditorialColor.likeGreen) {
                                     onSwipe(.right)
                                 }
                                 navButton(icon: "chevron.right", help: "下一张 →", disabled: !hasNext, shortcut: .rightArrow) {
                                     onNext()
                                 }
                             }
-                            Text("⏎ / Esc 关闭 · ⌘Z 撤销上一张")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.white.opacity(0.32))
+                            Text("⏎ / Esc 关闭详情 · ⌘Z 撤销上一张")
+                                .font(EditorialFont.captionSmall)
+                                .foregroundStyle(EditorialColor.textMuted)
                         }
-                        .padding(.top, 28)
-                        .padding(.bottom, 36)
+                        .padding(.top, 32)
+                        .padding(.bottom, 40)
                     }
-                    .padding(.horizontal, 38)
+                    .padding(.horizontal, 42)
                 }
-                .frame(maxWidth: 700, alignment: .leading)
+                .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -176,19 +204,16 @@ struct DetailView: View {
                 .opacity(0)
                 .accessibilityHidden(true)
         )
-        .task {
-            theme = CategoryTheme.theme(for: card.category, cache: .shared)
-        }
     }
 
     private var closeButton: some View {
         Button(action: onClose) {
             Image(systemName: "xmark")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white.opacity(0.85))
-                .frame(width: 30, height: 30)
-                .background(.black.opacity(0.4), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1))
+                .foregroundStyle(EditorialColor.textPrimary)
+                .frame(width: 32, height: 32)
+                .background(Color.black.opacity(0.45), in: Circle())
+                .overlay(Circle().strokeBorder(EditorialColor.glassBorderHover, lineWidth: 1))
         }
         .buttonStyle(PressableButtonStyle())
         .keyboardShortcut(.escape, modifiers: [])
@@ -200,26 +225,25 @@ struct DetailView: View {
                 openURL(url)
             }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(theme.accent)
                 Text(link.title)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .font(EditorialFont.labelSmall)
+                    .foregroundStyle(EditorialColor.textPrimary)
                     .lineLimit(1)
                 Spacer()
                 Text(displayHost(link.url))
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.white.opacity(0.38))
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.textTertiary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 11)
-            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .editorialGlassCard(cornerRadius: EditorialRadius.control)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.985))
     }
@@ -227,15 +251,16 @@ struct DetailView: View {
     private func actionButton(title: String, icon: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(EditorialFont.label)
                 .foregroundStyle(tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(tint.opacity(0.5), lineWidth: 1.3)
+                    RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                        .strokeBorder(tint.opacity(0.55), lineWidth: 1.3)
                 )
+                .shadow(color: tint.opacity(0.2), radius: 8, y: 2)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.97))
     }
@@ -245,12 +270,12 @@ struct DetailView: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white.opacity(disabled ? 0.2 : 0.75))
+                .foregroundStyle(disabled ? EditorialColor.textMuted.opacity(0.5) : EditorialColor.textSecondary)
                 .frame(width: 44, height: 44)
-                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                        .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
                 )
         }
         .buttonStyle(PressableButtonStyle(scale: 0.97))

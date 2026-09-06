@@ -30,174 +30,31 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("设置")
-                    .font(.title2.bold())
-                Spacer()
-                Button("完成") {
-                    save()
-                    dismiss()
+        ZStack {
+            EditorialColor.canvasGradient
+                .ignoresSafeArea()
+            NoiseOverlay().ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                Divider().overlay(EditorialColor.glassDivider)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        aiServiceCard
+                        categoryManagementCard
+                        sourcesCard
+                        aboutCard
+                    }
+                    .padding(22)
                 }
-                .keyboardShortcut(.escape, modifiers: [])
+
+                Divider().overlay(EditorialColor.glassDivider)
+                bottomBar
             }
-            .padding(20)
-
-            Divider()
-
-            Form {
-                Section("AI 服务") {
-                    LabeledContent("API 地址") {
-                        TextField("https://api.deepseek.com", text: $baseURL)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 320)
-                    }
-                    LabeledContent("模型") {
-                        Picker("", selection: $model) {
-                            ForEach(presetModels, id: \.self) { Text($0) }
-                            Text("自定义…").tag("")
-                        }
-                        .frame(width: 180)
-                        if !presetModels.contains(model) {
-                            TextField("模型名", text: $model)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 320)
-                        }
-                    }
-                    LabeledContent("API Key") {
-                        SecureField("sk-...", text: $apiKey)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 320)
-                    }
-                    LabeledContent("偏好分类") {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ScrollView {
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 6)], alignment: .leading, spacing: 6) {
-                                    ForEach(editingCategoryNames, id: \.self) { cat in
-                                        categoryChip(cat)
-                                    }
-                                }
-                                .padding(.vertical, 2)
-                            }
-                            .frame(maxHeight: 104)
-                            Text("选中后刷卡优先这些分类，刷完自动回退其他；全不选 = 全部")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Toggle("卡片不足时自动让 AI 补充", isOn: $autoGenerate)
-                }
-
-                Section("分类管理") {
-                    // 内置分类（不可删改）
-                    HStack {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                        Text(CategoryRegistry.builtinCategory)
-                            .font(.system(size: 13, weight: .medium))
-                        Text("内置 · 收纳预置知识库")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.vertical, 3)
-
-                    // 自定义分类列表
-                    ForEach(customCategories) { cat in
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(cat.name)
-                                    .font(.system(size: 13, weight: .semibold))
-                                Text(cat.description.isEmpty ? "未填写内容方向" : cat.description)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            Button {
-                                selectedCategories.remove(cat.name)
-                                customCategories.removeAll { $0.name == cat.name }
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.red.opacity(0.75))
-                            }
-                            .buttonStyle(.plain)
-                            .help("删除该分类")
-                        }
-                        .padding(.vertical, 2)
-                    }
-
-                    // 添加分类
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 8) {
-                            TextField("分类名（如：前端开发）", text: $newCategoryName)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 170)
-                            TextField("内容方向描述（AI 生成时参考，可留空）", text: $newCategoryDesc)
-                                .textFieldStyle(.roundedBorder)
-                            Button("添加") {
-                                addCategory()
-                            }
-                            .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        }
-                        Text("自定义分类可增删改；AI 生成时按分类内容方向产出对应领域卡片")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 4)
-                }
-
-                Section("信息来源") {
-                    Toggle("预置精选库", isOn: $enableSeed)
-                    Toggle("AI 生成内容", isOn: $enableAI)
-                    LabeledContent("AI 引用站点") {
-                        TextField("维基百科, 国家地理, NASA", text: $aiSources)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 280)
-                    }
-                    Text("AI 生成卡片时只从这些站点中引用来源，检索链接优先命中。留空则使用默认权威站点。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Toggle("显示 AI 内容标记", isOn: $showAIMark)
-                    Text("开启后 AI 生成的卡片会在正面和详情页标注「AI 生成」，方便区分内容来源。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("说明") {
-                    Text("默认对接 DeepSeek（openai 兼容接口）。API Key 仅存入本机钥匙串，不会写进配置文件。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .formStyle(.grouped)
-
-            Divider()
-
-            HStack {
-                if let result = testResult {
-                    Label(result, systemImage: isTesting ? "ellipsis" : (result.contains("成功") ? "checkmark.circle" : "xmark.circle"))
-                        .font(.caption)
-                        .foregroundStyle(isTesting ? Color.secondary : (result.contains("成功") ? Color.green : Color.red))
-                }
-
-                Spacer()
-
-                Button("测试连接") {
-                    testConnection()
-                }
-                .disabled(isTesting || apiKey.isEmpty)
-
-                Button("保存") {
-                    save()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .padding(16)
         }
-        .frame(width: 580, height: 640)
+        .preferredColorScheme(.dark)
+        .frame(width: 620, height: 700)
         .onAppear {
             baseURL = store.settings.baseURL
             model = store.settings.model
@@ -212,15 +69,376 @@ struct SettingsView: View {
         }
         .overlay(alignment: .bottom) {
             if savedToast {
-                Text("已保存")
-                    .font(.callout)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.green.opacity(0.85), in: Capsule())
-                    .padding(.bottom, 64)
-                    .transition(.opacity)
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(EditorialColor.likeGreen)
+                    Text("设置已保存并生效")
+                        .font(EditorialFont.labelSmall)
+                        .foregroundStyle(EditorialColor.textPrimary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(Color.black.opacity(0.8), in: Capsule())
+                .overlay(Capsule().strokeBorder(EditorialColor.likeGreen.opacity(0.6), lineWidth: 1))
+                .shadow(color: EditorialColor.likeGreen.opacity(0.3), radius: 10, y: 4)
+                .padding(.bottom, 64)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+    }
+
+    private var header: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(EditorialColor.textSecondary)
+                Text("偏好设置")
+                    .font(EditorialFont.modalTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+            }
+            Spacer()
+            Button("完成") {
+                save()
+                dismiss()
+            }
+            .font(EditorialFont.label)
+            .foregroundStyle(EditorialColor.textSecondary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 6)
+            .background(EditorialColor.glassSurface, in: Capsule())
+            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+            .buttonStyle(PressableButtonStyle())
+            .keyboardShortcut(.escape, modifiers: [])
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - 卡片 1：AI 服务配置
+
+    private var aiServiceCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(EditorialColor.aiAmber)
+                Text("AI 驱动服务")
+                    .font(EditorialFont.sectionTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                fieldRow(label: "API 地址") {
+                    TextField("https://api.deepseek.com", text: $baseURL)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        .foregroundStyle(EditorialColor.textPrimary)
+                }
+
+                fieldRow(label: "模型选择") {
+                    HStack(spacing: 8) {
+                        Picker("", selection: $model) {
+                            ForEach(presetModels, id: \.self) { Text($0) }
+                            Text("自定义…").tag("")
+                        }
+                        .labelsHidden()
+                        .frame(width: 170)
+
+                        if !presetModels.contains(model) {
+                            TextField("模型名", text: $model)
+                                .textFieldStyle(.plain)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                                .foregroundStyle(EditorialColor.textPrimary)
+                        }
+                    }
+                }
+
+                fieldRow(label: "API Key") {
+                    SecureField("sk-...", text: $apiKey)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        .foregroundStyle(EditorialColor.textPrimary)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("优先刷卡分类")
+                        .font(EditorialFont.captionSmall.weight(.semibold))
+                        .foregroundStyle(EditorialColor.textTertiary)
+
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 6)], alignment: .leading, spacing: 6) {
+                            ForEach(editingCategoryNames, id: \.self) { cat in
+                                categoryChip(cat)
+                            }
+                        }
+                        .padding(2)
+                    }
+                    .frame(maxHeight: 95)
+
+                    Text("选中的分类将优先排列在卡堆前列，未看卡刷完后自动回退全量；全部未选则均等浏览")
+                        .font(EditorialFont.captionSmall)
+                        .foregroundStyle(EditorialColor.textMuted)
+                }
+                .padding(.top, 4)
+
+                Toggle("卡片不足时自动触发 AI 批量补充", isOn: $autoGenerate)
+                    .font(EditorialFont.labelSmall)
+                    .foregroundStyle(EditorialColor.textSecondary)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(18)
+        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+    }
+
+    // MARK: - 卡片 2：分类体系管理
+
+    private var categoryManagementCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.grid.2x2")
+                    .foregroundStyle(EditorialColor.likeGreen)
+                Text("分类体系与视觉主题")
+                    .font(EditorialFont.sectionTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                // 内置分类
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(CategoryTheme.theme(for: CategoryRegistry.builtinCategory, cache: .shared).accent)
+                        .frame(width: 8, height: 8)
+                    Text(CategoryRegistry.builtinCategory)
+                        .font(EditorialFont.labelSmall)
+                        .foregroundStyle(EditorialColor.textPrimary)
+                    Text("（系统内置 · 160 张精选知识底库）")
+                        .font(EditorialFont.captionSmall)
+                        .foregroundStyle(EditorialColor.textMuted)
+                    Spacer()
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(EditorialColor.textMuted)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(EditorialColor.glassSurface.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                // 自定义分类列表
+                ForEach(customCategories) { cat in
+                    let accent = CategoryTheme.theme(for: cat.name, cache: .shared).accent
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(accent)
+                            .frame(width: 8, height: 8)
+                            .shadow(color: accent.opacity(0.5), radius: 4, y: 1)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(cat.name)
+                                .font(EditorialFont.labelSmall)
+                                .foregroundStyle(EditorialColor.textPrimary)
+                            Text(cat.description.isEmpty ? "未指定方向" : cat.description)
+                                .font(EditorialFont.captionSmall)
+                                .foregroundStyle(EditorialColor.textTertiary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Button {
+                            selectedCategories.remove(cat.name)
+                            customCategories.removeAll { $0.name == cat.name }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11))
+                                .foregroundStyle(EditorialColor.dislikeRed.opacity(0.75))
+                        }
+                        .buttonStyle(.plain)
+                        .help("删除该分类")
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                // 添加分类
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        TextField("新分类名（如：认知心理学）", text: $newCategoryName)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                            .foregroundStyle(EditorialColor.textPrimary)
+                            .frame(width: 170)
+
+                        TextField("内容方向（AI 生成参考，可留空）", text: $newCategoryDesc)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                            .foregroundStyle(EditorialColor.textPrimary)
+
+                        Button("添加") {
+                            addCategory()
+                        }
+                        .font(EditorialFont.labelSmall)
+                        .foregroundStyle(EditorialColor.textPrimary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(EditorialColor.glassSurfaceHover, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorderHover, lineWidth: 1))
+                        .buttonStyle(PressableButtonStyle())
+                        .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    Text("新增分类后，系统将自动映射唯一的摄影底图与主题色彩")
+                        .font(EditorialFont.captionSmall)
+                        .foregroundStyle(EditorialColor.textMuted)
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(18)
+        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+    }
+
+    // MARK: - 卡片 3：信息来源与偏好
+
+    private var sourcesCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: "newspaper")
+                    .foregroundStyle(EditorialColor.textSecondary)
+                Text("内容来源与呈现")
+                    .font(EditorialFont.sectionTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("启用预置精选知识库", isOn: $enableSeed)
+                    .font(EditorialFont.labelSmall)
+                    .foregroundStyle(EditorialColor.textPrimary)
+
+                Toggle("启用 AI 智能生成卡片", isOn: $enableAI)
+                    .font(EditorialFont.labelSmall)
+                    .foregroundStyle(EditorialColor.textPrimary)
+
+                fieldRow(label: "权威来源偏好") {
+                    TextField("维基百科, 国家地理, NASA", text: $aiSources)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        .foregroundStyle(EditorialColor.textPrimary)
+                }
+
+                Toggle("在卡片与详情页标注「AI 生成」徽章", isOn: $showAIMark)
+                    .font(EditorialFont.labelSmall)
+                    .foregroundStyle(EditorialColor.textPrimary)
+            }
+        }
+        .padding(18)
+        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+    }
+
+    // MARK: - 卡片 4：说明
+
+    private var aboutCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "shield.lefthalf.filled")
+                .font(.system(size: 15))
+                .foregroundStyle(EditorialColor.textTertiary)
+            Text("API Key 仅安全存储于 macOS 原生钥匙串（Keychain），绝不会明文保存在本地 JSON 或向外部泄露。")
+                .font(EditorialFont.captionSmall)
+                .foregroundStyle(EditorialColor.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .editorialGlassCard(cornerRadius: EditorialRadius.control)
+    }
+
+    // MARK: - 底栏操作
+
+    private var bottomBar: some View {
+        HStack {
+            if let result = testResult {
+                Label(result, systemImage: isTesting ? "ellipsis" : (result.contains("成功") ? "checkmark.circle.fill" : "xmark.circle.fill"))
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(isTesting ? EditorialColor.textSecondary : (result.contains("成功") ? EditorialColor.likeGreen : EditorialColor.dislikeRed))
+            }
+
+            Spacer()
+
+            Button("测试连通性") {
+                testConnection()
+            }
+            .font(EditorialFont.labelSmall)
+            .foregroundStyle(EditorialColor.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+            .buttonStyle(PressableButtonStyle())
+            .disabled(isTesting || apiKey.isEmpty)
+
+            Button("保存配置") {
+                save()
+            }
+            .font(EditorialFont.label)
+            .foregroundStyle(Color.black.opacity(0.85))
+            .padding(.horizontal, 20)
+            .padding(.vertical, 7)
+            .background(EditorialColor.likeGreen, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .shadow(color: EditorialColor.likeGreen.opacity(0.35), radius: 8, y: 2)
+            .buttonStyle(PressableButtonStyle(scale: 1.02))
+        }
+        .padding(18)
+    }
+
+    private func fieldRow<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(EditorialFont.captionSmall.weight(.semibold))
+                .foregroundStyle(EditorialColor.textTertiary)
+            content()
+        }
+    }
+
+    /// 偏好分类选择 chip
+    private func categoryChip(_ cat: String) -> some View {
+        let selected = selectedCategories.contains(cat)
+        let accent = CategoryTheme.theme(for: cat, cache: .shared).accent
+        return Button {
+            if selected {
+                selectedCategories.remove(cat)
+            } else {
+                selectedCategories.insert(cat)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 6, height: 6)
+                Text(cat)
+                    .font(EditorialFont.captionSmall)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(selected ? accent.opacity(0.2) : EditorialColor.glassSurface, in: Capsule())
+            .overlay(Capsule().strokeBorder(selected ? accent.opacity(0.7) : EditorialColor.glassBorder, lineWidth: 1))
+            .foregroundStyle(selected ? EditorialColor.textPrimary : EditorialColor.textSecondary)
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.96))
     }
 
     /// 保存：key 进 Keychain + 其余进 JSON，由 AppStore 单点负责分置落盘
@@ -246,7 +464,6 @@ struct SettingsView: View {
                 savedToast = false
             }
         } catch {
-            // 钥匙串写入失败等错误要显式可见，不再静默
             testResult = error.localizedDescription
         }
     }
@@ -265,27 +482,6 @@ struct SettingsView: View {
         ))
         newCategoryName = ""
         newCategoryDesc = ""
-    }
-
-    /// 偏好分类选择 chip
-    private func categoryChip(_ cat: String) -> some View {
-        let selected = selectedCategories.contains(cat)
-        return Button {
-            if selected {
-                selectedCategories.remove(cat)
-            } else {
-                selectedCategories.insert(cat)
-            }
-        } label: {
-            Text(cat)
-                .font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(selected ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.06), in: Capsule())
-                .overlay(Capsule().strokeBorder(selected ? Color.accentColor.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1))
-                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
-        }
-        .buttonStyle(PressableButtonStyle(scale: 0.96))
     }
 
     /// 连通测试：轻量 ping 请求，不消耗 AI 额度

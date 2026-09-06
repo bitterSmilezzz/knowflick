@@ -37,3 +37,22 @@ OpenAI 兼容端点客户端，**流式生成**：SSE 逐行接收 + 增量对�
 生成质量链：分类经 `CategoryRegistry` 归一化到受控 21 类（未知兜底「科技」）→ 字面去重（normalizeHeadline）→ 近重复抑制（bigram Jaccard > 0.35 丢弃）→ 内容 ≥80 字门槛。链接用「关键词 + 权威来源站名」构造 Bing 检索（AI 给的 `sources` 优先，缺失时用设置里 `aiSources` 站点偏好兜底）。`ping` 为轻量连通性探测（max_tokens=1，非流式）。
 
 **AI 内容标记（showAIMark）**：AI 卡片正面显示橙色徽章、详情页显示「由 AI 生成，请核实」提示条、历史列表标注 AI；关闭开关后全部隐藏。
+
+## 设计系统（EditorialDesignSystem / ThemeTokens）
+全局统一的语义化视觉规范。采用**暗色人文画报风（Dark Editorial）**：以 `Songti SC Black`（宋体粗体）为主标题字模，正文辅以系统衬线体，界面标签采用 SF Pro；色彩分层统一为底色、半透明磨砂表面（Glass Surface）、分类强调色与文字层级阶梯。
+
+## 动态遮罩（DynamicScrim）
+覆盖在卡片与详情页摄影背景图上的多阶非线性暗化渐变层，旨在弱化背景复杂纹理对前景文本的干扰，确保宋体大标题与正文达到高对比度可读。
+
+## 触觉反馈（HapticFeedback）
+macOS 触控板在刷卡交互中的实体感知回馈。当卡片滑动位移/速度达到划出判定门槛，或松手触发磁吸回弹时，由系统触觉引擎（NSHapticFeedbackManager）触发瞬态震动。
+
+## 模态路由（ActiveSheet）
+统一管理主界面的所有模态弹窗（设置、统计、历史、快捷键）。macOS SwiftUI 下多 `.sheet` 链式挂载会发生覆盖冲突，通过 `enum ActiveSheet: Identifiable` 单一状态入口调度，彻底杜绝按钮点击失效。
+
+## 悬浮飞出层（FlyingCardOverlay）
+划卡瞬间将目标卡片移入顶层独立悬浮渲染层（ZIndex 999），并在无动画事务中立即向 AppStore 提交状态变更与归零底层位移。底层新顶卡平稳就位，飞出卡片独立飞离淡出，彻底消除卡片瞬跳与换卡背景闪烁。
+
+## 原生应用图标（AppIcon）
+遵循 macOS Sonoma / Sequoia 几何规范制作的原生超椭圆（Squircle）图标（母版 1024×1024，内含标准投影与微质感光边），经 `iconutil` 生成覆盖全档 Retina 分辨率的 `AppIcon.icns`。
+

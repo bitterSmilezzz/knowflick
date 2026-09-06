@@ -59,9 +59,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>2.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>2.0.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -70,6 +70,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<string>NSApplication</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.education</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 </dict>
 </plist>
 PLIST
@@ -77,9 +79,15 @@ PLIST
 cp "$BINARY_SRC" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
-# ---------- 3. 复制资源 bundle ----------
+# ---------- 3. 复制应用图标与资源 bundle ----------
+if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
+    echo "==> [3/3] 复制应用图标与资源"
+    cp "$PROJECT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+    echo "    已复制 AppIcon.icns"
+fi
+
 if [[ -d "$RESOURCE_BUNDLE_SRC" ]]; then
-    echo "==> [3/3] 复制资源 bundle ($RESOURCE_BUNDLE_NAME)"
+    echo "    复制资源 bundle ($RESOURCE_BUNDLE_NAME)"
     cp -R "$RESOURCE_BUNDLE_SRC" "$RESOURCES_DIR/"
     if [[ -f "$RESOURCES_DIR/$RESOURCE_BUNDLE_NAME/seed_cards.json" ]]; then
         echo "    确认 seed_cards.json 已随 bundle 复制"
@@ -90,6 +98,7 @@ else
     echo "警告: 未找到资源 bundle $RESOURCE_BUNDLE_SRC, 跳过资源复制" >&2
 fi
 
-# ---------- 校验 ----------
+# ---------- 校验与刷新 ----------
 plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
+touch "$APP_DIR"
 echo "完成: $APP_DIR"

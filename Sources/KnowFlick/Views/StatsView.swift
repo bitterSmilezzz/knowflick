@@ -18,42 +18,39 @@ struct StatsView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.085, green: 0.095, blue: 0.12), Color(red: 0.045, green: 0.05, blue: 0.065)],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            EditorialColor.canvasGradient
+                .ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
-                Divider().overlay(Color.white.opacity(0.08))
+                Divider().overlay(EditorialColor.glassDivider)
 
                 if stats.seenCount == 0 {
                     Spacer()
-                    VStack(spacing: 12) {
-                        Image(systemName: "chart.bar")
-                            .font(.system(size: 38))
-                            .foregroundStyle(.white.opacity(0.3))
+                    VStack(spacing: 14) {
+                        Image(systemName: "chart.bar.xaxis")
+                            .font(.system(size: 42))
+                            .foregroundStyle(EditorialColor.textMuted)
                         Text("刷过卡片后，这里会出现你的学习统计")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .font(EditorialFont.bodySerif)
+                            .foregroundStyle(EditorialColor.textTertiary)
                     }
                     Spacer()
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 26) {
+                        VStack(alignment: .leading, spacing: 28) {
                             overview
                             trendSection
                             categorySection
                         }
-                        .padding(22)
+                        .padding(24)
                     }
                 }
             }
         }
         .preferredColorScheme(.dark)
-        .frame(minWidth: 660, minHeight: 520)
+        .frame(minWidth: 680, minHeight: 540)
         .sheet(item: $historyCategory) { nav in
             HistoryView(store: store, showAIMark: store.settings.showAIMark, categoryFilter: nav.category) {
                 historyCategory = nil
@@ -63,47 +60,52 @@ struct StatsView: View {
 
     private var header: some View {
         HStack {
-            Text("学习统计")
-                .font(.custom("Songti SC Black", size: 20))
-                .foregroundStyle(Color(red: 0.96, green: 0.95, blue: 0.92))
+            HStack(spacing: 10) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(EditorialColor.likeGreen)
+                Text("学习统计")
+                    .font(EditorialFont.modalTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+            }
             Spacer()
             Button(action: onClose) {
                 Text("完成")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .padding(.horizontal, 16)
+                    .font(EditorialFont.label)
+                    .foregroundStyle(EditorialColor.textSecondary)
+                    .padding(.horizontal, 18)
                     .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.08), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                    .background(EditorialColor.glassSurface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 24)
         .padding(.vertical, 18)
     }
 
-    // MARK: - 总览
+    // MARK: - 总览（大字号专栏指标）
 
     private var overview: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             statBlock(
                 value: "\(stats.seenCount)",
                 caption: "已刷卡片",
                 icon: "square.stack.3d.up.fill",
-                tint: .white
+                tint: EditorialColor.textPrimary
             )
             statBlock(
                 value: "\(stats.likedCount) · \(Int((stats.likeRate * 100).rounded()))%",
                 caption: "感兴趣（率）",
                 icon: "heart.fill",
-                tint: Color(red: 0.45, green: 0.80, blue: 0.55)
+                tint: EditorialColor.likeGreen
             )
             statBlock(
                 value: "\(stats.streakDays) 天",
                 caption: "连续学习",
                 icon: "flame.fill",
-                tint: Color(red: 0.95, green: 0.72, blue: 0.42)
+                tint: EditorialColor.aiAmber
             )
         }
     }
@@ -112,62 +114,64 @@ struct StatsView: View {
         HStack(spacing: 14) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(tint.opacity(0.9))
-                .frame(width: 40, height: 40)
+                .foregroundStyle(tint)
+                .frame(width: 42, height: 42)
                 .background(tint.opacity(0.12), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
+                .overlay(Circle().strokeBorder(tint.opacity(0.25), lineWidth: 1))
+            VStack(alignment: .leading, spacing: 3) {
                 Text(value)
-                    .font(.custom("Songti SC Black", size: 21))
-                    .foregroundStyle(Color(red: 0.96, green: 0.95, blue: 0.92))
+                    .font(EditorialFont.statFigure)
+                    .foregroundStyle(EditorialColor.textPrimary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                    .minimumScaleFactor(0.7)
                 Text(caption)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.textTertiary)
             }
             Spacer(minLength: 0)
         }
-        .padding(16)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-        )
+        .editorialGlassCard(cornerRadius: EditorialRadius.container)
     }
 
     // MARK: - 近 7 天趋势
 
     private var trendSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("近 7 天")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.55))
+            Text("近 7 天学习趋势")
+                .font(EditorialFont.sectionTitle)
+                .foregroundStyle(EditorialColor.textPrimary)
 
             let daily = StatsCalculator.dailyCounts(cards: store.cards)
             let maxCount = max(daily.map(\.count).max() ?? 1, 1)
-            HStack(alignment: .bottom, spacing: 12) {
+            HStack(alignment: .bottom, spacing: 14) {
                 ForEach(daily) { item in
-                    VStack(spacing: 6) {
+                    VStack(spacing: 8) {
                         Text("\(item.count)")
-                            .font(.system(size: 10.5, weight: .medium))
-                            .foregroundStyle(.white.opacity(item.count > 0 ? 0.75 : 0.3))
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(item.count > 0 ? Color(red: 0.45, green: 0.78, blue: 0.55).opacity(0.85) : Color.white.opacity(0.06))
-                            .frame(height: max(4, CGFloat(item.count) / CGFloat(maxCount) * 64))
+                            .font(EditorialFont.captionSmall)
+                            .foregroundStyle(item.count > 0 ? EditorialColor.textPrimary : EditorialColor.textMuted)
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(
+                                item.count > 0
+                                ? LinearGradient(colors: [EditorialColor.likeGreen, EditorialColor.likeGreen.opacity(0.65)], startPoint: .top, endPoint: .bottom)
+                                : LinearGradient(colors: [EditorialColor.glassSurface, EditorialColor.glassSurface], startPoint: .top, endPoint: .bottom)
+                            )
+                            .frame(height: max(6, CGFloat(item.count) / CGFloat(maxCount) * 72))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .strokeBorder(item.count > 0 ? EditorialColor.likeGreen.opacity(0.4) : Color.clear, lineWidth: 1)
+                            )
+                            .shadow(color: item.count > 0 ? EditorialColor.likeGreen.opacity(0.3) : Color.clear, radius: 6, y: 2)
                         Text(dayLabel(item.day))
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .font(EditorialFont.caption)
+                            .foregroundStyle(EditorialColor.textTertiary)
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
-            .padding(16)
-            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-            )
+            .padding(20)
+            .editorialGlassCard(cornerRadius: EditorialRadius.container)
         }
     }
 
@@ -183,20 +187,22 @@ struct StatsView: View {
 
     private var categorySection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("分类统计")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.55))
+            HStack {
+                Text("分类知识掌握度")
+                    .font(EditorialFont.sectionTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+                Spacer()
+                Text("点击分类行可查看对应历史")
+                    .font(EditorialFont.captionSmall)
+                    .foregroundStyle(EditorialColor.textMuted)
+            }
 
             let maxSeen = max(stats.categories.first?.seen ?? 1, 1)
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 ForEach(stats.categories) { stat in
                     categoryRow(stat, maxSeen: maxSeen)
                 }
             }
-
-            Text("点击分类行可查看该分类的历史记录")
-                .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.32))
         }
     }
 
@@ -208,20 +214,20 @@ struct StatsView: View {
         } label: {
             HStack(spacing: 14) {
                 Text(stat.category)
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .font(EditorialFont.label)
+                    .foregroundStyle(EditorialColor.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(width: 84, alignment: .leading)
+                    .frame(width: 90, alignment: .leading)
 
                 GeometryReader { geo in
                     let barWidth = geo.size.width * CGFloat(stat.seen) / CGFloat(maxSeen)
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.07))
+                        Capsule().fill(EditorialColor.glassSurface)
                         Capsule().fill(accent)
                             .frame(width: barWidth)
                         if stat.seen > 0 && stat.liked > 0 {
-                            Capsule().fill(Color.white.opacity(0.5))
+                            Capsule().fill(Color.white.opacity(0.55))
                                 .frame(width: barWidth * CGFloat(stat.liked) / CGFloat(stat.seen))
                         }
                     }
@@ -229,13 +235,13 @@ struct StatsView: View {
                 .frame(height: 10)
 
                 Text("\(stat.seen) 张 · \(Int((stat.likeRate * 100).rounded()))% 感兴趣")
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: 132, alignment: .trailing)
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.textSecondary)
+                    .frame(width: 140, alignment: .trailing)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .editorialGlassCard(cornerRadius: EditorialRadius.control)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.985))
     }
