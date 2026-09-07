@@ -4,6 +4,23 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v2.3.1] - 2026-09-07
+
+### 修复顶栏功能按钮被卡片隐形命中区遮挡与多弹窗路由统一 (Top Bar Hit Testing & Unified Sheet Router)
+- **修复顶栏所有按钮误触卡片详情的根因**：
+  - 核心根因 1：`CardView` 背景大图此前采用 `aspectRatio(contentMode: .fill)` 未被 `GeometryReader` 物理限定与 `.clipped()` 裁切，导致 1000×1450 大图隐形布局与命中区向上外溢 300+ 像素，盖住了右上角工具栏。
+  - 核心根因 2：`clipShape` 仅裁切渲染像素而不裁切手势交互区，缺乏 `.contentShape()` 约束。
+  - 核心根因 3：卡片层使用了局部 `zIndex`，在层深上压过了未设 `zIndex` 的顶栏。
+  - **彻底修复**：
+    - `CardView` 背景层通过 `GeometryReader` 严格绑定父容器尺寸并加 `.clipped()`，杜绝任何图元溢出。
+    - `CardView` 与 `stackedCard` 全面补全 `.contentShape(RoundedRectangle(...))`，手势响应范围被严格锁定在卡片圆角矩形内。
+    - 为 `topBar` 与 `bottomBar` 显式声明 `.zIndex(100)`，确保工具栏按钮永远处于最高响应层级。
+- **全局统一单一模态路由（ActiveSheet 架构收敛）**：
+  - 将此前残留独立的卡片详情弹窗（`selectedCard`）完全并入 `ActiveSheet` 统一状态枚举（新增 `case detail(KnowledgeCard)`）。
+  - 全局仅保留唯一根级 `.sheet(item: $activeSheet)`，彻底杜绝 macOS SwiftUI 多个 `.sheet` 挂载点在窗口层产生绑定串扰与冲突。
+
+---
+
 ## [v2.3.0] - 2026-09-07
 
 ### 新增外观模式：深色模式、浅色模式与跟随系统 (Appearance Modes)

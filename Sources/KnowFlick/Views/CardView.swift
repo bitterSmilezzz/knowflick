@@ -62,6 +62,7 @@ struct CardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .background(backgroundLayer)
         .clipShape(RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous)
                 .strokeBorder(hovering ? EditorialColor.glassBorderHover : EditorialColor.glassBorder, lineWidth: 1.2)
@@ -82,17 +83,21 @@ struct CardView: View {
 
     @ViewBuilder
     private var backgroundLayer: some View {
-        ZStack {
-            if let img = theme.image {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                LinearGradient(colors: theme.ambient, startPoint: .top, endPoint: .bottom)
-            }
+        GeometryReader { geo in
+            ZStack {
+                if let img = theme.image {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                } else {
+                    LinearGradient(colors: theme.ambient, startPoint: .top, endPoint: .bottom)
+                }
 
-            // 多阶非线性动态遮罩
-            DynamicScrimOverlay()
+                // 多阶非线性动态遮罩
+                DynamicScrimOverlay()
+            }
         }
     }
 

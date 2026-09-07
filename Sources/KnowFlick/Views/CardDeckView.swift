@@ -3,6 +3,7 @@ import KnowFlickCore
 
 /// 模态弹窗类型（统一入口，彻底杜绝 macOS SwiftUI 多 sheet 链式挂载相互覆盖失效）
 enum ActiveSheet: Identifiable {
+    case detail(KnowledgeCard)
     case settings
     case stats
     case history
@@ -10,6 +11,7 @@ enum ActiveSheet: Identifiable {
 
     var id: String {
         switch self {
+        case .detail(let card): return "detail_\(card.id.uuidString)"
         case .settings: return "settings"
         case .stats: return "stats"
         case .history: return "history"
@@ -31,8 +33,6 @@ struct CardDeckView: View {
     @State private var swipingOffset: CGSize = .zero
     @State private var swipingDirection: SwipeDirection? = nil
 
-    // 弹窗状态
-    @State private var selectedCard: KnowledgeCard? = nil
     @State private var activeSheet: ActiveSheet? = nil
     @State private var errorBanner = false
 
@@ -51,24 +51,7 @@ struct CardDeckView: View {
                 topBar
                     .padding(.horizontal, 30)
                     .padding(.top, 20)
-                    .sheet(item: $activeSheet) { sheet in
-                        switch sheet {
-                        case .settings:
-                            SettingsView(store: store)
-                        case .stats:
-                            StatsView(store: store) {
-                                activeSheet = nil
-                            }
-                        case .history:
-                            HistoryView(store: store, showAIMark: store.settings.showAIMark) {
-                                activeSheet = nil
-                            }
-                        case .help:
-                            HelpView {
-                                activeSheet = nil
-                            }
-                        }
-                    }
+                    .zIndex(100)
 
                 Spacer(minLength: 8)
 
@@ -90,7 +73,16 @@ struct CardDeckView: View {
                 .padding(.horizontal, 95)
                 .padding(.vertical, 16)
                 .gesture(topCardGesture)
-                .sheet(item: $selectedCard) { card in
+
+                Spacer(minLength: 8)
+
+                bottomBar
+                    .padding(.bottom, 26)
+                    .zIndex(100)
+            }
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .detail(let card):
                     DetailView(
                         card: card,
                         showAIMark: store.settings.showAIMark,
@@ -99,22 +91,31 @@ struct CardDeckView: View {
                         onSwipe: { direction in
                             store.swipe(card, direction: direction)
                             // 连续刷卡：直接切到下一张；刷完则关闭
-                            if let next = store.topCard { selectedCard = next } else { selectedCard = nil }
+                            if let next = store.topCard { activeSheet = .detail(next) } else { activeSheet = nil }
                         },
                         onNext: {
-                            if let next = store.topCard, next.id != card.id { selectedCard = next }
+                            if let next = store.topCard, next.id != card.id { activeSheet = .detail(next) }
                         },
                         onPrevious: {
-                            if let prev = store.history.first { selectedCard = prev }
+                            if let prev = store.history.first { activeSheet = .detail(prev) }
                         },
-                        onClose: { selectedCard = nil }
+                        onClose: { activeSheet = nil }
                     )
+                case .settings:
+                    SettingsView(store: store)
+                case .stats:
+                    StatsView(store: store) {
+                        activeSheet = nil
+                    }
+                case .history:
+                    HistoryView(store: store, showAIMark: store.settings.showAIMark) {
+                        activeSheet = nil
+                    }
+                case .help:
+                    HelpView {
+                        activeSheet = nil
+                    }
                 }
-
-                Spacer(minLength: 8)
-
-                bottomBar
-                    .padding(.bottom, 26)
             }
         }
         .onChange(of: store.lastError) { _, err in
@@ -155,9 +156,10 @@ struct CardDeckView: View {
                 .rotationEffect(rotationAngle)
                 .overlay(swipeBadge)
                 .zIndex(Double(visibleStack.count))
+                .contentShape(RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous))
                 .onTapGesture {
                     if swipingCard == nil && abs(dragOffset.width) < 10 {
-                        selectedCard = top
+                        activeSheet = .detail(top)
                     }
                 }
         } else {
@@ -440,7 +442,7 @@ struct CardDeckView: View {
             .disabled(store.topCard == nil || swipingCard != nil)
 
             roundButton("arrow.up.left.and.arrow.down.right", size: 50, tint: EditorialColor.textPrimary, help: "查看详情 ⏎") {
-                if let card = store.topCard { selectedCard = card }
+                if let card = store.topCard { activeSheet = .detail(card) }
             }
             .keyboardShortcut(.return, modifiers: [])
             .disabled(store.topCard == nil || swipingCard != nil)
