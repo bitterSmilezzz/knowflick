@@ -6,6 +6,10 @@ import KnowFlickCore
 struct CardView: View {
     let card: KnowledgeCard
     let showAIMark: Bool   // 设置：显示 AI 内容标记
+    var isTop: Bool = false
+    var dragOffset: CGSize = .zero
+    var triggerSheen: Bool = false
+
     @State private var hovering = false
 
     private var theme: CategoryTheme {
@@ -61,21 +65,40 @@ struct CardView: View {
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .background(backgroundLayer)
+        .overlay(
+            CardSheenOverlay(isTop: isTop, dragOffset: dragOffset, triggerPulse: triggerSheen)
+        )
         .clipShape(RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous)
                 .strokeBorder(hovering ? EditorialColor.glassBorderHover : EditorialColor.glassBorder, lineWidth: 1.2)
         )
+        // 多层复合软阴影（近距接触阴影 + 广域纸张漫反射 + 深邃层次）
         .shadow(
             color: EditorialColor.dynamic(
-                light: NSColor.black.withAlphaComponent(0.16),
+                light: NSColor.black.withAlphaComponent(0.06),
+                dark: NSColor.black.withAlphaComponent(0.40)
+            ),
+            radius: 4,
+            y: 2
+        )
+        .shadow(
+            color: EditorialColor.dynamic(
+                light: NSColor.black.withAlphaComponent(0.12),
                 dark: NSColor.black.withAlphaComponent(0.65)
             ),
-            radius: 18,
-            y: 8
+            radius: 22,
+            y: 10
         )
-        .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+        .shadow(
+            color: EditorialColor.dynamic(
+                light: NSColor.black.withAlphaComponent(0.04),
+                dark: NSColor.black.withAlphaComponent(0.25)
+            ),
+            radius: 40,
+            y: 18
+        )
         .onHover { hovering = $0 }
     }
 
@@ -101,15 +124,31 @@ struct CardView: View {
         }
     }
 
+    // MARK: - 出版物印章徽标（微图标 + 分类名 + 领域代码）
     private var categoryBadge: some View {
-        Text(card.category)
-            .font(EditorialFont.badge)
-            .tracking(1.5)
-            .foregroundStyle(Color.black.opacity(0.85))
-            .padding(.horizontal, 13)
-            .padding(.vertical, 6)
-            .background(theme.accent, in: Capsule())
-            .shadow(color: theme.accent.opacity(0.35), radius: 8, y: 2)
+        HStack(spacing: 5) {
+            Image(systemName: theme.iconName)
+                .font(.system(size: 10.5, weight: .bold))
+            Text(card.category)
+                .font(EditorialFont.badge)
+                .tracking(0.8)
+            Text("·")
+                .font(.system(size: 9.5, weight: .heavy))
+                .opacity(0.6)
+            Text(theme.domainCode)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1.0)
+                .opacity(0.92)
+        }
+        .foregroundStyle(Color.black.opacity(0.88))
+        .padding(.horizontal, 11)
+        .padding(.vertical, 5.5)
+        .background(theme.accent, in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(Color.white.opacity(0.38), lineWidth: 0.8)
+        )
+        .shadow(color: theme.accent.opacity(0.38), radius: 8, y: 2)
     }
 
     /// 来源标记：AI 卡显示醒目的橙色徽章（可按设置隐藏）；精选卡保持低调

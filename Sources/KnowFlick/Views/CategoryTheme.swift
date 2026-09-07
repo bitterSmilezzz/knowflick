@@ -8,12 +8,16 @@ struct CategoryTheme {
     let image: NSImage?
     let accent: Color        // 主色（标签、点缀）
     let ambient: [Color]     // 窗口背景 ambient 渐变（取自图片色温，支持深浅色自适应）
+    let iconName: String     // 出版物印章 SF Symbol
+    let domainCode: String   // 领域代号（如 PHY, BIO, AI, ACC）
 
     static let empty = CategoryTheme(
         category: "",
         image: nil,
         accent: Color(red: 0.55, green: 0.58, blue: 0.65),
-        ambient: [EditorialColor.canvasGradientTop, EditorialColor.canvasGradientBottom]
+        ambient: [EditorialColor.canvasGradientTop, EditorialColor.canvasGradientBottom],
+        iconName: "book.pages.fill",
+        domainCode: "KNOW"
     )
 
     private static func dynamicColor(light: NSColor, dark: NSColor) -> Color {
@@ -43,14 +47,14 @@ struct CategoryTheme {
         ]
     }
 
-    private static func spec(_ key: String, r: CGFloat, g: CGFloat, b: CGFloat, dtR: CGFloat, dtG: CGFloat, dtB: CGFloat, dbR: CGFloat, dbG: CGFloat, dbB: CGFloat) -> Spec {
+    private static func spec(_ key: String, icon: String, code: String, r: CGFloat, g: CGFloat, b: CGFloat, dtR: CGFloat, dtG: CGFloat, dtB: CGFloat, dbR: CGFloat, dbG: CGFloat, dbB: CGFloat) -> Spec {
         let accent = Color(red: r, green: g, blue: b)
         let ambient = makeAmbient(darkTop: (dtR, dtG, dtB), darkBottom: (dbR, dbG, dbB), accent: (r, g, b))
-        return Spec(key: key, accent: accent, ambient: ambient)
+        return Spec(key: key, accent: accent, ambient: ambient, iconName: icon, domainCode: code)
     }
 
     /// 未知分类（AI 新分类）统一回退到 tech 主题
-    private static let fallbackSpec = spec("tech", r: 0.45, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.13, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09)
+    private static let fallbackSpec = spec("tech", icon: "sparkles", code: "AI", r: 0.45, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.13, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09)
 
     private static let categoryAliases: [String: String] = [
         "物理": "physics", "生物": "biology", "天文": "astronomy", "数学": "math",
@@ -90,60 +94,69 @@ struct CategoryTheme {
         let imageCache = cache ?? .shared
         let specKey = specs[key] != nil ? key : (categoryAliases[key] ?? categoryAliases[category] ?? "tech")
         let spec = specs[specKey] ?? fallbackSpec
+        let code = spec.domainCode
         return CategoryTheme(
             category: category,
             image: imageCache.image(named: spec.key),
             accent: spec.accent,
-            ambient: spec.ambient
+            ambient: spec.ambient,
+            iconName: spec.iconName,
+            domainCode: code
         )
     }
 
-    private struct Spec { let key: String; let accent: Color; let ambient: [Color] }
+    private struct Spec {
+        let key: String
+        let accent: Color
+        let ambient: [Color]
+        let iconName: String
+        let domainCode: String
+    }
 
     /// 42 种视觉底图的视觉规格表（以 key 为键，O(1) 索引）
     private static let specs: [String: Spec] = [
-        "physics": spec("physics", r: 0.98, g: 0.72, b: 0.35, dtR: 0.16, dtG: 0.13, dtB: 0.10, dbR: 0.05, dbG: 0.05, dbB: 0.06),
-        "biology": spec("biology", r: 0.35, g: 0.80, b: 0.85, dtR: 0.07, dtG: 0.16, dtB: 0.19, dbR: 0.03, dbG: 0.07, dbB: 0.09),
-        "astronomy": spec("astronomy", r: 0.62, g: 0.72, b: 0.95, dtR: 0.09, dtG: 0.10, dtB: 0.22, dbR: 0.03, dbG: 0.04, dbB: 0.10),
-        "math": spec("math", r: 0.55, g: 0.75, b: 0.60, dtR: 0.10, dtG: 0.15, dtB: 0.12, dbR: 0.04, dbG: 0.07, dbB: 0.06),
-        "chemistry": spec("chemistry", r: 0.55, g: 0.85, b: 0.75, dtR: 0.08, dtG: 0.17, dtB: 0.15, dbR: 0.03, dbG: 0.08, dbB: 0.07),
-        "history": spec("history", r: 0.85, g: 0.68, b: 0.48, dtR: 0.17, dtG: 0.13, dtB: 0.09, dbR: 0.07, dbG: 0.06, dbB: 0.05),
-        "psychology": spec("psychology", r: 0.80, g: 0.62, b: 0.70, dtR: 0.16, dtG: 0.11, dtB: 0.14, dbR: 0.07, dbG: 0.05, dbB: 0.07),
-        "neuroscience": spec("neuroscience", r: 0.85, g: 0.55, b: 0.55, dtR: 0.17, dtG: 0.10, dtB: 0.11, dbR: 0.08, dbG: 0.05, dbB: 0.06),
-        "language": spec("language", r: 0.70, g: 0.75, b: 0.55, dtR: 0.13, dtG: 0.15, dtB: 0.09, dbR: 0.06, dbG: 0.07, dbB: 0.04),
-        "tech": spec("tech", r: 0.45, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.13, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09),
-        "life": spec("life", r: 0.90, g: 0.70, b: 0.50, dtR: 0.16, dtG: 0.12, dtB: 0.08, dbR: 0.07, dbG: 0.05, dbB: 0.04),
-        "geography": spec("geography", r: 0.60, g: 0.80, b: 0.65, dtR: 0.09, dtG: 0.15, dtB: 0.12, dbR: 0.04, dbG: 0.07, dbB: 0.06),
-        "ai": spec("ai", r: 0.62, g: 0.70, b: 0.95, dtR: 0.10, dtG: 0.11, dtB: 0.20, dbR: 0.04, dbG: 0.05, dbB: 0.10),
-        "algorithm": spec("algorithm", r: 0.50, g: 0.80, b: 0.80, dtR: 0.07, dtG: 0.14, dtB: 0.15, dbR: 0.03, dbG: 0.06, dbB: 0.07),
-        "datastructure": spec("datastructure", r: 0.55, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.12, dtB: 0.16, dbR: 0.04, dbG: 0.06, dbB: 0.08),
-        "architecture": spec("architecture", r: 0.75, g: 0.78, b: 0.85, dtR: 0.12, dtG: 0.13, dtB: 0.16, dbR: 0.05, dbG: 0.06, dbB: 0.07),
-        "rust": spec("rust", r: 0.90, g: 0.55, b: 0.38, dtR: 0.18, dtG: 0.10, dtB: 0.07, dbR: 0.08, dbG: 0.05, dbB: 0.04),
-        "python": spec("python", r: 0.55, g: 0.75, b: 0.90, dtR: 0.09, dtG: 0.13, dtB: 0.17, dbR: 0.04, dbG: 0.06, dbB: 0.08),
-        "coding": spec("coding", r: 0.60, g: 0.80, b: 0.70, dtR: 0.09, dtG: 0.14, dtB: 0.12, dbR: 0.04, dbG: 0.07, dbB: 0.06),
-        "accounting": spec("accounting", r: 0.60, g: 0.78, b: 0.60, dtR: 0.10, dtG: 0.15, dtB: 0.11, dbR: 0.05, dbG: 0.07, dbB: 0.05),
-        "study": spec("study", r: 0.80, g: 0.72, b: 0.55, dtR: 0.16, dtG: 0.14, dtB: 0.10, dbR: 0.07, dbG: 0.06, dbB: 0.04),
-        "quantum": spec("quantum", r: 0.68, g: 0.78, b: 0.98, dtR: 0.09, dtG: 0.11, dtB: 0.22, dbR: 0.04, dbG: 0.05, dbB: 0.12),
-        "relativity": spec("relativity", r: 0.95, g: 0.76, b: 0.40, dtR: 0.18, dtG: 0.12, dtB: 0.06, dbR: 0.08, dbG: 0.05, dbB: 0.03),
-        "optics": spec("optics", r: 0.45, g: 0.88, b: 0.88, dtR: 0.06, dtG: 0.15, dtB: 0.18, dbR: 0.02, dbG: 0.06, dbB: 0.09),
-        "ocean": spec("ocean", r: 0.38, g: 0.72, b: 0.92, dtR: 0.05, dtG: 0.12, dtB: 0.20, dbR: 0.02, dbG: 0.05, dbB: 0.10),
-        "meteorology": spec("meteorology", r: 0.65, g: 0.80, b: 0.90, dtR: 0.10, dtG: 0.13, dtB: 0.18, dbR: 0.04, dbG: 0.06, dbB: 0.09),
-        "geology": spec("geology", r: 0.85, g: 0.65, b: 0.45, dtR: 0.16, dtG: 0.11, dtB: 0.07, dbR: 0.07, dbG: 0.05, dbB: 0.03),
-        "spacecraft": spec("spacecraft", r: 0.82, g: 0.85, b: 0.95, dtR: 0.11, dtG: 0.12, dtB: 0.18, dbR: 0.04, dbG: 0.04, dbB: 0.07),
-        "genetics": spec("genetics", r: 0.40, g: 0.85, b: 0.80, dtR: 0.06, dtG: 0.15, dtB: 0.16, dbR: 0.03, dbG: 0.07, dbB: 0.08),
-        "ecology": spec("ecology", r: 0.50, g: 0.82, b: 0.55, dtR: 0.08, dtG: 0.16, dtB: 0.10, dbR: 0.03, dbG: 0.07, dbB: 0.04),
-        "robotics": spec("robotics", r: 0.92, g: 0.62, b: 0.35, dtR: 0.16, dtG: 0.11, dtB: 0.07, dbR: 0.07, dbG: 0.05, dbB: 0.03),
-        "security": spec("security", r: 0.92, g: 0.45, b: 0.45, dtR: 0.18, dtG: 0.08, dtB: 0.08, dbR: 0.08, dbG: 0.04, dbB: 0.04),
-        "crypto": spec("crypto", r: 0.75, g: 0.60, b: 0.95, dtR: 0.13, dtG: 0.09, dtB: 0.19, dbR: 0.06, dbG: 0.04, dbB: 0.09),
-        "database": spec("database", r: 0.45, g: 0.78, b: 0.85, dtR: 0.07, dtG: 0.13, dtB: 0.17, dbR: 0.03, dbG: 0.06, dbB: 0.08),
-        "network": spec("network", r: 0.50, g: 0.75, b: 0.95, dtR: 0.08, dtG: 0.12, dtB: 0.19, dbR: 0.03, dbG: 0.05, dbB: 0.10),
-        "compiler": spec("compiler", r: 0.70, g: 0.85, b: 0.55, dtR: 0.11, dtG: 0.15, dtB: 0.09, dbR: 0.05, dbG: 0.07, dbB: 0.04),
-        "economy": spec("economy", r: 0.88, g: 0.75, b: 0.45, dtR: 0.16, dtG: 0.13, dtB: 0.08, dbR: 0.07, dbG: 0.06, dbB: 0.04),
-        "philosophy": spec("philosophy", r: 0.82, g: 0.80, b: 0.75, dtR: 0.14, dtG: 0.13, dtB: 0.13, dbR: 0.06, dbG: 0.06, dbB: 0.06),
-        "sociology": spec("sociology", r: 0.85, g: 0.62, b: 0.55, dtR: 0.16, dtG: 0.10, dtB: 0.09, dbR: 0.07, dbG: 0.05, dbB: 0.04),
-        "music": spec("music", r: 0.92, g: 0.75, b: 0.42, dtR: 0.17, dtG: 0.12, dtB: 0.07, dbR: 0.08, dbG: 0.05, dbB: 0.03),
-        "cognitive": spec("cognitive", r: 0.78, g: 0.65, b: 0.85, dtR: 0.14, dtG: 0.10, dtB: 0.17, dbR: 0.06, dbG: 0.04, dbB: 0.08),
-        "agent": spec("agent", r: 0.48, g: 0.82, b: 0.90, dtR: 0.08, dtG: 0.14, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09)
+        "physics": spec("physics", icon: "atom", code: "PHY", r: 0.98, g: 0.72, b: 0.35, dtR: 0.16, dtG: 0.13, dtB: 0.10, dbR: 0.05, dbG: 0.05, dbB: 0.06),
+        "biology": spec("biology", icon: "leaf.fill", code: "BIO", r: 0.35, g: 0.80, b: 0.85, dtR: 0.07, dtG: 0.16, dtB: 0.19, dbR: 0.03, dbG: 0.07, dbB: 0.09),
+        "astronomy": spec("astronomy", icon: "moon.stars.fill", code: "ASTRO", r: 0.62, g: 0.72, b: 0.95, dtR: 0.09, dtG: 0.10, dtB: 0.22, dbR: 0.03, dbG: 0.04, dbB: 0.10),
+        "math": spec("math", icon: "function", code: "MATH", r: 0.55, g: 0.75, b: 0.60, dtR: 0.10, dtG: 0.15, dtB: 0.12, dbR: 0.04, dbG: 0.07, dbB: 0.06),
+        "chemistry": spec("chemistry", icon: "flask.fill", code: "CHEM", r: 0.55, g: 0.85, b: 0.75, dtR: 0.08, dtG: 0.17, dtB: 0.15, dbR: 0.03, dbG: 0.08, dbB: 0.07),
+        "history": spec("history", icon: "hourglass", code: "HIST", r: 0.85, g: 0.68, b: 0.48, dtR: 0.17, dtG: 0.13, dtB: 0.09, dbR: 0.07, dbG: 0.06, dbB: 0.05),
+        "psychology": spec("psychology", icon: "brain.head.profile", code: "PSYC", r: 0.80, g: 0.62, b: 0.70, dtR: 0.16, dtG: 0.11, dtB: 0.14, dbR: 0.07, dbG: 0.05, dbB: 0.07),
+        "neuroscience": spec("neuroscience", icon: "brain.fill", code: "NEURO", r: 0.85, g: 0.55, b: 0.55, dtR: 0.17, dtG: 0.10, dtB: 0.11, dbR: 0.08, dbG: 0.05, dbB: 0.06),
+        "language": spec("language", icon: "text.quote", code: "LANG", r: 0.70, g: 0.75, b: 0.55, dtR: 0.13, dtG: 0.15, dtB: 0.09, dbR: 0.06, dbG: 0.07, dbB: 0.04),
+        "tech": spec("tech", icon: "cpu", code: "TECH", r: 0.45, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.13, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09),
+        "life": spec("life", icon: "cup.and.saucer.fill", code: "LIFE", r: 0.90, g: 0.70, b: 0.50, dtR: 0.16, dtG: 0.12, dtB: 0.08, dbR: 0.07, dbG: 0.05, dbB: 0.04),
+        "geography": spec("geography", icon: "globe.asia.australia.fill", code: "GEO", r: 0.60, g: 0.80, b: 0.65, dtR: 0.09, dtG: 0.15, dtB: 0.12, dbR: 0.04, dbG: 0.07, dbB: 0.06),
+        "ai": spec("ai", icon: "sparkles", code: "AI", r: 0.62, g: 0.70, b: 0.95, dtR: 0.10, dtG: 0.11, dtB: 0.20, dbR: 0.04, dbG: 0.05, dbB: 0.10),
+        "algorithm": spec("algorithm", icon: "point.topleft.down.to.point.bottomright.curvepath", code: "ALGO", r: 0.50, g: 0.80, b: 0.80, dtR: 0.07, dtG: 0.14, dtB: 0.15, dbR: 0.03, dbG: 0.06, dbB: 0.07),
+        "datastructure": spec("datastructure", icon: "square.stack.3d.up.fill", code: "DS", r: 0.55, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.12, dtB: 0.16, dbR: 0.04, dbG: 0.06, dbB: 0.08),
+        "architecture": spec("architecture", icon: "building.columns.fill", code: "ARCH", r: 0.75, g: 0.78, b: 0.85, dtR: 0.12, dtG: 0.13, dtB: 0.16, dbR: 0.05, dbG: 0.06, dbB: 0.07),
+        "rust": spec("rust", icon: "gearshape.2.fill", code: "RUST", r: 0.90, g: 0.55, b: 0.38, dtR: 0.18, dtG: 0.10, dtB: 0.07, dbR: 0.08, dbG: 0.05, dbB: 0.04),
+        "python": spec("python", icon: "chevron.left.forwardslash.chevron.right", code: "PY", r: 0.55, g: 0.75, b: 0.90, dtR: 0.09, dtG: 0.13, dtB: 0.17, dbR: 0.04, dbG: 0.06, dbB: 0.08),
+        "coding": spec("coding", icon: "terminal.fill", code: "DEV", r: 0.60, g: 0.80, b: 0.70, dtR: 0.09, dtG: 0.14, dtB: 0.12, dbR: 0.04, dbG: 0.07, dbB: 0.06),
+        "accounting": spec("accounting", icon: "doc.plaintext.fill", code: "ACC", r: 0.60, g: 0.78, b: 0.60, dtR: 0.10, dtG: 0.15, dtB: 0.11, dbR: 0.05, dbG: 0.07, dbB: 0.05),
+        "study": spec("study", icon: "book.pages.fill", code: "KNOW", r: 0.80, g: 0.72, b: 0.55, dtR: 0.16, dtG: 0.14, dtB: 0.10, dbR: 0.07, dbG: 0.06, dbB: 0.04),
+        "quantum": spec("quantum", icon: "waveform.path.ecg", code: "QUANT", r: 0.68, g: 0.78, b: 0.98, dtR: 0.09, dtG: 0.11, dtB: 0.22, dbR: 0.04, dbG: 0.05, dbB: 0.12),
+        "relativity": spec("relativity", icon: "speedometer", code: "REL", r: 0.95, g: 0.76, b: 0.40, dtR: 0.18, dtG: 0.12, dtB: 0.06, dbR: 0.08, dbG: 0.05, dbB: 0.03),
+        "optics": spec("optics", icon: "sun.max.fill", code: "OPT", r: 0.45, g: 0.88, b: 0.88, dtR: 0.06, dtG: 0.15, dtB: 0.18, dbR: 0.02, dbG: 0.06, dbB: 0.09),
+        "ocean": spec("ocean", icon: "water.waves", code: "OCEAN", r: 0.38, g: 0.72, b: 0.92, dtR: 0.05, dtG: 0.12, dtB: 0.20, dbR: 0.02, dbG: 0.05, dbB: 0.10),
+        "meteorology": spec("meteorology", icon: "cloud.sun.rain.fill", code: "METEO", r: 0.65, g: 0.80, b: 0.90, dtR: 0.10, dtG: 0.13, dtB: 0.18, dbR: 0.04, dbG: 0.06, dbB: 0.09),
+        "geology": spec("geology", icon: "mountain.2.fill", code: "GEOL", r: 0.85, g: 0.65, b: 0.45, dtR: 0.16, dtG: 0.11, dtB: 0.07, dbR: 0.07, dbG: 0.05, dbB: 0.03),
+        "spacecraft": spec("spacecraft", icon: "airplane.departure", code: "AERO", r: 0.82, g: 0.85, b: 0.95, dtR: 0.11, dtG: 0.12, dtB: 0.18, dbR: 0.04, dbG: 0.04, dbB: 0.07),
+        "genetics": spec("genetics", icon: "dials.fill", code: "GENE", r: 0.40, g: 0.85, b: 0.80, dtR: 0.06, dtG: 0.15, dtB: 0.16, dbR: 0.03, dbG: 0.07, dbB: 0.08),
+        "ecology": spec("ecology", icon: "tree.fill", code: "ECOL", r: 0.50, g: 0.82, b: 0.55, dtR: 0.08, dtG: 0.16, dtB: 0.10, dbR: 0.03, dbG: 0.07, dbB: 0.04),
+        "robotics": spec("robotics", icon: "gearshape.arrow.triangle.2.circlepath", code: "ROBO", r: 0.92, g: 0.62, b: 0.35, dtR: 0.16, dtG: 0.11, dtB: 0.07, dbR: 0.07, dbG: 0.05, dbB: 0.03),
+        "security": spec("security", icon: "shield.checkerboard", code: "SEC", r: 0.92, g: 0.45, b: 0.45, dtR: 0.18, dtG: 0.08, dtB: 0.08, dbR: 0.08, dbG: 0.04, dbB: 0.04),
+        "crypto": spec("crypto", icon: "link.circle.fill", code: "CRYPT", r: 0.75, g: 0.60, b: 0.95, dtR: 0.13, dtG: 0.09, dtB: 0.19, dbR: 0.06, dbG: 0.04, dbB: 0.09),
+        "database": spec("database", icon: "cylinder.split.1x2.fill", code: "DB", r: 0.45, g: 0.78, b: 0.85, dtR: 0.07, dtG: 0.13, dtB: 0.17, dbR: 0.03, dbG: 0.06, dbB: 0.08),
+        "network": spec("network", icon: "network", code: "NET", r: 0.50, g: 0.75, b: 0.95, dtR: 0.08, dtG: 0.12, dtB: 0.19, dbR: 0.03, dbG: 0.05, dbB: 0.10),
+        "compiler": spec("compiler", icon: "character.cursor.ibeam", code: "COMP", r: 0.70, g: 0.85, b: 0.55, dtR: 0.11, dtG: 0.15, dtB: 0.09, dbR: 0.05, dbG: 0.07, dbB: 0.04),
+        "economy": spec("economy", icon: "chart.line.uptrend.xyaxis", code: "ECON", r: 0.88, g: 0.75, b: 0.45, dtR: 0.16, dtG: 0.13, dtB: 0.08, dbR: 0.07, dbG: 0.06, dbB: 0.04),
+        "philosophy": spec("philosophy", icon: "lightbulb.fill", code: "PHIL", r: 0.82, g: 0.80, b: 0.75, dtR: 0.14, dtG: 0.13, dtB: 0.13, dbR: 0.06, dbG: 0.06, dbB: 0.06),
+        "sociology": spec("sociology", icon: "person.3.sequence.fill", code: "SOC", r: 0.85, g: 0.62, b: 0.55, dtR: 0.16, dtG: 0.10, dtB: 0.09, dbR: 0.07, dbG: 0.05, dbB: 0.04),
+        "music": spec("music", icon: "waveform.path", code: "SONIC", r: 0.92, g: 0.75, b: 0.42, dtR: 0.17, dtG: 0.12, dtB: 0.07, dbR: 0.08, dbG: 0.05, dbB: 0.03),
+        "cognitive": spec("cognitive", icon: "eye.fill", code: "COGN", r: 0.78, g: 0.65, b: 0.85, dtR: 0.14, dtG: 0.10, dtB: 0.17, dbR: 0.06, dbG: 0.04, dbB: 0.08),
+        "agent": spec("agent", icon: "person.crop.circle.badge.checkmark", code: "AGENT", r: 0.48, g: 0.82, b: 0.90, dtR: 0.08, dtG: 0.14, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09)
     ]
 }
 

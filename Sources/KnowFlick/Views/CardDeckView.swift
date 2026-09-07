@@ -35,6 +35,7 @@ struct CardDeckView: View {
 
     @State private var activeSheet: ActiveSheet? = nil
     @State private var errorBanner = false
+    @State private var triggerSheen = false
 
     // 同步计算当前主题，绝不在 .task 异步延迟加载，杜绝换卡时背景与边框闪烁
     private var currentTheme: CategoryTheme {
@@ -118,6 +119,9 @@ struct CardDeckView: View {
                 }
             }
         }
+        .onChange(of: store.topCard?.id) { _, _ in
+            triggerSheen.toggle()
+        }
         .onChange(of: store.lastError) { _, err in
             if err != nil {
                 errorBanner = true
@@ -146,9 +150,15 @@ struct CardDeckView: View {
     @ViewBuilder
     private func stackedCard(card: KnowledgeCard, index: Int, top: KnowledgeCard) -> some View {
         let isTop = (index == 0)
-        let base = CardView(card: card, showAIMark: store.settings.showAIMark)
-            .scaleEffect(scaleFor(index: index))
-            .offset(y: offsetYFor(index: index))
+        let base = CardView(
+            card: card,
+            showAIMark: store.settings.showAIMark,
+            isTop: isTop,
+            dragOffset: isTop ? dragOffset : .zero,
+            triggerSheen: triggerSheen
+        )
+        .scaleEffect(scaleFor(index: index))
+        .offset(y: offsetYFor(index: index))
 
         if isTop {
             base
@@ -175,13 +185,19 @@ struct CardDeckView: View {
         let degrees = Double(swipingOffset.width / 18)
         let clampedDegrees = min(max(degrees, -20), 20)
 
-        CardView(card: card, showAIMark: store.settings.showAIMark)
-            .offset(swipingOffset)
-            .rotationEffect(.degrees(clampedDegrees))
-            .overlay(flyingSwipeBadge)
-            .opacity(max(0, 1.0 - (abs(swipingOffset.width) - 180) / 450))
-            .zIndex(999)
-            .allowsHitTesting(false)
+        CardView(
+            card: card,
+            showAIMark: store.settings.showAIMark,
+            isTop: true,
+            dragOffset: swipingOffset,
+            triggerSheen: false
+        )
+        .offset(swipingOffset)
+        .rotationEffect(.degrees(clampedDegrees))
+        .overlay(flyingSwipeBadge)
+        .opacity(max(0, 1.0 - (abs(swipingOffset.width) - 180) / 450))
+        .zIndex(999)
+        .allowsHitTesting(false)
     }
 
     // MARK: - 手势驱动
@@ -191,12 +207,16 @@ struct CardDeckView: View {
             .onChanged { value in
                 guard store.topCard != nil, swipingCard == nil else { return }
                 dragOffset = value.translation
-                let isRight = value.translation.width > 25
-                let isLeft = value.translation.width < -25
+                let isRight = value.translation.width > 24
+                let isLeft = value.translation.width < -24
                 swipeDirection = isRight ? .right : (isLeft ? .left : nil)
 
-                if abs(value.translation.width) >= 85 {
+                let transAbs = abs(value.translation.width)
+                if transAbs >= 85 {
                     HapticFeedbackHelper.shared.cardThresholdReached()
+                } else if transAbs >= 24 {
+                    HapticFeedbackHelper.shared.dragInitiated()
+                    HapticFeedbackHelper.shared.resetThreshold()
                 } else {
                     HapticFeedbackHelper.shared.resetThreshold()
                 }
@@ -401,7 +421,10 @@ struct CardDeckView: View {
                 }
                 iconButton("chart.bar", help: "学习统计") { activeSheet = .stats }
                 iconButton("clock.arrow.circlepath", help: "历史记录") { activeSheet = .history }
-                iconButton("arrow.clockwise", help: "换一批新知识") { Task { await store.refreshDeck() } }
+                iconButton("arrow.clockwise", help: "换一批新知识") {
+                    triggerSheen.toggle()
+                    Task { await store.refreshDeck() }
+                }
                 iconButton("gearshape", help: "设置") { activeSheet = .settings }
                 iconButton("questionmark.circle", help: "快捷键 ⌘?") { activeSheet = .help }
                     .keyboardShortcut("?", modifiers: .command)

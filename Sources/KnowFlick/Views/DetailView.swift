@@ -72,14 +72,29 @@ struct DetailView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // 头部徽章行
                         HStack(spacing: 10) {
-                            Text(card.category)
-                                .font(EditorialFont.badge)
-                                .tracking(1.5)
-                                .foregroundStyle(Color.black.opacity(0.85))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 6)
-                                .background(theme.accent, in: Capsule())
-                                .shadow(color: theme.accent.opacity(0.35), radius: 6, y: 2)
+                            HStack(spacing: 5) {
+                                Image(systemName: theme.iconName)
+                                    .font(.system(size: 10.5, weight: .bold))
+                                Text(card.category)
+                                    .font(EditorialFont.badge)
+                                    .tracking(0.8)
+                                Text("·")
+                                    .font(.system(size: 9.5, weight: .heavy))
+                                    .opacity(0.6)
+                                Text(theme.domainCode)
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .tracking(1.0)
+                                    .opacity(0.92)
+                            }
+                            .foregroundStyle(Color.black.opacity(0.88))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(theme.accent, in: Capsule())
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(Color.white.opacity(0.38), lineWidth: 0.8)
+                            )
+                            .shadow(color: theme.accent.opacity(0.38), radius: 8, y: 2)
 
                             if card.source == .ai {
                                 Label("AI 生成", systemImage: "sparkles")
