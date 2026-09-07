@@ -49,7 +49,6 @@ struct StatsView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .frame(minWidth: 680, minHeight: 540)
         .sheet(item: $historyCategory) { nav in
             HistoryView(store: store, showAIMark: store.settings.showAIMark, categoryFilter: nav.category) {

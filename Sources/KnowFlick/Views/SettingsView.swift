@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var enableAI = true
     @State private var aiSources = ""
     @State private var showAIMark = true
+    @State private var appearance: AppearanceMode = .system
     @State private var customCategories: [CategoryConfig] = []   // 自定义分类（编辑副本）
     @State private var newCategoryName = ""
     @State private var newCategoryDesc = ""
@@ -55,6 +56,7 @@ struct SettingsView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
+                        appearanceCard
                         aiServiceCard
                         categoryManagementCard
                         sourcesCard
@@ -67,9 +69,9 @@ struct SettingsView: View {
                 bottomBar
             }
         }
-        .preferredColorScheme(.dark)
         .frame(width: 620, height: 720)
         .onAppear {
+            appearance = store.settings.appearance
             baseURL = store.settings.baseURL
             model = store.settings.model
             apiKey = store.settings.apiKey
@@ -128,6 +130,69 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
+    }
+
+    // MARK: - 卡片 0：外观表现（跟随系统 / 深色 / 浅色）
+    private var appearanceCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "circle.lefthalf.filled.inverse")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(EditorialColor.aiAmber)
+                Text("外观模式")
+                    .font(EditorialFont.sectionTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+                Spacer()
+                Text(appearance.title)
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.textMuted)
+            }
+
+            HStack(spacing: 12) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    let isSelected = (appearance == mode)
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            appearance = mode
+                            store.settings.appearance = mode
+                        }
+                        try? store.saveSettings(store.settings)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: mode.icon)
+                                .font(.system(size: 14, weight: .semibold))
+                            Text(mode.title)
+                                .font(EditorialFont.label)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            isSelected
+                                ? EditorialColor.aiAmberBg
+                                : EditorialColor.glassSurface,
+                            in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                                .strokeBorder(
+                                    isSelected
+                                        ? EditorialColor.aiAmberBorder
+                                        : EditorialColor.glassBorder,
+                                    lineWidth: isSelected ? 1.5 : 1
+                                )
+                        )
+                        .foregroundStyle(
+                            isSelected
+                                ? EditorialColor.aiAmber
+                                : EditorialColor.textSecondary
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(18)
+        .editorialGlassCard()
     }
 
     // MARK: - 卡片 1：AI 服务配置
@@ -501,7 +566,7 @@ struct SettingsView: View {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
                         .foregroundStyle(EditorialColor.aiAmber)
-                    Text("KnowFlick v2.2.0")
+                    Text("KnowFlick v2.3.0")
                         .font(EditorialFont.captionSmall)
                         .foregroundStyle(EditorialColor.textSecondary)
                 }
@@ -609,6 +674,7 @@ struct SettingsView: View {
         updated.enableAI = enableAI
         updated.aiSources = aiSources.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.showAIMark = showAIMark
+        updated.appearance = appearance
         updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             try store.saveSettings(updated)

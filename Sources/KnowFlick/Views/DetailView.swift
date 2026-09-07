@@ -195,7 +195,6 @@ struct DetailView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .preferredColorScheme(.dark)
         .background(
             // ⏎ 关闭（与主界面 ⏎ 开详情形成开合对）
             Button("") { onClose() }

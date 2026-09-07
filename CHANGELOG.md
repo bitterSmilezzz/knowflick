@@ -4,6 +4,28 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v2.3.0] - 2026-09-07
+
+### 新增外观模式：深色模式、浅色模式与跟随系统 (Appearance Modes)
+- **三档外观模式全覆盖（跟随系统 / 深色模式 / 浅色模式）**：
+  - 核心状态层新增 `AppearanceMode` 枚举（`system`、`dark`、`light`），支持通过 `store.settings.appearance` 全局动态控制与持久化落盘（无缝向后兼容旧版 `settings.json`）。
+  - 根视图动态挂载 `.preferredColorScheme(store.settings.appearance.colorScheme)`，系统标题栏、窗口底板与各级浮层全局统一变色。
+- **浅色画报风深度适配（Light Editorial Mode）**：
+  - 将 `EditorialColor` 升级为具备 macOS 原生动态感知的双态设计系统：
+    - **画布底色**：浅色模式下呈现温润米白与浅灰画报渐变（`#F8F9FA` ~ `#EEF1F5`）。
+    - **文字层级**：深墨黑主标题（`#111216`）与中灰衬线副标题，对比度高、长时间阅读舒适不刺眼。
+    - **磨砂玻璃与控件**：自适应高质感半透明白板底色与微描边，各操作按钮与悬浮卡片层次分明。
+    - **摄影卡片视觉保持**：卡片正面保留高清摄影底图与动态非线性遮罩，标题与摘要专属使用高通透明亮文字（`cardTextPrimary`），在浅色背景下宛若高级印刷杂志卡片浮于桌面。
+- **42 档分类色温浅色自适应环境光（Adaptive Ambient Light）**：
+  - `CategoryTheme` 升级为动态双态环境光：在深色模式下保持暗夜微光，在浅色模式下自动为 42 个学科分类萃取专属低饱和水彩纸质光晕，使主窗口随着卡片切换流动出雅致灵动的色彩律动。
+- **双入口灵活切换体验**：
+  - **主界面顶栏快捷按钮**：顶栏新增外观切换图标按钮（`circle.righthalf.filled` / `moon.fill` / `sun.max.fill`），单次点击无感轮换，即点即切。
+  - **偏好设置专区卡片**：设置页新增「外观模式」卡片，直观呈现 3 档分段卡片按钮与当前模式标注，支持精准选择与即时预览。
+- **全量模态浮层色彩自适应**：
+  - 详情页（`DetailView`）、学习统计（`StatsView`）、历史记录（`HistoryView`）、帮助说明（`HelpView`）全面移除硬编码深色限制，自适应完美适配深浅双模态。
+
+---
+
 ## [v2.2.0] - 2026-09-07
 
 ### 视觉底图库扩充与绝对防重算法升级 (Image Expansion & Strict Deduplication)

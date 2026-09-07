@@ -26,7 +26,7 @@ struct CardView: View {
             // 衬线大标题
             Text(card.headline)
                 .font(EditorialFont.heroHeadline)
-                .foregroundStyle(EditorialColor.textPrimary)
+                .foregroundStyle(EditorialColor.cardTextPrimary)
                 .lineSpacing(7.5)
                 .lineLimit(5)
                 .minimumScaleFactor(0.65)
@@ -42,7 +42,7 @@ struct CardView: View {
 
             Text(card.summary)
                 .font(EditorialFont.summarySerif)
-                .foregroundStyle(EditorialColor.textSecondary)
+                .foregroundStyle(EditorialColor.cardTextSecondary)
                 .lineSpacing(5.5)
                 .lineLimit(4)
                 .shadow(color: .black.opacity(0.55), radius: 6, y: 1.5)
@@ -50,11 +50,11 @@ struct CardView: View {
             HStack {
                 Label("详情", systemImage: "arrow.up.left.and.arrow.down.right")
                     .font(EditorialFont.caption.weight(.semibold))
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .foregroundStyle(EditorialColor.cardTextTertiary)
                 Spacer()
                 Text("拖动换一张")
                     .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textMuted)
+                    .foregroundStyle(EditorialColor.cardTextMuted)
             }
             .padding(.top, 24)
         }
@@ -66,8 +66,15 @@ struct CardView: View {
             RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous)
                 .strokeBorder(hovering ? EditorialColor.glassBorderHover : EditorialColor.glassBorder, lineWidth: 1.2)
         )
-        .shadow(color: (theme.ambient.last ?? .black).opacity(0.85), radius: 18, y: 8)
-        .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+        .shadow(
+            color: EditorialColor.dynamic(
+                light: NSColor.black.withAlphaComponent(0.16),
+                dark: NSColor.black.withAlphaComponent(0.65)
+            ),
+            radius: 18,
+            y: 8
+        )
+        .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
         .onHover { hovering = $0 }
     }
 

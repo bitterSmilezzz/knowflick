@@ -135,7 +135,6 @@ struct HistoryView: View {
         } message: {
             Text("所有卡片会回到待刷队列，此操作不可撤销。")
         }
-        .preferredColorScheme(.dark)
         .frame(minWidth: 700, minHeight: 520)
     }
 

@@ -9,6 +9,7 @@ struct KnowFlickApp: App {
         WindowGroup {
             CardDeckView(store: store)
                 .frame(minWidth: 760, minHeight: 560)
+                .preferredColorScheme(store.settings.appearance.colorScheme)
                 .task {
                     await store.bootstrap()
                 }

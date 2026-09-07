@@ -13,6 +13,31 @@ public struct CategoryConfig: Codable, Equatable, Hashable, Identifiable {
     }
 }
 
+/// 应用外观显示模式
+public enum AppearanceMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case system = "system"
+    case dark = "dark"
+    case light = "light"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .system: return "跟随系统"
+        case .dark: return "深色模式"
+        case .light: return "浅色模式"
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .system: return "circle.righthalf.filled"
+        case .dark: return "moon.fill"
+        case .light: return "sun.max.fill"
+        }
+    }
+}
+
 /// AI 服务设置（base_url / model 存 UserDefaults，API key 存 Keychain）
 public struct AISettings: Codable, Equatable {
     public var baseURL: String
@@ -24,6 +49,7 @@ public struct AISettings: Codable, Equatable {
     public var enableAI: Bool          // 信息来源：AI 生成内容
     public var aiSources: String       // AI 引用站点偏好（逗号分隔）
     public var showAIMark: Bool        // 显示 AI 内容标记
+    public var appearance: AppearanceMode // 外观模式（跟随系统/深色/浅色）
     public var customCategories: [CategoryConfig]   // 用户自定义分类（可增删改）
 
     public init(
@@ -36,6 +62,7 @@ public struct AISettings: Codable, Equatable {
         enableAI: Bool = true,
         aiSources: String = "维基百科, 国家地理, NASA",
         showAIMark: Bool = true,
+        appearance: AppearanceMode = .system,
         customCategories: [CategoryConfig] = AISettings.defaultCustomCategories
     ) {
         self.baseURL = baseURL
@@ -47,6 +74,7 @@ public struct AISettings: Codable, Equatable {
         self.enableAI = enableAI
         self.aiSources = aiSources
         self.showAIMark = showAIMark
+        self.appearance = appearance
         self.customCategories = customCategories
     }
 
@@ -55,7 +83,8 @@ public struct AISettings: Codable, Equatable {
         model: "deepseek-chat",
         apiKey: "",
         autoGenerate: true,
-        categoryFilter: ""
+        categoryFilter: "",
+        appearance: .system
     )
 
     /// 默认预置的自定义分类（用户当前聚焦方向）
@@ -107,7 +136,7 @@ public struct AISettings: Codable, Equatable {
     // 旧版 settings.json 无新字段——解码时给默认值，避免旧用户设置被整体重置
     private enum CodingKeys: String, CodingKey {
         case baseURL, model, apiKey, autoGenerate, categoryFilter
-        case enableSeed, enableAI, aiSources, showAIMark, customCategories
+        case enableSeed, enableAI, aiSources, showAIMark, appearance, customCategories
     }
 
     public init(from decoder: Decoder) throws {
@@ -121,6 +150,7 @@ public struct AISettings: Codable, Equatable {
         enableAI = try c.decodeIfPresent(Bool.self, forKey: .enableAI) ?? true
         aiSources = try c.decodeIfPresent(String.self, forKey: .aiSources) ?? "维基百科, 国家地理, NASA"
         showAIMark = try c.decodeIfPresent(Bool.self, forKey: .showAIMark) ?? true
+        appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
         customCategories = try c.decodeIfPresent([CategoryConfig].self, forKey: .customCategories) ?? AISettings.defaultCustomCategories
     }
 }

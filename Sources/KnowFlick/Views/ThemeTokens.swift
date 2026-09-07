@@ -1,38 +1,125 @@
 import SwiftUI
 import AppKit
+import KnowFlickCore
 
-// MARK: - 全局设计系统规范：暗色人文画报风 (Dark Editorial Design System)
+// MARK: - 外观枚举适配 SwiftUI ColorScheme
+
+public extension AppearanceMode {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .dark: return .dark
+        case .light: return .light
+        }
+    }
+}
+
+// MARK: - 全局设计系统规范：人文画报风 (Editorial Design System - Dark & Light)
 
 public enum EditorialColor {
+    /// 辅助方法：创建 macOS 原生动态色彩（根据系统当前或 preferredColorScheme 自动切换）
+    public static func dynamic(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let match = appearance.bestMatch(from: [.darkAqua, .aqua])
+            return match == .darkAqua ? dark : light
+        })
+    }
+
     // 画布底色
-    public static let canvasDark = Color(red: 0.05, green: 0.055, blue: 0.07)
+    public static let canvasDark = dynamic(
+        light: NSColor(red: 0.960, green: 0.965, blue: 0.975, alpha: 1.0),
+        dark: NSColor(red: 0.050, green: 0.055, blue: 0.070, alpha: 1.0)
+    )
+
+    public static let canvasGradientTop = dynamic(
+        light: NSColor(red: 0.985, green: 0.988, blue: 0.995, alpha: 1.0),
+        dark: NSColor(red: 0.075, green: 0.080, blue: 0.100, alpha: 1.0)
+    )
+    public static let canvasGradientBottom = dynamic(
+        light: NSColor(red: 0.925, green: 0.935, blue: 0.955, alpha: 1.0),
+        dark: NSColor(red: 0.035, green: 0.038, blue: 0.050, alpha: 1.0)
+    )
     public static let canvasGradient = LinearGradient(
-        colors: [Color(red: 0.075, green: 0.08, blue: 0.10), Color(red: 0.035, green: 0.038, blue: 0.05)],
+        colors: [canvasGradientTop, canvasGradientBottom],
         startPoint: .top,
         endPoint: .bottom
     )
 
-    // 半透明磨砂玻璃表面
-    public static let glassSurface = Color.white.opacity(0.065)
-    public static let glassSurfaceHover = Color.white.opacity(0.10)
-    public static let glassSurfaceActive = Color.white.opacity(0.14)
-    public static let glassBorder = Color.white.opacity(0.12)
-    public static let glassBorderHover = Color.white.opacity(0.24)
-    public static let glassDivider = Color.white.opacity(0.08)
+    // 半透明磨砂玻璃表面与边框
+    public static let glassSurface = dynamic(
+        light: NSColor(white: 1.0, alpha: 0.78),
+        dark: NSColor.white.withAlphaComponent(0.065)
+    )
+    public static let glassSurfaceHover = dynamic(
+        light: NSColor(white: 1.0, alpha: 0.94),
+        dark: NSColor.white.withAlphaComponent(0.10)
+    )
+    public static let glassSurfaceActive = dynamic(
+        light: NSColor(white: 0.94, alpha: 1.0),
+        dark: NSColor.white.withAlphaComponent(0.14)
+    )
+    public static let glassBorder = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.09),
+        dark: NSColor.white.withAlphaComponent(0.12)
+    )
+    public static let glassBorderHover = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.18),
+        dark: NSColor.white.withAlphaComponent(0.24)
+    )
+    public static let glassDivider = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.07),
+        dark: NSColor.white.withAlphaComponent(0.08)
+    )
 
-    // 文字层级
-    public static let textPrimary = Color(red: 0.97, green: 0.96, blue: 0.94)
-    public static let textSecondary = Color.white.opacity(0.82)
-    public static let textTertiary = Color.white.opacity(0.56)
-    public static let textMuted = Color.white.opacity(0.38)
+    // 窗口与通用界面文字层级
+    public static let textPrimary = dynamic(
+        light: NSColor(red: 0.11, green: 0.12, blue: 0.14, alpha: 1.0),
+        dark: NSColor(red: 0.97, green: 0.96, blue: 0.94, alpha: 1.0)
+    )
+    public static let textSecondary = dynamic(
+        light: NSColor(red: 0.18, green: 0.20, blue: 0.24, alpha: 0.85),
+        dark: NSColor.white.withAlphaComponent(0.82)
+    )
+    public static let textTertiary = dynamic(
+        light: NSColor(red: 0.25, green: 0.28, blue: 0.32, alpha: 0.65),
+        dark: NSColor.white.withAlphaComponent(0.56)
+    )
+    public static let textMuted = dynamic(
+        light: NSColor(red: 0.35, green: 0.38, blue: 0.42, alpha: 0.48),
+        dark: NSColor.white.withAlphaComponent(0.38)
+    )
+
+    // 摄影卡片内部文字（始终置于暗色摄影底图与动态非线性遮罩之上，双模式下保持明亮通透）
+    public static let cardTextPrimary = Color(red: 0.97, green: 0.96, blue: 0.94)
+    public static let cardTextSecondary = Color.white.opacity(0.85)
+    public static let cardTextTertiary = Color.white.opacity(0.58)
+    public static let cardTextMuted = Color.white.opacity(0.40)
 
     // 功能强调色
-    public static let likeGreen = Color(red: 0.45, green: 0.82, blue: 0.58)
-    public static let dislikeRed = Color(red: 0.94, green: 0.46, blue: 0.44)
-    public static let skipGray = Color(white: 0.68)
-    public static let aiAmber = Color(red: 0.98, green: 0.72, blue: 0.38)
-    public static let aiAmberBg = Color.orange.opacity(0.16)
-    public static let aiAmberBorder = Color.orange.opacity(0.42)
+    public static let likeGreen = dynamic(
+        light: NSColor(red: 0.18, green: 0.68, blue: 0.38, alpha: 1.0),
+        dark: NSColor(red: 0.45, green: 0.82, blue: 0.58, alpha: 1.0)
+    )
+    public static let dislikeRed = dynamic(
+        light: NSColor(red: 0.88, green: 0.30, blue: 0.28, alpha: 1.0),
+        dark: NSColor(red: 0.94, green: 0.46, blue: 0.44, alpha: 1.0)
+    )
+    public static let skipGray = dynamic(
+        light: NSColor(white: 0.42, alpha: 1.0),
+        dark: NSColor(white: 0.68, alpha: 1.0)
+    )
+    public static let aiAmber = dynamic(
+        light: NSColor(red: 0.88, green: 0.55, blue: 0.15, alpha: 1.0),
+        dark: NSColor(red: 0.98, green: 0.72, blue: 0.38, alpha: 1.0)
+    )
+    public static let aiAmberBg = dynamic(
+        light: NSColor.orange.withAlphaComponent(0.12),
+        dark: NSColor.orange.withAlphaComponent(0.16)
+    )
+    public static let aiAmberBorder = dynamic(
+        light: NSColor.orange.withAlphaComponent(0.35),
+        dark: NSColor.orange.withAlphaComponent(0.42)
+    )
 }
 
 public enum EditorialFont {

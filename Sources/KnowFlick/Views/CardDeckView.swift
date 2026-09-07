@@ -386,6 +386,17 @@ struct CardDeckView: View {
                     .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
                 }
 
+                iconButton(store.settings.appearance.icon, help: "外观：\(store.settings.appearance.title)（点击切换）") {
+                    let all = AppearanceMode.allCases
+                    let currentIndex = all.firstIndex(of: store.settings.appearance) ?? 0
+                    let nextIndex = (currentIndex + 1) % all.count
+                    let nextMode = all[nextIndex]
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        store.settings.appearance = nextMode
+                    }
+                    HapticFeedbackHelper.shared.cardSnapBack()
+                    try? store.saveSettings(store.settings)
+                }
                 iconButton("chart.bar", help: "学习统计") { activeSheet = .stats }
                 iconButton("clock.arrow.circlepath", help: "历史记录") { activeSheet = .history }
                 iconButton("arrow.clockwise", help: "换一批新知识") { Task { await store.refreshDeck() } }
@@ -453,7 +464,14 @@ struct CardDeckView: View {
         .padding(.vertical, 16)
         .background(EditorialColor.glassSurface, in: Capsule())
         .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1.2))
-        .shadow(color: Color.black.opacity(0.35), radius: 24, y: 12)
+        .shadow(
+            color: EditorialColor.dynamic(
+                light: NSColor.black.withAlphaComponent(0.12),
+                dark: NSColor.black.withAlphaComponent(0.40)
+            ),
+            radius: 24,
+            y: 12
+        )
     }
 
     private func roundButton(_ icon: String, size: CGFloat, tint: Color, help: String, action: @escaping () -> Void) -> some View {
