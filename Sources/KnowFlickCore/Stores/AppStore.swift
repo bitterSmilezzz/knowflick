@@ -31,6 +31,8 @@ public final class AppStore {
 
     private let aiService = AIService()
     private let storage: Storage
+    private var lastSwipedCardId: UUID?
+    private var lastSwipedKey: String?
 
     public init(storage: Storage = Storage()) {
         self.storage = storage
@@ -54,8 +56,28 @@ public final class AppStore {
             let preferred = unseen.filter { prefs.contains($0.category) }
             filtered = preferred.isEmpty ? unseen : preferred
         }
-        let lastKey = hist.first.map { CardThemeResolver.resolveKey(for: $0) }
-        self.deck = CardThemeResolver.interleavedAndDeduplicated(filtered, avoidingTopKey: lastKey)
+
+        let filteredIds = Set(filtered.map(\.id))
+        let existingDeckIds = Set(deck.map(\.id))
+        let remainingInDeck = deck.filter { filteredIds.contains($0.id) }
+        let newCards = filtered.filter { !existingDeckIds.contains($0.id) }
+
+        if !remainingInDeck.isEmpty && newCards.isEmpty {
+            // 绝大多数日常划卡出队场景：直接移除划走卡片，100% 保留排好的无碰撞队列顺序，杜绝重排抖动
+            self.deck = remainingInDeck
+        } else if !remainingInDeck.isEmpty && newCards.count == 1 && newCards.first?.id == lastSwipedCardId {
+            // 撤销上一张场景：将卡片精准插回顶部
+            self.deck = [newCards[0]] + remainingInDeck
+        } else if !remainingInDeck.isEmpty && !newCards.isEmpty && newCards.count <= 10 {
+            // 后台 AI 异步生成新卡（3~6 张）：对新卡安排 minDistance 排布后追加至末尾，绝不打散前部正在浏览的卡堆
+            let lastKey = remainingInDeck.last.map { CardThemeResolver.resolveKey(for: $0) }
+            let arrangedNew = CardThemeResolver.arrangeWithMinDistance(newCards, minDistance: 5, avoidingTopKey: lastKey)
+            self.deck = remainingInDeck + arrangedNew
+        } else {
+            // 全新初始化、切换分类过滤、清空历史等场景：全量重新排布无碰撞队列
+            let lastKey = hist.first.map { CardThemeResolver.resolveKey(for: $0) } ?? lastSwipedKey
+            self.deck = CardThemeResolver.arrangeWithMinDistance(filtered, minDistance: 5, avoidingTopKey: lastKey)
+        }
     }
 
     // MARK: - 生命周期
@@ -108,6 +130,8 @@ public final class AppStore {
     /// 卡片被划走：记入历史并落盘
     public func swipe(_ card: KnowledgeCard, direction: SwipeDirection) {
         guard let idx = cards.firstIndex(where: { $0.id == card.id }) else { return }
+        lastSwipedCardId = card.id
+        lastSwipedKey = CardThemeResolver.resolveKey(for: card)
         var updated = cards
         updated[idx].seenAt = Date()
         updated[idx].swiped = direction

@@ -27,9 +27,13 @@ struct CategoryTheme {
         "物理": "physics", "生物": "biology", "天文": "astronomy", "数学": "math",
         "化学": "chemistry", "历史": "history", "心理": "psychology", "脑科学": "neuroscience",
         "语言": "language", "科技": "tech", "生活": "life", "地理": "geography",
-        "AI": "ai", "算法": "algorithm", "数据结构": "datastructure", "架构": "architecture",
-        "Rust": "rust", "Python": "python", "编程": "coding", "会计": "accounting",
-        "中级会计": "accounting", "投资理财": "architecture", "学习方法": "study", "冷知识": "study"
+        "AI": "ai", "AI Agent": "agent", "算法": "algorithm", "数据结构": "datastructure", "架构": "architecture",
+        "Rust": "rust", "Python": "python", "编程": "coding", "AI 开发": "coding", "会计": "accounting",
+        "中级会计": "accounting", "投资理财": "economy", "学习方法": "study", "冷知识": "study",
+        "量子": "quantum", "相对论": "relativity", "光学": "optics", "海洋": "ocean",
+        "气象": "meteorology", "地质": "geology", "航天": "spacecraft", "基因": "genetics",
+        "生态": "ecology", "机器人": "robotics", "网络": "network", "数据库": "database",
+        "安全": "security", "经济": "economy", "哲学": "philosophy", "社会学": "sociology", "音乐": "music"
     ]
 
     /// 单张卡片 → 主题（领域多图池 + 细化语义 + 相邻防重一致）
@@ -67,7 +71,7 @@ struct CategoryTheme {
 
     private struct Spec { let key: String; let accent: Color; let ambient: [Color] }
 
-    /// 21 种视觉底图的视觉规格表（以 key 为键，O(1) 索引）
+    /// 42 种视觉底图的视觉规格表（以 key 为键，O(1) 索引）
     private static let specs: [String: Spec] = [
         "physics": .init(key: "physics", accent: Color(red: 0.98, green: 0.72, blue: 0.35),
                          ambient: [Color(red: 0.16, green: 0.13, blue: 0.10), Color(red: 0.05, green: 0.05, blue: 0.06)]),
@@ -111,6 +115,49 @@ struct CategoryTheme {
                             ambient: [Color(red: 0.10, green: 0.15, blue: 0.11), Color(red: 0.05, green: 0.07, blue: 0.05)]),
         "study": .init(key: "study", accent: Color(red: 0.80, green: 0.72, blue: 0.55),
                        ambient: [Color(red: 0.16, green: 0.14, blue: 0.10), Color(red: 0.07, green: 0.06, blue: 0.04)]),
+        // 新增 21 档细分学科摄影视觉规格
+        "quantum": .init(key: "quantum", accent: Color(red: 0.68, green: 0.78, blue: 0.98),
+                         ambient: [Color(red: 0.09, green: 0.11, blue: 0.22), Color(red: 0.04, green: 0.05, blue: 0.12)]),
+        "relativity": .init(key: "relativity", accent: Color(red: 0.95, green: 0.76, blue: 0.40),
+                            ambient: [Color(red: 0.18, green: 0.12, blue: 0.06), Color(red: 0.08, green: 0.05, blue: 0.03)]),
+        "optics": .init(key: "optics", accent: Color(red: 0.45, green: 0.88, blue: 0.88),
+                        ambient: [Color(red: 0.06, green: 0.15, blue: 0.18), Color(red: 0.02, green: 0.06, blue: 0.09)]),
+        "ocean": .init(key: "ocean", accent: Color(red: 0.38, green: 0.72, blue: 0.92),
+                       ambient: [Color(red: 0.05, green: 0.12, blue: 0.20), Color(red: 0.02, green: 0.05, blue: 0.10)]),
+        "meteorology": .init(key: "meteorology", accent: Color(red: 0.65, green: 0.80, blue: 0.90),
+                             ambient: [Color(red: 0.10, green: 0.13, blue: 0.18), Color(red: 0.04, green: 0.06, blue: 0.09)]),
+        "geology": .init(key: "geology", accent: Color(red: 0.85, green: 0.65, blue: 0.45),
+                         ambient: [Color(red: 0.16, green: 0.11, blue: 0.07), Color(red: 0.07, green: 0.05, blue: 0.03)]),
+        "spacecraft": .init(key: "spacecraft", accent: Color(red: 0.82, green: 0.85, blue: 0.95),
+                            ambient: [Color(red: 0.11, green: 0.12, blue: 0.18), Color(red: 0.04, green: 0.04, blue: 0.07)]),
+        "genetics": .init(key: "genetics", accent: Color(red: 0.40, green: 0.85, blue: 0.80),
+                          ambient: [Color(red: 0.06, green: 0.15, blue: 0.16), Color(red: 0.03, green: 0.07, blue: 0.08)]),
+        "ecology": .init(key: "ecology", accent: Color(red: 0.50, green: 0.82, blue: 0.55),
+                         ambient: [Color(red: 0.08, green: 0.16, blue: 0.10), Color(red: 0.03, green: 0.07, blue: 0.04)]),
+        "robotics": .init(key: "robotics", accent: Color(red: 0.92, green: 0.62, blue: 0.35),
+                          ambient: [Color(red: 0.16, green: 0.11, blue: 0.07), Color(red: 0.07, green: 0.05, blue: 0.03)]),
+        "security": .init(key: "security", accent: Color(red: 0.92, green: 0.45, blue: 0.45),
+                          ambient: [Color(red: 0.18, green: 0.08, blue: 0.08), Color(red: 0.08, green: 0.04, blue: 0.04)]),
+        "crypto": .init(key: "crypto", accent: Color(red: 0.75, green: 0.60, blue: 0.95),
+                        ambient: [Color(red: 0.13, green: 0.09, blue: 0.19), Color(red: 0.06, green: 0.04, blue: 0.09)]),
+        "database": .init(key: "database", accent: Color(red: 0.45, green: 0.78, blue: 0.85),
+                          ambient: [Color(red: 0.07, green: 0.13, blue: 0.17), Color(red: 0.03, green: 0.06, blue: 0.08)]),
+        "network": .init(key: "network", accent: Color(red: 0.50, green: 0.75, blue: 0.95),
+                         ambient: [Color(red: 0.08, green: 0.12, blue: 0.19), Color(red: 0.03, green: 0.05, blue: 0.10)]),
+        "compiler": .init(key: "compiler", accent: Color(red: 0.70, green: 0.85, blue: 0.55),
+                          ambient: [Color(red: 0.11, green: 0.15, blue: 0.09), Color(red: 0.05, green: 0.07, blue: 0.04)]),
+        "economy": .init(key: "economy", accent: Color(red: 0.88, green: 0.75, blue: 0.45),
+                         ambient: [Color(red: 0.16, green: 0.13, blue: 0.08), Color(red: 0.07, green: 0.06, blue: 0.04)]),
+        "philosophy": .init(key: "philosophy", accent: Color(red: 0.82, green: 0.80, blue: 0.75),
+                            ambient: [Color(red: 0.14, green: 0.13, blue: 0.13), Color(red: 0.06, green: 0.06, blue: 0.06)]),
+        "sociology": .init(key: "sociology", accent: Color(red: 0.85, green: 0.62, blue: 0.55),
+                           ambient: [Color(red: 0.16, green: 0.10, blue: 0.09), Color(red: 0.07, green: 0.05, blue: 0.04)]),
+        "music": .init(key: "music", accent: Color(red: 0.92, green: 0.75, blue: 0.42),
+                       ambient: [Color(red: 0.17, green: 0.12, blue: 0.07), Color(red: 0.08, green: 0.05, blue: 0.03)]),
+        "cognitive": .init(key: "cognitive", accent: Color(red: 0.78, green: 0.65, blue: 0.85),
+                           ambient: [Color(red: 0.14, green: 0.10, blue: 0.17), Color(red: 0.06, green: 0.04, blue: 0.08)]),
+        "agent": .init(key: "agent", accent: Color(red: 0.48, green: 0.82, blue: 0.90),
+                       ambient: [Color(red: 0.08, green: 0.14, blue: 0.18), Color(red: 0.03, green: 0.06, blue: 0.09)])
     ]
 }
 
@@ -124,8 +171,8 @@ final class BackgroundImageCache {
     private let maxPixel: CGFloat = 900
 
     private init() {
-        cache.countLimit = 12          // 最多缓存 12 张，浏览时按需换入换出
-        cache.totalCostLimit = 48 * 1024 * 1024
+        cache.countLimit = 24          // 最多缓存 24 张活跃底图，浏览时平滑换入换出
+        cache.totalCostLimit = 64 * 1024 * 1024
     }
 
     func image(named key: String) -> NSImage? {

@@ -4,6 +4,22 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v2.2.0] - 2026-09-07
+
+### 视觉底图库扩充与绝对防重算法升级 (Image Expansion & Strict Deduplication)
+- **扩充至 42 张暗黑杂志风摄影底图（翻倍扩容）**：
+  - 新增 21 张精选暗黑摄影底图（分辨率统一规整为 1000×1450）：`quantum` (量子)、`relativity` (相对论)、`optics` (光学)、`spacecraft` (航天深空)、`ocean` (深海)、`meteorology` (气象气候)、`geology` (地质矿物)、`genetics` (遗传基因)、`ecology` (生态环境)、`robotics` (机器人)、`security` (信息安全)、`crypto` (区块链加密)、`database` (数据库与存储)、`network` (分布式网络)、`compiler` (编译器系统)、`economy` (宏观经济)、`philosophy` (哲学思辨)、`sociology` (社会学)、`music` (音乐与声波)、`cognitive` (认知心智)、`agent` (自主智能体)。
+  - 彻底改变此前 214 张卡片争抢 21 张图、单图复用高达 30+ 次的视觉疲劳感。
+- **严格同图距离排布算法（Min-Distance Greedy Layout）**：
+  - 构建贪心队列排布算法：全局卡堆按确定性盐值哈希交织后，严格保证任意两张相同背景图卡片之间**相隔至少 5 张以上卡片**（数学实测 214 张全量卡片最小同图间距为 5~6 张，0 间距违规）。
+  - **屏幕可见三叠卡（visibleStack 3 张）100% 底图各异**，顶卡与垫底卡绝不撞图。
+- **划卡平滑出队与无碰撞队列保持（Zero Shuffling on Swipe）**：
+  - 修复此前每次划卡触发全量卡片重新打散导致垫底卡猝然跳变的逻辑盲区：划卡时仅移除已阅卡片，100% 完整保留预先排好的无碰撞队列顺序；后台 AI 生成新卡时平滑追加至队尾；撤销划卡时精准恢复至栈顶。
+- **背景图缓存容量翻倍**：
+  - `BackgroundImageCache` 活跃缓存上限从 12 张扩充至 24 张，确保 42 张底图在高频快速滑动浏览时即时响应，零解码等待与卡顿。
+
+---
+
 ## [v2.1.3] - 2026-09-07
 
 ### 性能极致调优与流畅度修复 (Performance & Smoothness)
