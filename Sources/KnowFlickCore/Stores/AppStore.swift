@@ -7,8 +7,16 @@ import Observation
 public final class AppStore {
     // MARK: - 持久化状态
 
-    public var cards: [KnowledgeCard] = []          // 全部卡片（未看 + 历史）
-    public var settings: AISettings = .default
+    public var cards: [KnowledgeCard] = [] {
+        didSet {
+            recomputeDeckAndHistory()
+        }
+    }
+    public var settings: AISettings = .default {
+        didSet {
+            recomputeDeckAndHistory()
+        }
+    }
     public var isGenerating = false
     public var lastError: String?
 
@@ -16,18 +24,23 @@ public final class AppStore {
 
     public var isLoadingSeed = true                 // 首启是否还在加载预置库
 
+    public private(set) var deck: [KnowledgeCard] = []
+    public private(set) var history: [KnowledgeCard] = []
+
+    public var topCard: KnowledgeCard? { deck.first }
+
     private let aiService = AIService()
     private let storage: Storage
 
     public init(storage: Storage = Storage()) {
         self.storage = storage
+        recomputeDeckAndHistory()
     }
 
-    // MARK: - 计算属性
+    private func recomputeDeckAndHistory() {
+        let hist = cards.filter { $0.seenAt != nil }.sorted { ($0.seenAt ?? .distantPast) > ($1.seenAt ?? .distantPast) }
+        self.history = hist
 
-    /// 待刷卡片队列（未看过的）。
-    /// 过滤顺序：来源开关（预置/AI）→ 偏好分类优先（耗尽回退全量）→ 确定性学科交织打散 → 相邻背景绝对防重（0 撞图）
-    public var deck: [KnowledgeCard] {
         var unseen = cards.filter { $0.seenAt == nil }
         // 来源开关：只开其一则只看该来源；全关则队列为空
         if !settings.enableSeed || !settings.enableAI {
@@ -41,16 +54,9 @@ public final class AppStore {
             let preferred = unseen.filter { prefs.contains($0.category) }
             filtered = preferred.isEmpty ? unseen : preferred
         }
-        let lastKey = history.first.map { CardThemeResolver.resolveKey(for: $0) }
-        return CardThemeResolver.interleavedAndDeduplicated(filtered, avoidingTopKey: lastKey)
+        let lastKey = hist.first.map { CardThemeResolver.resolveKey(for: $0) }
+        self.deck = CardThemeResolver.interleavedAndDeduplicated(filtered, avoidingTopKey: lastKey)
     }
-
-    /// 历史记录（看过的，最新在前）
-    public var history: [KnowledgeCard] {
-        cards.filter { $0.seenAt != nil }.sorted { ($0.seenAt ?? .distantPast) > ($1.seenAt ?? .distantPast) }
-    }
-
-    public var topCard: KnowledgeCard? { deck.first }
 
     // MARK: - 生命周期
 
@@ -102,8 +108,10 @@ public final class AppStore {
     /// 卡片被划走：记入历史并落盘
     public func swipe(_ card: KnowledgeCard, direction: SwipeDirection) {
         guard let idx = cards.firstIndex(where: { $0.id == card.id }) else { return }
-        cards[idx].seenAt = Date()
-        cards[idx].swiped = direction
+        var updated = cards
+        updated[idx].seenAt = Date()
+        updated[idx].swiped = direction
+        cards = updated
         persist()
     }
 
@@ -111,17 +119,21 @@ public final class AppStore {
     public func undoLastSwipe() {
         guard let last = history.first,
               let idx = cards.firstIndex(where: { $0.id == last.id }) else { return }
-        cards[idx].seenAt = nil
-        cards[idx].swiped = nil
+        var updated = cards
+        updated[idx].seenAt = nil
+        updated[idx].swiped = nil
+        cards = updated
         persist()
     }
 
     /// 清空历史（仅清 seenAt，保留卡片避免重复生成）
     public func clearHistory() {
-        for i in cards.indices {
-            cards[i].seenAt = nil
-            cards[i].swiped = nil
+        var updated = cards
+        for i in updated.indices {
+            updated[i].seenAt = nil
+            updated[i].swiped = nil
         }
+        cards = updated
         persist()
     }
 
@@ -152,11 +164,13 @@ public final class AppStore {
     /// 手动触发：换一批新知识（系统跳过，不表达喜好）
     public func refreshDeck() async {
         // 把当前卡堆标记为「跳过」再生成新的——跳过 ≠ 不喜欢，不污染统计
+        var updated = cards
         for card in deck {
-            guard let idx = cards.firstIndex(where: { $0.id == card.id }) else { continue }
-            cards[idx].seenAt = Date()
-            cards[idx].swiped = .skip
+            guard let idx = updated.firstIndex(where: { $0.id == card.id }) else { continue }
+            updated[idx].seenAt = Date()
+            updated[idx].swiped = .skip
         }
+        cards = updated
         persist()
         if settings.autoGenerate && !settings.apiKey.isEmpty && settings.enableAI {
             await generateNewCards(count: 6)

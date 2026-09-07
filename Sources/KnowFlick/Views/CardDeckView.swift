@@ -153,11 +153,6 @@ struct CardDeckView: View {
             base
                 .offset(dragOffset)
                 .rotationEffect(rotationAngle)
-                .rotation3DEffect(
-                    .degrees(Double(dragOffset.width / 24)),
-                    axis: (x: -dragOffset.height * 0.002, y: 1.0, z: -dragOffset.width * 0.001),
-                    perspective: 0.5
-                )
                 .overlay(swipeBadge)
                 .zIndex(Double(visibleStack.count))
                 .onTapGesture {
@@ -181,11 +176,6 @@ struct CardDeckView: View {
         CardView(card: card, showAIMark: store.settings.showAIMark)
             .offset(swipingOffset)
             .rotationEffect(.degrees(clampedDegrees))
-            .rotation3DEffect(
-                .degrees(Double(swipingOffset.width / 24)),
-                axis: (x: -swipingOffset.height * 0.002, y: 1.0, z: -swipingOffset.width * 0.001),
-                perspective: 0.5
-            )
             .overlay(flyingSwipeBadge)
             .opacity(max(0, 1.0 - (abs(swipingOffset.width) - 180) / 450))
             .zIndex(999)
@@ -531,9 +521,6 @@ struct CardDeckView: View {
                 center: UnitPoint(x: 0.5, y: -0.1),
                 startRadius: 60, endRadius: 620
             )
-
-            // 细噪点纹理，去掉「数字平板感」
-            NoiseOverlay()
         }
     }
 
@@ -586,22 +573,4 @@ struct PressableButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - 噪点纹理
 
-struct NoiseOverlay: View {
-    var body: some View {
-        Canvas { context, size in
-            var generator = SystemRandomNumberGenerator()
-            for _ in 0..<2200 {
-                let x = CGFloat.random(in: 0...size.width, using: &generator)
-                let y = CGFloat.random(in: 0...size.height, using: &generator)
-                let alpha = Double.random(in: 0.012...0.05, using: &generator)
-                context.fill(
-                    Path(CGRect(x: x, y: y, width: 1, height: 1)),
-                    with: .color(.white.opacity(alpha))
-                )
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}

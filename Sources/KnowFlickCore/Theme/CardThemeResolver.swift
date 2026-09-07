@@ -199,8 +199,23 @@ public enum CardThemeResolver {
         return allKeys[idx]
     }
 
+    private static let lock = NSLock()
+    private static var keyCache: [UUID: String] = [:]
+
     public static func resolveKey(for card: KnowledgeCard) -> String {
-        resolveKey(category: card.category, headline: card.headline, summary: card.summary)
+        lock.lock()
+        if let cached = keyCache[card.id] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let key = resolveKey(category: card.category, headline: card.headline, summary: card.summary)
+
+        lock.lock()
+        keyCache[card.id] = key
+        lock.unlock()
+        return key
     }
 
     private static func containsAny(_ text: String, _ keywords: [String]) -> Bool {

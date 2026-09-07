@@ -134,3 +134,11 @@ public extension View {
         modifier(EditorialGlassCardModifier(cornerRadius: cornerRadius, strokeColor: strokeColor, backgroundColor: backgroundColor))
     }
 }
+
+// MARK: - 噪点纹理（空实现，避免全屏动态噪点导致主线程 CPU 飙高与远程桌面编码卡顿）
+public struct NoiseOverlay: View {
+    public init() {}
+    public var body: some View {
+        EmptyView()
+    }
+}

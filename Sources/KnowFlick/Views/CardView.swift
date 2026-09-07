@@ -66,8 +66,8 @@ struct CardView: View {
             RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous)
                 .strokeBorder(hovering ? EditorialColor.glassBorderHover : EditorialColor.glassBorder, lineWidth: 1.2)
         )
-        .shadow(color: (theme.ambient.last ?? .black).opacity(0.88), radius: 36, y: 18)
-        .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
+        .shadow(color: (theme.ambient.last ?? .black).opacity(0.85), radius: 18, y: 8)
+        .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
         .onHover { hovering = $0 }
     }
 
@@ -77,13 +77,9 @@ struct CardView: View {
     private var backgroundLayer: some View {
         ZStack {
             if let img = theme.image {
-                GeometryReader { geo in
-                    Image(nsImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
-                }
+                Image(nsImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
             } else {
                 LinearGradient(colors: theme.ambient, startPoint: .top, endPoint: .bottom)
             }
