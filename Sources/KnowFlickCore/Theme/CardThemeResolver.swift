@@ -210,11 +210,26 @@ public enum CardThemeResolver {
         return false
     }
 
-    /// 相邻卡片绝对防重算法：单遍扫描，若第 i 张卡片背景与第 i-1 张相同，向后寻找一张背景不同的卡片交换。
-    /// 当卡片数量足够时，还尽可能保证第 i 张与第 i-2 张不同，从而使可见卡片堆（visibleStack 3张）视觉各异。
-    public static func antiConsecutive(_ cards: [KnowledgeCard]) -> [KnowledgeCard] {
-        guard cards.count > 1 else { return cards }
+    /// 相邻卡片绝对防重算法：
+    /// 1. 确保第 0 张卡片不等于 avoidingTopKey（即刚划走的那张卡，消除划卡换帧撞图）
+    /// 2. 单遍扫描，若第 i 张卡片背景与第 i-1 张相同，向后寻找一张背景不同的卡片交换。
+    /// 3. 当卡片数量足够时，尽可能保证第 i 张与第 i-2 张不同，从而使可见卡片堆（visibleStack 3张）视觉各异。
+    /// 4. 末尾反向安全插拔，杜绝末尾边界重复。
+    public static func antiConsecutive(_ cards: [KnowledgeCard], avoidingTopKey: String? = nil) -> [KnowledgeCard] {
+        guard !cards.isEmpty else { return cards }
         var arr = cards
+
+        // 步骤 1：第 0 张卡片必须避免与上一张刚划走的卡片（avoidingTopKey）相同
+        if let avoidKey = avoidingTopKey, resolveKey(for: arr[0]) == avoidKey {
+            for j in 1..<arr.count {
+                if resolveKey(for: arr[j]) != avoidKey {
+                    arr.swapAt(0, j)
+                    break
+                }
+            }
+        }
+
+        // 步骤 2：前向相邻防重与可见栈多样性
         for i in 1..<arr.count {
             let prevKey = resolveKey(for: arr[i - 1])
             let currKey = resolveKey(for: arr[i])
@@ -248,7 +263,7 @@ public enum CardThemeResolver {
             }
         }
 
-        // 第二遍：末尾回退安全校验（处理末尾无后续卡片可换的边界情况）
+        // 步骤 3：末尾回退安全校验（处理末尾无后续卡片可换的边界情况）
         for i in (1..<arr.count).reversed() {
             let prevKey = resolveKey(for: arr[i - 1])
             let currKey = resolveKey(for: arr[i])
@@ -269,13 +284,13 @@ public enum CardThemeResolver {
 
     /// 确定性交织打散 + 相邻绝对防重：
     /// 先按卡片内容确定性盐值哈希交错打散学科批次，再执行相邻防重校验。
-    public static func interleavedAndDeduplicated(_ cards: [KnowledgeCard]) -> [KnowledgeCard] {
+    public static func interleavedAndDeduplicated(_ cards: [KnowledgeCard], avoidingTopKey: String? = nil) -> [KnowledgeCard] {
         guard cards.count > 1 else { return cards }
         let sortedCards = cards.sorted { cardA, cardB in
             let scoreA = deterministicHash(cardA.headline + "_knowflick_salt_v3")
             let scoreB = deterministicHash(cardB.headline + "_knowflick_salt_v3")
             return scoreA < scoreB
         }
-        return antiConsecutive(sortedCards)
+        return antiConsecutive(sortedCards, avoidingTopKey: avoidingTopKey)
     }
 }

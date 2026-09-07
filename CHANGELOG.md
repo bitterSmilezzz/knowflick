@@ -4,6 +4,16 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v2.1.2] - 2026-09-07
+
+### 优化与修复 (Fixed & Improved)
+- **划卡过渡零重复（Zero Transition Duplicate）**：
+  - 修复划卡交互中的跨步视觉盲区：此前 `deck` 仅对卡堆内部相邻去重，每次划卡后卡堆动态重算，新卡堆第 0 张卡未能避开上一张刚划走的卡片，导致连续划动时产生视觉撞图。
+  - `AppStore.deck` 与 `CardThemeResolver` 引入 `avoidingTopKey` 机制：将 `history.first` 刚刚划走的卡片主题图元显式传入去重算法，严格保证新出现的顶卡与刚划走的卡片底图绝对不同，跨步划卡过渡撞图率彻底归零。
+  - 优化「投资理财」与「AI 开发」专属图元池映射，进一步平衡资产、会计、算法与系统等摄影图元分布。
+
+---
+
 ## [v2.1.1] - 2026-09-07
 
 ### 优化与修复 (Fixed & Improved)

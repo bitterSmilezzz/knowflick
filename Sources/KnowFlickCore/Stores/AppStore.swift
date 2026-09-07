@@ -41,7 +41,8 @@ public final class AppStore {
             let preferred = unseen.filter { prefs.contains($0.category) }
             filtered = preferred.isEmpty ? unseen : preferred
         }
-        return CardThemeResolver.interleavedAndDeduplicated(filtered)
+        let lastKey = history.first.map { CardThemeResolver.resolveKey(for: $0) }
+        return CardThemeResolver.interleavedAndDeduplicated(filtered, avoidingTopKey: lastKey)
     }
 
     /// 历史记录（看过的，最新在前）
