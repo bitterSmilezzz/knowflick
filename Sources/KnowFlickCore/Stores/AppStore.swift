@@ -25,8 +25,8 @@ public final class AppStore {
 
     // MARK: - 计算属性
 
-    /// 待刷卡片队列（未看过的，按加入时间）。
-    /// 过滤顺序：来源开关（预置/AI）→ 偏好分类优先（耗尽回退全量）
+    /// 待刷卡片队列（未看过的）。
+    /// 过滤顺序：来源开关（预置/AI）→ 偏好分类优先（耗尽回退全量）→ 确定性学科交织打散 → 相邻背景绝对防重（0 撞图）
     public var deck: [KnowledgeCard] {
         var unseen = cards.filter { $0.seenAt == nil }
         // 来源开关：只开其一则只看该来源；全关则队列为空
@@ -34,9 +34,14 @@ public final class AppStore {
             unseen = unseen.filter { settings.enableSeed ? $0.source == .seed : $0.source == .ai }
         }
         let prefs = settings.preferredCategories
-        guard !prefs.isEmpty else { return unseen }
-        let preferred = unseen.filter { prefs.contains($0.category) }
-        return preferred.isEmpty ? unseen : preferred
+        let filtered: [KnowledgeCard]
+        if prefs.isEmpty {
+            filtered = unseen
+        } else {
+            let preferred = unseen.filter { prefs.contains($0.category) }
+            filtered = preferred.isEmpty ? unseen : preferred
+        }
+        return CardThemeResolver.interleavedAndDeduplicated(filtered)
     }
 
     /// 历史记录（看过的，最新在前）

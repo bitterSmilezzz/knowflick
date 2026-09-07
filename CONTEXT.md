@@ -17,7 +17,7 @@
 规则：对 `seenAt`/`swiped` 的任何写入都必须经由 AppStore 的意图化方法（`swipe` / `undoLastSwipe` / `clearHistory` / `refreshDeck`），视图不得直接改字段。
 
 ## 卡堆 / 队列（Deck）
-未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关（enableSeed/enableAI）在偏好过滤前生效**：只开其一则只看该来源，全关则队列为空。
+未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关（enableSeed/enableAI）在偏好过滤前生效**：只开其一则只看该来源，全关则队列为空。**卡堆输出前统一经 `CardThemeResolver.interleavedAndDeduplicated` 处理**：先通过确定性盐值哈希交错打散学科批次，再执行双向相邻防重安全扫描（Anti-Consecutive Duplicate Filter），严格保证连续两张卡片背景绝不相同（0 撞图），并最大化可见卡片栈（visibleStack 3 张）的视觉多元呈现。
 
 ## 历史（History）
 看过（`seenAt != nil`）的卡片，按时间倒序。
@@ -26,7 +26,7 @@
 从 `store.cards` 纯派生的快照（`LearningStats`，`StatsCalculator.compute`），视图只做格式化。连续天数按日去重、允许「今天未刷从昨天起算」的空档。`skip` 计入已刷，不计入喜欢。`dailyCounts` 提供近 7 天趋势（纯计算）。
 
 ## 分类主题（CategoryTheme）
-卡片内容/分类名 → 视觉主题（背景图 key / accent / ambient）。采用**语义识别 + 标题哈希兜底**的多维映射机制：先扫描标题与摘要中的 21 种学科关键词（天文、物理、生物、化学、历史、心理、脑科学、AI、算法、架构、Rust等）直达对应摄影背景；若无明显关键词，则基于卡片标题稳定哈希在 21 张内置精选高清摄影底图中均匀轮巡，彻底消除同一分类下背景千篇一律的问题。主窗口环境背景光（ambient）与当前卡片及划卡飞出动画实时深度联动。
+卡片内容/分类名 → 视觉主题（背景图 key / accent / ambient）。采用**领域关联多图池（Thematic Multi-Image Pools）+ 细化语义识别 + 标题哈希兜底**的多维映射机制：划分计算机与 AI、商业财会金融、自然宇宙科学、人文心智四大领域多图池（每池 6~8 张专属摄影底图），即使在「中级会计」或「AI Agent」等单分类内刷卡也张张不同；配合确定性打散与相邻防重，彻底杜绝连续撞图。主窗口环境背景光（ambient）与当前卡片及划卡飞出动画实时深度联动。
 
 ## 存储（Storage）
 `Storage` 实例可注入目录。卡片文件三级回退：cards.json → cards.backup.json（轮转保留上一版）→ 重播种。API key 单独存 Keychain，不入 JSON。AppStore 内所有落盘统一经 `persist()` 单入口：**350ms 节流合并 + Task.detached 后台执行**（连续刷卡只写最后一次，JSON 编码与文件 IO 不卡主线程）。应用启动时自动执行**种子库增量合并**，自动引入新版本内置扩充的卡片，老用户无缝获得全新内容。

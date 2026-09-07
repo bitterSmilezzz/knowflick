@@ -4,6 +4,17 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v2.1.1] - 2026-09-07
+
+### 优化与修复 (Fixed & Improved)
+- **彻底根治刷卡背景图重复（零相邻重复 Zero Adjacent Duplicate）**：
+  - **领域关联多图池（Thematic Multi-Image Pools）**：打破单一分类固定映射单一图片的局限，构建计算机与 AI、商业财会金融、自然宇宙科学、人文心智四大领域多图池（每个池 6~8 张专属高清摄影底图），使中级会计、AI Agent、投资理财等单分类内部也能张张不同、各美其美。
+  - **细化语义关键词全覆盖**：细化 AI Agent（ReAct、幂等、护栏、记忆、人在回路）、AI 开发（余弦相似度、Prompt 回归测试、流式、微调、Function Calling）、中级会计（试算平衡、借贷记账、FIFO 计价）、投资理财（债券、定投心理、复利掌控）等子领域的专属图元映射。
+  - **确定性学科交错打散（Deterministic Salted Interleaving）**：通过稳定无状态的哈希打散算法，解构种子库中同类学科连续成堆排布的问题，杜绝学科连续刷出。
+  - **双向相邻防重安全扫描（Anti-Consecutive Duplicate Filter）**：待刷卡堆 `deck` 构建时执行双向防重扫描与位置安全交换，不仅严格保证连续两张卡片背景绝不撞图（0 连续重复），更兼顾可见卡片栈（visibleStack 3 张）的视觉多元呈现。
+- **架构重构与单点真实源**：
+  - 在 `KnowFlickCore` 中新增 `CardThemeResolver`，将图元解析、交织打散与防重算法统一在核心层维护，`CategoryTheme` 升级为 O(1) 字典查找，视图层与状态层对卡片背景映射 100% 同步。
+
 ---
 
 ## [v2.1.0] - 2026-09-07
