@@ -125,10 +125,11 @@ public struct AISettings: Codable, Equatable {
     }
 }
 
-/// 主流 AI 服务商预设：DeepSeek、硅基流动、Kimi、智谱GLM、OpenAI、Ollama、自定义
+/// 主流与本机 Agent AI 服务商预设
 public struct AIProviderPreset: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
+    public let group: String
     public let icon: String
     public let defaultBaseURL: String
     public let models: [String]
@@ -140,6 +141,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
     public init(
         id: String,
         name: String,
+        group: String,
         icon: String,
         defaultBaseURL: String,
         models: [String],
@@ -150,6 +152,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
     ) {
         self.id = id
         self.name = name
+        self.group = group
         self.icon = icon
         self.defaultBaseURL = defaultBaseURL
         self.models = models
@@ -160,20 +163,23 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
     }
 
     public static let presets: [AIProviderPreset] = [
+        // MARK: - 主流公有云平台
         .init(
             id: "deepseek",
-            name: "DeepSeek",
+            name: "DeepSeek (官方)",
+            group: "主流公有云",
             icon: "sparkles",
             defaultBaseURL: "https://api.deepseek.com",
-            models: ["deepseek-chat", "deepseek-reasoner"],
+            models: ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro", "deepseek-v4-flash"],
             defaultModel: "deepseek-chat",
-            helpText: "性价比最高，推荐用于生成常识与领域知识卡片",
+            helpText: "官方高性价比模型，推荐用于生成常识与各领域知识卡片",
             apiKeyPlaceholder: "sk-...",
             requiresKey: true
         ),
         .init(
             id: "siliconflow",
             name: "硅基流动 (SiliconFlow)",
+            group: "主流公有云",
             icon: "bolt.fill",
             defaultBaseURL: "https://api.siliconflow.cn/v1",
             models: [
@@ -183,13 +189,14 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
                 "THUDM/glm-4-9b-chat"
             ],
             defaultModel: "deepseek-ai/DeepSeek-V3",
-            helpText: "国内高可用云服务，提供 DeepSeek-V3/R1 与 Qwen 等海量模型",
+            helpText: "国内高可用云服务，提供 DeepSeek-V3/R1 与 Qwen 等海量满血模型",
             apiKeyPlaceholder: "sk-...",
             requiresKey: true
         ),
         .init(
             id: "kimi",
             name: "Kimi (月之暗面)",
+            group: "主流公有云",
             icon: "moon.stars.fill",
             defaultBaseURL: "https://api.moonshot.cn/v1",
             models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-auto"],
@@ -200,18 +207,32 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         ),
         .init(
             id: "zhipu",
-            name: "智谱 GLM",
+            name: "智谱 GLM / BigModel",
+            group: "主流公有云",
             icon: "brain.head.profile",
             defaultBaseURL: "https://open.bigmodel.cn/api/paas/v4",
-            models: ["glm-4-flash", "glm-4-plus", "glm-4-air"],
+            models: ["glm-4-flash", "glm-4-plus", "glm-4-air", "glm-5.2"],
             defaultModel: "glm-4-flash",
             helpText: "清华智谱大模型，其中 glm-4-flash 免费且极速",
             apiKeyPlaceholder: "API Key (如 id.secret)",
             requiresKey: true
         ),
         .init(
+            id: "dashscope",
+            name: "阿里云百炼 (通义千问)",
+            group: "主流公有云",
+            icon: "cloud.sun.fill",
+            defaultBaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            models: ["qwen-plus", "qwen-max", "qwen-turbo", "qwen-long", "qwen2.5-72b-instruct"],
+            defaultModel: "qwen-plus",
+            helpText: "阿里云 DashScope OpenAI 兼容端点，通义千问官方服务",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
             id: "openai",
-            name: "OpenAI",
+            name: "OpenAI (官方)",
+            group: "主流公有云",
             icon: "globe",
             defaultBaseURL: "https://api.openai.com/v1",
             models: ["gpt-4o-mini", "gpt-4o", "o3-mini"],
@@ -220,9 +241,98 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
             apiKeyPlaceholder: "sk-proj-...",
             requiresKey: true
         ),
+
+        // MARK: - 本机 Agent 专线与聚合中转
+        .init(
+            id: "opencode",
+            name: "OpenCode Go",
+            group: "本机 Agent 专线",
+            icon: "chevron.left.forwardslash.chevron.right",
+            defaultBaseURL: "https://opencode.ai/zen/go/v1",
+            models: ["deepseek-v4-flash", "deepseek-v4-pro", "glm-5.2", "qwen3.7-max", "kimi-k3", "minimax-m3", "mimo-v2.5"],
+            defaultModel: "deepseek-v4-flash",
+            helpText: "OpenCode 开发者中转服务，汇聚 DeepSeek、GLM、Qwen、Kimi 等多模型",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "tokenrhythm",
+            name: "基元律动 (TokenRhythm)",
+            group: "本机 Agent 专线",
+            icon: "waveform.path.ecg",
+            defaultBaseURL: "https://tokenrhythm.studio/v1",
+            models: ["deepseek-v4-flash", "deepseek-v4-pro", "glm-5.2", "qwen3.8-max", "minimax-m2.7", "kimi-k2.6"],
+            defaultModel: "deepseek-v4-flash",
+            helpText: "TokenRhythm 聚合平台，提供高并发满血模型端点",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "xiaomi_mimo",
+            name: "小米 MiMo (Xiaomi)",
+            group: "本机 Agent 专线",
+            icon: "bolt.ring.closed",
+            defaultBaseURL: "https://api.xiaomimimo.com/v1",
+            models: ["mimo-v2.5", "mimo-v2.5-pro", "mimo-v2-flash", "mimo-v2-pro"],
+            defaultModel: "mimo-v2.5",
+            helpText: "小米大模型开放平台，提供高性价比 MiMo 系列模型",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "longcat",
+            name: "LongCat (长猫科技)",
+            group: "本机 Agent 专线",
+            icon: "cat.fill",
+            defaultBaseURL: "https://api.longcat.chat/openai",
+            models: ["LongCat-2.0"],
+            defaultModel: "LongCat-2.0",
+            helpText: "长猫科技大模型服务平台端点",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "antdigital",
+            name: "蚂蚁百灵 (AntDigital)",
+            group: "本机 Agent 专线",
+            icon: "ant.fill",
+            defaultBaseURL: "https://maas-api.antdigital.com/v1",
+            models: ["ling-3.0-flash-fin", "deepseek-v4-flash", "deepseek-v4-pro"],
+            defaultModel: "ling-3.0-flash-fin",
+            helpText: "蚂蚁数科百灵大模型平台，支持金融特化与通用大模型",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "nvidia_nim",
+            name: "NVIDIA NIM",
+            group: "本机 Agent 专线",
+            icon: "cpu.fill",
+            defaultBaseURL: "https://integrate.api.nvidia.com/v1",
+            models: ["deepseek-ai/deepseek-v4-flash-0731", "moonshotai/kimi-k3", "nvidia/nemotron-3-ultra-550b-a55b"],
+            defaultModel: "deepseek-ai/deepseek-v4-flash-0731",
+            helpText: "NVIDIA API Catalog 开发者微服务，提供企业级推理加速",
+            apiKeyPlaceholder: "nvapi-...",
+            requiresKey: true
+        ),
+        .init(
+            id: "amd_factory",
+            name: "AMD 开发者平台 (Token Factory)",
+            group: "本机 Agent 专线",
+            icon: "square.stack.3d.forward.dottedline.fill",
+            defaultBaseURL: "https://developer.amd.com.cn/radeon/api/v1",
+            models: ["DeepSeek-V4-Flash", "Qwen3.8-Flash-Next", "MiniCPM5-1B"],
+            defaultModel: "DeepSeek-V4-Flash",
+            helpText: "AMD 开发者中心开源大模型端点",
+            apiKeyPlaceholder: "sk-...",
+            requiresKey: true
+        ),
+
+        // MARK: - 本地与离线服务
         .init(
             id: "ollama",
             name: "Ollama (本地私有)",
+            group: "本地与离线",
             icon: "desktopcomputer",
             defaultBaseURL: "http://localhost:11434/v1",
             models: ["qwen2.5:7b", "deepseek-r1:7b", "llama3.1:8b"],
@@ -232,8 +342,23 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
             requiresKey: false
         ),
         .init(
+            id: "local_freellm",
+            name: "本地代理网关 (:31415)",
+            group: "本地与离线",
+            icon: "network",
+            defaultBaseURL: "http://127.0.0.1:31415/v1",
+            models: ["auto", "fusion", "gemini-3.6-flash", "kimi-k3"],
+            defaultModel: "auto",
+            helpText: "本机部署的聚合中转端口，无需消耗公网配额",
+            apiKeyPlaceholder: "本地运行无需填 Key",
+            requiresKey: false
+        ),
+
+        // MARK: - 自定义
+        .init(
             id: "custom",
             name: "自定义服务商",
+            group: "自定义",
             icon: "slider.horizontal.3",
             defaultBaseURL: "",
             models: [],
@@ -244,22 +369,53 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         )
     ]
 
+    public static var groups: [String] {
+        var seen: [String] = []
+        for p in presets {
+            if !seen.contains(p.group) {
+                seen.append(p.group)
+            }
+        }
+        return seen
+    }
+
     public static func match(baseURL: String) -> AIProviderPreset {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.isEmpty {
+            return presets.first(where: { $0.id == "deepseek" }) ?? presets[0]
+        }
         if trimmed.contains("api.deepseek.com") {
-            return presets[0]
+            return presets.first(where: { $0.id == "deepseek" })!
+        } else if trimmed.contains("opencode.ai") {
+            return presets.first(where: { $0.id == "opencode" })!
+        } else if trimmed.contains("tokenrhythm.studio") {
+            return presets.first(where: { $0.id == "tokenrhythm" })!
+        } else if trimmed.contains("xiaomimimo.com") {
+            return presets.first(where: { $0.id == "xiaomi_mimo" })!
+        } else if trimmed.contains("dashscope.aliyuncs.com") {
+            return presets.first(where: { $0.id == "dashscope" })!
+        } else if trimmed.contains("longcat.chat") {
+            return presets.first(where: { $0.id == "longcat" })!
+        } else if trimmed.contains("antdigital.com") {
+            return presets.first(where: { $0.id == "antdigital" })!
+        } else if trimmed.contains("nvidia.com") {
+            return presets.first(where: { $0.id == "nvidia_nim" })!
+        } else if trimmed.contains("amd.com.cn") {
+            return presets.first(where: { $0.id == "amd_factory" })!
+        } else if trimmed.contains("31415") {
+            return presets.first(where: { $0.id == "local_freellm" })!
         } else if trimmed.contains("siliconflow.cn") {
-            return presets[1]
+            return presets.first(where: { $0.id == "siliconflow" })!
         } else if trimmed.contains("moonshot.cn") {
-            return presets[2]
-        } else if trimmed.contains("bigmodel.cn") {
-            return presets[3]
+            return presets.first(where: { $0.id == "kimi" })!
+        } else if trimmed.contains("bigmodel.cn") || trimmed.contains("z.ai") {
+            return presets.first(where: { $0.id == "zhipu" })!
         } else if trimmed.contains("api.openai.com") {
-            return presets[4]
+            return presets.first(where: { $0.id == "openai" })!
         } else if trimmed.contains("11434") || trimmed.contains("localhost") {
-            return presets[5]
+            return presets.first(where: { $0.id == "ollama" })!
         } else {
-            return presets[6] // custom
+            return presets.first(where: { $0.id == "custom" })!
         }
     }
 }

@@ -146,11 +146,15 @@ struct SettingsView: View {
                 // 1. 服务商预设切换
                 fieldRow(label: "服务商预设") {
                     Menu {
-                        ForEach(AIProviderPreset.presets) { preset in
-                            Button {
-                                selectProvider(preset)
-                            } label: {
-                                Label(preset.name, systemImage: preset.icon)
+                        ForEach(AIProviderPreset.groups, id: \.self) { group in
+                            Section(group) {
+                                ForEach(AIProviderPreset.presets.filter { $0.group == group }) { preset in
+                                    Button {
+                                        selectProvider(preset)
+                                    } label: {
+                                        Label(preset.name, systemImage: preset.icon)
+                                    }
+                                }
                             }
                         }
                     } label: {
