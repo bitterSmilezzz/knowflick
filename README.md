@@ -88,36 +88,32 @@ cd KnowFlick
 
 ## AI 服务配置（开箱即用）
 
-在应用内点击右上角「偏好设置」（齿轮图标），在「AI 驱动服务」卡片中选择服务商预设（已按分类组织，并已全面补充本机常用 Agent 供应商）：
+在应用内点击右上角「偏好设置」（齿轮图标），在「AI 驱动服务」卡片中选择服务商预设（已清晰划分为**在线 API 服务**与**本地部署运行**）：
 
-### 1. 主流公有云平台
+### 1. 在线 API 服务
 | 服务商预设 | 默认 Base URL | 推荐模型 | 说明 |
 | --- | --- | --- | --- |
 | **DeepSeek (官方)** | `https://api.deepseek.com` | `deepseek-chat`, `deepseek-reasoner` | 官方高性价比模型，填入 API Key 即可 |
 | **硅基流动 (SiliconFlow)** | `https://api.siliconflow.cn/v1` | `deepseek-ai/DeepSeek-V3`, `Qwen/Qwen2.5-7B-Instruct` | 汇聚主流满血大模型，填入 Key 即可 |
 | **Kimi (月之暗面)** | `https://api.moonshot.cn/v1` | `moonshot-v1-8k`, `moonshot-v1-32k` | 长文本与中文常识理解，填入 Key 即可 |
 | **智谱 GLM / BigModel** | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash`, `glm-4-plus`, `glm-5.2` | 智谱 AI 开放平台，填入 Key 即可 |
-| **阿里云百炼 (通义千问)** | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus`, `qwen-max`, `qwen-turbo` | 阿里云 DashScope OpenAI 兼容端点 |
+| **阿里云百炼 (通义千问)** | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus`, `qwen-max`, `qwen-turbo` | 阿里云 DashScope 官方兼容端点 |
+| **OpenCode Go** | `https://opencode.ai/zen/go/v1` | `deepseek-v4-flash`, `glm-5.2`, `kimi-k3` | OpenCode 开发者中转，汇聚主流前沿模型 |
+| **基元律动 (TokenRhythm)** | `https://tokenrhythm.studio/v1` | `deepseek-v4-flash`, `glm-5.2`, `qwen3.8-max` | TokenRhythm 高并发聚合云端服务 |
+| **小米 MiMo (Xiaomi)** | `https://api.xiaomimimo.com/v1` | `mimo-v2.5`, `mimo-v2.5-pro` | 小米大模型开放平台云端端点 |
+| **LongCat (长猫科技)** | `https://api.longcat.chat/openai` | `LongCat-2.0` | 长猫科技大模型服务平台端点 |
+| **蚂蚁百灵 (AntDigital)** | `https://maas-api.antdigital.com/v1` | `ling-3.0-flash-fin`, `deepseek-v4-flash` | 蚂蚁数科百灵大模型开放平台 |
+| **NVIDIA NIM** | `https://integrate.api.nvidia.com/v1` | `deepseek-ai/deepseek-v4-flash-0731` | 英伟达开发者微服务推理平台 |
+| **AMD 开发者平台** | `https://developer.amd.com.cn/radeon/api/v1` | `DeepSeek-V4-Flash`, `Qwen3.8-Flash-Next` | AMD 开发者中心开源大模型端点 |
 | **OpenAI (官方)** | `https://api.openai.com/v1` | `gpt-4o-mini`, `gpt-4o` | 官方 GPT 系列端点，填入 Key 即可 |
 
-### 2. 本机 Agent 专线与聚合中转
-| 服务商预设 | 默认 Base URL | 推荐模型 | 说明 |
-| --- | --- | --- | --- |
-| **OpenCode Go** | `https://opencode.ai/zen/go/v1` | `deepseek-v4-flash`, `glm-5.2`, `kimi-k3` | OpenCode 开发者中转，汇聚主流前沿模型 |
-| **基元律动 (TokenRhythm)** | `https://tokenrhythm.studio/v1` | `deepseek-v4-flash`, `glm-5.2`, `qwen3.8-max` | TokenRhythm 高并发聚合平台 |
-| **小米 MiMo (Xiaomi)** | `https://api.xiaomimimo.com/v1` | `mimo-v2.5`, `mimo-v2.5-pro` | 小米大模型开放平台端点 |
-| **LongCat (长猫科技)** | `https://api.longcat.chat/openai` | `LongCat-2.0` | 长猫科技大模型服务端点 |
-| **蚂蚁百灵 (AntDigital)** | `https://maas-api.antdigital.com/v1` | `ling-3.0-flash-fin`, `deepseek-v4-flash` | 蚂蚁数科百灵大模型平台 |
-| **NVIDIA NIM** | `https://integrate.api.nvidia.com/v1` | `deepseek-ai/deepseek-v4-flash-0731` | 英伟达开发者微服务平台 |
-| **AMD 开发者平台** | `https://developer.amd.com.cn/radeon/api/v1` | `DeepSeek-V4-Flash`, `Qwen3.8-Flash-Next` | AMD 开发者中心开源端点 |
-
-### 3. 本地与离线服务
+### 2. 本地部署运行
 | 服务商预设 | 默认 Base URL | 推荐模型 | 说明 |
 | --- | --- | --- | --- |
 | **Ollama (本地私有)** | `http://localhost:11434/v1` | `qwen2.5:7b`, `deepseek-r1:7b`, `llama3.1:8b` | 本地私有离线运行，**无需 API Key** |
 | **本地代理网关 (:31415)** | `http://127.0.0.1:31415/v1` | `auto`, `fusion`, `gemini-3.6-flash` | 本机聚合网关端口，**无需 API Key** |
 
-### 4. 自定义
+### 3. 自定义
 | 服务商预设 | 默认 Base URL | 推荐模型 | 说明 |
 | --- | --- | --- | --- |
 | **自定义服务商** | 自定义端点地址 | 自定义模型名 | 适配任意第三方 OpenAI 兼容端点或中转站 |

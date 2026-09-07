@@ -9,12 +9,11 @@
 ## [v2.1.0] - 2026-09-07
 
 ### 新增 (Added)
-- **全面扩充主流与本机 Agent AI 服务商预设（共 16 档，分类分组管理）**：
-  - **主流公有云**：`DeepSeek (官方)`、`硅基流动 (SiliconFlow)`、`Kimi (月之暗面)`、`智谱 GLM / BigModel`、`阿里云百炼 (通义千问)`、`OpenAI (官方)`。
-  - **本机 Agent 专线与聚合平台**：`OpenCode Go`、`基元律动 (TokenRhythm)`、`小米 MiMo (Xiaomi)`、`LongCat (长猫科技)`、`蚂蚁百灵 (AntDigital)`、`NVIDIA NIM`、`AMD 开发者平台 (Token Factory)`。
-  - **本地与离线**：`Ollama (本地私有)`、`本地代理网关 (:31415)`（自动识别免填 API Key）。
+- **全面扩充 AI 服务商预设（共 16 档，清晰划分为「在线 API 服务」与「本地部署运行」）**：
+  - **在线 API 服务**：`DeepSeek (官方)`、`硅基流动 (SiliconFlow)`、`Kimi (月之暗面)`、`智谱 GLM / BigModel`、`阿里云百炼 (通义千问)`、`OpenCode Go`、`基元律动 (TokenRhythm)`、`小米 MiMo (Xiaomi)`、`LongCat (长猫科技)`、`蚂蚁百灵 (AntDigital)`、`NVIDIA NIM`、`AMD 开发者平台 (Token Factory)`、`OpenAI (官方)`。
+  - **本地部署运行**：`Ollama (本地私有)`、`本地代理网关 (:31415)`（自动识别无需 API Key）。
   - **自定义**：`自定义服务商`。
-  - 预设菜单（Menu）支持 Section 分组呈现；选择预设后自动联动填充对应 Base URL 与热门推荐模型，API Key 依然由用户手动输入并安全存放于 macOS 原生钥匙串。
+  - 偏好设置中的服务商预设菜单按 Section 分组清晰展示，选择预设自动补全官方端点与推荐模型，API Key 始终由用户手工填写，并受 macOS 原生钥匙串安全保护。
 - **千卡千面摄影背景智能映射与环境光流转**：
   - 基于 21 个学科领域关键词（物理、天文、生物、化学、历史、心理、脑科学、AI、算法、架构、Rust 等）做标题与摘要语义智能识别，直达专属精选摄影底图与强调色温。
   - 无命中关键词时按标题稳定哈希在 21 张底图中均匀分散，彻底解决「冷知识」分类下背景千篇一律的问题。

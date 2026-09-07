@@ -163,11 +163,11 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
     }
 
     public static let presets: [AIProviderPreset] = [
-        // MARK: - 主流公有云平台
+        // MARK: - 在线 API 服务
         .init(
             id: "deepseek",
             name: "DeepSeek (官方)",
-            group: "主流公有云",
+            group: "在线 API 服务",
             icon: "sparkles",
             defaultBaseURL: "https://api.deepseek.com",
             models: ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro", "deepseek-v4-flash"],
@@ -179,7 +179,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "siliconflow",
             name: "硅基流动 (SiliconFlow)",
-            group: "主流公有云",
+            group: "在线 API 服务",
             icon: "bolt.fill",
             defaultBaseURL: "https://api.siliconflow.cn/v1",
             models: [
@@ -196,7 +196,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "kimi",
             name: "Kimi (月之暗面)",
-            group: "主流公有云",
+            group: "在线 API 服务",
             icon: "moon.stars.fill",
             defaultBaseURL: "https://api.moonshot.cn/v1",
             models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-auto"],
@@ -208,7 +208,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "zhipu",
             name: "智谱 GLM / BigModel",
-            group: "主流公有云",
+            group: "在线 API 服务",
             icon: "brain.head.profile",
             defaultBaseURL: "https://open.bigmodel.cn/api/paas/v4",
             models: ["glm-4-flash", "glm-4-plus", "glm-4-air", "glm-5.2"],
@@ -220,7 +220,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "dashscope",
             name: "阿里云百炼 (通义千问)",
-            group: "主流公有云",
+            group: "在线 API 服务",
             icon: "cloud.sun.fill",
             defaultBaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
             models: ["qwen-plus", "qwen-max", "qwen-turbo", "qwen-long", "qwen2.5-72b-instruct"],
@@ -230,23 +230,9 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
             requiresKey: true
         ),
         .init(
-            id: "openai",
-            name: "OpenAI (官方)",
-            group: "主流公有云",
-            icon: "globe",
-            defaultBaseURL: "https://api.openai.com/v1",
-            models: ["gpt-4o-mini", "gpt-4o", "o3-mini"],
-            defaultModel: "gpt-4o-mini",
-            helpText: "OpenAI 官方 API，支持 GPT-4o 等系列模型",
-            apiKeyPlaceholder: "sk-proj-...",
-            requiresKey: true
-        ),
-
-        // MARK: - 本机 Agent 专线与聚合中转
-        .init(
             id: "opencode",
             name: "OpenCode Go",
-            group: "本机 Agent 专线",
+            group: "在线 API 服务",
             icon: "chevron.left.forwardslash.chevron.right",
             defaultBaseURL: "https://opencode.ai/zen/go/v1",
             models: ["deepseek-v4-flash", "deepseek-v4-pro", "glm-5.2", "qwen3.7-max", "kimi-k3", "minimax-m3", "mimo-v2.5"],
@@ -258,7 +244,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "tokenrhythm",
             name: "基元律动 (TokenRhythm)",
-            group: "本机 Agent 专线",
+            group: "在线 API 服务",
             icon: "waveform.path.ecg",
             defaultBaseURL: "https://tokenrhythm.studio/v1",
             models: ["deepseek-v4-flash", "deepseek-v4-pro", "glm-5.2", "qwen3.8-max", "minimax-m2.7", "kimi-k2.6"],
@@ -270,7 +256,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "xiaomi_mimo",
             name: "小米 MiMo (Xiaomi)",
-            group: "本机 Agent 专线",
+            group: "在线 API 服务",
             icon: "bolt.ring.closed",
             defaultBaseURL: "https://api.xiaomimimo.com/v1",
             models: ["mimo-v2.5", "mimo-v2.5-pro", "mimo-v2-flash", "mimo-v2-pro"],
@@ -282,7 +268,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "longcat",
             name: "LongCat (长猫科技)",
-            group: "本机 Agent 专线",
+            group: "在线 API 服务",
             icon: "cat.fill",
             defaultBaseURL: "https://api.longcat.chat/openai",
             models: ["LongCat-2.0"],
@@ -294,7 +280,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "antdigital",
             name: "蚂蚁百灵 (AntDigital)",
-            group: "本机 Agent 专线",
+            group: "在线 API 服务",
             icon: "ant.fill",
             defaultBaseURL: "https://maas-api.antdigital.com/v1",
             models: ["ling-3.0-flash-fin", "deepseek-v4-flash", "deepseek-v4-pro"],
@@ -306,7 +292,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "nvidia_nim",
             name: "NVIDIA NIM",
-            group: "本机 Agent 专线",
+            group: "在线 API 服务",
             icon: "cpu.fill",
             defaultBaseURL: "https://integrate.api.nvidia.com/v1",
             models: ["deepseek-ai/deepseek-v4-flash-0731", "moonshotai/kimi-k3", "nvidia/nemotron-3-ultra-550b-a55b"],
@@ -318,7 +304,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "amd_factory",
             name: "AMD 开发者平台 (Token Factory)",
-            group: "本机 Agent 专线",
+            group: "在线 API 服务",
             icon: "square.stack.3d.forward.dottedline.fill",
             defaultBaseURL: "https://developer.amd.com.cn/radeon/api/v1",
             models: ["DeepSeek-V4-Flash", "Qwen3.8-Flash-Next", "MiniCPM5-1B"],
@@ -327,12 +313,24 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
             apiKeyPlaceholder: "sk-...",
             requiresKey: true
         ),
+        .init(
+            id: "openai",
+            name: "OpenAI (官方)",
+            group: "在线 API 服务",
+            icon: "globe",
+            defaultBaseURL: "https://api.openai.com/v1",
+            models: ["gpt-4o-mini", "gpt-4o", "o3-mini"],
+            defaultModel: "gpt-4o-mini",
+            helpText: "OpenAI 官方 API，支持 GPT-4o 等系列模型",
+            apiKeyPlaceholder: "sk-proj-...",
+            requiresKey: true
+        ),
 
-        // MARK: - 本地与离线服务
+        // MARK: - 本地部署运行
         .init(
             id: "ollama",
             name: "Ollama (本地私有)",
-            group: "本地与离线",
+            group: "本地部署运行",
             icon: "desktopcomputer",
             defaultBaseURL: "http://localhost:11434/v1",
             models: ["qwen2.5:7b", "deepseek-r1:7b", "llama3.1:8b"],
@@ -344,7 +342,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         .init(
             id: "local_freellm",
             name: "本地代理网关 (:31415)",
-            group: "本地与离线",
+            group: "本地部署运行",
             icon: "network",
             defaultBaseURL: "http://127.0.0.1:31415/v1",
             models: ["auto", "fusion", "gemini-3.6-flash", "kimi-k3"],

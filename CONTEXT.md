@@ -34,10 +34,9 @@
 ## AI 服务与服务商预设（AIService / AIProviderPreset）
 OpenAI 兼容端点客户端，**流式生成**：SSE 逐行接收 + 增量对象扫描，拿到目标数量即提前终止（省时省额度）；429/5xx 自动重试。失败通道统一为抛 `AIError`：传输/解析层失败抛对应 case；「请求成功但无可用产出」抛 `noUsableCards`。排除标题截断上限（100）由服务单点决定；max_tokens 按生成数量动态计算（≈900/张 + 400 缓冲）。
 
-内置主流与本机 Agent 服务商预设（`AIProviderPreset`，共 16 档，分 4 组）：
-- **主流公有云**：DeepSeek (官方)、硅基流动 (SiliconFlow)、Kimi (月之暗面)、智谱 GLM / BigModel、阿里云百炼 (通义千问)、OpenAI (官方)
-- **本机 Agent 专线**：OpenCode Go、基元律动 (TokenRhythm)、小米 MiMo (Xiaomi)、LongCat (长猫科技)、蚂蚁百灵 (AntDigital)、NVIDIA NIM、AMD 开发者平台 (Token Factory)
-- **本地与离线**：Ollama (本地私有)、本地代理网关 (:31415)（自动识别无需输入 API Key）
+内置 AI 服务商预设（`AIProviderPreset`，共 16 档，清晰划分为在线 API 服务与本地部署运行）：
+- **在线 API 服务**：DeepSeek (官方)、硅基流动 (SiliconFlow)、Kimi (月之暗面)、智谱 GLM / BigModel、阿里云百炼 (通义千问)、OpenCode Go、基元律动 (TokenRhythm)、小米 MiMo (Xiaomi)、LongCat (长猫科技)、蚂蚁百灵 (AntDigital)、NVIDIA NIM、AMD 开发者平台 (Token Factory)、OpenAI (官方)
+- **本地部署运行**：Ollama (本地私有)、本地代理网关 (:31415)（自动识别无需输入 API Key）
 - **自定义**：自定义服务商（灵活配置任意第三方 OpenAI 兼容网关与专有端点）
 
 生成质量链：分类经 `CategoryRegistry` 归一化到受控 21 类（未知兜底「科技」）→ 字面去重（normalizeHeadline）→ 近重复抑制（bigram Jaccard > 0.35 丢弃）→ 内容 ≥80 字门槛。链接用「关键词 + 权威来源站名」构造 Bing 检索（AI 给的 `sources` 优先，缺失时用设置里 `aiSources` 站点偏好兜底）。`ping` 为轻量连通性探测（max_tokens=1，非流式）。
