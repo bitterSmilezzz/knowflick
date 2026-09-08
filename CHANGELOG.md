@@ -4,6 +4,23 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v2.6.0] - 2026-09-08
+
+### 专属知识收藏阁与 Markdown 笔记导出系统 (Knowledge Favorites & Markdown Notebook Export)
+- **独立专属书签库与学科聚合 (`FavoritesView`)**：
+  - **沉浸式双列卡片展台 (Masonry Card Gallery)**：展示所有标星/右划感兴趣的心仪卡片，清晰呈现学科徽章、来源标签、收藏时间与观点摘要。
+  - **42 学科动态分类胶囊与即时检索**：支持按学科领域横向滚动过滤，统计各领域收藏数量；配备毫秒级全文模糊搜索框，即时检索标题、观点与正文细节。
+  - **全链路快捷收藏交互**：在卡片详情页 (`DetailView`) 顶部新增专属心形收藏按钮（快捷键 `⌘D`），卡片网格支持一键取消收藏或快捷生成海报。
+- **Obsidian / Notion 兼容 Markdown 知识笔记导出 (`AppStore.exportFavoritesMarkdown`)**：
+  - **标准化 YAML Frontmatter**：包含 `title`, `date`, `total_cards`, `tags: [knowflick, knowledge, study-notes]`, 完美适配 Obsidian、Logseq、Notion 等主流知识库管理工具。
+  - **智能锚点与双向目录索引 (TOC)**：自动生成多级目录与卡片书签锚点，方便在长文档中快速跳读与交叉检索。
+  - **双通道导出流程**：支持快捷键 `⌘⇧C` 一键复制整本或筛选后的 Markdown 笔记至系统剪贴板，支持快捷键 `⌘⇧S` 调起原生 `NSSavePanel` 导出独立 `.md` 文件。
+- **快捷键与全局导航体系完善**：
+  - 主界面顶部导航栏新增书签按钮，支持全局快捷键 `⌘B` 秒级直达「知识收藏阁」。
+  - 快捷键帮助面板 (`HelpView`) 同步更新 `⌘B` 与 `⌘D` 等盲操快捷键指引。
+
+---
+
 ## [v2.5.0] - 2026-09-08
 
 ### 知识卡片画报分享与海报导出系统 (Card Poster Export & Share System)

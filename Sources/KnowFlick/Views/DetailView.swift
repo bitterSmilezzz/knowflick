@@ -10,12 +10,38 @@ struct DetailView: View {
     let hasPrevious: Bool   // 有可回看的上一张
     let hasNext: Bool       // 后面还有卡
     let onSwipe: (SwipeDirection) -> Void   // 刷卡意图上抛，不持有整个 store
+    var onToggleFavorite: (() -> Void)? = nil
     let onNext: () -> Void
     let onPrevious: () -> Void
     let onClose: () -> Void
 
     @Environment(\.openURL) private var openURL
     @State private var showPosterSheet = false
+    @State private var isFavorited: Bool
+
+    init(
+        card: KnowledgeCard,
+        showAIMark: Bool,
+        hasPrevious: Bool,
+        hasNext: Bool,
+        onSwipe: @escaping (SwipeDirection) -> Void,
+        onToggleFavorite: (() -> Void)? = nil,
+        onNext: @escaping () -> Void,
+        onPrevious: @escaping () -> Void,
+        onClose: @escaping () -> Void
+    ) {
+        self.card = card
+        self.showAIMark = showAIMark
+        self.hasPrevious = hasPrevious
+        self.hasNext = hasNext
+        self.onSwipe = onSwipe
+        self.onToggleFavorite = onToggleFavorite
+        self.onNext = onNext
+        self.onPrevious = onPrevious
+        self.onClose = onClose
+        self._isFavorited = State(initialValue: card.swiped == .right)
+    }
+
     private var theme: CategoryTheme {
         CategoryTheme.theme(for: card, cache: .shared)
     }
@@ -58,10 +84,11 @@ struct DetailView: View {
                             .frame(height: 230)
                         }
 
-                        // 顶部操作按钮浮层（分享海报 + 关闭）
+                        // 顶部操作按钮浮层（收藏 + 分享海报 + 关闭）
                         VStack {
                             HStack(spacing: 10) {
                                 Spacer()
+                                favoriteButton
                                 shareButton
                                 closeButton
                             }
@@ -228,6 +255,38 @@ struct DetailView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
+    }
+
+    private var favoriteButton: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isFavorited.toggle()
+                if let onToggleFavorite {
+                    onToggleFavorite()
+                } else {
+                    onSwipe(isFavorited ? .right : .skip)
+                }
+            }
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: isFavorited ? "heart.fill" : "heart")
+                    .font(.system(size: 11.5, weight: .bold))
+                    .foregroundStyle(isFavorited ? EditorialColor.likeGreen : EditorialColor.textPrimary)
+                Text(isFavorited ? "已收藏" : "收藏")
+                    .font(EditorialFont.captionSmall.weight(.bold))
+                    .foregroundStyle(EditorialColor.textPrimary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.45), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(isFavorited ? EditorialColor.likeGreen.opacity(0.55) : EditorialColor.glassBorderHover, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableButtonStyle())
+        .keyboardShortcut("d", modifiers: .command)
+        .help(isFavorited ? "取消收藏 ⌘D" : "加入知识收藏阁 ⌘D")
     }
 
     private var shareButton: some View {

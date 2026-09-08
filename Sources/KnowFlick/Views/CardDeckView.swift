@@ -5,6 +5,7 @@ import KnowFlickCore
 enum ActiveSheet: Identifiable {
     case detail(KnowledgeCard)
     case sharePoster(KnowledgeCard)
+    case favorites
     case settings
     case stats
     case history
@@ -14,6 +15,7 @@ enum ActiveSheet: Identifiable {
         switch self {
         case .detail(let card): return "detail_\(card.id.uuidString)"
         case .sharePoster(let card): return "poster_\(card.id.uuidString)"
+        case .favorites: return "favorites"
         case .settings: return "settings"
         case .stats: return "stats"
         case .history: return "history"
@@ -96,6 +98,9 @@ struct CardDeckView: View {
                             // 连续刷卡：直接切到下一张；刷完则关闭
                             if let next = store.topCard { activeSheet = .detail(next) } else { activeSheet = nil }
                         },
+                        onToggleFavorite: {
+                            store.toggleFavorite(card)
+                        },
                         onNext: {
                             if let next = store.topCard, next.id != card.id { activeSheet = .detail(next) }
                         },
@@ -106,6 +111,10 @@ struct CardDeckView: View {
                     )
                 case .sharePoster(let card):
                     CardPosterExportSheet(card: card) {
+                        activeSheet = nil
+                    }
+                case .favorites:
+                    FavoritesView(store: store) {
                         activeSheet = nil
                     }
                 case .settings:
@@ -458,6 +467,8 @@ struct CardDeckView: View {
                     HapticFeedbackHelper.shared.cardSnapBack()
                     try? store.saveSettings(store.settings)
                 }
+                iconButton("bookmark.fill", help: "知识收藏阁 ⌘B") { activeSheet = .favorites }
+                    .keyboardShortcut("b", modifiers: .command)
                 iconButton("chart.bar", help: "学习统计") { activeSheet = .stats }
                 iconButton("clock.arrow.circlepath", help: "历史记录") { activeSheet = .history }
                 iconButton("arrow.clockwise", help: "换一批新知识") {

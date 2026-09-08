@@ -121,6 +121,9 @@ struct HistoryView: View {
                     store.swipe(card, direction: direction)
                     if let next = nextHistoryCard(after: card) { selectedCard = next } else { selectedCard = nil }
                 },
+                onToggleFavorite: {
+                    store.toggleFavorite(card)
+                },
                 onNext: {
                     if let next = nextHistoryCard(after: card) { selectedCard = next }
                 },
