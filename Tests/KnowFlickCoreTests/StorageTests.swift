@@ -1,20 +1,19 @@
-import XCTest
+import Foundation
+import Testing
 @testable import KnowFlickCore
 
-final class StorageTests: XCTestCase {
+final class StorageTests {
     private var tempDir: URL!
     private var storage: Storage!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("KnowFlickTests-\(UUID().uuidString)", isDirectory: true)
         storage = Storage(baseDir: tempDir)
     }
 
-    override func tearDown() {
+    deinit {
         try? FileManager.default.removeItem(at: tempDir)
-        super.tearDown()
     }
 
     private func makeCard(_ headline: String) -> KnowledgeCard {
@@ -40,69 +39,99 @@ final class StorageTests: XCTestCase {
 
     // MARK: - 保存/加载往返
 
-    func testSaveLoadRoundTrip() {
+    @Test func testSaveLoadRoundTrip() {
         let cards = [makeCard("往返测试")]
         storage.saveCards(cards)
-        XCTAssertEqual(storage.loadCards().map(\.headline), ["往返测试"])
+        #expect(storage.loadCards().map(\.headline) == ["往返测试"])
     }
 
-    func testLoadMissingReturnsEmpty() {
-        XCTAssertTrue(storage.loadCards().isEmpty)
-        XCTAssertFalse(storage.hasSeeded())
+    @Test func testLoadMissingReturnsEmpty() {
+        #expect(storage.loadCards().isEmpty)
+        #expect(!(storage.hasSeeded()))
     }
 
     // MARK: - 备份轮转（C1 核心回归）
 
-    func testBackupRotationKeepsPreviousVersion() {
+    @Test func testBackupRotationKeepsPreviousVersion() {
         storage.saveCards([makeCard("第一版")])
         storage.saveCards([makeCard("第二版")])
         storage.saveCards([makeCard("第三版")])
 
         let backupURL = tempDir.appendingPathComponent("cards.backup.json")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: backupURL.path), "备份文件应存在")
+        #expect(FileManager.default.fileExists(atPath: backupURL.path), "备份文件应存在")
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let backup = try! decoder.decode([KnowledgeCard].self, from: Data(contentsOf: backupURL))
         // 关键断言：备份必须是「上一版」（第二版），而不是停在第一次保存的残影
-        XCTAssertEqual(backup.map(\.headline), ["第二版"])
+        #expect(backup.map(\.headline) == ["第二版"])
     }
 
-    func testLoadFromBackupWhenMainCorrupted() {
+    @Test func testLoadFromBackupWhenMainCorrupted() {
         storage.saveCards([makeCard("健康版")])
         // 主文件写坏
         try! writeMain(Data("{ not valid json".utf8))
 
         let loaded = storage.loadCards()
-        XCTAssertEqual(loaded.map(\.headline), ["健康版"])
+        #expect(loaded.map(\.headline) == ["健康版"])
         // 恢复后主文件应被重建为健康内容
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let main = try! decoder.decode([KnowledgeCard].self, from: Data(contentsOf: tempDir.appendingPathComponent("cards.json")))
-        XCTAssertEqual(main.map(\.headline), ["健康版"])
+        #expect(main.map(\.headline) == ["健康版"])
     }
 
-    func testLoadFromBackupWhenMainEmptyArray() {
+    @Test func testLoadFromBackupWhenMainEmptyArray() {
         storage.saveCards([makeCard("内容卡")])
         try! writeMain(encodeCards([]))   // 空数组视为损坏
-        XCTAssertEqual(storage.loadCards().map(\.headline), ["内容卡"])
+        #expect(storage.loadCards().map(\.headline) == ["内容卡"])
     }
 
-    func testReseedWhenBothCorrupted() {
+    @Test func testReseedWhenBothCorrupted() {
         try! writeMain(Data("{ bad".utf8))
         try! Data("{ also bad".utf8).write(to: tempDir.appendingPathComponent("cards.backup.json"))
-        XCTAssertTrue(storage.loadCards().isEmpty)
+        #expect(storage.loadCards().isEmpty)
         // 损坏文件被清走，下次可重新播种
-        XCTAssertFalse(FileManager.default.fileExists(atPath: tempDir.appendingPathComponent("cards.json").path))
+        #expect(!(FileManager.default.fileExists(atPath: tempDir.appendingPathComponent("cards.json").path)))
     }
 
     // MARK: - 设置
 
-    func testSettingsRoundTrip() {
+    @Test func testSettingsRoundTrip() {
         var settings = AISettings.default
         settings.model = "deepseek-reasoner"
         settings.categoryFilter = "物理, 天文"
         storage.saveSettings(settings)
-        XCTAssertEqual(storage.loadSettings(), settings)
+        #expect(storage.loadSettings() == settings)
+    }
+}
+
+extension StorageTests {
+    @Test func settingsEncodingNeverContainsAPIKey() throws {
+        var settings = AISettings.default
+        settings.apiKey = "test-secret-do-not-persist"
+        let encoded = try JSONEncoder().encode(settings)
+        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        #expect(object["apiKey"] == nil)
+        storage.saveSettings(settings)
+        let disk = try String(contentsOf: tempDir.appendingPathComponent("settings.json"), encoding: .utf8)
+        #expect(!disk.contains(settings.apiKey))
+        #expect(storage.loadSettings().apiKey.isEmpty)
+        #expect(storage.loadSettings().model == settings.model)
+    }
+
+    @Test func recoveryDoesNotReplaceHealthyBackupWithCorruption() throws {
+        storage.saveCards([makeCard("旧版")])
+        storage.saveCards([makeCard("新版")])
+        try writeMain(Data("broken".utf8))
+        #expect(storage.loadCards().map(\.headline) == ["旧版"])
+        try writeMain(Data("broken again".utf8))
+        #expect(storage.loadCards().map(\.headline) == ["旧版"])
+    }
+
+    @Test func missingMainStillRecoversBackup() throws {
+        storage.saveCards([makeCard("备份")])
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("cards.json"))
+        #expect(storage.loadCards().map(\.headline) == ["备份"])
     }
 }

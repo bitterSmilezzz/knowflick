@@ -675,9 +675,9 @@ struct SettingsView: View {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
                         .foregroundStyle(EditorialColor.aiAmber)
-                    Text("KnowFlick v2.9.0")
+                    Text("KnowFlick v3.0.0")
                         .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .foregroundStyle(EditorialColor.textTertiary)
                 }
                 Spacer()
                 Link(destination: URL(string: "https://github.com/bitterSmilezzz/knowflick")!) {
@@ -717,7 +717,7 @@ struct SettingsView: View {
             .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
             .buttonStyle(PressableButtonStyle())
-            .disabled(isTesting || apiKey.isEmpty)
+            .disabled(isTesting || (currentPreset.requiresKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
 
             Button("保存配置") {
                 save()

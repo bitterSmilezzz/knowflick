@@ -560,6 +560,7 @@ struct FavoritesView: View {
 
             DetailView(
                 card: card,
+                store: store,
                 showAIMark: store.settings.showAIMark,
                 hasPrevious: false,
                 hasNext: false,

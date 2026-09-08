@@ -56,6 +56,7 @@ public enum StatsCalculator {
         days: Int = 7,
         endingAt now: Date = Date()
     ) -> [LearningStats.DailyCount] {
+        guard days > 0 else { return [] }
         let today = calendar.startOfDay(for: now)
         let counts = Dictionary(
             grouping: cards.compactMap { $0.seenAt }.map { calendar.startOfDay(for: $0) },

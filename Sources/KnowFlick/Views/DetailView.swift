@@ -14,15 +14,18 @@ struct DetailView: View {
     let onNext: () -> Void
     let onPrevious: () -> Void
     let onClose: () -> Void
+    var store: AppStore? = nil
     var relatedCards: [RelatedCardItem] = []
     var onSelectCard: ((KnowledgeCard) -> Void)? = nil
 
     @Environment(\.openURL) private var openURL
     @State private var showPosterSheet = false
-    @State private var isFavorited: Bool
+    @State private var showChatSheet = false
+    private var isFavorited: Bool { store?.isFavorite(card) ?? (card.swiped == .right) }
 
     init(
         card: KnowledgeCard,
+        store: AppStore? = nil,
         showAIMark: Bool,
         hasPrevious: Bool,
         hasNext: Bool,
@@ -35,6 +38,7 @@ struct DetailView: View {
         onSelectCard: ((KnowledgeCard) -> Void)? = nil
     ) {
         self.card = card
+        self.store = store
         self.showAIMark = showAIMark
         self.hasPrevious = hasPrevious
         self.hasNext = hasNext
@@ -45,7 +49,6 @@ struct DetailView: View {
         self.onClose = onClose
         self.relatedCards = relatedCards
         self.onSelectCard = onSelectCard
-        self._isFavorited = State(initialValue: card.swiped == .right)
     }
 
     private var theme: CategoryTheme {
@@ -90,10 +93,11 @@ struct DetailView: View {
                             .frame(height: 230)
                         }
 
-                        // 顶部操作按钮浮层（收藏 + 分享海报 + 关闭）
+                        // 顶部操作按钮浮层（AI 追问 + 朗读 + 收藏 + 分享海报 + 关闭）
                         VStack {
                             HStack(spacing: 10) {
                                 Spacer()
+                                chatTopButton
                                 speechTopButton
                                 favoriteButton
                                 shareButton
@@ -217,6 +221,9 @@ struct DetailView: View {
                             }
                         }
 
+                        // 向卡片追问与 AI 伴学横幅
+                        aiCompanionBanner
+
                         // 相关灵感脉络
                         relatedCardsSection
 
@@ -268,16 +275,103 @@ struct DetailView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
+        .sheet(isPresented: $showChatSheet) {
+            if let store {
+                CardFollowUpChatView(card: card, store: store) {
+                    showChatSheet = false
+                }
+            }
+        }
+    }
+
+    private var chatTopButton: some View {
+        Button(action: { showChatSheet = true }) {
+            HStack(spacing: 5) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11.5, weight: .bold))
+                Text("AI 追问")
+                    .font(EditorialFont.captionSmall.weight(.bold))
+            }
+            .foregroundStyle(EditorialColor.aiAmber)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.45), in: Capsule())
+            .overlay(
+                Capsule().strokeBorder(EditorialColor.aiAmber.opacity(0.55), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableButtonStyle())
+        .keyboardShortcut("j", modifiers: .command)
+        .help("向 AI 深入探讨此卡片知识 (⌘J)")
+    }
+
+    private var aiCompanionBanner: some View {
+        Button(action: { showChatSheet = true }) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(RadialGradient(
+                            colors: [EditorialColor.aiAmber.opacity(0.35), .clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 20
+                        ))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(EditorialColor.aiAmber)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("向卡片追问")
+                            .font(.system(size: 13.5, weight: .bold, design: .serif))
+                            .foregroundStyle(EditorialColor.textPrimary)
+                        Text("AI 伴学 ⌘J")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(EditorialColor.aiAmber)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(EditorialColor.aiAmber.opacity(0.12), in: Capsule())
+                    }
+                    Text("对底层机理、现实案例或跨界碰撞有疑问？随时与 AI 导师探讨")
+                        .font(EditorialFont.caption)
+                        .foregroundStyle(EditorialColor.textSecondary)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text("深入探讨")
+                        .font(.system(size: 12, weight: .bold))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(EditorialColor.aiAmber)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(EditorialColor.aiAmber.opacity(0.12), in: Capsule())
+                .overlay(Capsule().strokeBorder(EditorialColor.aiAmber.opacity(0.3), lineWidth: 1))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(EditorialColor.aiAmber.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableButtonStyle())
+        .padding(.top, 24)
     }
 
     private var favoriteButton: some View {
         Button(action: {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                isFavorited.toggle()
                 if let onToggleFavorite {
                     onToggleFavorite()
                 } else {
-                    onSwipe(isFavorited ? .right : .skip)
+                    onSwipe(isFavorited ? .skip : .right)
                 }
             }
         }) {

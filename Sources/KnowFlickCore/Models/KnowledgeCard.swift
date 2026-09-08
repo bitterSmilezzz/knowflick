@@ -1,7 +1,7 @@
 import Foundation
 
 /// 一条知识卡片（预置或 AI 生成）
-public struct KnowledgeCard: Codable, Identifiable, Hashable {
+public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var category: String        // 分类：物理 / 生物 / 历史 / 数学 ...
     public var headline: String        // 卡片标题（一句话冷知识）
@@ -88,7 +88,7 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable {
 }
 
 /// 科普链接
-public struct ScienceLink: Codable, Hashable {
+public struct ScienceLink: Codable, Hashable, Sendable {
     public var title: String
     public var url: String
 
@@ -99,13 +99,13 @@ public struct ScienceLink: Codable, Hashable {
 }
 
 /// 卡片来源
-public enum CardSource: String, Codable, Hashable {
+public enum CardSource: String, Codable, Hashable, Sendable {
     case seed    // 预置知识库
     case ai      // AI 实时生成
 }
 
 /// 刷走意图
-public enum SwipeDirection: String, Codable, Hashable {
+public enum SwipeDirection: String, Codable, Hashable, Sendable {
     case left    // 左划 = 不喜欢/换一张
     case right   // 右划 = 收藏/感兴趣
     case skip    // 系统操作（换一批）：仅计已刷，不表达喜好

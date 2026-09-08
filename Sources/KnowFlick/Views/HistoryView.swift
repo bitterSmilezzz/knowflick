@@ -114,6 +114,7 @@ struct HistoryView: View {
         .sheet(item: $selectedCard) { card in
             DetailView(
                 card: card,
+                store: store,
                 showAIMark: showAIMark,
                 hasPrevious: false,
                 hasNext: nextHistoryCard(after: card) != nil,

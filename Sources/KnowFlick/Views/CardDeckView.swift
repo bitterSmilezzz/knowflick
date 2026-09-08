@@ -12,6 +12,7 @@ enum ActiveSheet: Identifiable {
     case help
     case quiz(category: String?)
     case graph
+    case chat(KnowledgeCard)
 
     var id: String {
         switch self {
@@ -24,6 +25,7 @@ enum ActiveSheet: Identifiable {
         case .help: return "help"
         case .quiz(let cat): return "quiz_\(cat ?? "all")"
         case .graph: return "graph"
+        case .chat(let card): return "chat_\(card.id.uuidString)"
         }
     }
 }
@@ -124,6 +126,7 @@ struct CardDeckView: View {
                 case .detail(let card):
                     DetailView(
                         card: card,
+                        store: store,
                         showAIMark: store.settings.showAIMark,
                         hasPrevious: store.history.first != nil,
                         hasNext: store.deck.count > 1,
@@ -183,6 +186,10 @@ struct CardDeckView: View {
                             activeSheet = nil
                         }
                     )
+                case .chat(let card):
+                    CardFollowUpChatView(card: card, store: store) {
+                        activeSheet = nil
+                    }
                 }
             }
         }
@@ -269,6 +276,11 @@ struct CardDeckView: View {
                         activeSheet = .graph
                     } label: {
                         Label("在全景星图中探索 ⌘G", systemImage: "point.3.filled.connected.trianglepath.dotted")
+                    }
+                    Button {
+                        activeSheet = .chat(top)
+                    } label: {
+                        Label("向卡片追问 (AI 伴学) ⌘J", systemImage: "sparkles")
                     }
                     Divider()
                     Button {
@@ -615,14 +627,24 @@ struct CardDeckView: View {
             .keyboardShortcut(.rightArrow, modifiers: [])
             .disabled(store.topCard == nil || swipingCard != nil)
 
-            roundButton("dice", size: 42, tint: EditorialColor.aiAmber, help: store.settings.apiKey.isEmpty ? "配置 AI 后可生成新卡" : "AI 生成 3 张新卡 ⌘N") {
-                if store.settings.apiKey.isEmpty {
+            roundButton("dice", size: 42, tint: EditorialColor.aiAmber, help: !store.settings.isAIConfigured ? "配置 AI 后可生成新卡" : "AI 生成 3 张新卡 ⌘N") {
+                if !store.settings.isAIConfigured {
                     activeSheet = .settings
                 } else {
                     Task { await store.generateNewCards(count: 3) }
                 }
             }
             .keyboardShortcut("n", modifiers: .command)
+
+            Button("") {
+                if let top = store.topCard {
+                    activeSheet = .chat(top)
+                }
+            }
+            .keyboardShortcut("j", modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
         }
         .padding(.horizontal, 30)
         .padding(.vertical, 16)
@@ -662,22 +684,22 @@ struct CardDeckView: View {
             Text("今天的知识刷完了")
                 .font(EditorialFont.detailHeadline)
                 .foregroundStyle(EditorialColor.textPrimary)
-            Text(store.settings.apiKey.isEmpty
+            Text(!store.settings.isAIConfigured
                  ? "去设置里配置 AI 服务，就能持续生成新知识"
                  : "让 AI 为你生成一批新的冷知识")
                 .font(EditorialFont.bodySerif)
                 .foregroundStyle(EditorialColor.textSecondary)
 
             Button {
-                if store.settings.apiKey.isEmpty {
+                if !store.settings.isAIConfigured {
                     activeSheet = .settings
                 } else {
                     Task { await store.generateNewCards(count: 5) }
                 }
             } label: {
                 Label(
-                    store.settings.apiKey.isEmpty ? "配置 AI" : "生成新知识",
-                    systemImage: store.settings.apiKey.isEmpty ? "gearshape" : "sparkles"
+                    !store.settings.isAIConfigured ? "配置 AI" : "生成新知识",
+                    systemImage: !store.settings.isAIConfigured ? "gearshape" : "sparkles"
                 )
                 .font(EditorialFont.label)
                 .padding(.horizontal, 24)

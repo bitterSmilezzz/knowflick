@@ -14,7 +14,7 @@
     python3 tools/import_lessons.py \
         --sources ../ai-learning-site/kj-content.json ../ai-learning-site/ai-content.json \
                   ../ai-learning-site/code-content.json ../ai-learning-site/en-content.json \
-        --output Sources/KnowFlick/Resources/seed_cards.json
+        --output Sources/KnowFlickCore/Resources/seed_cards.json
 """
 
 import argparse
@@ -27,10 +27,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # 学科文件 → 卡片分类
 CATEGORY_MAP = {
-    "kj": "会计",     # 中级会计
-    "ai": "科技",     # AI 学堂
-    "code": "科技",   # 编程
-    "en": "语言",     # 英语
+    "kj": "中级会计",     # 中级会计
+    "ai": "AI",     # AI 学堂
+    "code": "AI 开发",   # 编程
+    "en": "冷知识",     # 英语
 }
 
 # headline 硬限制
@@ -180,7 +180,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--output",
-        default=REPO_ROOT / "Sources" / "KnowFlick" / "Resources" / "seed_cards.json",
+        default=REPO_ROOT / "Sources" / "KnowFlickCore" / "Resources" / "seed_cards.json",
         help="输出 seed_cards.json 路径",
     )
     args = ap.parse_args()
@@ -202,6 +202,13 @@ def main() -> int:
     # 读现有种子卡，原样追加
     existing = json.loads(output.read_text(encoding="utf-8"))
     original_count = len(existing)
+    known_headlines = {card["headline"] for card in existing}
+    unique_cards = []
+    for card in new_cards:
+        if card["headline"] not in known_headlines:
+            known_headlines.add(card["headline"])
+            unique_cards.append(card)
+    new_cards = unique_cards
     existing.extend(new_cards)
 
     tmp = output.with_suffix(".json.tmp")

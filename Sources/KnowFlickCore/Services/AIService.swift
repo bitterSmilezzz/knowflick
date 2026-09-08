@@ -3,6 +3,43 @@ import Foundation
 /// 与 OpenAI 兼容的 Chat Completions API 客户端
 /// 默认对接 DeepSeek，可在设置里改 baseURL / model
 public struct AIService {
+    private let session: URLSession
+
+    init(session: URLSession = .shared) { self.session = session }
+
+    /// 保留服务商的自定义 API 前缀，只有裸域名才补 /v1。
+    static func completionURL(baseURL: String) throws -> URL {
+        let raw = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var parts = URLComponents(string: raw),
+              ["https", "http"].contains(parts.scheme?.lowercased() ?? ""),
+              let host = parts.host, !host.isEmpty,
+              parts.query == nil, parts.fragment == nil else {
+            throw AIError.badRequest("请输入有效的 HTTP(S) API Base URL")
+        }
+        var path = parts.path
+        while path.hasSuffix("/") { path.removeLast() }
+        if !path.hasSuffix("/chat/completions") {
+            path += path.isEmpty ? "/v1/chat/completions" : "/chat/completions"
+        }
+        parts.path = path
+        guard let url = parts.url else { throw AIError.badRequest("URL 无效") }
+        return url
+    }
+
+    private func makeRequest(settings: AISettings, timeout: TimeInterval) throws -> URLRequest {
+        let key = settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !settings.requiresAPIKey || !key.isEmpty else { throw AIError.missingKey }
+        guard !settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw AIError.badRequest("model 为空")
+        }
+        var request = URLRequest(url: try Self.completionURL(baseURL: settings.baseURL))
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        if !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return request
+    }
+
     // MARK: - 生成知识卡片
 
     public struct AICardPayload: Decodable {
@@ -45,16 +82,17 @@ public struct AIService {
         count: Int,
         excludeHeadlines: [String]
     ) async throws -> [KnowledgeCard] {
-        guard !settings.apiKey.isEmpty else {
+        guard !settings.requiresAPIKey || !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw AIError.missingKey
         }
         guard !settings.baseURL.isEmpty else {
             throw AIError.badRequest("baseURL 为空")
         }
+        guard (1...20).contains(count) else { throw AIError.badRequest("生成数量须为 1–20") }
         // 排除标题上限收敛在服务单点，调用方传全量即可（避免决策分裂）
         let excludeList = Array(excludeHeadlines.prefix(100))
-        let excludedKeys = Set(excludeList.map(Self.normalizeHeadline))
-        let excludedBigrams = excludeList.map(Self.bigramSet)
+        let excludedKeys = Set(excludeHeadlines.map(Self.normalizeHeadline))
+        let excludedBigrams = excludeHeadlines.map(Self.bigramSet)
         // 用户配置的 AI 引用站点偏好（生成内容与检索链接都优先这些站点）
         let preferredSources = settings.preferredSources
         let sourcesHint = preferredSources.isEmpty
@@ -139,13 +177,13 @@ public struct AIService {
         var seenKeys = Set<String>()
         var seenBigrams: [Set<String>] = []
         let cards: [KnowledgeCard] = payloads.compactMap { p in
+            guard p.details.count >= 80 else { return nil }
             let key = Self.normalizeHeadline(p.headline)
             let bigram = Self.bigramSet(p.headline)
             guard !key.isEmpty, !excludedKeys.contains(key), seenKeys.insert(key).inserted else { return nil }
             guard !excludedBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { return nil }
             guard !seenBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { return nil }
             seenBigrams.append(bigram)
-            guard p.details.count >= 80 else { return nil }   // 内容过短视为失败输出
             return KnowledgeCard(
                 category: CategoryRegistry.normalize(p.category, custom: settings.customCategoryNames),   // 归一化到分类体系
                 headline: p.headline,
@@ -281,7 +319,7 @@ public struct AIService {
                     throw e
                 }
                 lastError = e
-                try? await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
             } catch {
                 lastError = error
                 throw error
@@ -297,20 +335,7 @@ public struct AIService {
         maxTokens: Int,
         targetCount: Int
     ) async throws -> [AICardPayload] {
-        var urlString = settings.baseURL
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if urlString.hasSuffix("/v1") {
-            urlString += "/chat/completions"
-        } else {
-            urlString += "/v1/chat/completions"
-        }
-        guard let url = URL(string: urlString) else { throw AIError.badRequest("URL 无效: \(urlString)") }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 90
-        request.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var request = try makeRequest(settings: settings, timeout: 90)
 
         let body: [String: Any] = [
             "model": settings.model,
@@ -321,14 +346,18 @@ public struct AIService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        return try await Task { () -> [AICardPayload] in
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        return try await { () async throws -> [AICardPayload] in
+            try Task.checkCancellation()
+            let (bytes, response) = try await session.bytes(for: request)
+            defer { bytes.task.cancel() }
             guard let http = response as? HTTPURLResponse else { throw AIError.network("无响应") }
             guard (200..<300).contains(http.statusCode) else {
                 throw AIError.httpStatus(http.statusCode, "")
             }
             var buffer = ""
             for try await line in bytes.lines {
+                try Task.checkCancellation()
+                if line.trimmingCharacters(in: .whitespaces) == "data: [DONE]" { break }
                 guard let delta = Self.sseContentDelta(line) else { continue }
                 buffer += delta
                 let extracted = Self.scanObjects(in: buffer)
@@ -338,12 +367,12 @@ public struct AIService {
             }
             // 流结束兜底：buffer 中所有完整对象
             return Self.scanObjects(in: buffer)
-        }.value
+        }()
     }
 
-    /// 轻量连通性探测：发一个极小请求，只验证网络/鉴权/URL 拼装，不消耗额度
+    /// 轻量连通性探测：发一个极小请求，只验证网络/鉴权/URL 拼装，仅使用少量 token
     public func ping(settings: AISettings) async throws {
-        guard !settings.apiKey.isEmpty else { throw AIError.missingKey }
+        guard !settings.requiresAPIKey || !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.missingKey }
         let messages = [["role": "user", "content": "ping"]]
         _ = try await chatCompletion(messages: messages, settings: settings, maxTokens: 1)
     }
@@ -351,20 +380,7 @@ public struct AIService {
     // MARK: - 基础调用（非流式，用于 ping）
 
     private func chatCompletion(messages: [[String: String]], settings: AISettings, maxTokens: Int = 4000) async throws -> String {
-        var urlString = settings.baseURL
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if urlString.hasSuffix("/v1") {
-            urlString += "/chat/completions"
-        } else {
-            urlString += "/v1/chat/completions"
-        }
-        guard let url = URL(string: urlString) else { throw AIError.badRequest("URL 无效: \(urlString)") }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 60
-        request.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var request = try makeRequest(settings: settings, timeout: 60)
 
         let body: [String: Any] = [
             "model": settings.model,
@@ -375,7 +391,7 @@ public struct AIService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AIError.network("无响应") }
 
         guard (200..<300).contains(http.statusCode) else {
@@ -399,6 +415,110 @@ public struct AIService {
         }
     }
 
+    // MARK: - 卡片追问流式对话 (Card Follow-up Chat)
+
+    /// 针对特定知识卡片发起多轮追问对话，返回实时流式文本生成器
+    public func streamCardChat(
+        card: KnowledgeCard,
+        history: [CardChatMessage],
+        userPrompt: String,
+        settings: AISettings
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                guard !settings.requiresAPIKey || !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    continuation.finish(throwing: AIError.missingKey)
+                    return
+                }
+                guard !settings.baseURL.isEmpty else {
+                    continuation.finish(throwing: AIError.badRequest("baseURL 为空"))
+                    return
+                }
+
+                let systemPrompt = """
+                你是一位兼具渊博学识、通透洞察与亲和力的 AI 知识导师（AI Learning Companion）。
+                当前读者正在精读一张精选知识卡片，需要你针对该卡片提供更深层次的探究、机制拆解、现实案例比喻或关联启发。
+
+                【当前卡片上下文】
+                - 领域分类：\(card.category)
+                - 核心观点：\(card.headline)
+                - 内容摘要：\(card.summary)
+                - 深度解析：
+                \(card.details)
+                \(card.links.isEmpty ? "" : "- 权威来源偏好：\(card.links.map(\.title).joined(separator: "、"))")
+
+                【导师回复原则】
+                1. 针对性与准确性：紧密围绕卡片内容与用户的追问展开，不讲假大空的套话，用清晰生动的逻辑讲透“为什么”与底层机理。
+                2. 通俗与形象：善于使用生动的现实比喻、思想实验或工业界实战案例降低认知门槛，但保持学术严谨。
+                3. 排版美感：使用优美的 Markdown 排版（适度加粗重点、使用要点列表、代码块注明语言），段落舒缓呼吸。
+                4. 启发式延伸：在回答末尾，可简短抛出一个反直觉思考题或相关交叉学科延伸方向，引导读者继续探索。
+                """
+
+                var messages: [[String: String]] = [
+                    ["role": "system", "content": systemPrompt]
+                ]
+
+                // 追加历史对话（限制最近 10 轮以保持上下文聚焦并省 token）
+                let recentHistory = history.suffix(10)
+                for msg in recentHistory {
+                    switch msg.sender {
+                    case .user:
+                        messages.append(["role": "user", "content": msg.content])
+                    case .assistant:
+                        messages.append(["role": "assistant", "content": msg.content])
+                    case .system:
+                        break
+                    }
+                }
+
+                // 追加当前追问
+                messages.append(["role": "user", "content": userPrompt])
+
+                let body: [String: Any] = [
+                    "model": settings.model,
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 2048,
+                    "stream": true
+                ]
+
+                do {
+                    var request = try makeRequest(settings: settings, timeout: 90)
+                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                    try Task.checkCancellation()
+                    let (bytes, response) = try await session.bytes(for: request)
+                    defer { bytes.task.cancel() }
+                    guard let http = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: AIError.network("无响应"))
+                        return
+                    }
+                    guard (200..<300).contains(http.statusCode) else {
+                        continuation.finish(throwing: AIError.httpStatus(http.statusCode, ""))
+                        return
+                    }
+
+                    var receivedContent = false
+                    for try await line in bytes.lines {
+                        if line.trimmingCharacters(in: .whitespaces) == "data: [DONE]" { break }
+                        if Task.isCancelled { break }
+                        guard let delta = Self.sseContentDelta(line) else { continue }
+                        if !delta.isEmpty { receivedContent = true }
+                        continuation.yield(delta)
+                    }
+                    try Task.checkCancellation()
+                    guard receivedContent else { throw AIError.parse("AI 未返回可用回复，请重试") }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
     // MARK: - 工具
 
     /// 把关键词构造成真实可用的科普检索链接（避免幻觉 URL）。
@@ -407,10 +527,11 @@ public struct AIService {
         let source = sources.first ?? ""
         return keywords.prefix(3).map { kw in
             let query = source.isEmpty ? kw : "\(kw) \(source)"
-            let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+            var components = URLComponents(string: "https://www.bing.com/search")!
+            components.queryItems = [URLQueryItem(name: "q", value: query)]
             return ScienceLink(
                 title: source.isEmpty ? "搜索：\(kw)" : "搜索：\(query)",
-                url: "https://www.bing.com/search?q=\(encoded)"
+                url: components.url!.absoluteString
             )
         }
     }

@@ -112,6 +112,13 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
         speakRawText(textToRead, cardId: card.id, category: card.category)
     }
 
+    /// 朗读追问回复，保持当前卡片及播放状态一致。
+    public func speakResponse(_ text: String, for card: KnowledgeCard) {
+        stopAmbientMode()
+        currentCard = card
+        speakRawText(text, cardId: card.id, category: card.category)
+    }
+
     /// 针对特定词汇进行独立发音（如点击重点单词、专有名词、音标）
     public func speakTerm(_ term: String, languageHint: String? = nil) {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -235,7 +242,7 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     }
 
     /// 智能语种与音色探测
-    private func detectBestVoice(for text: String, category: String) -> AVSpeechSynthesisVoice {
+    private func detectBestVoice(for text: String, category: String) -> AVSpeechSynthesisVoice? {
         // 用户指定了有效的声音
         if preferredVoiceIdentifier != "auto",
            let voice = AVSpeechSynthesisVoice(identifier: preferredVoiceIdentifier) {
@@ -276,7 +283,7 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
             return zhVoice
         }
 
-        return AVSpeechSynthesisVoice(language: Locale.current.identifier) ?? AVSpeechSynthesisVoice(language: "zh-CN")!
+        return AVSpeechSynthesisVoice(language: Locale.current.identifier)
     }
 
     /// 获取系统中可用的全部高质量语音列表
@@ -294,6 +301,7 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 extension SpeechSynthesizerService: AVSpeechSynthesizerDelegate {
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            guard self.currentUtterance === utterance else { return }
             if let card = self.currentCard {
                 self.state = .playing(cardId: card.id, text: self.currentSpeakingText, progress: 0.0)
             }
@@ -302,6 +310,7 @@ extension SpeechSynthesizerService: AVSpeechSynthesizerDelegate {
 
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            guard self.currentUtterance === utterance else { return }
             self.currentWordRange = characterRange
             let progress = min(1.0, Double(characterRange.location + characterRange.length) / Double(self.totalCharactersCount))
             if let card = self.currentCard {
@@ -312,13 +321,14 @@ extension SpeechSynthesizerService: AVSpeechSynthesizerDelegate {
 
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            guard self.currentUtterance === utterance else { return }
             self.currentWordRange = nil
 
             if self.isAmbientMode {
                 // 磨耳朵模式：停顿指定秒数后自动进入下一张
                 self.ambientTimer?.cancel()
                 self.ambientTimer = Task {
-                    try? await Task.sleep(nanoseconds: UInt64(self.ambientGapSeconds * 1_000_000_000))
+                    try? await Task.sleep(nanoseconds: UInt64((self.ambientGapSeconds.isFinite ? min(60, max(0, self.ambientGapSeconds)) : 1.5) * 1_000_000_000))
                     guard !Task.isCancelled, self.isAmbientMode else { return }
 
                     if let nextCard = self.onAmbientAdvanceRequest?() {
@@ -335,6 +345,7 @@ extension SpeechSynthesizerService: AVSpeechSynthesizerDelegate {
 
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            guard self.currentUtterance === utterance else { return }
             self.state = .idle
             self.currentWordRange = nil
         }

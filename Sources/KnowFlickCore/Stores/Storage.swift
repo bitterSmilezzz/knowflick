@@ -2,9 +2,9 @@ import Foundation
 
 /// 本地 JSON 存储：卡片池、历史记录、设置
 /// 可注入目录以便测试；默认落在 ~/Library/Application Support/KnowFlick/
-public struct Storage {
+public struct Storage: Sendable {
     private let baseDir: URL
-    private let fileManager = FileManager.default
+    private var fileManager: FileManager { .default }
 
     /// 默认存储目录（Application Support/KnowFlick）
     public init() {
@@ -63,14 +63,16 @@ public struct Storage {
         }
         let url = fileURL("cards.json")
         let backup = fileURL("cards.backup.json")
-        if fileManager.fileExists(atPath: url.path) {
-            // copyItem 在目标已存在时会直接失败（实测 NSFileWriteFileExistsError）——先移除旧备份再复制
-            try? fileManager.removeItem(at: backup)
-            do {
-                try fileManager.copyItem(at: url, to: backup)
-            } catch {
-                NSLog("KnowFlick: 备份轮转失败: %@", error.localizedDescription)
-            }
+        // 只轮转可解码的健康主文件；恢复备份时不能用损坏内容覆盖它。
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let previous = try? Data(contentsOf: url)
+        let previousCards = previous.flatMap { try? decoder.decode([KnowledgeCard].self, from: $0) }
+        let backupData = (previousCards?.isEmpty == false) ? (previous ?? data) : data
+        do {
+            try backupData.write(to: backup, options: .atomic)
+        } catch {
+            NSLog("KnowFlick: 备份轮转失败: %@", error.localizedDescription)
         }
         do {
             try data.write(to: url, options: .atomic)
@@ -99,5 +101,47 @@ public struct Storage {
 
     public func hasSeeded() -> Bool {
         fileManager.fileExists(atPath: fileURL("cards.json").path)
+    }
+
+    // MARK: - 卡片追问会话 (Card Chat Sessions)
+
+    public func loadChatSessions() -> [UUID: CardChatSession] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let data = try? Data(contentsOf: fileURL("chat_sessions.json")),
+              let list = try? decoder.decode([CardChatSession].self, from: data) else {
+            return [:]
+        }
+        var dict: [UUID: CardChatSession] = [:]
+        for session in list {
+            dict[session.cardId] = session
+        }
+        return dict
+    }
+
+    public func loadChatSession(for cardId: UUID) -> CardChatSession? {
+        loadChatSessions()[cardId]
+    }
+
+    public func saveChatSession(_ session: CardChatSession) {
+        var sessions = loadChatSessions()
+        sessions[session.cardId] = session
+        let list = Array(sessions.values)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(list) {
+            try? data.write(to: fileURL("chat_sessions.json"), options: .atomic)
+        }
+    }
+
+    public func clearChatSession(for cardId: UUID) {
+        var sessions = loadChatSessions()
+        sessions.removeValue(forKey: cardId)
+        let list = Array(sessions.values)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(list) {
+            try? data.write(to: fileURL("chat_sessions.json"), options: .atomic)
+        }
     }
 }

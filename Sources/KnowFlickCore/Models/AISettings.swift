@@ -1,7 +1,7 @@
 import Foundation
 
 /// 一个用户自定义分类：名字 + 内容描述（描述用于 AI 生成时定制该分类的卡片方向）
-public struct CategoryConfig: Codable, Equatable, Hashable, Identifiable {
+public struct CategoryConfig: Codable, Equatable, Hashable, Identifiable, Sendable {
     public var name: String
     public var description: String
 
@@ -38,8 +38,8 @@ public enum AppearanceMode: String, Codable, CaseIterable, Identifiable, Sendabl
     }
 }
 
-/// AI 服务设置（base_url / model 存 UserDefaults，API key 存 Keychain）
-public struct AISettings: Codable, Equatable {
+/// AI 服务设置（base_url / model 存 settings.json，API key 存 Keychain）
+public struct AISettings: Codable, Equatable, Sendable {
     public var baseURL: String
     public var model: String
     public var apiKey: String
@@ -143,6 +143,37 @@ public struct AISettings: Codable, Equatable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .filter { seen.insert($0).inserted }
+    }
+
+    /// 本机兼容服务可以不提供密钥；远程服务必须显式配置。
+    public var requiresAPIKey: Bool {
+        let host = URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?.host?.lowercased()
+        return !["localhost", "127.0.0.1", "::1", "[::1]"].contains(host ?? "")
+    }
+
+    public var isAIConfigured: Bool {
+        !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (!requiresAPIKey || !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    /// 密钥仅供运行期使用，任何 JSON 编码都不能包含它。
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(baseURL, forKey: .baseURL)
+        try c.encode(model, forKey: .model)
+        try c.encode(autoGenerate, forKey: .autoGenerate)
+        try c.encode(categoryFilter, forKey: .categoryFilter)
+        try c.encode(enableSeed, forKey: .enableSeed)
+        try c.encode(enableAI, forKey: .enableAI)
+        try c.encode(aiSources, forKey: .aiSources)
+        try c.encode(showAIMark, forKey: .showAIMark)
+        try c.encode(appearance, forKey: .appearance)
+        try c.encode(customCategories, forKey: .customCategories)
+        try c.encode(speechRate, forKey: .speechRate)
+        try c.encode(speechVoiceIdentifier, forKey: .speechVoiceIdentifier)
+        try c.encode(ambientGapSeconds, forKey: .ambientGapSeconds)
+        try c.encode(autoSpeakOnDetailOpen, forKey: .autoSpeakOnDetailOpen)
     }
 
     // 旧版 settings.json 无新字段——解码时给默认值，避免旧用户设置被整体重置

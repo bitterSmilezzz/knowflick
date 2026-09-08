@@ -8,6 +8,7 @@ struct KnowledgeGraphView: View {
     var onSelectCard: ((KnowledgeCard) -> Void)? = nil
     let onClose: () -> Void
 
+    @State private var isLoadingGraph = true
     @State private var graphData: KnowledgeGraphData = .init(nodes: [], edges: [])
     @State private var selectedNode: GraphNode? = nil
     @State private var hoveredNode: GraphNode? = nil
@@ -90,8 +91,15 @@ struct KnowledgeGraphView: View {
             }
         }
         .frame(minWidth: 920, minHeight: 660)
-        .onAppear {
-            loadGraph()
+        .overlay {
+            if isLoadingGraph {
+                ProgressView("正在连接知识…")
+                    .padding(20)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .task(id: store.cards) {
+            await loadGraph()
         }
     }
 
@@ -530,8 +538,21 @@ struct KnowledgeGraphView: View {
 
     // MARK: - 辅助逻辑
 
-    private func loadGraph() {
-        self.graphData = store.getKnowledgeGraphData(width: canvasBaseWidth, height: canvasBaseHeight)
+    private func loadGraph() async {
+        isLoadingGraph = true
+        let cards = store.cards
+        let width = canvasBaseWidth, height = canvasBaseHeight
+        let worker = Task.detached(priority: .userInitiated) {
+            KnowledgeGraphEngine.buildGraph(from: cards, width: width, height: height)
+        }
+        let result = await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        guard !Task.isCancelled else { return }
+        graphData = result
+        isLoadingGraph = false
     }
 
     private func nodeColor(for category: String) -> Color {

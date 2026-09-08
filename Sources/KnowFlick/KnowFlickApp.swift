@@ -9,6 +9,10 @@ struct KnowFlickApp: App {
         WindowGroup {
             CardDeckView(store: store)
                 .frame(minWidth: 760, minHeight: 560)
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    store.closeChat()
+                    store.flushPersistence()
+                }
                 .preferredColorScheme(store.settings.appearance.colorScheme)
                 .task {
                     await store.bootstrap()

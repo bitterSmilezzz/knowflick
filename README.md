@@ -66,6 +66,18 @@ KnowFlick 是一个用 SwiftUI 编写的 macOS 桌面应用（最低支持 macOS
 
 ## 构建与运行
 
+需要 Swift 6.0+ 工具链（生产代码保持 Swift 5 语言模式），部署最低版本仍为 macOS 14。
+
+### 质量检查
+
+```bash
+./tools/test.sh
+```
+
+测试使用 Swift Testing，脚本兼容 Xcode 与 Command Line Tools 的框架路径。
+覆盖分类、统计、文件恢复、密钥编码隔离、刷卡状态、追问会话、API 传输与星图。
+网络测试通过本地 URLProtocol 替身执行，不请求真实 AI 服务。
+
 ### 直接运行（开发）
 
 ```bash
@@ -129,7 +141,7 @@ cd KnowFlick
 | 内容 | 位置 |
 | --- | --- |
 | 卡片数据（含历史） | `~/Library/Application Support/KnowFlick/cards.json` |
-| AI 设置（base_url / model） | `UserDefaults`（`com.knowflick.app`） |
+| AI 设置（base_url / model） | `~/Library/Application Support/KnowFlick/settings.json` |
 | AI 密钥 | macOS 钥匙串（Keychain） |
 
 内置种子知识库（214 张）随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlickCore.bundle/seed_cards.json`）：

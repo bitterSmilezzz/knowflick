@@ -41,6 +41,13 @@ public final class AppStore {
 
     public var topCard: KnowledgeCard? { deck.first }
 
+    /// 智能追问当前激活卡片与会话
+    public var activeChatCard: KnowledgeCard? = nil
+    public var currentChatSession: CardChatSession? = nil
+    public var isChatStreaming: Bool = false
+    public var chatErrorMessage: String? = nil
+    private var chatStreamTask: Task<Void, Never>? = nil
+
     private let aiService = AIService()
     private let storage: Storage
     private var lastSwipedCardId: UUID?
@@ -70,7 +77,7 @@ public final class AppStore {
         var unseen = cards.filter { $0.seenAt == nil }
         // 来源开关：只开其一则只看该来源；全关则队列为空
         if !settings.enableSeed || !settings.enableAI {
-            unseen = unseen.filter { settings.enableSeed ? $0.source == .seed : $0.source == .ai }
+            unseen = unseen.filter { $0.source == .seed ? settings.enableSeed : settings.enableAI }
         }
         let prefs = settings.preferredCategories
         let filtered: [KnowledgeCard]
@@ -81,9 +88,9 @@ public final class AppStore {
             filtered = preferred.isEmpty ? unseen : preferred
         }
 
-        let filteredIds = Set(filtered.map(\.id))
         let existingDeckIds = Set(deck.map(\.id))
-        let remainingInDeck = deck.filter { filteredIds.contains($0.id) }
+        let currentCards = Dictionary(filtered.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+        let remainingInDeck = deck.compactMap { currentCards[$0.id] }
         let newCards = filtered.filter { !existingDeckIds.contains($0.id) }
 
         if !remainingInDeck.isEmpty && newCards.isEmpty {
@@ -107,8 +114,10 @@ public final class AppStore {
     // MARK: - 生命周期
 
     public func bootstrap() async {
-        if storage.hasSeeded() {
-            cards = storage.loadCards()
+        guard isLoadingSeed else { return }
+        let loadedCards = storage.loadCards()
+        if !loadedCards.isEmpty {
+            cards = loadedCards
             // 自动同步增量种子卡：若内置 seed 库有新扩充卡片，增量合并到用户卡库
             let existingHeadlines = Set(cards.map(\.headline))
             let seeds = loadSeedCards()
@@ -122,11 +131,22 @@ public final class AppStore {
             persist()
         }
         settings = storage.loadSettings()
-        // 读回 Keychain 里的 key
-        settings.apiKey = KeychainHelper.read() ?? ""
+        // 迁移旧版本可能写入 JSON 的密钥；成功进入 Keychain 后再清除明文。
+        let legacyKey = settings.apiKey
+        if let key = KeychainHelper.read() {
+            settings.apiKey = key
+            if !legacyKey.isEmpty { storage.saveSettings(settings) }
+        } else if !legacyKey.isEmpty {
+            do {
+                try KeychainHelper.save(legacyKey)
+                storage.saveSettings(settings)
+            } catch {
+                lastError = error.localizedDescription
+            }
+        }
         isLoadingSeed = false
         // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）
-        if deck.count < 5 && settings.autoGenerate && !settings.apiKey.isEmpty && settings.enableAI {
+        if deck.count < 5 && settings.autoGenerate && settings.isAIConfigured && settings.enableAI {
             await generateNewCards()
         }
     }
@@ -135,18 +155,27 @@ public final class AppStore {
 
     private var persistTask: Task<Void, Never>?
 
-    /// 唯一落盘入口：所有变异方法统一走这里。
-    /// 节流合并（350ms 内的连续刷卡只写最后一次）+ 后台线程执行（JSON 编码与文件 IO 不卡主线程）。
-    /// Task.detached 不随 MainActor 取消，应用退出前未完成的写盘仍会跑完。
+    private let persistenceQueue = DispatchQueue(label: "com.knowflick.persistence", qos: .utility)
+
+    /// 合并连续变更，再通过串行队列写盘，防止旧快照覆盖新快照。
     private func persist() {
         persistTask?.cancel()
-        let snapshot = cards
-        let storage = self.storage
-        persistTask = Task.detached {
-            try? await Task.sleep(for: .seconds(0.35))
-            guard !Task.isCancelled else { return }
-            storage.saveCards(snapshot)
+        persistTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(0.35)) }
+            catch { return }
+            guard let self, !Task.isCancelled else { return }
+            let snapshot = self.cards
+            let storage = self.storage
+            self.persistenceQueue.async { storage.saveCards(snapshot) }
         }
+    }
+
+    /// 应用退出前同步保存最后状态，并等待已提交的写入完成。
+    public func flushPersistence() {
+        persistTask?.cancel()
+        persistTask = nil
+        let snapshot = cards
+        persistenceQueue.sync { storage.saveCards(snapshot) }
     }
 
     // MARK: - 刷卡动作
@@ -336,6 +365,7 @@ public final class AppStore {
 
     /// 生成测验题库：可按分类筛选；优先收藏与未掌握卡片，混合历史已读卡片，生成指定数量并打乱
     public func generateQuizCards(category: String? = nil, limit: Int = 10) -> [KnowledgeCard] {
+        guard limit > 0 else { return [] }
         var pool: [KnowledgeCard] = []
 
         if let category = category, !category.isEmpty {
@@ -416,7 +446,7 @@ public final class AppStore {
         }
         cards = updated
         persist()
-        if settings.autoGenerate && !settings.apiKey.isEmpty && settings.enableAI {
+        if settings.autoGenerate && settings.isAIConfigured && settings.enableAI {
             await generateNewCards(count: 6)
         }
     }
@@ -463,6 +493,119 @@ public final class AppStore {
     public func stopSpeech() {
         speechService.stop()
         speechService.stopAmbientMode()
+    }
+
+    // MARK: - 卡片追问对话 (Card Follow-up Chat)
+
+    /// 打开某张卡片的 AI 追问面板
+    public func openChat(for card: KnowledgeCard) {
+        cancelChatStreaming()
+        self.activeChatCard = card
+        self.chatErrorMessage = nil
+        // 加载历史会话或新建
+        if let existing = storage.loadChatSession(for: card.id) {
+            self.currentChatSession = existing
+        } else {
+            self.currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
+        }
+    }
+
+    /// 关闭追问面板
+    public func closeChat() {
+        cancelChatStreaming()
+        self.activeChatCard = nil
+    }
+
+    /// 发送追问消息
+    public func sendChatMessage(prompt: String) {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isChatStreaming, !trimmed.isEmpty, let card = activeChatCard else { return }
+
+        if currentChatSession == nil {
+            currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
+        }
+
+        // 添加用户消息
+        let userMsg = CardChatMessage(sender: .user, content: trimmed)
+        currentChatSession?.messages.append(userMsg)
+        currentChatSession?.updatedAt = Date()
+
+        // 准备助手消息占位
+        let assistantMsgId = UUID()
+        let assistantMsg = CardChatMessage(id: assistantMsgId, sender: .assistant, content: "", isStreaming: true)
+        currentChatSession?.messages.append(assistantMsg)
+
+        isChatStreaming = true
+        chatErrorMessage = nil
+
+        let historySnapshot = currentChatSession?.messages.dropLast(2) ?? []
+        let settingsSnapshot = self.settings
+
+        chatStreamTask?.cancel()
+        chatStreamTask = Task { @MainActor in
+            guard !Task.isCancelled else { return }
+            do {
+                let stream = self.aiService.streamCardChat(
+                    card: card,
+                    history: Array(historySnapshot),
+                    userPrompt: trimmed,
+                    settings: settingsSnapshot
+                )
+
+                for try await delta in stream {
+                    guard !Task.isCancelled else { break }
+                    if let index = self.currentChatSession?.messages.firstIndex(where: { $0.id == assistantMsgId }) {
+                        self.currentChatSession?.messages[index].content += delta
+                    }
+                }
+
+                guard !Task.isCancelled else { return }
+                if let index = self.currentChatSession?.messages.firstIndex(where: { $0.id == assistantMsgId }) {
+                    self.currentChatSession?.messages[index].isStreaming = false
+                }
+                self.isChatStreaming = false
+                if let session = self.currentChatSession {
+                    self.storage.saveChatSession(session)
+                }
+            } catch {
+                if !Task.isCancelled {
+                    self.isChatStreaming = false
+                    self.chatErrorMessage = error.localizedDescription
+                    if let index = self.currentChatSession?.messages.firstIndex(where: { $0.id == assistantMsgId }) {
+                        if self.currentChatSession?.messages[index].content.isEmpty == true {
+                            self.currentChatSession?.messages.remove(at: index)
+                        } else {
+                            self.currentChatSession?.messages[index].isStreaming = false
+                        }
+                    }
+                    if let session = self.currentChatSession {
+                        self.storage.saveChatSession(session)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 终止当前流式生成
+    public func cancelChatStreaming() {
+        chatStreamTask?.cancel()
+        chatStreamTask = nil
+        isChatStreaming = false
+        if var session = currentChatSession {
+            session.messages.removeAll { $0.isStreaming && $0.content.isEmpty }
+            for i in session.messages.indices { session.messages[i].isStreaming = false }
+            session.updatedAt = Date()
+            currentChatSession = session
+            storage.saveChatSession(session)
+        }
+    }
+
+    /// 清空当前卡片的追问历史
+    public func clearCurrentChatSession() {
+        cancelChatStreaming()
+        guard let card = activeChatCard else { return }
+        storage.clearChatSession(for: card.id)
+        currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
     }
 
     // MARK: - 预置库

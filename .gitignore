@@ -11,3 +11,12 @@ dist/
 # Xcode（本仓库不使用，防御性忽略）
 *.xcodeproj
 xcuserdata/
+
+# Python
+__pycache__/
+*.pyc
+
+
+# Python tools
+__pycache__/
+*.pyc

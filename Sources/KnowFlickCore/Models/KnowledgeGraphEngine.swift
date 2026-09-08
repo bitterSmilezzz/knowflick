@@ -1,7 +1,7 @@
 import Foundation
 
 /// 知识卡片关联关系分类
-public enum RelationKind: String, Codable, CaseIterable {
+public enum RelationKind: String, Codable, CaseIterable, Sendable {
     case disciplineDeepen   // 同领域深化
     case crossDiscipline    // 交叉学科碰撞
     case conceptBridge      // 核心概念共鸣
@@ -27,7 +27,7 @@ public enum RelationKind: String, Codable, CaseIterable {
 }
 
 /// 关联卡片单项
-public struct RelatedCardItem: Identifiable, Hashable {
+public struct RelatedCardItem: Identifiable, Hashable, Sendable {
     public var id: UUID { card.id }
     public let card: KnowledgeCard
     public let kind: RelationKind
@@ -43,7 +43,7 @@ public struct RelatedCardItem: Identifiable, Hashable {
 }
 
 /// 星图节点模型
-public struct GraphNode: Identifiable, Hashable {
+public struct GraphNode: Identifiable, Hashable, Sendable {
     public let id: UUID
     public let cardId: UUID
     public let category: String
@@ -78,7 +78,7 @@ public struct GraphNode: Identifiable, Hashable {
 }
 
 /// 星图引力连线
-public struct GraphEdge: Identifiable, Hashable {
+public struct GraphEdge: Identifiable, Hashable, Sendable {
     public var id: String { "\(sourceId.uuidString)_\(targetId.uuidString)" }
     public let sourceId: UUID
     public let targetId: UUID
@@ -94,7 +94,7 @@ public struct GraphEdge: Identifiable, Hashable {
 }
 
 /// 星图全景拓扑数据
-public struct KnowledgeGraphData {
+public struct KnowledgeGraphData: Sendable {
     public let nodes: [GraphNode]
     public let edges: [GraphEdge]
 
@@ -177,10 +177,14 @@ public enum KnowledgeGraphEngine {
 
     /// 计算两张卡片的关联相似度与关联性质
     public static func evaluateRelation(cardA: KnowledgeCard, cardB: KnowledgeCard) -> (kind: RelationKind, score: Double, reason: String)? {
-        guard cardA.id != cardB.id else { return nil }
+        evaluateRelation(cardA: cardA, cardB: cardB,
+                         kwA: extractKeywords(from: cardA), kwB: extractKeywords(from: cardB))
+    }
 
-        let kwA = extractKeywords(from: cardA)
-        let kwB = extractKeywords(from: cardB)
+    private static func evaluateRelation(
+        cardA: KnowledgeCard, cardB: KnowledgeCard, kwA: Set<String>, kwB: Set<String>
+    ) -> (kind: RelationKind, score: Double, reason: String)? {
+        guard cardA.id != cardB.id else { return nil }
 
         let intersection = kwA.intersection(kwB)
         let union = kwA.union(kwB)
@@ -189,8 +193,9 @@ public enum KnowledgeGraphEngine {
         let isSameCategory = (cardA.category == cardB.category) && !cardA.category.isEmpty
         let affinitySet = disciplineAffinity[cardA.category] ?? []
         let hasDisciplineAffinity = affinitySet.contains(cardB.category)
+            || (disciplineAffinity[cardB.category]?.contains(cardA.category) ?? false)
 
-        let commonWordsSample = Array(intersection.prefix(2)).joined(separator: "、")
+        let commonWordsSample = Array(intersection.sorted().prefix(2)).joined(separator: "、")
         let sharedTopicReason = commonWordsSample.isEmpty ? "" : "围绕「\(commonWordsSample)」概念"
 
         if isSameCategory {
@@ -217,10 +222,12 @@ public enum KnowledgeGraphEngine {
         in pool: [KnowledgeCard],
         limit: Int = 3
     ) -> [RelatedCardItem] {
+        guard limit > 0 else { return [] }
+        let keywords = extractKeywords(from: card)
         var scored: [RelatedCardItem] = []
 
         for other in pool where other.id != card.id {
-            if let result = evaluateRelation(cardA: card, cardB: other) {
+            if let result = evaluateRelation(cardA: card, cardB: other, kwA: keywords, kwB: extractKeywords(from: other)) {
                 scored.append(RelatedCardItem(
                     card: other,
                     kind: result.kind,
@@ -273,12 +280,12 @@ public enum KnowledgeGraphEngine {
         }
 
         var nodes: [GraphNode] = []
-        var nodeMap: [UUID: GraphNode] = [:]
+
 
         for card in cards {
             let catAngle = categoryAngles[card.category] ?? 0
             // 在所属分类星云附近散布，半径 140~270
-            let seed = Double(abs(card.id.hashValue % 10000)) / 10000.0
+            let seed = Double(CardThemeResolver.deterministicHash(card.id.uuidString) % 10000) / 10000.0
             let angleJitter = (seed - 0.5) * 0.9
             let radiusDist = 120.0 + seed * 160.0
 
@@ -287,6 +294,7 @@ public enum KnowledgeGraphEngine {
             let ny = centerY + CGFloat(sin(finalAngle) * radiusDist * 0.78)
 
             let node = GraphNode(
+                id: card.id,
                 cardId: card.id,
                 category: card.category,
                 headline: card.headline,
@@ -297,21 +305,23 @@ public enum KnowledgeGraphEngine {
                 connectionsCount: 0
             )
             nodes.append(node)
-            nodeMap[card.id] = node
+
         }
 
         // 计算节点之间的强关联引力线
         var edges: [GraphEdge] = []
         var connectionTally: [UUID: Int] = [:]
 
+        let keywords = cards.map { extractKeywords(from: $0) }
         for i in 0..<cards.count {
+            if Task.isCancelled { return KnowledgeGraphData(nodes: [], edges: []) }
             let cardA = cards[i]
             // 寻找最强的 1~2 个连线
             var bestMatches: [(other: KnowledgeCard, kind: RelationKind, score: Double)] = []
 
             for j in (i + 1)..<cards.count {
                 let cardB = cards[j]
-                if let rel = evaluateRelation(cardA: cardA, cardB: cardB) {
+                if let rel = evaluateRelation(cardA: cardA, cardB: cardB, kwA: keywords[i], kwB: keywords[j]) {
                     bestMatches.append((cardB, rel.kind, rel.score))
                 }
             }

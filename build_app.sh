@@ -31,10 +31,16 @@ RESOURCE_BUNDLE_NAME="$(basename "$RESOURCE_BUNDLE_SRC")"
 
 # ---------- 1. 构建 ----------
 echo "==> [1/3] swift build -c release"
-swift build -c release
+swift build -c release "$@"
 
 if [[ ! -x "$BINARY_SRC" ]]; then
     echo "错误: 未找到可执行文件 $BINARY_SRC" >&2
+    exit 1
+fi
+
+# 构建资源是必需项：缺失时不能生成表面成功但无卡片的应用。
+if [[ ! -f "$RESOURCE_BUNDLE_SRC/seed_cards.json" ]]; then
+    echo "错误: 缺少种子资源 $RESOURCE_BUNDLE_SRC/seed_cards.json" >&2
     exit 1
 fi
 
@@ -59,9 +65,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.9.0</string>
+	<string>3.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>2.9.0</string>
+	<string>3.0.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -100,6 +106,7 @@ fi
 
 # ---------- 校验与刷新 ----------
 plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
-codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+codesign --force --deep --sign - "$APP_DIR"
+codesign --verify --deep --strict "$APP_DIR"
 touch "$APP_DIR"
 echo "完成: $APP_DIR"
