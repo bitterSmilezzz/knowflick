@@ -4,6 +4,7 @@ import KnowFlickCore
 /// 模态弹窗类型（统一入口，彻底杜绝 macOS SwiftUI 多 sheet 链式挂载相互覆盖失效）
 enum ActiveSheet: Identifiable {
     case detail(KnowledgeCard)
+    case sharePoster(KnowledgeCard)
     case settings
     case stats
     case history
@@ -12,6 +13,7 @@ enum ActiveSheet: Identifiable {
     var id: String {
         switch self {
         case .detail(let card): return "detail_\(card.id.uuidString)"
+        case .sharePoster(let card): return "poster_\(card.id.uuidString)"
         case .settings: return "settings"
         case .stats: return "stats"
         case .history: return "history"
@@ -102,6 +104,10 @@ struct CardDeckView: View {
                         },
                         onClose: { activeSheet = nil }
                     )
+                case .sharePoster(let card):
+                    CardPosterExportSheet(card: card) {
+                        activeSheet = nil
+                    }
                 case .settings:
                     SettingsView(store: store)
                 case .stats:
@@ -127,6 +133,16 @@ struct CardDeckView: View {
                 errorBanner = true
             }
         }
+        .background(
+            Button("") {
+                if let top = store.topCard {
+                    activeSheet = .sharePoster(top)
+                }
+            }
+            .keyboardShortcut("s", modifiers: .command)
+            .opacity(0)
+            .accessibilityHidden(true)
+        )
         .overlay(alignment: .top) {
             if errorBanner, let msg = store.lastError {
                 errorToast(msg)
@@ -170,6 +186,29 @@ struct CardDeckView: View {
                 .onTapGesture {
                     if swipingCard == nil && abs(dragOffset.width) < 10 {
                         activeSheet = .detail(top)
+                    }
+                }
+                .contextMenu {
+                    Button {
+                        activeSheet = .sharePoster(top)
+                    } label: {
+                        Label("生成分享海报... ⌘S", systemImage: "square.and.arrow.up")
+                    }
+                    Button {
+                        activeSheet = .detail(top)
+                    } label: {
+                        Label("查看卡片详情 ⏎", systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+                    Divider()
+                    Button {
+                        performSwipe(.right)
+                    } label: {
+                        Label("感兴趣 →", systemImage: "heart")
+                    }
+                    Button {
+                        performSwipe(.left)
+                    } label: {
+                        Label("不喜欢 ←", systemImage: "xmark")
                     }
                 }
         } else {

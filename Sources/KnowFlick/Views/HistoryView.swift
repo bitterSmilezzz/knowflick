@@ -10,6 +10,7 @@ struct HistoryView: View {
 
     @State private var filter: SwipeDirection? = nil
     @State private var selectedCard: KnowledgeCard? = nil
+    @State private var sharePosterCard: KnowledgeCard? = nil
     @State private var showConfirmClear = false
 
     private var items: [KnowledgeCard] {
@@ -135,6 +136,14 @@ struct HistoryView: View {
         } message: {
             Text("所有卡片会回到待刷队列，此操作不可撤销。")
         }
+        .overlay {
+            if let pc = sharePosterCard {
+                CardPosterExportSheet(card: pc) {
+                    sharePosterCard = nil
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
         .frame(minWidth: 700, minHeight: 520)
     }
 
@@ -192,6 +201,18 @@ struct HistoryView: View {
             .editorialGlassCard(cornerRadius: EditorialRadius.control)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.99))
+        .contextMenu {
+            Button {
+                sharePosterCard = card
+            } label: {
+                Label("导出分享海报...", systemImage: "square.and.arrow.up")
+            }
+            Button {
+                selectedCard = card
+            } label: {
+                Label("查看详情", systemImage: "arrow.up.left.and.arrow.down.right")
+            }
+        }
     }
 
     /// 当前筛选下位于 card 之后的下一条记录；若 card 已被筛选移出（如筛选「感兴趣」时点了「不喜欢」），从列表头继续

@@ -15,6 +15,7 @@ struct DetailView: View {
     let onClose: () -> Void
 
     @Environment(\.openURL) private var openURL
+    @State private var showPosterSheet = false
     private var theme: CategoryTheme {
         CategoryTheme.theme(for: card, cache: .shared)
     }
@@ -57,10 +58,11 @@ struct DetailView: View {
                             .frame(height: 230)
                         }
 
-                        // 关闭按钮浮层
+                        // 顶部操作按钮浮层（分享海报 + 关闭）
                         VStack {
-                            HStack {
+                            HStack(spacing: 10) {
                                 Spacer()
+                                shareButton
                                 closeButton
                             }
                             Spacer()
@@ -197,7 +199,7 @@ struct DetailView: View {
                                     onNext()
                                 }
                             }
-                            Text("⏎ / Esc 关闭详情 · ⌘Z 撤销上一张")
+                            Text("⏎ / Esc 关闭详情 · ⌘S 导出海报 · ⌘Z 撤销上一张")
                                 .font(EditorialFont.captionSmall)
                                 .foregroundStyle(EditorialColor.textMuted)
                         }
@@ -218,6 +220,33 @@ struct DetailView: View {
                 .opacity(0)
                 .accessibilityHidden(true)
         )
+        .overlay {
+            if showPosterSheet {
+                CardPosterExportSheet(card: card) {
+                    showPosterSheet = false
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
+    }
+
+    private var shareButton: some View {
+        Button(action: { showPosterSheet = true }) {
+            HStack(spacing: 5) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 11.5, weight: .bold))
+                Text("分享海报")
+                    .font(EditorialFont.captionSmall.weight(.bold))
+            }
+            .foregroundStyle(EditorialColor.textPrimary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.45), in: Capsule())
+            .overlay(Capsule().strokeBorder(EditorialColor.glassBorderHover, lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .keyboardShortcut("s", modifiers: .command)
+        .help("导出画报长图/拍立得分享海报 ⌘S")
     }
 
     private var closeButton: some View {

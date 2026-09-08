@@ -4,6 +4,25 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v2.5.0] - 2026-09-08
+
+### 知识卡片画报分享与海报导出系统 (Card Poster Export & Share System)
+- **画报风与拍立得双排版渲染 (`CardPosterRenderer`)**：
+  - **画报风 (Editorial Magazine)**：540×760 pt 优雅杂志长图比例，搭载学科藏书印章徽标、高清背景摄影羽化过渡、大号衬线金句标题、双引号设计感摘要金句、深度细节摘录与 KnowFlick 出版物防伪认证印章。
+  - **拍立得风 (Polaroid Snapshot)**：520×680 pt 复古象牙米白相纸与内凹相框排版，文艺留白与极简签名日期。
+- **高清光栅化与多通道导出能力 (`PosterExportManager`)**：
+  - **Retina 2x 高清离屏渲染**：采用 `ImageRenderer` 生成 1080×1520 超清无损 PNG 图像，色彩饱和清晰。
+  - **一键写入剪贴板 (`NSPasteboard`)**：支持快捷键 `⌘C` 直接复制图片数据，随时可在微信、飞书、Notion、Discord、邮件中 ⌘V 粘贴发送。
+  - **保存为本地 PNG (`NSSavePanel`)**：支持快捷键 `⌘S` 调起原生保存窗口，安全无损落盘。
+  - **macOS 原生系统分享 (`NSSharingServicePicker`)**：支持通过 AirDrop 隔空投送、备忘录、信息等系统应用快速分享。
+- **全链路交互集成与快捷盲操 (`CardPosterExportSheet`)**：
+  - 卡片详情页 (`DetailView`)：顶部新增「分享海报」按钮，支持快捷键 `⌘S` 唤起。
+  - 主卡片堆 (`CardDeckView`)：支持 `⌘S` 快捷导出当前顶部卡片，支持右键卡片呼出上下文菜单一键生成海报。
+  - 历史足迹 (`HistoryView`)：支持右键任意历史卡片或点击卡片直接生成分享海报。
+  - 导出成功后弹出半透明微拟物灵动 Toast 反馈与机械触觉振动。
+
+---
+
 ## [v2.4.0] - 2026-09-07
 
 ### 视觉与动效精雕：卡片扫光、出版物印章与多阶触觉 (Editorial Polish & Motion Dynamics)
