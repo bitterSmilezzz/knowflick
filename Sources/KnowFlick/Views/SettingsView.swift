@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var showAIMark = true
     @State private var appearance: AppearanceMode = .system
     @State private var customCategories: [CategoryConfig] = []   // 自定义分类（编辑副本）
+    @State private var speech = SpeechSettings()
     @State private var speechRate: Float = 1.0
     @State private var speechVoiceIdentifier: String = "auto"
     @State private var ambientGapSeconds: Double = 1.5
@@ -74,7 +75,7 @@ struct SettingsView: View {
                 bottomBar
             }
         }
-        .frame(width: 620, height: 720)
+        .frame(minWidth: 620, idealWidth: 680, minHeight: 520, idealHeight: 700)
         .onAppear {
             appearance = store.settings.appearance
             baseURL = store.settings.baseURL
@@ -88,6 +89,7 @@ struct SettingsView: View {
             aiSources = store.settings.aiSources
             showAIMark = store.settings.showAIMark
             customCategories = store.settings.customCategories
+            speech = store.settings.speech
             speechRate = store.settings.speechRate
             speechVoiceIdentifier = store.settings.speechVoiceIdentifier
             ambientGapSeconds = store.settings.ambientGapSeconds
@@ -422,7 +424,7 @@ struct SettingsView: View {
                             Text(cat.description.isEmpty ? "未指定方向" : cat.description)
                                 .font(EditorialFont.captionSmall)
                                 .foregroundStyle(EditorialColor.textTertiary)
-                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
                         Button {
@@ -532,11 +534,11 @@ struct SettingsView: View {
                 Image(systemName: "headphones")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(EditorialColor.aiAmber)
-                Text("语音朗读与磨耳朵 (Smart TTS)")
+                Text("语音与连续朗读")
                     .font(EditorialFont.sectionTitle)
                     .foregroundStyle(EditorialColor.textPrimary)
                 Spacer()
-                Text("macOS 原生神经网络语音")
+                Text("系统 · 云端 · 本地服务")
                     .font(EditorialFont.captionSmall)
                     .foregroundStyle(EditorialColor.likeGreen)
             }
@@ -544,6 +546,8 @@ struct SettingsView: View {
             Divider().overlay(EditorialColor.glassDivider)
 
             // 默认语速倍率
+            SpeechSettingsEditor(settings: $speech)
+
             fieldRow(label: "默认朗读语速 (当前: \(String(format: "%.2fx", speechRate)))") {
                 HStack(spacing: 12) {
                     Slider(value: $speechRate, in: 0.75...1.5, step: 0.25)
@@ -584,11 +588,11 @@ struct SettingsView: View {
             }
 
             // 声音选择
-            fieldRow(label: "配音选择") {
+            fieldRow(label: "系统音色（系统模式与离线兜底使用）") {
                 Picker("", selection: $speechVoiceIdentifier) {
-                    Text("智能自动匹配语种（推荐）").tag("auto")
-                    ForEach(SpeechSynthesizerService.availableVoices().prefix(15), id: \.identifier) { voice in
-                        Text("\(voice.name) (\(voice.language))").tag(voice.identifier)
+                    Text("自动选择已下载的高质量音色（推荐）").tag("auto")
+                    ForEach(SpeechSynthesizerService.availableVoices(), id: \.identifier) { voice in
+                        Text("\(voice.name) · \(voice.language)\(voice.quality.rawValue > 0 ? " · 高质量" : " · 标准")").tag(voice.identifier)
                     }
                 }
                 .labelsHidden()
@@ -604,7 +608,7 @@ struct SettingsView: View {
                 Spacer()
 
                 Button {
-                    SpeechSynthesizerService.shared.speakTerm("你好，欢迎使用 KnowFlick 智能发音与磨耳朵系统。")
+                    store.speechService.preview(configuration: speech, voice: speechVoiceIdentifier, speed: speechRate)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "speaker.wave.2")
@@ -675,7 +679,7 @@ struct SettingsView: View {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
                         .foregroundStyle(EditorialColor.aiAmber)
-                    Text("KnowFlick v3.0.0")
+                    Text("KnowFlick v3.1.0")
                         .font(EditorialFont.captionSmall)
                         .foregroundStyle(EditorialColor.textTertiary)
                 }
@@ -785,6 +789,7 @@ struct SettingsView: View {
         updated.showAIMark = showAIMark
         updated.appearance = appearance
         updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.speech = speech
         updated.speechRate = speechRate
         updated.speechVoiceIdentifier = speechVoiceIdentifier
         updated.ambientGapSeconds = ambientGapSeconds

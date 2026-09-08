@@ -217,7 +217,7 @@ struct StatsView: View {
                     .foregroundStyle(EditorialColor.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(width: 90, alignment: .leading)
+                    .frame(minWidth: 90, maxWidth: 150, alignment: .leading)
 
                 GeometryReader { geo in
                     let barWidth = geo.size.width * CGFloat(stat.seen) / CGFloat(maxSeen)

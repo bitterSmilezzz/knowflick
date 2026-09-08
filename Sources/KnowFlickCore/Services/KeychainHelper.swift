@@ -22,7 +22,7 @@ public enum KeychainHelper {
 
     /// 保存（覆盖旧值）；失败抛错而非静默
     @discardableResult
-    public static func save(_ value: String) throws -> Bool {
+    public static func save(_ value: String, account: String = "apiKey") throws -> Bool {
         guard !value.isEmpty else { return false }
         guard let data = value.data(using: .utf8) else {
             throw KeychainError.saveFailed(errSecDecode)
@@ -47,7 +47,7 @@ public enum KeychainHelper {
         return true
     }
 
-    public static func read() -> String? {
+    public static func read(account: String = "apiKey") -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

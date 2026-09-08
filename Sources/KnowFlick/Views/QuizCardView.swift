@@ -19,7 +19,7 @@ struct QuizCardView: View {
     var body: some View {
         ZStack {
             // 正面：题目与主动回忆倒逼思考
-            frontView
+            ScrollView { frontView }
                 .opacity(isFlipped ? 0 : 1)
                 .rotation3DEffect(
                     .degrees(isFlipped ? 180 : 0),
@@ -212,7 +212,7 @@ struct QuizCardView: View {
             Text(card.headline)
                 .font(.system(size: 14.5, weight: .bold))
                 .foregroundStyle(EditorialColor.textPrimary)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 10)
                 .padding(.bottom, 12)
 

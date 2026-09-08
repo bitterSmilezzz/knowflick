@@ -52,6 +52,13 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 
     // MARK: - 观测状态
 
+    public var configuration = SpeechSettings()
+    public private(set) var isPreparing = false
+    public private(set) var lastError: String?
+    private var remoteTask: Task<Void, Never>?
+    private var remotePlayer: AVAudioPlayer?
+    private var playbackID = UUID()
+
     public private(set) var state: SpeechPlaybackState = .idle
     public private(set) var currentWordRange: NSRange? = nil
     public private(set) var currentSpeakingText: String = ""
@@ -60,7 +67,7 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     /// 播放速度倍率 (0.75x, 1.0x, 1.25x, 1.5x)
     public var speedMultiplier: Float = 1.0 {
         didSet {
-            let clamped = min(max(speedMultiplier, 0.5), 2.0)
+            let clamped: Float = speedMultiplier.isFinite ? min(max(speedMultiplier, 0.5), 2.0) : 1
             if speedMultiplier != clamped {
                 speedMultiplier = clamped
             }
@@ -109,14 +116,14 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
             textToRead = "\(card.headline)。\(card.summary)。\(card.details)"
         }
 
-        speakRawText(textToRead, cardId: card.id, category: card.category)
+        speakText(textToRead, cardId: card.id, category: card.category)
     }
 
     /// 朗读追问回复，保持当前卡片及播放状态一致。
     public func speakResponse(_ text: String, for card: KnowledgeCard) {
         stopAmbientMode()
         currentCard = card
-        speakRawText(text, cardId: card.id, category: card.category)
+        speakText(text, cardId: card.id, category: card.category)
     }
 
     /// 针对特定词汇进行独立发音（如点击重点单词、专有名词、音标）
@@ -155,6 +162,11 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     }
 
     public func pause() {
+        if let remotePlayer {
+            remotePlayer.pause()
+            if case .playing(let id, let text, let progress) = state { state = .paused(cardId: id, text: text, progress: progress) }
+            return
+        }
         if synthesizer.isSpeaking {
             synthesizer.pauseSpeaking(at: .immediate)
             if case .playing(let cardId, let text, let progress) = state {
@@ -164,6 +176,11 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     }
 
     public func resume() {
+        if let remotePlayer {
+            remotePlayer.play()
+            if case .paused(let id, let text, let progress) = state { state = .playing(cardId: id, text: text, progress: progress) }
+            return
+        }
         if synthesizer.isPaused {
             synthesizer.continueSpeaking()
             if case .paused(let cardId, let text, let progress) = state {
@@ -173,6 +190,12 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     }
 
     public func stop() {
+        playbackID = UUID()
+        remoteTask?.cancel()
+        remoteTask = nil
+        remotePlayer?.stop()
+        remotePlayer = nil
+        isPreparing = false
         ambientTimer?.cancel()
         if synthesizer.isSpeaking || synthesizer.isPaused {
             synthesizer.stopSpeaking(at: .immediate)
@@ -211,6 +234,93 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
         }
     }
 
+    /// 使用编辑中的配置试听，无需保存，也不改变全局默认设置。
+    public func preview(configuration: SpeechSettings, voice: String, speed: Float) {
+        let oldConfiguration = self.configuration
+        let oldVoice = preferredVoiceIdentifier
+        let oldSpeed = speedMultiplier
+        self.configuration = configuration
+        preferredVoiceIdentifier = voice
+        speedMultiplier = speed
+        let card = KnowledgeCard(category: "冷知识", headline: "试听", summary: "", details: "", source: .seed)
+        speakResponse("你好，欢迎来到 KnowFlick。放慢一点，在知识之间发现新的联系。人工智能 AI，让学习更有趣。", for: card)
+        self.configuration = oldConfiguration
+        preferredVoiceIdentifier = oldVoice
+        speedMultiplier = oldSpeed
+    }
+
+    private func speakText(_ raw: String, cardId: UUID, category: String) {
+        lastError = nil
+        let text = SpeechText.prepare(raw)
+        guard !text.isEmpty else { return }
+        guard let profile = configuration.selectedProfile else {
+            speakRawText(text, cardId: cardId, category: category)
+            return
+        }
+        let token = playbackID
+        let speed = speedMultiplier
+        let fallback = configuration.fallbackToSystem
+        let parts = SpeechText.chunks(text)
+        currentSpeakingText = text
+        state = .playing(cardId: cardId, text: text, progress: 0)
+        remoteTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var completedCharacters = 0
+            do {
+                for part in parts {
+                    try Task.checkCancellation()
+                    self.isPreparing = true
+                    let data = try await RemoteSpeechClient().audio(text: part, profile: profile, speed: speed)
+                    guard self.playbackID == token else { return }
+                    let player = try AVAudioPlayer(data: data)
+                    self.remotePlayer = player
+                    self.isPreparing = false
+                    guard player.prepareToPlay(), player.play() else { throw AIError.parse("无法播放语音音频") }
+                    while player.isPlaying || self.state.isPaused {
+                        try await Task.sleep(for: .milliseconds(100))
+                        guard self.playbackID == token else { return }
+                        if !self.state.isPaused {
+                            let fraction = player.duration > 0 ? player.currentTime / player.duration : 0
+                            self.state = .playing(cardId: cardId, text: text,
+                                progress: min(1, (Double(completedCharacters) + Double(part.count) * fraction) / Double(text.count)))
+                        }
+                    }
+                    completedCharacters += part.count
+                }
+                guard self.playbackID == token else { return }
+                self.remotePlayer = nil
+                self.finishPlayback()
+            } catch {
+                guard !Task.isCancelled, self.playbackID == token else { return }
+                self.isPreparing = false
+                self.remotePlayer = nil
+                self.lastError = fallback ? "语音服务暂不可用，已切换系统声音：\(error.localizedDescription)" : error.localizedDescription
+                if fallback {
+                    let remaining = String(text.dropFirst(completedCharacters))
+                    self.speakRawText(remaining, cardId: cardId, category: category)
+                } else {
+                    self.state = .idle
+                    self.isAmbientMode = false
+                }
+            }
+        }
+    }
+
+    private func finishPlayback() {
+        state = .idle
+        currentWordRange = nil
+        guard isAmbientMode else { return }
+        ambientTimer?.cancel()
+        ambientTimer = Task { [weak self] in
+            guard let self else { return }
+            let gap = self.ambientGapSeconds.isFinite ? min(60, max(0, self.ambientGapSeconds)) : 1.5
+            do { try await Task.sleep(for: .seconds(gap)) } catch { return }
+            guard !Task.isCancelled, self.isAmbientMode else { return }
+            if let card = self.onAmbientAdvanceRequest?() { self.speak(card: card) }
+            else { self.stopAmbientMode() }
+        }
+    }
+
     // MARK: - 内部底层合成
 
     private func speakRawText(_ text: String, cardId: UUID, category: String) {
@@ -226,7 +336,7 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
         let utterance = AVSpeechUtterance(string: trimmed)
 
         // 基础语速约 0.50，按 speedMultiplier 缩放
-        let baseRate = AVSpeechUtteranceDefaultSpeechRate
+        let baseRate = AVSpeechUtteranceDefaultSpeechRate * 0.88
         let adjustedRate = baseRate * speedMultiplier
         utterance.rate = min(max(adjustedRate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
         utterance.pitchMultiplier = 1.0
@@ -263,7 +373,7 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 
         // 英文为主的内容
         if latinRatio > 0.65 {
-            if let enVoice = AVSpeechSynthesisVoice(language: "en-US") {
+            if let enVoice = bestVoice(language: "en-US") {
                 return enVoice
             }
         }
@@ -273,17 +383,21 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
             (scalar.value >= 0x3040 && scalar.value <= 0x309F) || (scalar.value >= 0x30A0 && scalar.value <= 0x30FF)
         }
         if hasJapanese && latinRatio < 0.3 {
-            if let jaVoice = AVSpeechSynthesisVoice(language: "ja-JP") {
+            if let jaVoice = bestVoice(language: "ja-JP") {
                 return jaVoice
             }
         }
 
         // 默认优质中文声音 (zh-CN)
-        if let zhVoice = AVSpeechSynthesisVoice(language: "zh-CN") {
+        if let zhVoice = bestVoice(language: "zh-CN") {
             return zhVoice
         }
 
         return AVSpeechSynthesisVoice(language: Locale.current.identifier)
+    }
+
+    private func bestVoice(language: String) -> AVSpeechSynthesisVoice? {
+        Self.availableVoices().first { $0.language == language } ?? AVSpeechSynthesisVoice(language: language)
     }
 
     /// 获取系统中可用的全部高质量语音列表
@@ -291,6 +405,7 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
         AVSpeechSynthesisVoice.speechVoices().sorted {
             if $0.language.starts(with: "zh") && !$1.language.starts(with: "zh") { return true }
             if !$0.language.starts(with: "zh") && $1.language.starts(with: "zh") { return false }
+            if $0.quality.rawValue != $1.quality.rawValue { return $0.quality.rawValue > $1.quality.rawValue }
             return $0.name < $1.name
         }
     }
@@ -322,24 +437,7 @@ extension SpeechSynthesizerService: AVSpeechSynthesizerDelegate {
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
             guard self.currentUtterance === utterance else { return }
-            self.currentWordRange = nil
-
-            if self.isAmbientMode {
-                // 磨耳朵模式：停顿指定秒数后自动进入下一张
-                self.ambientTimer?.cancel()
-                self.ambientTimer = Task {
-                    try? await Task.sleep(nanoseconds: UInt64((self.ambientGapSeconds.isFinite ? min(60, max(0, self.ambientGapSeconds)) : 1.5) * 1_000_000_000))
-                    guard !Task.isCancelled, self.isAmbientMode else { return }
-
-                    if let nextCard = self.onAmbientAdvanceRequest?() {
-                        self.speak(card: nextCard, part: .full)
-                    } else {
-                        self.stopAmbientMode()
-                    }
-                }
-            } else {
-                self.state = .idle
-            }
+            self.finishPlayback()
         }
     }
 

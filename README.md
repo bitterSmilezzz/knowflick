@@ -78,6 +78,18 @@ KnowFlick 是一个用 SwiftUI 编写的 macOS 桌面应用（最低支持 macOS
 覆盖分类、统计、文件恢复、密钥编码隔离、刷卡状态、追问会话、API 传输与星图。
 网络测试通过本地 URLProtocol 替身执行，不请求真实 AI 服务。
 
+### 语音配置
+
+语音与聊天模型独立配置。默认使用 macOS 系统语音；设置页可以保存多套语音配置，每次启用一套，服务不可用时回退系统声音。
+
+- 云端：填写 HTTPS Base URL、TTS 模型、音色和独立 API Key。兼容 `/v1/audio/speech` 的服务，例如硅基流动 CosyVoice/MOSS-TTSD。
+- 本地：运行 Kokoro-FastAPI、CosyVoice 网关或其他兼容服务，填写 `http://127.0.0.1:<端口>/v1`，不需要 API Key。
+- 模型文件由本地语音服务加载，不直接放进 KnowFlick.app；这样避免应用体积和内存被模型权重占满。API Key 只进 Keychain。
+
+### Android 端
+
+Android 端的实施边界和语音协议见 [android/README.md](android/README.md)。
+
 ### 直接运行（开发）
 
 ```bash

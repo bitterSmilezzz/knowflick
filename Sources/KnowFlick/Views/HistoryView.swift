@@ -173,7 +173,7 @@ struct HistoryView: View {
                     Text(card.headline)
                         .font(EditorialFont.label)
                         .foregroundStyle(EditorialColor.textPrimary)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Text(card.category)
                             .font(EditorialFont.captionSmall.weight(.semibold))

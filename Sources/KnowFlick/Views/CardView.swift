@@ -30,40 +30,11 @@ struct CardView: View {
 
             Spacer(minLength: 20)
 
-            // 衬线大标题
-            Text(card.headline)
-                .font(EditorialFont.heroHeadline)
-                .foregroundStyle(EditorialColor.cardTextPrimary)
-                .lineSpacing(7.5)
-                .lineLimit(5)
-                .minimumScaleFactor(0.65)
-                .shadow(color: .black.opacity(0.65), radius: 10, y: 3)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Rectangle()
-                .fill(theme.accent)
-                .frame(width: 36, height: 3.5)
-                .cornerRadius(1.75)
-                .padding(.top, 16)
-                .padding(.bottom, 14)
-
-            Text(card.summary)
-                .font(EditorialFont.summarySerif)
-                .foregroundStyle(EditorialColor.cardTextSecondary)
-                .lineSpacing(5.5)
-                .lineLimit(4)
-                .shadow(color: .black.opacity(0.55), radius: 6, y: 1.5)
-
-            HStack {
-                Label("详情", systemImage: "arrow.up.left.and.arrow.down.right")
-                    .font(EditorialFont.caption.weight(.semibold))
-                    .foregroundStyle(EditorialColor.cardTextTertiary)
-                Spacer()
-                Text("拖动换一张")
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.cardTextMuted)
+            ViewThatFits(in: .vertical) {
+                readingContent
+                ScrollView { readingContent }
             }
-            .padding(.top, 24)
+
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
@@ -103,6 +74,47 @@ struct CardView: View {
             y: 18
         )
         .onHover { hovering = $0 }
+    }
+
+    private var readingContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 衬线大标题
+            Text(card.headline)
+                .font(EditorialFont.heroHeadline)
+                .foregroundStyle(EditorialColor.cardTextPrimary)
+                .lineSpacing(7.5)
+                .lineLimit(nil)
+                .shadow(color: .black.opacity(0.65), radius: 10, y: 3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Rectangle()
+                .fill(theme.accent)
+                .frame(width: 36, height: 3.5)
+                .cornerRadius(1.75)
+                .padding(.top, 16)
+                .padding(.bottom, 14)
+
+            Text(card.summary)
+                .font(EditorialFont.summarySerif)
+                .foregroundStyle(EditorialColor.cardTextSecondary)
+                .lineSpacing(5.5)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .shadow(color: .black.opacity(0.55), radius: 6, y: 1.5)
+
+            HStack {
+                Label("详情", systemImage: "arrow.up.left.and.arrow.down.right")
+                    .font(EditorialFont.caption.weight(.semibold))
+                    .foregroundStyle(EditorialColor.cardTextTertiary)
+                Spacer()
+                Text("拖动换一张")
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.cardTextMuted)
+            }
+            .padding(.top, 24)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: - 背景层（不参与前景布局）

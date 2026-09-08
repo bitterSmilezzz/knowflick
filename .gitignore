@@ -20,3 +20,10 @@ __pycache__/
 # Python tools
 __pycache__/
 *.pyc
+
+# Generated icon artwork
+Resources/AppIcon-artwork.png
+Resources/AppIcon.iconset/
+
+# Linter caches
+.brooks-lint-history.json

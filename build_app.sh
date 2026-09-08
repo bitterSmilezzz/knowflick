@@ -65,9 +65,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.0.0</string>
+	<string>3.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>3.0.0</string>
+	<string>3.1.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -77,6 +77,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.education</string>
 	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
+	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 </dict>
 </plist>
@@ -84,6 +86,7 @@ PLIST
 
 cp "$BINARY_SRC" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
+cp "$PROJECT_DIR/Resources/AppIcon.png" "$RESOURCES_DIR/AppIcon.png"
 
 # ---------- 3. 复制应用图标与资源 bundle ----------
 if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then

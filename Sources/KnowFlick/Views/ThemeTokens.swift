@@ -124,8 +124,8 @@ public enum EditorialColor {
 
 public enum EditorialFont {
     // 宋体粗体主标题
-    public static let heroHeadline = Font.custom("Songti SC Black", size: 33)
-    public static let detailHeadline = Font.custom("Songti SC Black", size: 28)
+    public static let heroHeadline = Font.custom("Songti SC Black", size: 29)
+    public static let detailHeadline = Font.custom("Songti SC Black", size: 26)
     public static let modalTitle = Font.custom("Songti SC Black", size: 21)
     public static let sectionTitle = Font.custom("Songti SC Black", size: 17)
     public static let statFigure = Font.custom("Songti SC Black", size: 32)

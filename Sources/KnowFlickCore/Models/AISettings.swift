@@ -54,6 +54,7 @@ public struct AISettings: Codable, Equatable, Sendable {
     public var speechRate: Float = 1.0              // 默认朗读语速倍率 (0.75x ~ 1.5x)
     public var speechVoiceIdentifier: String = "auto" // 默认朗读声音标识符 ("auto" 自动探测)
     public var ambientGapSeconds: Double = 1.5      // 磨耳朵切换下一张缓冲秒数
+    public var speech: SpeechSettings = SpeechSettings()
     public var autoSpeakOnDetailOpen: Bool = false  // 打开详情页是否自动朗读
 
     public init(
@@ -160,6 +161,7 @@ public struct AISettings: Codable, Equatable, Sendable {
     /// 密钥仅供运行期使用，任何 JSON 编码都不能包含它。
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(speech, forKey: .speech)
         try c.encode(baseURL, forKey: .baseURL)
         try c.encode(model, forKey: .model)
         try c.encode(autoGenerate, forKey: .autoGenerate)
@@ -178,13 +180,14 @@ public struct AISettings: Codable, Equatable, Sendable {
 
     // 旧版 settings.json 无新字段——解码时给默认值，避免旧用户设置被整体重置
     private enum CodingKeys: String, CodingKey {
-        case baseURL, model, apiKey, autoGenerate, categoryFilter
+        case baseURL, model, apiKey, autoGenerate, categoryFilter, speech
         case enableSeed, enableAI, aiSources, showAIMark, appearance, customCategories
         case speechRate, speechVoiceIdentifier, ambientGapSeconds, autoSpeakOnDetailOpen
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        speech = try c.decodeIfPresent(SpeechSettings.self, forKey: .speech) ?? SpeechSettings()
         baseURL = try c.decodeIfPresent(String.self, forKey: .baseURL) ?? ""
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""

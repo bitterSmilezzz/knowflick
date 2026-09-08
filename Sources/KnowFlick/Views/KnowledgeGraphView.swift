@@ -439,12 +439,12 @@ struct KnowledgeGraphView: View {
                     Text(card.headline)
                         .font(.system(size: 16, weight: .bold, design: .serif))
                         .foregroundStyle(Color.white)
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Text(card.summary)
                         .font(EditorialFont.caption)
                         .foregroundStyle(Color.white.opacity(0.75))
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(3)
 
                     Divider().overlay(Color.white.opacity(0.15))

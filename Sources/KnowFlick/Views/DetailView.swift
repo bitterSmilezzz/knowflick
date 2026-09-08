@@ -441,7 +441,7 @@ struct DetailView: View {
                 Text(link.title)
                     .font(EditorialFont.labelSmall)
                     .foregroundStyle(EditorialColor.textPrimary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Text(displayHost(link.url))
                     .font(EditorialFont.caption)
@@ -547,14 +547,14 @@ struct DetailView: View {
                                     Text(item.card.headline)
                                         .font(.system(size: 13.5, weight: .semibold))
                                         .foregroundStyle(EditorialColor.textPrimary)
-                                        .lineLimit(2)
+                                        .fixedSize(horizontal: false, vertical: true)
                                         .multilineTextAlignment(.leading)
 
                                     if !item.reason.isEmpty {
                                         Text(item.reason)
                                             .font(.system(size: 11, weight: .regular))
                                             .foregroundStyle(EditorialColor.textMuted)
-                                            .lineLimit(1)
+                                            .fixedSize(horizontal: false, vertical: true)
                                     }
                                 }
 

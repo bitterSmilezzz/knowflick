@@ -431,7 +431,7 @@ struct FavoritesView: View {
             Text(card.headline)
                 .font(EditorialFont.sectionTitle)
                 .foregroundStyle(EditorialColor.textPrimary)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -445,7 +445,7 @@ struct FavoritesView: View {
                 Text(card.summary)
                     .font(EditorialFont.caption)
                     .foregroundStyle(EditorialColor.textSecondary)
-                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }

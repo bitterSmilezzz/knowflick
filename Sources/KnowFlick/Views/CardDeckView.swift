@@ -13,6 +13,7 @@ enum ActiveSheet: Identifiable {
     case quiz(category: String?)
     case graph
     case chat(KnowledgeCard)
+    case search
 
     var id: String {
         switch self {
@@ -26,6 +27,7 @@ enum ActiveSheet: Identifiable {
         case .quiz(let cat): return "quiz_\(cat ?? "all")"
         case .graph: return "graph"
         case .chat(let card): return "chat_\(card.id.uuidString)"
+        case .search: return "search"
         }
     }
 }
@@ -64,6 +66,15 @@ struct CardDeckView: View {
                     .padding(.top, 20)
                     .zIndex(100)
 
+                if store.speechService.isPreparing {
+                    ProgressView("正在合成语音…").controlSize(.small).padding(.top, 6)
+                }
+                if let message = store.speechService.lastError {
+                    Text(message).font(EditorialFont.caption)
+                        .foregroundStyle(EditorialColor.aiAmber)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 30)
+                }
                 Spacer(minLength: 8)
 
                 // 卡片堆叠区
@@ -190,6 +201,20 @@ struct CardDeckView: View {
                     CardFollowUpChatView(card: card, store: store) {
                         activeSheet = nil
                     }
+                case .search:
+                    GlobalSearchModalView(
+                        store: store,
+                        onSelect: { card in
+                            activeSheet = .detail(card)
+                        },
+                        onPromote: { card in
+                            store.promoteToDeckTop(card)
+                            activeSheet = nil
+                        },
+                        onChat: { card in
+                            activeSheet = .chat(card)
+                        }
+                    )
                 }
             }
         }
@@ -547,6 +572,42 @@ struct CardDeckView: View {
                     .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
                 }
 
+                // 全局搜索快捷入口
+                Button {
+                    activeSheet = .search
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(EditorialColor.aiAmber)
+                        Text("搜索")
+                            .font(EditorialFont.labelSmall)
+                            .foregroundStyle(EditorialColor.textSecondary)
+                        Text("⌘F")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(EditorialColor.textMuted)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 4))
+                    }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 6.5)
+                    .background(EditorialColor.glassSurface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .keyboardShortcut("f", modifiers: .command)
+                .help("全局智能搜索与全文检索 ⌘F")
+
+                // 语音朗读 / 磨耳朵
+                iconButton(
+                    store.speechService.isAmbientMode ? "headphones.circle.fill" : "headphones",
+                    help: store.speechService.isAmbientMode ? "退出磨耳朵连续朗读 ⇧⌘P" : "磨耳朵连续朗读 ⇧⌘P"
+                ) {
+                    store.toggleAmbientSpeechMode()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+
                 iconButton(store.settings.appearance.icon, help: "外观：\(store.settings.appearance.title)（点击切换）") {
                     let all = AppearanceMode.allCases
                     let currentIndex = all.firstIndex(of: store.settings.appearance) ?? 0
@@ -558,27 +619,49 @@ struct CardDeckView: View {
                     HapticFeedbackHelper.shared.cardSnapBack()
                     try? store.saveSettings(store.settings)
                 }
-                iconButton("graduationcap.fill", help: "知识测验 ⌘Q") { activeSheet = .quiz(category: nil) }
-                    .keyboardShortcut("q", modifiers: .command)
-                iconButton("point.3.filled.connected.trianglepath.dotted", help: "全景知识星图 ⌘G") { activeSheet = .graph }
-                    .keyboardShortcut("g", modifiers: .command)
-                iconButton(store.speechService.isAmbientMode ? "headphones.circle.fill" : "headphones", help: store.speechService.isAmbientMode ? "退出磨耳朵连续朗读 ⌘P" : "磨耳朵连续朗读 ⌘P") {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                        store.toggleAmbientSpeechMode()
+                Menu {
+                    Section("探索与学习") {
+                        Button("全局搜索", systemImage: "magnifyingglass") { activeSheet = .search }
+                            .keyboardShortcut("f", modifiers: .command)
+                        Button("知识测验", systemImage: "graduationcap") { activeSheet = .quiz(category: nil) }
+                            .keyboardShortcut("k", modifiers: .command)
+                        Button("知识星图", systemImage: "point.3.connected.trianglepath.dotted") { activeSheet = .graph }
+                            .keyboardShortcut("g", modifiers: .command)
+                        Button(store.speechService.isAmbientMode ? "停止连续朗读" : "连续朗读", systemImage: "headphones") {
+                            store.toggleAmbientSpeechMode()
+                        }.keyboardShortcut("p", modifiers: [.command, .shift])
+                        Button("知识收藏阁", systemImage: "bookmark") { activeSheet = .favorites }
+                            .keyboardShortcut("b", modifiers: .command)
+                        Button("学习统计", systemImage: "chart.bar") { activeSheet = .stats }
+                        Button("历史记录", systemImage: "clock") { activeSheet = .history }
                     }
+                    Section("卡库管理") {
+                        Button("换一批新知识", systemImage: "arrow.clockwise") {
+                            triggerSheen.toggle()
+                            Task { await store.refreshDeck() }
+                        }
+                        Button("重新探索全部卡片", systemImage: "arrow.counterclockwise") {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                store.clearHistory()
+                            }
+                        }
+                        Button("偏好设置", systemImage: "gearshape") { activeSheet = .settings }
+                            .keyboardShortcut(",", modifiers: .command)
+                        Button("快捷键帮助", systemImage: "questionmark.circle") { activeSheet = .help }
+                            .keyboardShortcut("?", modifiers: .command)
+                    }
+                } label: {
+                    Label("菜单", systemImage: "line.3.horizontal")
+                        .font(EditorialFont.label)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 8)
+                        .background(EditorialColor.glassSurface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
                 }
-                .keyboardShortcut("p", modifiers: .command)
-                iconButton("bookmark.fill", help: "知识收藏阁 ⌘B") { activeSheet = .favorites }
-                    .keyboardShortcut("b", modifiers: .command)
-                iconButton("chart.bar", help: "学习统计") { activeSheet = .stats }
-                iconButton("clock.arrow.circlepath", help: "历史记录") { activeSheet = .history }
-                iconButton("arrow.clockwise", help: "换一批新知识") {
-                    triggerSheen.toggle()
-                    Task { await store.refreshDeck() }
-                }
-                iconButton("gearshape", help: "设置") { activeSheet = .settings }
-                iconButton("questionmark.circle", help: "快捷键 ⌘?") { activeSheet = .help }
-                    .keyboardShortcut("?", modifiers: .command)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("展开功能菜单")
+
             }
         }
         .foregroundStyle(EditorialColor.textPrimary)
@@ -690,26 +773,50 @@ struct CardDeckView: View {
                 .font(EditorialFont.bodySerif)
                 .foregroundStyle(EditorialColor.textSecondary)
 
-            Button {
-                if !store.settings.isAIConfigured {
-                    activeSheet = .settings
-                } else {
-                    Task { await store.generateNewCards(count: 5) }
+            HStack(spacing: 12) {
+                Button {
+                    activeSheet = .search
+                } label: {
+                    Label("搜索知识库 ⌘F", systemImage: "magnifyingglass")
+                        .font(EditorialFont.label)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
                 }
-            } label: {
-                Label(
-                    !store.settings.isAIConfigured ? "配置 AI" : "生成新知识",
-                    systemImage: !store.settings.isAIConfigured ? "gearshape" : "sparkles"
-                )
-                .font(EditorialFont.label)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
+                .buttonStyle(PressableButtonStyle())
+                .background(EditorialColor.glassSurface, in: Capsule())
+                .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1.2))
+                .foregroundStyle(EditorialColor.textPrimary)
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        store.clearHistory()
+                    }
+                } label: {
+                    Label("重新探索全部卡片", systemImage: "arrow.counterclockwise")
+                        .font(EditorialFont.label)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .background(currentTheme.accent.opacity(0.24), in: Capsule())
+                .overlay(Capsule().strokeBorder(currentTheme.accent.opacity(0.7), lineWidth: 1.3))
+                .foregroundStyle(EditorialColor.textPrimary)
+
+                if store.settings.isAIConfigured {
+                    Button {
+                        Task { await store.generateNewCards(count: 5) }
+                    } label: {
+                        Label("生成新知识", systemImage: "sparkles")
+                            .font(EditorialFont.label)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .background(EditorialColor.aiAmber.opacity(0.25), in: Capsule())
+                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmber.opacity(0.7), lineWidth: 1.3))
+                    .foregroundStyle(EditorialColor.textPrimary)
+                }
             }
-            .buttonStyle(PressableButtonStyle(scale: 1.03))
-            .background(currentTheme.accent.opacity(0.24), in: Capsule())
-            .overlay(Capsule().strokeBorder(currentTheme.accent.opacity(0.7), lineWidth: 1.3))
-            .foregroundStyle(EditorialColor.textPrimary)
-            .shadow(color: currentTheme.accent.opacity(0.3), radius: 12, y: 4)
         }
     }
 

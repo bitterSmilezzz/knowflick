@@ -15,6 +15,7 @@ public final class AppStore {
     public var settings: AISettings = .default {
         didSet {
             recomputeDeckAndHistory()
+            speechService.configuration = settings.speech
             speechService.speedMultiplier = settings.speechRate
             speechService.preferredVoiceIdentifier = settings.speechVoiceIdentifier
             speechService.ambientGapSeconds = settings.ambientGapSeconds
@@ -32,6 +33,9 @@ public final class AppStore {
 
     /// 语音朗读与磨耳朵服务
     public let speechService = SpeechSynthesizerService.shared
+
+    /// 全文检索与智能搜索引擎
+    public let searchEngine = KnowledgeSearchEngine()
 
     /// 收藏阁：右划感兴趣的卡片列表（按收藏时间倒序）
     public var favorites: [KnowledgeCard] {
@@ -144,6 +148,9 @@ public final class AppStore {
                 lastError = error.localizedDescription
             }
         }
+        for i in settings.speech.profiles.indices {
+            settings.speech.profiles[i].apiKey = KeychainHelper.read(account: "tts." + settings.speech.profiles[i].id) ?? ""
+        }
         isLoadingSeed = false
         // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）
         if deck.count < 5 && settings.autoGenerate && settings.isAIConfigured && settings.enableAI {
@@ -212,6 +219,15 @@ public final class AppStore {
         }
         cards = updated
         persist()
+    }
+
+    /// 将指定卡片置顶到待刷卡堆顶部（例如通过全局搜索快速定位并准备浏览）
+    public func promoteToDeckTop(_ card: KnowledgeCard) {
+        guard let target = cards.first(where: { $0.id == card.id }) else { return }
+        if deck.first?.id == target.id { return }
+        var updatedDeck = deck.filter { $0.id != target.id }
+        updatedDeck.insert(target, at: 0)
+        self.deck = updatedDeck
     }
 
     // MARK: - 收藏管理与笔记导出
@@ -459,6 +475,9 @@ public final class AppStore {
         // key 非空才写钥匙串；写入失败向上抛，视图可见
         if !trimmedKey.isEmpty {
             try KeychainHelper.save(trimmedKey)
+        }
+        for profile in newSettings.speech.profiles where !profile.apiKey.isEmpty {
+            try KeychainHelper.save(profile.apiKey, account: "tts." + profile.id)
         }
         var persisted = newSettings
         persisted.apiKey = trimmedKey
