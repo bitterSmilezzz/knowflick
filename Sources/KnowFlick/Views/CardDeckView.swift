@@ -10,6 +10,7 @@ enum ActiveSheet: Identifiable {
     case stats
     case history
     case help
+    case quiz(category: String?)
 
     var id: String {
         switch self {
@@ -20,6 +21,7 @@ enum ActiveSheet: Identifiable {
         case .stats: return "stats"
         case .history: return "history"
         case .help: return "help"
+        case .quiz(let cat): return "quiz_\(cat ?? "all")"
         }
     }
 }
@@ -131,6 +133,10 @@ struct CardDeckView: View {
                     HelpView {
                         activeSheet = nil
                     }
+                case .quiz(let category):
+                    QuizView(store: store, category: category) {
+                        activeSheet = nil
+                    }
                 }
             }
         }
@@ -207,6 +213,11 @@ struct CardDeckView: View {
                         activeSheet = .detail(top)
                     } label: {
                         Label("查看卡片详情 ⏎", systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+                    Button {
+                        activeSheet = .quiz(category: top.category)
+                    } label: {
+                        Label("开启 \(top.category) 知识测验", systemImage: "graduationcap")
                     }
                     Divider()
                     Button {
@@ -467,6 +478,8 @@ struct CardDeckView: View {
                     HapticFeedbackHelper.shared.cardSnapBack()
                     try? store.saveSettings(store.settings)
                 }
+                iconButton("graduationcap.fill", help: "知识测验 ⌘Q") { activeSheet = .quiz(category: nil) }
+                    .keyboardShortcut("q", modifiers: .command)
                 iconButton("bookmark.fill", help: "知识收藏阁 ⌘B") { activeSheet = .favorites }
                     .keyboardShortcut("b", modifiers: .command)
                 iconButton("chart.bar", help: "学习统计") { activeSheet = .stats }

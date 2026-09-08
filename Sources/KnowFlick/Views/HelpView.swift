@@ -14,12 +14,22 @@ struct HelpView: View {
         .init(keys: "←", action: "不喜欢（划走）"),
         .init(keys: "→", action: "感兴趣（划走）"),
         .init(keys: "⏎ 回车", action: "展开卡片详情与来源链接"),
+        .init(keys: "⌘ Q", action: "开启沉浸式知识测验"),
         .init(keys: "⌘ B", action: "打开知识收藏阁（沉淀笔记）"),
         .init(keys: "⌘ S", action: "生成并导出分享海报"),
         .init(keys: "⌘ Z", action: "撤销上一张卡片"),
         .init(keys: "⌘ N", action: "AI 生成 3 张新知识"),
         .init(keys: "⌘ ?", action: "打开此快捷键面板"),
         .init(keys: "Esc", action: "关闭弹出的面板")
+    ]
+
+    private let quizShortcuts: [ShortcutRow] = [
+        .init(keys: "⌘ Q", action: "开启知识测验 (Flashcard Quiz)"),
+        .init(keys: "␣ 空格 / ⏎", action: "翻转卡片（查看背面答案与解析）"),
+        .init(keys: "⌘ 1", action: "自评：没想起来（完全遗忘）"),
+        .init(keys: "⌘ 2", action: "自评：犹豫想起（模糊记忆）"),
+        .init(keys: "⌘ 3", action: "自评：熟练掌握（清晰再认）"),
+        .init(keys: "Esc", action: "退出当前测验")
     ]
 
     private let detailShortcuts: [ShortcutRow] = [
@@ -62,8 +72,9 @@ struct HelpView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         shortcutSection(title: "主界面", rows: mainShortcuts)
+                        shortcutSection(title: "知识测验 (Flashcard)", rows: quizShortcuts)
                         shortcutSection(title: "详情页", rows: detailShortcuts)
-                        Text("提示：详情页内点「不喜欢 / 跳过 / 感兴趣」会直接切到下一张，可连续刷卡。")
+                        Text("提示：测验支持全键盘盲操，按空格翻转卡片，按 ⌘1/⌘2/⌘3 快速自评并推进下一题。")
                             .font(EditorialFont.caption)
                             .foregroundStyle(EditorialColor.textMuted)
                     }

@@ -264,6 +264,93 @@ public final class AppStore {
         return md
     }
 
+    // MARK: - 知识测验 (Flashcard Quiz)
+
+    public enum QuizRating: Int, CaseIterable, Identifiable {
+        case forgot = 1      // 没想起来 (完全遗忘)
+        case hesitant = 2    // 犹豫想起 (模糊记忆)
+        case mastered = 3    // 熟练掌握 (清晰再认)
+
+        public var id: Int { rawValue }
+
+        public var title: String {
+            switch self {
+            case .forgot: return "没想起来"
+            case .hesitant: return "犹豫想起"
+            case .mastered: return "熟练掌握"
+            }
+        }
+
+        public var icon: String {
+            switch self {
+            case .forgot: return "xmark.circle.fill"
+            case .hesitant: return "questionmark.circle.fill"
+            case .mastered: return "checkmark.circle.fill"
+            }
+        }
+
+        public var shortcut: String {
+            switch self {
+            case .forgot: return "⌘1"
+            case .hesitant: return "⌘2"
+            case .mastered: return "⌘3"
+            }
+        }
+    }
+
+    /// 记录单次测验反馈：更新卡片掌握度与复习次数，并写盘
+    public func recordQuizResult(cardId: UUID, rating: QuizRating) {
+        guard let idx = cards.firstIndex(where: { $0.id == cardId }) else { return }
+        var updated = cards
+        updated[idx].reviewCount += 1
+        updated[idx].lastReviewedAt = Date()
+        switch rating {
+        case .forgot:
+            updated[idx].masteryLevel = 0
+        case .hesitant:
+            updated[idx].masteryLevel = max(updated[idx].masteryLevel, 1)
+        case .mastered:
+            updated[idx].masteryLevel = 2
+        }
+        cards = updated
+        persist()
+    }
+
+    /// 生成测验题库：可按分类筛选；优先收藏与未掌握卡片，混合历史已读卡片，生成指定数量并打乱
+    public func generateQuizCards(category: String? = nil, limit: Int = 10) -> [KnowledgeCard] {
+        var pool: [KnowledgeCard] = []
+
+        if let category = category, !category.isEmpty {
+            let catFavs = favorites.filter { $0.category == category }
+            let catHistory = history.filter { $0.category == category && !catFavs.contains($0) }
+            pool = catFavs + catHistory
+            if pool.isEmpty {
+                pool = cards.filter { $0.category == category }
+            }
+        } else {
+            let favs = favorites
+            let others = history.filter { c in !favs.contains(where: { $0.id == c.id }) }
+            pool = favs + others
+            if pool.count < limit {
+                let rest = cards.filter { c in !pool.contains(where: { $0.id == c.id }) }
+                pool += rest
+            }
+        }
+
+        let sorted = pool.sorted { c1, c2 in
+            if c1.masteryLevel != c2.masteryLevel {
+                return c1.masteryLevel < c2.masteryLevel
+            }
+            let r1 = c1.lastReviewedAt ?? .distantPast
+            let r2 = c2.lastReviewedAt ?? .distantPast
+            return r1 < r2
+        }
+
+        let countToTake = min(limit, sorted.count)
+        let selection = Array(sorted.prefix(countToTake))
+        return selection.shuffled()
+    }
+
     // MARK: - AI 生成
 
     /// 生成 count 张新卡片并追加到队列

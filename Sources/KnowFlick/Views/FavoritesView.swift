@@ -13,6 +13,8 @@ struct FavoritesView: View {
     @State private var selectedCard: KnowledgeCard? = nil
     @State private var sharePosterCard: KnowledgeCard? = nil
     @State private var toastMessage: String? = nil
+    @State private var showQuiz: Bool = false
+    @State private var quizCategory: String? = nil
 
     // MARK: - 计算属性
 
@@ -82,6 +84,14 @@ struct FavoritesView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
+        .overlay {
+            if showQuiz {
+                QuizView(store: store, category: quizCategory) {
+                    showQuiz = false
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toastMessage)
         .frame(minWidth: 840, minHeight: 600)
     }
@@ -95,6 +105,8 @@ struct FavoritesView: View {
                     withAnimation { selectedCard = nil }
                 } else if sharePosterCard != nil {
                     withAnimation { sharePosterCard = nil }
+                } else if showQuiz {
+                    withAnimation { showQuiz = false }
                 } else {
                     onClose()
                 }
@@ -129,6 +141,26 @@ struct FavoritesView: View {
             }
 
             Spacer()
+
+            // 开启记忆测验
+            Button {
+                quizCategory = selectedCategory
+                showQuiz = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "graduationcap.fill")
+                        .font(.system(size: 11.5, weight: .bold))
+                    Text(selectedCategory != nil ? "\(selectedCategory!)测验" : "开启测验")
+                        .font(EditorialFont.labelSmall)
+                }
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
+                .background(EditorialColor.aiAmber, in: Capsule())
+                .shadow(color: EditorialColor.aiAmber.opacity(0.32), radius: 6, y: 2)
+            }
+            .buttonStyle(PressableButtonStyle())
+            .help(selectedCategory != nil ? "针对 \(selectedCategory!) 分类开启记忆测验" : "针对已收藏知识开启记忆测验")
 
             // 导出 Markdown 笔记菜单
             Menu {

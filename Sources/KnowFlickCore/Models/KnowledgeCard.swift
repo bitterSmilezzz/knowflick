@@ -13,6 +13,10 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable {
     public var seenAt: Date?           // 看过的时间（nil = 还没刷到）
     public var swiped: SwipeDirection? // 刷走意图
 
+    public var reviewCount: Int = 0          // 累计复习次数
+    public var masteryLevel: Int = 0         // 熟练度：0-未测验 1-学习中 2-已掌握
+    public var lastReviewedAt: Date? = nil   // 上次复习时间戳
+
     public init(
         id: UUID = UUID(),
         category: String,
@@ -23,7 +27,10 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable {
         source: CardSource,
         createdAt: Date = Date(),
         seenAt: Date? = nil,
-        swiped: SwipeDirection? = nil
+        swiped: SwipeDirection? = nil,
+        reviewCount: Int = 0,
+        masteryLevel: Int = 0,
+        lastReviewedAt: Date? = nil
     ) {
         self.id = id
         self.category = category
@@ -35,6 +42,48 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable {
         self.createdAt = createdAt
         self.seenAt = seenAt
         self.swiped = swiped
+        self.reviewCount = reviewCount
+        self.masteryLevel = masteryLevel
+        self.lastReviewedAt = lastReviewedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, category, headline, summary, details, links, source
+        case createdAt, seenAt, swiped, reviewCount, masteryLevel, lastReviewedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.category = try container.decode(String.self, forKey: .category)
+        self.headline = try container.decode(String.self, forKey: .headline)
+        self.summary = try container.decode(String.self, forKey: .summary)
+        self.details = try container.decode(String.self, forKey: .details)
+        self.links = try container.decodeIfPresent([ScienceLink].self, forKey: .links) ?? []
+        self.source = try container.decode(CardSource.self, forKey: .source)
+        self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.seenAt = try container.decodeIfPresent(Date.self, forKey: .seenAt)
+        self.swiped = try container.decodeIfPresent(SwipeDirection.self, forKey: .swiped)
+        self.reviewCount = try container.decodeIfPresent(Int.self, forKey: .reviewCount) ?? 0
+        self.masteryLevel = try container.decodeIfPresent(Int.self, forKey: .masteryLevel) ?? 0
+        self.lastReviewedAt = try container.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(category, forKey: .category)
+        try container.encode(headline, forKey: .headline)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(details, forKey: .details)
+        try container.encode(links, forKey: .links)
+        try container.encode(source, forKey: .source)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(seenAt, forKey: .seenAt)
+        try container.encodeIfPresent(swiped, forKey: .swiped)
+        try container.encode(reviewCount, forKey: .reviewCount)
+        try container.encode(masteryLevel, forKey: .masteryLevel)
+        try container.encodeIfPresent(lastReviewedAt, forKey: .lastReviewedAt)
     }
 }
 
