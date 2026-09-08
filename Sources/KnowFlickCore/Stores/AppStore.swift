@@ -351,6 +351,18 @@ public final class AppStore {
         return selection.shuffled()
     }
 
+    // MARK: - 知识星图与语义关联链 (Knowledge Graph & Connected Cards)
+
+    /// 获取指定卡片的相关灵感卡片列表
+    public func getRelatedCards(for card: KnowledgeCard, limit: Int = 3) -> [RelatedCardItem] {
+        KnowledgeGraphEngine.findRelatedCards(for: card, in: cards, limit: limit)
+    }
+
+    /// 生成全量星图引力拓扑数据
+    public func getKnowledgeGraphData(width: CGFloat = 860, height: CGFloat = 620) -> KnowledgeGraphData {
+        KnowledgeGraphEngine.buildGraph(from: cards, width: width, height: height)
+    }
+
     // MARK: - AI 生成
 
     /// 生成 count 张新卡片并追加到队列

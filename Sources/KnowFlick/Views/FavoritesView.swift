@@ -571,7 +571,11 @@ struct FavoritesView: View {
                 },
                 onNext: {},
                 onPrevious: {},
-                onClose: { selectedCard = nil }
+                onClose: { selectedCard = nil },
+                relatedCards: store.getRelatedCards(for: card),
+                onSelectCard: { target in
+                    selectedCard = target
+                }
             )
             .frame(maxWidth: 620, maxHeight: 720)
             .clipShape(RoundedRectangle(cornerRadius: EditorialRadius.modal, style: .continuous))

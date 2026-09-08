@@ -11,6 +11,7 @@ enum ActiveSheet: Identifiable {
     case history
     case help
     case quiz(category: String?)
+    case graph
 
     var id: String {
         switch self {
@@ -22,6 +23,7 @@ enum ActiveSheet: Identifiable {
         case .history: return "history"
         case .help: return "help"
         case .quiz(let cat): return "quiz_\(cat ?? "all")"
+        case .graph: return "graph"
         }
     }
 }
@@ -109,7 +111,11 @@ struct CardDeckView: View {
                         onPrevious: {
                             if let prev = store.history.first { activeSheet = .detail(prev) }
                         },
-                        onClose: { activeSheet = nil }
+                        onClose: { activeSheet = nil },
+                        relatedCards: store.getRelatedCards(for: card),
+                        onSelectCard: { target in
+                            activeSheet = .detail(target)
+                        }
                     )
                 case .sharePoster(let card):
                     CardPosterExportSheet(card: card) {
@@ -137,6 +143,16 @@ struct CardDeckView: View {
                     QuizView(store: store, category: category) {
                         activeSheet = nil
                     }
+                case .graph:
+                    KnowledgeGraphView(
+                        store: store,
+                        onSelectCard: { card in
+                            activeSheet = .detail(card)
+                        },
+                        onClose: {
+                            activeSheet = nil
+                        }
+                    )
                 }
             }
         }
@@ -218,6 +234,11 @@ struct CardDeckView: View {
                         activeSheet = .quiz(category: top.category)
                     } label: {
                         Label("开启 \(top.category) 知识测验", systemImage: "graduationcap")
+                    }
+                    Button {
+                        activeSheet = .graph
+                    } label: {
+                        Label("在全景星图中探索 ⌘G", systemImage: "point.3.filled.connected.trianglepath.dotted")
                     }
                     Divider()
                     Button {
@@ -480,6 +501,8 @@ struct CardDeckView: View {
                 }
                 iconButton("graduationcap.fill", help: "知识测验 ⌘Q") { activeSheet = .quiz(category: nil) }
                     .keyboardShortcut("q", modifiers: .command)
+                iconButton("point.3.filled.connected.trianglepath.dotted", help: "全景知识星图 ⌘G") { activeSheet = .graph }
+                    .keyboardShortcut("g", modifiers: .command)
                 iconButton("bookmark.fill", help: "知识收藏阁 ⌘B") { activeSheet = .favorites }
                     .keyboardShortcut("b", modifiers: .command)
                 iconButton("chart.bar", help: "学习统计") { activeSheet = .stats }

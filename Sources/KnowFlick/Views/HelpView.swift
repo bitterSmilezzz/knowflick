@@ -15,6 +15,7 @@ struct HelpView: View {
         .init(keys: "→", action: "感兴趣（划走）"),
         .init(keys: "⏎ 回车", action: "展开卡片详情与来源链接"),
         .init(keys: "⌘ Q", action: "开启沉浸式知识测验"),
+        .init(keys: "⌘ G", action: "探索全景知识星图与引力链"),
         .init(keys: "⌘ B", action: "打开知识收藏阁（沉淀笔记）"),
         .init(keys: "⌘ S", action: "生成并导出分享海报"),
         .init(keys: "⌘ Z", action: "撤销上一张卡片"),

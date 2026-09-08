@@ -128,7 +128,11 @@ struct HistoryView: View {
                     if let next = nextHistoryCard(after: card) { selectedCard = next }
                 },
                 onPrevious: {},
-                onClose: { selectedCard = nil }
+                onClose: { selectedCard = nil },
+                relatedCards: store.getRelatedCards(for: card),
+                onSelectCard: { target in
+                    selectedCard = target
+                }
             )
         }
         .alert("清空历史记录？", isPresented: $showConfirmClear) {

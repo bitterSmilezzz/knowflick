@@ -14,6 +14,8 @@ struct DetailView: View {
     let onNext: () -> Void
     let onPrevious: () -> Void
     let onClose: () -> Void
+    var relatedCards: [RelatedCardItem] = []
+    var onSelectCard: ((KnowledgeCard) -> Void)? = nil
 
     @Environment(\.openURL) private var openURL
     @State private var showPosterSheet = false
@@ -28,7 +30,9 @@ struct DetailView: View {
         onToggleFavorite: (() -> Void)? = nil,
         onNext: @escaping () -> Void,
         onPrevious: @escaping () -> Void,
-        onClose: @escaping () -> Void
+        onClose: @escaping () -> Void,
+        relatedCards: [RelatedCardItem] = [],
+        onSelectCard: ((KnowledgeCard) -> Void)? = nil
     ) {
         self.card = card
         self.showAIMark = showAIMark
@@ -39,6 +43,8 @@ struct DetailView: View {
         self.onNext = onNext
         self.onPrevious = onPrevious
         self.onClose = onClose
+        self.relatedCards = relatedCards
+        self.onSelectCard = onSelectCard
         self._isFavorited = State(initialValue: card.swiped == .right)
     }
 
@@ -206,6 +212,9 @@ struct DetailView: View {
                                 }
                             }
                         }
+
+                        // 相关灵感脉络
+                        relatedCardsSection
 
                         // 操作底栏：上一张 | 不喜欢 | 跳过 | 感兴趣 | 下一张
                         VStack(spacing: 14) {
@@ -384,6 +393,106 @@ struct DetailView: View {
         .disabled(disabled)
         .keyboardShortcut(shortcut, modifiers: [])
         .help(help)
+    }
+
+    // MARK: - 相关灵感脉络 (Connected Cards)
+
+    @ViewBuilder
+    private var relatedCardsSection: some View {
+        if !relatedCards.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(EditorialColor.aiAmber)
+                    Text("相关灵感脉络")
+                        .font(EditorialFont.sectionTitle)
+                        .foregroundStyle(EditorialColor.textPrimary)
+
+                    Spacer()
+
+                    Text("知识网状联想")
+                        .font(EditorialFont.captionSmall)
+                        .foregroundStyle(EditorialColor.textMuted)
+                }
+                .padding(.top, 28)
+
+                VStack(spacing: 10) {
+                    ForEach(relatedCards) { item in
+                        Button {
+                            onSelectCard?(item.card)
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                // 关系类型微标
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: item.kind.icon)
+                                            .font(.system(size: 10, weight: .bold))
+                                        Text(item.kind.title)
+                                            .font(.system(size: 10.5, weight: .bold))
+                                    }
+                                    .foregroundStyle(relationColor(for: item.kind))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(relationColor(for: item.kind).opacity(0.12), in: Capsule())
+                                    .overlay(Capsule().strokeBorder(relationColor(for: item.kind).opacity(0.3), lineWidth: 1))
+
+                                    Text(item.card.category)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(EditorialColor.textTertiary)
+                                        .padding(.leading, 2)
+                                }
+                                .frame(width: 96, alignment: .leading)
+
+                                // 标题与推荐理由
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.card.headline)
+                                        .font(.system(size: 13.5, weight: .semibold))
+                                        .foregroundStyle(EditorialColor.textPrimary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+
+                                    if !item.reason.isEmpty {
+                                        Text(item.reason)
+                                            .font(.system(size: 11, weight: .regular))
+                                            .foregroundStyle(EditorialColor.textMuted)
+                                            .lineLimit(1)
+                                    }
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(EditorialColor.textMuted)
+                                    .padding(.top, 4)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 11)
+                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                    }
+                }
+            }
+        }
+    }
+
+    private func relationColor(for kind: RelationKind) -> Color {
+        switch kind {
+        case .disciplineDeepen:
+            return Color(red: 0.35, green: 0.65, blue: 0.95)
+        case .crossDiscipline:
+            return EditorialColor.aiAmber
+        case .conceptBridge:
+            return EditorialColor.likeGreen
+        case .serendipity:
+            return Color(red: 0.85, green: 0.45, blue: 0.85)
+        }
     }
 
     private var paragraphs: [String] {
