@@ -94,6 +94,7 @@ struct DetailView: View {
                         VStack {
                             HStack(spacing: 10) {
                                 Spacer()
+                                speechTopButton
                                 favoriteButton
                                 shareButton
                                 closeButton
@@ -181,6 +182,9 @@ struct DetailView: View {
                             )
                             .padding(.top, 16)
                         }
+
+                        // 语音朗读声学播放栏
+                        audioPlayerBar
 
                         // 正文段落（人文排版）
                         VStack(alignment: .leading, spacing: 18) {
@@ -493,6 +497,158 @@ struct DetailView: View {
         case .serendipity:
             return Color(red: 0.85, green: 0.45, blue: 0.85)
         }
+    }
+
+    // MARK: - 语音朗读声学导读组件
+
+    private var speechTopButton: some View {
+        let service = SpeechSynthesizerService.shared
+        let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
+
+        return Button {
+            service.togglePlayPause(for: card)
+            HapticFeedbackHelper.shared.cardSnapBack()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isSpeakingThis ? "pause.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 11.5, weight: .bold))
+                Text(isSpeakingThis ? "暂停" : "朗读")
+                    .font(EditorialFont.captionSmall.weight(.bold))
+            }
+            .foregroundStyle(isSpeakingThis ? EditorialColor.likeGreen : EditorialColor.textPrimary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.45), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(isSpeakingThis ? EditorialColor.likeGreen.opacity(0.55) : EditorialColor.glassBorderHover, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableButtonStyle())
+        .keyboardShortcut("p", modifiers: .command)
+        .help(isSpeakingThis ? "暂停朗读 ⌘P" : "朗读全文 ⌘P")
+    }
+
+    private var audioPlayerBar: some View {
+        let service = SpeechSynthesizerService.shared
+        let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
+        let isPausedThis = service.state.activeCardId == card.id && service.state.isPaused
+        let progress = (service.state.activeCardId == card.id) ? service.state.progress : 0.0
+
+        return VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                // 播放 / 暂停大按键
+                Button {
+                    service.togglePlayPause(for: card)
+                    HapticFeedbackHelper.shared.cardSnapBack()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isSpeakingThis ? "pause.fill" : "play.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(isSpeakingThis ? "暂停朗读" : (isPausedThis ? "继续朗读" : "沉浸导读"))
+                            .font(EditorialFont.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(isSpeakingThis ? Color.black : EditorialColor.textPrimary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        isSpeakingThis ? EditorialColor.likeGreen : Color.white.opacity(0.08),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule().strokeBorder(
+                            isSpeakingThis ? EditorialColor.likeGreen : EditorialColor.glassBorder,
+                            lineWidth: 1
+                        )
+                    )
+                    .shadow(color: isSpeakingThis ? EditorialColor.likeGreen.opacity(0.35) : .clear, radius: 6, y: 1)
+                }
+                .buttonStyle(PressableButtonStyle())
+
+                // 声浪跳动条
+                AudioWaveformBars(isPlaying: isSpeakingThis)
+                    .frame(width: 22, height: 15)
+
+                if isSpeakingThis || isPausedThis {
+                    Text("\(Int(progress * 100))%")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(isSpeakingThis ? EditorialColor.likeGreen : EditorialColor.textSecondary)
+                }
+
+                Spacer()
+
+                // 语速切换
+                Menu {
+                    Button("0.75x 慢速精听") { service.speedMultiplier = 0.75 }
+                    Button("1.0x 正常标准") { service.speedMultiplier = 1.0 }
+                    Button("1.25x 高效快读") { service.speedMultiplier = 1.25 }
+                    Button("1.5x 极速浏览") { service.speedMultiplier = 1.5 }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(speedLabel(for: service.speedMultiplier))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    }
+                    .foregroundStyle(EditorialColor.textSecondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.white.opacity(0.06), in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+
+                // 重新朗读
+                Button {
+                    service.speak(card: card, part: .full)
+                    HapticFeedbackHelper.shared.cardSnapBack()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(EditorialColor.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(Color.white.opacity(0.06), in: Circle())
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .help("从头重新朗读")
+            }
+
+            // 朗读进度条
+            if isSpeakingThis || isPausedThis {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.12))
+                            .frame(height: 3)
+
+                        Capsule()
+                            .fill(EditorialColor.likeGreen)
+                            .frame(width: max(3, geo.size.width * CGFloat(progress)), height: 3)
+                    }
+                }
+                .frame(height: 3)
+            }
+        }
+        .padding(14)
+        .background(
+            EditorialColor.glassSurface,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+        )
+        .padding(.top, 18)
+    }
+
+    private func speedLabel(for rate: Float) -> String {
+        if abs(rate - 0.75) < 0.05 { return "0.75x" }
+        if abs(rate - 1.0) < 0.05 { return "1.0x" }
+        if abs(rate - 1.25) < 0.05 { return "1.25x" }
+        if abs(rate - 1.5) < 0.05 { return "1.5x" }
+        return String(format: "%.1fx", rate)
     }
 
     private var paragraphs: [String] {

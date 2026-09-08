@@ -15,6 +15,9 @@ public final class AppStore {
     public var settings: AISettings = .default {
         didSet {
             recomputeDeckAndHistory()
+            speechService.speedMultiplier = settings.speechRate
+            speechService.preferredVoiceIdentifier = settings.speechVoiceIdentifier
+            speechService.ambientGapSeconds = settings.ambientGapSeconds
         }
     }
     public var isGenerating = false
@@ -26,6 +29,9 @@ public final class AppStore {
 
     public private(set) var deck: [KnowledgeCard] = []
     public private(set) var history: [KnowledgeCard] = []
+
+    /// 语音朗读与磨耳朵服务
+    public let speechService = SpeechSynthesizerService.shared
 
     /// 收藏阁：右划感兴趣的卡片列表（按收藏时间倒序）
     public var favorites: [KnowledgeCard] {
@@ -43,6 +49,18 @@ public final class AppStore {
     public init(storage: Storage = Storage()) {
         self.storage = storage
         recomputeDeckAndHistory()
+
+        speechService.speedMultiplier = settings.speechRate
+        speechService.preferredVoiceIdentifier = settings.speechVoiceIdentifier
+        speechService.ambientGapSeconds = settings.ambientGapSeconds
+
+        speechService.onAmbientAdvanceRequest = { [weak self] in
+            guard let self = self else { return nil }
+            if let current = self.topCard {
+                self.swipe(current, direction: .skip)
+            }
+            return self.topCard
+        }
     }
 
     private func recomputeDeckAndHistory() {
@@ -426,6 +444,25 @@ public final class AppStore {
         } catch {
             return error.localizedDescription
         }
+    }
+
+    // MARK: - 语音与发音朗读接口
+
+    /// 切换顶卡语音朗读 / 暂停
+    public func toggleSpeechForTopCard() {
+        guard let card = topCard else { return }
+        speechService.togglePlayPause(for: card)
+    }
+
+    /// 切换磨耳朵连续播报模式
+    public func toggleAmbientSpeechMode() {
+        speechService.toggleAmbientMode(currentCard: topCard)
+    }
+
+    /// 停止全部语音播报
+    public func stopSpeech() {
+        speechService.stop()
+        speechService.stopAmbientMode()
     }
 
     // MARK: - 预置库

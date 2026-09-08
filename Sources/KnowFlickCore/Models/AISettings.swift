@@ -51,6 +51,10 @@ public struct AISettings: Codable, Equatable {
     public var showAIMark: Bool        // 显示 AI 内容标记
     public var appearance: AppearanceMode // 外观模式（跟随系统/深色/浅色）
     public var customCategories: [CategoryConfig]   // 用户自定义分类（可增删改）
+    public var speechRate: Float = 1.0              // 默认朗读语速倍率 (0.75x ~ 1.5x)
+    public var speechVoiceIdentifier: String = "auto" // 默认朗读声音标识符 ("auto" 自动探测)
+    public var ambientGapSeconds: Double = 1.5      // 磨耳朵切换下一张缓冲秒数
+    public var autoSpeakOnDetailOpen: Bool = false  // 打开详情页是否自动朗读
 
     public init(
         baseURL: String,
@@ -63,7 +67,11 @@ public struct AISettings: Codable, Equatable {
         aiSources: String = "维基百科, 国家地理, NASA",
         showAIMark: Bool = true,
         appearance: AppearanceMode = .system,
-        customCategories: [CategoryConfig] = AISettings.defaultCustomCategories
+        customCategories: [CategoryConfig] = AISettings.defaultCustomCategories,
+        speechRate: Float = 1.0,
+        speechVoiceIdentifier: String = "auto",
+        ambientGapSeconds: Double = 1.5,
+        autoSpeakOnDetailOpen: Bool = false
     ) {
         self.baseURL = baseURL
         self.model = model
@@ -76,6 +84,10 @@ public struct AISettings: Codable, Equatable {
         self.showAIMark = showAIMark
         self.appearance = appearance
         self.customCategories = customCategories
+        self.speechRate = speechRate
+        self.speechVoiceIdentifier = speechVoiceIdentifier
+        self.ambientGapSeconds = ambientGapSeconds
+        self.autoSpeakOnDetailOpen = autoSpeakOnDetailOpen
     }
 
     public static let `default` = AISettings(
@@ -137,6 +149,7 @@ public struct AISettings: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case baseURL, model, apiKey, autoGenerate, categoryFilter
         case enableSeed, enableAI, aiSources, showAIMark, appearance, customCategories
+        case speechRate, speechVoiceIdentifier, ambientGapSeconds, autoSpeakOnDetailOpen
     }
 
     public init(from decoder: Decoder) throws {
@@ -152,6 +165,10 @@ public struct AISettings: Codable, Equatable {
         showAIMark = try c.decodeIfPresent(Bool.self, forKey: .showAIMark) ?? true
         appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
         customCategories = try c.decodeIfPresent([CategoryConfig].self, forKey: .customCategories) ?? AISettings.defaultCustomCategories
+        speechRate = try c.decodeIfPresent(Float.self, forKey: .speechRate) ?? 1.0
+        speechVoiceIdentifier = try c.decodeIfPresent(String.self, forKey: .speechVoiceIdentifier) ?? "auto"
+        ambientGapSeconds = try c.decodeIfPresent(Double.self, forKey: .ambientGapSeconds) ?? 1.5
+        autoSpeakOnDetailOpen = try c.decodeIfPresent(Bool.self, forKey: .autoSpeakOnDetailOpen) ?? false
     }
 }
 

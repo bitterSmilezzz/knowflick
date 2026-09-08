@@ -85,6 +85,36 @@ struct CardDeckView: View {
 
                 Spacer(minLength: 8)
 
+                if store.speechService.isAmbientMode {
+                    AmbientAudioPlayerBar(
+                        store: store,
+                        onPrevious: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                store.undoLastSwipe()
+                                if let top = store.topCard {
+                                    store.speechService.speak(card: top, part: .full)
+                                }
+                            }
+                        },
+                        onNext: {
+                            if store.topCard != nil {
+                                performSwipe(.skip)
+                                if let next = store.topCard {
+                                    store.speechService.speak(card: next, part: .full)
+                                }
+                            }
+                        },
+                        onClose: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                store.speechService.stopAmbientMode()
+                            }
+                        }
+                    )
+                    .padding(.bottom, 10)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(101)
+                }
+
                 bottomBar
                     .padding(.bottom, 26)
                     .zIndex(100)
@@ -239,6 +269,23 @@ struct CardDeckView: View {
                         activeSheet = .graph
                     } label: {
                         Label("在全景星图中探索 ⌘G", systemImage: "point.3.filled.connected.trianglepath.dotted")
+                    }
+                    Divider()
+                    Button {
+                        store.toggleSpeechForTopCard()
+                    } label: {
+                        Label(
+                            store.speechService.state.isPlaying ? "暂停朗读 ⌘P" : "朗读卡片观点 ⌘P",
+                            systemImage: store.speechService.state.isPlaying ? "pause.fill" : "speaker.wave.2"
+                        )
+                    }
+                    Button {
+                        store.toggleAmbientSpeechMode()
+                    } label: {
+                        Label(
+                            store.speechService.isAmbientMode ? "退出磨耳朵连续播报" : "开启磨耳朵连续播报",
+                            systemImage: "headphones"
+                        )
                     }
                     Divider()
                     Button {
@@ -503,6 +550,12 @@ struct CardDeckView: View {
                     .keyboardShortcut("q", modifiers: .command)
                 iconButton("point.3.filled.connected.trianglepath.dotted", help: "全景知识星图 ⌘G") { activeSheet = .graph }
                     .keyboardShortcut("g", modifiers: .command)
+                iconButton(store.speechService.isAmbientMode ? "headphones.circle.fill" : "headphones", help: store.speechService.isAmbientMode ? "退出磨耳朵连续朗读 ⌘P" : "磨耳朵连续朗读 ⌘P") {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        store.toggleAmbientSpeechMode()
+                    }
+                }
+                .keyboardShortcut("p", modifiers: .command)
                 iconButton("bookmark.fill", help: "知识收藏阁 ⌘B") { activeSheet = .favorites }
                     .keyboardShortcut("b", modifiers: .command)
                 iconButton("chart.bar", help: "学习统计") { activeSheet = .stats }

@@ -17,6 +17,10 @@ struct SettingsView: View {
     @State private var showAIMark = true
     @State private var appearance: AppearanceMode = .system
     @State private var customCategories: [CategoryConfig] = []   // 自定义分类（编辑副本）
+    @State private var speechRate: Float = 1.0
+    @State private var speechVoiceIdentifier: String = "auto"
+    @State private var ambientGapSeconds: Double = 1.5
+    @State private var autoSpeakOnDetailOpen: Bool = false
     @State private var newCategoryName = ""
     @State private var newCategoryDesc = ""
     @State private var savedToast = false
@@ -60,6 +64,7 @@ struct SettingsView: View {
                         aiServiceCard
                         categoryManagementCard
                         sourcesCard
+                        speechSettingsCard
                         aboutCard
                     }
                     .padding(22)
@@ -83,6 +88,10 @@ struct SettingsView: View {
             aiSources = store.settings.aiSources
             showAIMark = store.settings.showAIMark
             customCategories = store.settings.customCategories
+            speechRate = store.settings.speechRate
+            speechVoiceIdentifier = store.settings.speechVoiceIdentifier
+            ambientGapSeconds = store.settings.ambientGapSeconds
+            autoSpeakOnDetailOpen = store.settings.autoSpeakOnDetailOpen
         }
         .overlay(alignment: .bottom) {
             if savedToast {
@@ -515,6 +524,106 @@ struct SettingsView: View {
         .editorialGlassCard(cornerRadius: EditorialRadius.container)
     }
 
+    // MARK: - 卡片：智能语音与磨耳朵 (Smart TTS)
+
+    private var speechSettingsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "headphones")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(EditorialColor.aiAmber)
+                Text("语音朗读与磨耳朵 (Smart TTS)")
+                    .font(EditorialFont.sectionTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+                Spacer()
+                Text("macOS 原生神经网络语音")
+                    .font(EditorialFont.captionSmall)
+                    .foregroundStyle(EditorialColor.likeGreen)
+            }
+
+            Divider().overlay(EditorialColor.glassDivider)
+
+            // 默认语速倍率
+            fieldRow(label: "默认朗读语速 (当前: \(String(format: "%.2fx", speechRate)))") {
+                HStack(spacing: 12) {
+                    Slider(value: $speechRate, in: 0.75...1.5, step: 0.25)
+                        .tint(EditorialColor.likeGreen)
+
+                    HStack(spacing: 6) {
+                        ForEach([0.75, 1.0, 1.25, 1.5], id: \.self) { rate in
+                            Button("\(String(format: "%.2f", rate))x") {
+                                speechRate = Float(rate)
+                            }
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(abs(speechRate - Float(rate)) < 0.05 ? EditorialColor.textPrimary : EditorialColor.textTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(abs(speechRate - Float(rate)) < 0.05 ? EditorialColor.likeGreen.opacity(0.3) : EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 4))
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            // 磨耳朵换卡缓冲时间
+            fieldRow(label: "磨耳朵模式换卡缓冲间隔 (当前: \(String(format: "%.1f", ambientGapSeconds)) 秒)") {
+                HStack(spacing: 10) {
+                    ForEach([1.0, 1.5, 2.0, 3.0], id: \.self) { sec in
+                        Button("\(String(format: "%.1f", sec)) 秒") {
+                            ambientGapSeconds = sec
+                        }
+                        .font(EditorialFont.captionSmall.weight(.medium))
+                        .foregroundStyle(abs(ambientGapSeconds - sec) < 0.1 ? EditorialColor.textPrimary : EditorialColor.textTertiary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(abs(ambientGapSeconds - sec) < 0.1 ? EditorialColor.aiAmber.opacity(0.25) : EditorialColor.glassSurface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(abs(ambientGapSeconds - sec) < 0.1 ? EditorialColor.aiAmber.opacity(0.6) : EditorialColor.glassBorder, lineWidth: 1))
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            // 声音选择
+            fieldRow(label: "配音选择") {
+                Picker("", selection: $speechVoiceIdentifier) {
+                    Text("智能自动匹配语种（推荐）").tag("auto")
+                    ForEach(SpeechSynthesizerService.availableVoices().prefix(15), id: \.identifier) { voice in
+                        Text("\(voice.name) (\(voice.language))").tag(voice.identifier)
+                    }
+                }
+                .labelsHidden()
+            }
+
+            // 试听与自动朗读
+            HStack {
+                Toggle("进入详情页时自动开启语音导读", isOn: $autoSpeakOnDetailOpen)
+                    .toggleStyle(SwitchToggleStyle(tint: EditorialColor.likeGreen))
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.textSecondary)
+
+                Spacer()
+
+                Button {
+                    SpeechSynthesizerService.shared.speakTerm("你好，欢迎使用 KnowFlick 智能发音与磨耳朵系统。")
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "speaker.wave.2")
+                        Text("试听发音")
+                    }
+                    .font(EditorialFont.captionSmall.weight(.semibold))
+                    .foregroundStyle(EditorialColor.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(EditorialColor.glassSurface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+            }
+        }
+        .padding(18)
+        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+    }
+
     // MARK: - 卡片 4：知识库状态与安全说明
 
     private var aboutCard: some View {
@@ -566,7 +675,7 @@ struct SettingsView: View {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
                         .foregroundStyle(EditorialColor.aiAmber)
-                    Text("KnowFlick v2.8.0")
+                    Text("KnowFlick v2.9.0")
                         .font(EditorialFont.captionSmall)
                         .foregroundStyle(EditorialColor.textSecondary)
                 }
@@ -676,6 +785,10 @@ struct SettingsView: View {
         updated.showAIMark = showAIMark
         updated.appearance = appearance
         updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.speechRate = speechRate
+        updated.speechVoiceIdentifier = speechVoiceIdentifier
+        updated.ambientGapSeconds = ambientGapSeconds
+        updated.autoSpeakOnDetailOpen = autoSpeakOnDetailOpen
         do {
             try store.saveSettings(updated)
             savedToast = true

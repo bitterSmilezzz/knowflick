@@ -59,9 +59,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.8.0</string>
+	<string>2.9.0</string>
 	<key>CFBundleVersion</key>
-	<string>2.8.0</string>
+	<string>2.9.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -100,5 +100,6 @@ fi
 
 # ---------- 校验与刷新 ----------
 plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
+codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
 touch "$APP_DIR"
 echo "完成: $APP_DIR"

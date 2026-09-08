@@ -23,6 +23,9 @@ struct CardView: View {
                 categoryBadge
                 sourceMark
                 Spacer()
+                if isTop {
+                    speechButton
+                }
             }
 
             Spacer(minLength: 20)
@@ -178,5 +181,44 @@ struct CardView: View {
             .background(Color.black.opacity(0.35), in: Capsule())
             .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 0.8))
         }
+    }
+
+    // MARK: - 语音朗读胶囊按键
+    private var speechButton: some View {
+        let service = SpeechSynthesizerService.shared
+        let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
+        let isPausedThis = service.state.activeCardId == card.id && service.state.isPaused
+
+        return Button {
+            service.togglePlayPause(for: card)
+            HapticFeedbackHelper.shared.cardSnapBack()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isSpeakingThis ? "speaker.wave.3.fill" : (isPausedThis ? "speaker.slash.fill" : "speaker.wave.2"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(isSpeakingThis ? EditorialColor.likeGreen : Color.white.opacity(0.85))
+
+                if isSpeakingThis {
+                    Text("\(Int(service.state.progress * 100))%")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(EditorialColor.likeGreen)
+                }
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(
+                isSpeakingThis ? EditorialColor.likeGreen.opacity(0.18) : Color.black.opacity(0.35),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        isSpeakingThis ? EditorialColor.likeGreen.opacity(0.5) : EditorialColor.glassBorder,
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(PressableButtonStyle())
+        .help(isSpeakingThis ? "暂停朗读 (⌘P)" : "朗读此卡片观点 (⌘P)")
     }
 }
