@@ -215,8 +215,7 @@ struct StatsView: View {
                 Text(stat.category)
                     .font(EditorialFont.label)
                     .foregroundStyle(EditorialColor.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(minWidth: 90, maxWidth: 150, alignment: .leading)
 
                 GeometryReader { geo in

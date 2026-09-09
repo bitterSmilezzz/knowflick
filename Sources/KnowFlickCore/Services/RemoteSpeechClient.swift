@@ -4,7 +4,9 @@ struct RemoteSpeechClient {
     var session = URLSession.shared
 
     static func request(text: String, profile: SpeechProfile, speed: Float) throws -> URLRequest {
-        guard !text.isEmpty, !profile.model.isEmpty, !profile.voice.isEmpty else {
+        let model = profile.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let voice = profile.voice.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !model.isEmpty, !voice.isEmpty else {
             throw AIError.badRequest("语音文本、模型和音色不能为空")
         }
         let base = profile.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -30,7 +32,7 @@ struct RemoteSpeechClient {
         if !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": profile.model, "voice": profile.voice, "input": text,
+            "model": model, "voice": voice, "input": text,
             "response_format": "mp3", "speed": speed.isFinite ? min(2, max(0.5, speed)) : 1
         ])
         return request
@@ -42,11 +44,10 @@ struct RemoteSpeechClient {
         try Task.checkCancellation()
         guard let response = response as? HTTPURLResponse else { throw AIError.network("语音服务无响应") }
         guard (200..<300).contains(response.statusCode) else { throw AIError.httpStatus(response.statusCode, "语音服务请求失败") }
-        guard !data.isEmpty, !response.mimeType.orEmpty.contains("json") else { throw AIError.parse("语音服务未返回音频") }
+        let mime = response.mimeType?.lowercased() ?? ""
+        guard !data.isEmpty, !mime.contains("json"), !mime.hasPrefix("text/"), !mime.contains("xml") else {
+            throw AIError.parse("语音服务未返回音频，请检查 API 地址、模型和音色配置")
+        }
         return data
     }
-}
-
-private extension Optional where Wrapped == String {
-    var orEmpty: String { self ?? "" }
 }

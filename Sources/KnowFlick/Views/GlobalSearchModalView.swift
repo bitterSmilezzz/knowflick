@@ -86,11 +86,15 @@ struct GlobalSearchModalView: View {
             }
             return .handled
         }
-        .onKeyPress(.return) {
+        .onKeyPress(.return, phases: .down) { press in
             if !results.isEmpty && selectedIndex < results.count {
                 let card = results[selectedIndex].card
                 dismiss()
-                onSelect(card)
+                if press.modifiers.contains(.command) {
+                    onPromote(card)
+                } else {
+                    onSelect(card)
+                }
                 return .handled
             }
             return .ignored
@@ -295,7 +299,6 @@ struct GlobalSearchModalView: View {
                     textColor: EditorialColor.textPrimary,
                     highlightColor: EditorialColor.aiAmber
                 )
-                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
                 HighlightedText(

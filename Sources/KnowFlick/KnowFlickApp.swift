@@ -21,5 +21,6 @@ struct KnowFlickApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .defaultSize(width: 980, height: 720)
+        .commands { MacCommands() }
     }
 }

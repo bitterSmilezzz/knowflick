@@ -54,11 +54,13 @@ public final class AppStore {
 
     private let aiService = AIService()
     private let storage: Storage
+    private let credentials: any CredentialStore
     private var lastSwipedCardId: UUID?
     private var lastSwipedKey: String?
 
-    public init(storage: Storage = Storage()) {
+    public init(storage: Storage = Storage(), credentials: (any CredentialStore)? = nil) {
         self.storage = storage
+        self.credentials = credentials ?? SystemCredentialStore()
         recomputeDeckAndHistory()
 
         speechService.speedMultiplier = settings.speechRate
@@ -137,19 +139,19 @@ public final class AppStore {
         settings = storage.loadSettings()
         // 迁移旧版本可能写入 JSON 的密钥；成功进入 Keychain 后再清除明文。
         let legacyKey = settings.apiKey
-        if let key = KeychainHelper.read() {
+        if let key = credentials.read(account: "apiKey") {
             settings.apiKey = key
             if !legacyKey.isEmpty { storage.saveSettings(settings) }
         } else if !legacyKey.isEmpty {
             do {
-                try KeychainHelper.save(legacyKey)
+                try credentials.save(legacyKey, account: "apiKey")
                 storage.saveSettings(settings)
             } catch {
                 lastError = error.localizedDescription
             }
         }
         for i in settings.speech.profiles.indices {
-            settings.speech.profiles[i].apiKey = KeychainHelper.read(account: "tts." + settings.speech.profiles[i].id) ?? ""
+            settings.speech.profiles[i].apiKey = credentials.read(account: "tts." + settings.speech.profiles[i].id) ?? ""
         }
         isLoadingSeed = false
         // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）
@@ -474,13 +476,21 @@ public final class AppStore {
         let trimmedKey = newSettings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         // key 非空才写钥匙串；写入失败向上抛，视图可见
         if !trimmedKey.isEmpty {
-            try KeychainHelper.save(trimmedKey)
-        }
-        for profile in newSettings.speech.profiles where !profile.apiKey.isEmpty {
-            try KeychainHelper.save(profile.apiKey, account: "tts." + profile.id)
+            try credentials.save(trimmedKey, account: "apiKey")
         }
         var persisted = newSettings
         persisted.apiKey = trimmedKey
+        for index in persisted.speech.profiles.indices {
+            let key = persisted.speech.profiles[index].apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            persisted.speech.profiles[index].apiKey = key
+            let account = "tts." + persisted.speech.profiles[index].id
+            if key.isEmpty { try credentials.delete(account: account) }
+            else { try credentials.save(key, account: account) }
+        }
+        let retainedIDs = Set(persisted.speech.profiles.map(\.id))
+        for profile in settings.speech.profiles where !retainedIDs.contains(profile.id) {
+            try credentials.delete(account: "tts." + profile.id)
+        }
         settings = persisted
         storage.saveSettings(persisted)
     }

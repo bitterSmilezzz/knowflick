@@ -282,6 +282,12 @@ struct DetailView: View {
                 }
             }
         }
+        .onChange(of: card.id, initial: true) { _, _ in
+            guard let store, store.settings.autoSpeakOnDetailOpen,
+                  !store.speechService.isAmbientMode,
+                  store.speechService.state.activeCardId != card.id else { return }
+            store.speechService.speak(card: card)
+        }
     }
 
     private var chatTopButton: some View {
@@ -378,10 +384,10 @@ struct DetailView: View {
             HStack(spacing: 5) {
                 Image(systemName: isFavorited ? "heart.fill" : "heart")
                     .font(.system(size: 11.5, weight: .bold))
-                    .foregroundStyle(isFavorited ? EditorialColor.likeGreen : EditorialColor.textPrimary)
+                    .foregroundStyle(isFavorited ? EditorialColor.likeGreen : Color.white)
                 Text(isFavorited ? "已收藏" : "收藏")
                     .font(EditorialFont.captionSmall.weight(.bold))
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .foregroundStyle(Color.white)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -404,7 +410,7 @@ struct DetailView: View {
                 Text("分享海报")
                     .font(EditorialFont.captionSmall.weight(.bold))
             }
-            .foregroundStyle(EditorialColor.textPrimary)
+            .foregroundStyle(Color.white)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Color.black.opacity(0.45), in: Capsule())
@@ -419,7 +425,7 @@ struct DetailView: View {
         Button(action: onClose) {
             Image(systemName: "xmark")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(EditorialColor.textPrimary)
+                .foregroundStyle(Color.white)
                 .frame(width: 32, height: 32)
                 .background(Color.black.opacity(0.45), in: Circle())
                 .overlay(Circle().strokeBorder(EditorialColor.glassBorderHover, lineWidth: 1))
@@ -609,7 +615,7 @@ struct DetailView: View {
                 Text(isSpeakingThis ? "暂停" : "朗读")
                     .font(EditorialFont.captionSmall.weight(.bold))
             }
-            .foregroundStyle(isSpeakingThis ? EditorialColor.likeGreen : EditorialColor.textPrimary)
+            .foregroundStyle(isSpeakingThis ? EditorialColor.likeGreen : Color.white)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Color.black.opacity(0.45), in: Capsule())

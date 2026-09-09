@@ -4,16 +4,18 @@ import Security
 /// API Key 安全存储（macOS Keychain），避免明文落盘
 public enum KeychainHelper {
     private static let service = "com.knowflick.app"
-    private static let account = "apiKey"
 
     public enum KeychainError: Error, LocalizedError {
         case saveFailed(OSStatus)
+        case deleteFailed(OSStatus)
         case emptyValue
 
         public var errorDescription: String? {
             switch self {
             case .saveFailed(let status):
                 "钥匙串写入失败（\(status)）"
+            case .deleteFailed(let status):
+                "钥匙串删除失败（\(status)）"
             case .emptyValue:
                 "API Key 为空，未写入钥匙串"
             }
@@ -61,12 +63,15 @@ public enum KeychainHelper {
         return String(data: data, encoding: .utf8)
     }
 
-    public static func delete() {
+    public static func delete(account: String = "apiKey") throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.deleteFailed(status)
+        }
     }
 }

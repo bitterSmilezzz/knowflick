@@ -25,11 +25,12 @@ struct HelpView: View {
         .init(keys: "⌘ Z", action: "撤销上一张卡片"),
         .init(keys: "⌘ N", action: "AI 生成 3 张新知识"),
         .init(keys: "⌘ ?", action: "打开此快捷键面板"),
+        .init(keys: "⌘ ,", action: "打开偏好设置"),
         .init(keys: "Esc", action: "关闭弹出的面板")
     ]
 
     private let quizShortcuts: [ShortcutRow] = [
-        .init(keys: "⌘ Q", action: "开启知识测验 (Flashcard Quiz)"),
+        .init(keys: "⌘ K", action: "开启知识测验 (Flashcard Quiz)"),
         .init(keys: "␣ 空格 / ⏎", action: "翻转卡片（查看背面答案与解析）"),
         .init(keys: "⌘ 1", action: "自评：没想起来（完全遗忘）"),
         .init(keys: "⌘ 2", action: "自评：犹豫想起（模糊记忆）"),
@@ -107,6 +108,7 @@ struct HelpView: View {
                         Text(row.action)
                             .font(EditorialFont.bodySerif)
                             .foregroundStyle(EditorialColor.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                     }
                     .padding(.horizontal, 14)

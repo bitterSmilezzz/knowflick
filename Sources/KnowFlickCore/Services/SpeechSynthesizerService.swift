@@ -162,8 +162,8 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     }
 
     public func pause() {
-        if let remotePlayer {
-            remotePlayer.pause()
+        if remoteTask != nil {
+            remotePlayer?.pause()
             if case .playing(let id, let text, let progress) = state { state = .paused(cardId: id, text: text, progress: progress) }
             return
         }
@@ -176,8 +176,8 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     }
 
     public func resume() {
-        if let remotePlayer {
-            remotePlayer.play()
+        if remoteTask != nil {
+            remotePlayer?.play()
             if case .paused(let id, let text, let progress) = state { state = .playing(cardId: id, text: text, progress: progress) }
             return
         }
@@ -210,12 +210,12 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 
     /// 开启磨耳朵连续自动播报模式
     public func startAmbientMode(initialCard: KnowledgeCard?) {
-        isAmbientMode = true
-        if let card = initialCard {
-            speak(card: card, part: .full)
-        } else if let next = onAmbientAdvanceRequest?() {
-            speak(card: next, part: .full)
+        guard let card = initialCard ?? onAmbientAdvanceRequest?() else {
+            stopAmbientMode()
+            return
         }
+        isAmbientMode = true
+        speak(card: card, part: .full)
     }
 
     /// 关闭磨耳朵模式
@@ -259,10 +259,12 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
         }
         let token = playbackID
         let speed = speedMultiplier
+        let voice = preferredVoiceIdentifier
         let fallback = configuration.fallbackToSystem
         let parts = SpeechText.chunks(text)
         currentSpeakingText = text
         state = .playing(cardId: cardId, text: text, progress: 0)
+        isPreparing = true
         remoteTask = Task { @MainActor [weak self] in
             guard let self else { return }
             var completedCharacters = 0
@@ -272,6 +274,10 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
                     self.isPreparing = true
                     let data = try await RemoteSpeechClient().audio(text: part, profile: profile, speed: speed)
                     guard self.playbackID == token else { return }
+                    while self.state.isPaused {
+                        try await Task.sleep(for: .milliseconds(100))
+                        guard self.playbackID == token else { return }
+                    }
                     let player = try AVAudioPlayer(data: data)
                     self.remotePlayer = player
                     self.isPreparing = false
@@ -286,9 +292,11 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
                         }
                     }
                     completedCharacters += part.count
+                    self.remotePlayer = nil
                 }
                 guard self.playbackID == token else { return }
                 self.remotePlayer = nil
+                self.remoteTask = nil
                 self.finishPlayback()
             } catch {
                 guard !Task.isCancelled, self.playbackID == token else { return }
@@ -296,9 +304,15 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
                 self.remotePlayer = nil
                 self.lastError = fallback ? "语音服务暂不可用，已切换系统声音：\(error.localizedDescription)" : error.localizedDescription
                 if fallback {
+                    while self.state.isPaused {
+                        do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+                        guard self.playbackID == token else { return }
+                    }
+                    self.remoteTask = nil
                     let remaining = String(text.dropFirst(completedCharacters))
-                    self.speakRawText(remaining, cardId: cardId, category: category)
+                    self.speakRawText(remaining, cardId: cardId, category: category, speed: speed, voiceIdentifier: voice)
                 } else {
+                    self.remoteTask = nil
                     self.state = .idle
                     self.isAmbientMode = false
                 }
@@ -323,7 +337,7 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 
     // MARK: - 内部底层合成
 
-    private func speakRawText(_ text: String, cardId: UUID, category: String) {
+    private func speakRawText(_ text: String, cardId: UUID, category: String, speed: Float? = nil, voiceIdentifier: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             state = .idle
@@ -337,14 +351,14 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 
         // 基础语速约 0.50，按 speedMultiplier 缩放
         let baseRate = AVSpeechUtteranceDefaultSpeechRate * 0.88
-        let adjustedRate = baseRate * speedMultiplier
+        let adjustedRate = baseRate * (speed ?? speedMultiplier)
         utterance.rate = min(max(adjustedRate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
         utterance.preUtteranceDelay = 0.15
         utterance.postUtteranceDelay = 0.2
 
-        utterance.voice = detectBestVoice(for: trimmed, category: category)
+        utterance.voice = detectBestVoice(for: trimmed, category: category, voiceIdentifier: voiceIdentifier)
         self.currentUtterance = utterance
 
         state = .playing(cardId: cardId, text: trimmed, progress: 0.0)
@@ -352,18 +366,12 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     }
 
     /// 智能语种与音色探测
-    private func detectBestVoice(for text: String, category: String) -> AVSpeechSynthesisVoice? {
+    private func detectBestVoice(for text: String, category: String, voiceIdentifier: String? = nil) -> AVSpeechSynthesisVoice? {
+        let preferredVoiceIdentifier = voiceIdentifier ?? self.preferredVoiceIdentifier
         // 用户指定了有效的声音
         if preferredVoiceIdentifier != "auto",
            let voice = AVSpeechSynthesisVoice(identifier: preferredVoiceIdentifier) {
             return voice
-        }
-
-        // 针对粤语/方言特色卡片
-        if category == "冷知识" && (text.contains("粤语") || text.contains("白话")) {
-            if let cantonese = AVSpeechSynthesisVoice(language: "zh-HK") ?? AVSpeechSynthesisVoice(language: "yue-CN") {
-                return cantonese
-            }
         }
 
         // 检测主要文本语种

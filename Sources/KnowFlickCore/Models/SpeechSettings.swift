@@ -14,7 +14,7 @@ public struct SpeechProfile: Codable, Equatable, Identifiable, Sendable {
     }
     enum CodingKeys: String, CodingKey { case id, name, baseURL, model, voice }
     public var isLocal: Bool {
-        let host = URL(string: baseURL)?.host?.lowercased() ?? ""
+        let host = URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?.host?.lowercased() ?? ""
         return ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host)
     }
 }

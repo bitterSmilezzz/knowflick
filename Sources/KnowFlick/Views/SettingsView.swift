@@ -592,7 +592,7 @@ struct SettingsView: View {
                 Picker("", selection: $speechVoiceIdentifier) {
                     Text("自动选择已下载的高质量音色（推荐）").tag("auto")
                     ForEach(SpeechSynthesizerService.availableVoices(), id: \.identifier) { voice in
-                        Text("\(voice.name) · \(voice.language)\(voice.quality.rawValue > 0 ? " · 高质量" : " · 标准")").tag(voice.identifier)
+                        Text("\(voice.name) · \(voice.language)\(voice.quality == .default ? " · 标准" : " · 高质量")").tag(voice.identifier)
                     }
                 }
                 .labelsHidden()
@@ -622,6 +622,19 @@ struct SettingsView: View {
                     .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
+            }
+            if store.speechService.isPreparing {
+                ProgressView("正在生成语音…")
+                    .font(EditorialFont.caption)
+            }
+            if store.speechService.state != .idle {
+                Button("停止播放") { store.speechService.stopAmbientMode() }
+            }
+            if let error = store.speechService.lastError {
+                Text(error)
+                    .font(EditorialFont.caption)
+                    .foregroundStyle(EditorialColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(18)
@@ -679,7 +692,7 @@ struct SettingsView: View {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
                         .foregroundStyle(EditorialColor.aiAmber)
-                    Text("KnowFlick v3.1.0")
+                    Text("KnowFlick v3.1.1")
                         .font(EditorialFont.captionSmall)
                         .foregroundStyle(EditorialColor.textTertiary)
                 }

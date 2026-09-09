@@ -132,6 +132,40 @@ struct CardDeckView: View {
                     .padding(.bottom, 26)
                     .zIndex(100)
             }
+            .focusedSceneValue(\.macActions, MacActions(
+                canOpen: activeSheet == nil,
+                hasCard: store.topCard != nil,
+                canUndo: !store.history.isEmpty,
+                open: { activeSheet = $0 },
+                toggleSpeech: {
+                    if let card = store.topCard { store.speechService.togglePlayPause(for: card) }
+                },
+                toggleAmbient: {
+                    store.toggleAmbientSpeechMode()
+                },
+                undo: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        store.undoLastSwipe()
+                    }
+                },
+                generate: {
+                    if !store.settings.isAIConfigured {
+                        activeSheet = .settings
+                    } else {
+                        Task { await store.generateNewCards(count: 3) }
+                    }
+                },
+                chat: {
+                    if let card = store.topCard { activeSheet = .chat(card) }
+                },
+                sharePoster: {
+                    if let card = store.topCard { activeSheet = .sharePoster(card) }
+                },
+                refreshDeck: {
+                    triggerSheen.toggle()
+                    Task { await store.refreshDeck() }
+                }
+            ))
             .sheet(item: $activeSheet) { sheet in
                 switch sheet {
                 case .detail(let card):
@@ -226,16 +260,7 @@ struct CardDeckView: View {
                 errorBanner = true
             }
         }
-        .background(
-            Button("") {
-                if let top = store.topCard {
-                    activeSheet = .sharePoster(top)
-                }
-            }
-            .keyboardShortcut("s", modifiers: .command)
-            .opacity(0)
-            .accessibilityHidden(true)
-        )
+
         .overlay(alignment: .top) {
             if errorBanner, let msg = store.lastError {
                 errorToast(msg)
@@ -624,14 +649,11 @@ struct CardDeckView: View {
                         Button("全局搜索", systemImage: "magnifyingglass") { activeSheet = .search }
                             .keyboardShortcut("f", modifiers: .command)
                         Button("知识测验", systemImage: "graduationcap") { activeSheet = .quiz(category: nil) }
-                            .keyboardShortcut("k", modifiers: .command)
                         Button("知识星图", systemImage: "point.3.connected.trianglepath.dotted") { activeSheet = .graph }
-                            .keyboardShortcut("g", modifiers: .command)
                         Button(store.speechService.isAmbientMode ? "停止连续朗读" : "连续朗读", systemImage: "headphones") {
                             store.toggleAmbientSpeechMode()
                         }.keyboardShortcut("p", modifiers: [.command, .shift])
                         Button("知识收藏阁", systemImage: "bookmark") { activeSheet = .favorites }
-                            .keyboardShortcut("b", modifiers: .command)
                         Button("学习统计", systemImage: "chart.bar") { activeSheet = .stats }
                         Button("历史记录", systemImage: "clock") { activeSheet = .history }
                     }
@@ -646,9 +668,7 @@ struct CardDeckView: View {
                             }
                         }
                         Button("偏好设置", systemImage: "gearshape") { activeSheet = .settings }
-                            .keyboardShortcut(",", modifiers: .command)
                         Button("快捷键帮助", systemImage: "questionmark.circle") { activeSheet = .help }
-                            .keyboardShortcut("?", modifiers: .command)
                     }
                 } label: {
                     Label("菜单", systemImage: "line.3.horizontal")
@@ -883,5 +903,3 @@ struct PressableButtonStyle: ButtonStyle {
             }
     }
 }
-
-

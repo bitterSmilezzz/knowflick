@@ -30,6 +30,7 @@ RESOURCE_BUNDLE_SRC="$PROJECT_DIR/.build/release/${APP_NAME}_${APP_NAME}Core.bun
 RESOURCE_BUNDLE_NAME="$(basename "$RESOURCE_BUNDLE_SRC")"
 
 # ---------- 1. 构建 ----------
+swift tools/verify_icon.swift Resources/AppIcon.icns Resources/AppIcon.png
 echo "==> [1/3] swift build -c release"
 swift build -c release "$@"
 
@@ -65,9 +66,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.1.0</string>
+	<string>3.1.1</string>
 	<key>CFBundleVersion</key>
-	<string>3.1.0</string>
+	<string>3.1.1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -78,8 +79,6 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<string>public.app-category.education</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon.icns</string>
-	<key>CFBundleIconName</key>
-	<string>AppIcon</string>
 </dict>
 </plist>
 PLIST
