@@ -475,6 +475,7 @@ struct DetailView: View {
         }
         .buttonStyle(PressableButtonStyle())
         .keyboardShortcut(.escape, modifiers: [])
+        .accessibilityLabel("关闭详情")
     }
 
     private func linkRow(_ link: ScienceLink) -> some View {
@@ -540,6 +541,7 @@ struct DetailView: View {
         .disabled(disabled)
         .keyboardShortcut(shortcut, modifiers: [])
         .help(help)
+        .accessibilityLabel(help)
     }
 
     // MARK: - 相关灵感脉络 (Connected Cards)

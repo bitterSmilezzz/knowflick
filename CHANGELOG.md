@@ -4,6 +4,15 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v3.5.2] - 2026-09-11
+
+### 可访问性专项（二十轮优化 · 第 11 轮）
+
+- **搜索结果行 VoiceOver 可激活**：结果行由 `onTapGesture` 改为真正的 Button 语义（VoiceOver 可聚焦、可回车激活），并补齐合并标签（标题 + 分类 + 命中字段）与操作提示；「追问 ⌘J」小按钮补 accessibilityLabel。
+- **图标按钮语音标签**：卡堆顶栏 iconButton/roundButton、详情页关闭与左右导航按钮统一补齐 accessibilityLabel（复用既有 .help 文案，单一来源）。
+- **测验快捷键决策**：保留 Space/Return 翻卡（闪卡应用通行做法，测验为全屏遮罩无文本输入焦点冲突），后续如收到误触发反馈再引入焦点守卫。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
+
 ## [v3.5.1] - 2026-09-11
 
 ### 图谱与防重排布性能（二十轮优化 · 第 10 轮）

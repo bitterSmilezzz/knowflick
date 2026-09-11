@@ -775,6 +775,7 @@ struct CardDeckView: View {
         }
         .buttonStyle(PressableButtonStyle())
         .help(help)
+        .accessibilityLabel(help)
     }
 
     // MARK: - 底栏
@@ -852,6 +853,7 @@ struct CardDeckView: View {
         }
         .buttonStyle(PressableButtonStyle())
         .help(help)
+        .accessibilityLabel(help)
     }
 
     // MARK: - 空状态

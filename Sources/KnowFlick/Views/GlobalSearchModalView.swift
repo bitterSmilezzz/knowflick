@@ -277,12 +277,16 @@ struct GlobalSearchModalView: View {
                 } else {
                     LazyVStack(spacing: 6) {
                         ForEach(Array(results.enumerated()), id: \.element.card.id) { index, item in
-                            searchResultRow(item: item, index: index)
-                                .id(index)
-                                .onTapGesture {
-                                    dismiss()
-                                    onSelect(item.card)
-                                }
+                            Button {
+                                dismiss()
+                                onSelect(item.card)
+                            } label: {
+                                searchResultRow(item: item, index: index)
+                            }
+                            .buttonStyle(.plain)
+                            .id(index)
+                            .accessibilityLabel("\(item.card.headline)，\(item.card.category)，\(item.matchedField.rawValue)命中")
+                            .accessibilityHint("打开卡片详情")
                         }
                     }
                     .padding(.horizontal, 16)
@@ -390,6 +394,7 @@ struct GlobalSearchModalView: View {
                     }
                     .buttonStyle(.plain)
                     .help("向卡片追问 ⌘J")
+                    .accessibilityLabel("向卡片追问")
                 }
                 .opacity(isSelected ? 1 : 0.65)
             }
