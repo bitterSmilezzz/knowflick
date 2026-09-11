@@ -27,3 +27,14 @@ for size in [16, 32, 128, 256, 512] {
     try render(size).write(to: iconset.appendingPathComponent("icon_\(size)x\(size).png"))
     try render(size * 2).write(to: iconset.appendingPathComponent("icon_\(size)x\(size)@2x.png"))
 }
+
+// 打包为标准 ICNS（macOS 应用实际加载的格式；此前 iconutil 是漏掉的手工步骤）
+let icnsProcess = Process()
+icnsProcess.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+icnsProcess.arguments = ["-c", "icns", iconset.path, "-o", output.appendingPathComponent("AppIcon.icns").path]
+try icnsProcess.run()
+icnsProcess.waitUntilExit()
+guard icnsProcess.terminationStatus == 0 else {
+    fatalError("iconutil 打包失败（退出码 \(icnsProcess.terminationStatus)）")
+}
+print("已生成 \(output.appendingPathComponent("AppIcon.icns").path)")

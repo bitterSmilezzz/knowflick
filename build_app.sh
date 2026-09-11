@@ -13,6 +13,16 @@
 
 set -euo pipefail
 
+# 组装中途失败时清理半成品 .app，避免留下表面完整的残缺产物
+cleanup_on_failure() {
+    local status=$?
+    if [[ $status -ne 0 && -d "$APP_DIR" ]]; then
+        rm -rf "$APP_DIR"
+        echo "构建失败，已清理半成品 $APP_DIR" >&2
+    fi
+}
+trap cleanup_on_failure EXIT
+
 # ---------- 配置 ----------
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
@@ -104,11 +114,6 @@ fi
 if [[ -d "$RESOURCE_BUNDLE_SRC" ]]; then
     echo "    复制资源 bundle ($RESOURCE_BUNDLE_NAME)"
     cp -R "$RESOURCE_BUNDLE_SRC" "$RESOURCES_DIR/"
-    if [[ -f "$RESOURCES_DIR/$RESOURCE_BUNDLE_NAME/seed_cards.json" ]]; then
-        echo "    确认 seed_cards.json 已随 bundle 复制"
-    else
-        echo "警告: bundle 中未找到 seed_cards.json" >&2
-    fi
 else
     echo "警告: 未找到资源 bundle $RESOURCE_BUNDLE_SRC, 跳过资源复制" >&2
 fi

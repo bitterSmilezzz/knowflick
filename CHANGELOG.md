@@ -4,6 +4,27 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.6.2] - 2026-09-11
+
+### 构建链路与仓库卫生（二十轮优化 · 第 14 轮）
+
+- **图标打包闭环**：`tools/build_icon.swift` 末尾自动调用 `iconutil` 生成 ICNS（此前是漏掉的手工步骤，icns 与 iconset 可能脱节），失败即硬性退出。
+- **打包脚本健壮性**：`build_app.sh` 增加失败清理——组装中途退出时删除半成品 `dist/KnowFlick.app`，不再留下表面完整的残缺产物；移除与资源硬校验重复的二次 seed 检查。
+- **导入脚本校验前移**：`import_lessons.py` 字段校验移到写盘之前（此前断言失败时输出文件已被改写）；未知学科前缀显式报错并指明映射来源，替代隐晦 KeyError。
+- **测试脚本引导**：`tools/test.sh` 在 xcode-select 未配置时给出安装指引。
+- **文档时效声明**：docs/ 下 5 份历史评审文档头部统一加入「快照基线声明」；`android/README` 标注当前为契约占位、无可编译工程。
+- **CHANGELOG 规范**：新增 `[Unreleased]` 段落，对齐 Keep a Changelog。
+- **验证**：图标逐像素校验通过；171 项 / 25 个 suite 全绿；Release 打包验证通过。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+
 ## [v3.6.1] - 2026-09-11
 
 ### 死代码清理（二十轮优化 · 第 13 轮）

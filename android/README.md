@@ -1,3 +1,5 @@
+> 📌 状态（截至 v3.6.2）：本目录当前仅包含跨端实施边界契约文档（语音协议等），无可编译 Android 工程。
+
 # KnowFlick Android
 
 Android 端将复用 macOS 的卡片领域模型和服务协议，采用 Kotlin + Jetpack Compose 实现。

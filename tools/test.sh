@@ -6,7 +6,10 @@ TASK_BUILD_ROOT="${TMPDIR:-/tmp}/knowflick-swift"
 mkdir -p "$TASK_BUILD_ROOT"
 export CLANG_MODULE_CACHE_PATH="$TASK_BUILD_ROOT/clang"
 export SWIFTPM_MODULECACHE_OVERRIDE="$TASK_BUILD_ROOT/modules"
-DEVELOPER_ROOT="$(xcode-select -p)"
+if ! DEVELOPER_ROOT="$(xcode-select -p 2>/dev/null)"; then
+    echo "错误: 未配置开发者目录。请运行 'xcode-select --install'，或 'sudo xcode-select -s /Applications/Xcode.app'" >&2
+    exit 1
+fi
 TEST_FRAMEWORKS="$DEVELOPER_ROOT/Library/Developer/Frameworks"
 TEST_ARGS=(--disable-xctest)
 if [[ "$DEVELOPER_ROOT" == */CommandLineTools && -d "$TEST_FRAMEWORKS/Testing.framework" ]]; then

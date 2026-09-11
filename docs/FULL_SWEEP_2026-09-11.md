@@ -1,5 +1,7 @@
 # Brooks-Lint — Full Sweep Report
 
+> 📌 快照基线声明：本文为历史时点评审快照，其中的文件数/测试数/结论仅反映撰写当时状态；当前数值以 CHANGELOG 最新版本与 `tools/test.sh` 实际输出为准。
+
 **Mode:** Full Sweep  
 **Scope:** KnowFlick repository, 131 tracked files; Swift production, Core, tests, packaging and tools. Existing uncommitted work was preserved.  
 **Health Score:** 97/100 (bounded estimate after safe fixes; run the health dashboard again for an exact recalculation.)

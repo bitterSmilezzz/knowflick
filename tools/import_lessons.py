@@ -196,6 +196,8 @@ def main() -> int:
     new_cards = []
     for path in sources:
         key = path.name.split("-")[0]
+        if key not in CATEGORY_MAP:
+            ap.error(f"未知学科前缀 {key!r}（文件 {path.name}），无法映射分类；支持的映射见 CATEGORY_MAP")
         for lesson, category in load_lessons(path, key):
             new_cards.append(make_card(lesson, category))
 
@@ -210,6 +212,15 @@ def main() -> int:
             unique_cards.append(card)
     new_cards = unique_cards
     existing.extend(new_cards)
+
+    # 字段校验必须在写盘前：断言失败时输出文件不能已被改写
+    bad_headline = [c["headline"] for c in new_cards if not c["headline"] or len(c["headline"]) > MAX_HEADLINE_LEN]
+    bad_summary = [c["headline"] for c in new_cards if not c["summary"]]
+    bad_details = [c["headline"] for c in new_cards if not c["details"]]
+    assert not bad_headline, f"headline 空/超长: {bad_headline}"
+    assert not bad_summary, f"summary 为空: {bad_summary}"
+    assert not bad_details, f"details 为空: {bad_details}"
+    assert len(existing) == original_count + len(new_cards)
 
     tmp = output.with_suffix(".json.tmp")
     with open(tmp, "w", encoding="utf-8") as f:
@@ -226,15 +237,6 @@ def main() -> int:
     print(f"总数:       {len(existing)}")
     print("分学科:", {k: v for k, v in sorted(per_source.items())})
     print("分类分布:", dict(stats))
-
-    # 字段校验
-    bad_headline = [c["headline"] for c in new_cards if not c["headline"] or len(c["headline"]) > MAX_HEADLINE_LEN]
-    bad_summary = [c["headline"] for c in new_cards if not c["summary"]]
-    bad_details = [c["headline"] for c in new_cards if not c["details"]]
-    assert not bad_headline, f"headline 空/超长: {bad_headline}"
-    assert not bad_summary, f"summary 为空: {bad_summary}"
-    assert not bad_details, f"details 为空: {bad_details}"
-    assert len(existing) == original_count + len(new_cards)
 
     # 确认原有 30 张未被改动
     reloaded = json.loads(output.read_text(encoding="utf-8"))
