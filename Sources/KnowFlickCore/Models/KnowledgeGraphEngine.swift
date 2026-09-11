@@ -157,7 +157,8 @@ public enum KnowledgeGraphEngine {
     }
 
     private static let cacheLock = NSLock()
-    private static var keywordCache: [UInt64: Set<String>] = [:]
+    // 锁纪律：keywordCache 仅在 cacheLock 保护下读写（Swift 6 静态可变状态显式豁免）
+    nonisolated(unsafe) private static var keywordCache: [UInt64: Set<String>] = [:]
 
     private static func computeKeywords(from card: KnowledgeCard) -> Set<String> {
         let text = "\(card.headline) \(card.summary) \(card.details)".lowercased()

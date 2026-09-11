@@ -2,7 +2,7 @@ import Foundation
 
 /// 与 OpenAI 兼容的 Chat Completions API 客户端
 /// 默认对接 DeepSeek，可在设置里改 baseURL / model
-public struct AIService {
+public struct AIService: Sendable {
     private let session: URLSession
     /// OpenCode Go uses this header for routing and prompt-cache affinity.
     /// One stable identifier per app process is sufficient for KnowFlick's short-lived requests.

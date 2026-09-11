@@ -257,7 +257,8 @@ public enum CardThemeResolver {
     }
 
     private static let lock = NSLock()
-    private static var keyCache: [UUID: (category: String, headline: String, summary: String, key: String)] = [:]
+    // 锁纪律：keyCache 仅在 lock 保护下读写（Swift 6 下以 nonisolated(unsafe) 显式豁免静态可变状态检查）
+    nonisolated(unsafe) private static var keyCache: [UUID: (category: String, headline: String, summary: String, key: String)] = [:]
 
     public static func resolveKey(for card: KnowledgeCard) -> String {
         lock.lock()

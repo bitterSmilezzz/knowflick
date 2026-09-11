@@ -95,12 +95,12 @@ struct CardExportEngineTests {
     func testExportToJSONThrowsInsteadOfSilentEmptyArchive() throws {
         // 缺陷形态：旧实现签名是 `([KnowledgeCard]) -> String`，用 try? 吞掉编码错误并返回 "[]"，
         // 调用方只能 toast「已成功导出」。修复后签名必须为 throws，失败才能走到失败分支。
-        let isThrowingSignature = type(of: CardExportEngine.exportToJSON) == (([KnowledgeCard]) throws -> String).self
-        #expect(isThrowingSignature)
+        // 以 throws 目标类型赋值：签名不符时编译期即失败（跨 Swift 5/6 语言模式稳定）。
+        let throwingExport: ([KnowledgeCard]) throws -> String = CardExportEngine.exportToJSON
 
         // 成功路径依然可用，且不会退化成空归档
         let cards = makeSampleCards()
-        let json = try CardExportEngine.exportToJSON(cards: cards)
+        let json = try throwingExport(cards)
         #expect(json != "[]")
 
         let decoder = JSONDecoder()
