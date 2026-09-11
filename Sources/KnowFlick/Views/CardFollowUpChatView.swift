@@ -48,7 +48,7 @@ struct CardFollowUpChatView: View {
                 inputBar
             }
         }
-        .frame(width: 580, height: 620)
+        .frame(minWidth: 580, idealWidth: 600, minHeight: 620, idealHeight: 640)
         .onDisappear { store.closeChat() }
         .onAppear {
             store.openChat(for: card)
@@ -364,7 +364,7 @@ struct CardFollowUpChatView: View {
     private func chatErrorBanner(message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(EditorialColor.dislikeRed)
                 .font(.system(size: 12))
             Text(message)
                 .font(EditorialFont.caption)
@@ -402,7 +402,7 @@ struct CardFollowUpChatView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(Color.red.opacity(0.85))
+                            .fill(EditorialColor.dislikeRed.opacity(0.85))
                             .frame(width: 36, height: 36)
                         Image(systemName: "stop.fill")
                             .font(.system(size: 13, weight: .bold))

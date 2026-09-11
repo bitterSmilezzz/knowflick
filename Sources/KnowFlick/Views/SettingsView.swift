@@ -860,7 +860,7 @@ struct SettingsView: View {
             .padding(.vertical, 7)
             .background(EditorialColor.likeGreen, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .shadow(color: EditorialColor.likeGreen.opacity(0.35), radius: 8, y: 2)
-            .buttonStyle(PressableButtonStyle(scale: 1.02))
+            .buttonStyle(PressableButtonStyle(scale: 0.97))
         }
         .padding(18)
     }

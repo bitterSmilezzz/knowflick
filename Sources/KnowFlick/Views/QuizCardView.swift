@@ -101,7 +101,7 @@ struct QuizCardView: View {
 
             // 深度回忆指引
             VStack(alignment: .leading, spacing: 6) {
-                Text("💭 尝试在脑海中组织语言：")
+                Text("尝试在脑海中组织语言：")
                     .font(EditorialFont.labelSmall)
                     .foregroundStyle(EditorialColor.textSecondary)
                 Text("这个知识的核心机制、前因后果或关键结论是什么？组织好思路后，翻看背面核对。")

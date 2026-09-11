@@ -697,7 +697,7 @@ struct DetailView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 7)
                     .background(
-                        isSpeakingThis ? EditorialColor.likeGreen : Color.white.opacity(0.08),
+                        isSpeakingThis ? EditorialColor.likeGreen : EditorialColor.glassSurface,
                         in: Capsule()
                     )
                     .overlay(
@@ -738,8 +738,8 @@ struct DetailView: View {
                     .foregroundStyle(EditorialColor.textSecondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(Color.white.opacity(0.06), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                    .background(EditorialColor.glassSurface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -753,8 +753,8 @@ struct DetailView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(EditorialColor.textSecondary)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.06), in: Circle())
-                        .overlay(Circle().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                        .background(EditorialColor.glassSurface, in: Circle())
+                        .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
                 .help("从头重新朗读")

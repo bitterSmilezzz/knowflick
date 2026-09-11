@@ -177,7 +177,7 @@ struct CardDeckView: View {
                     if let card = store.topCard { activeSheet = .sharePoster(card) }
                 },
                 refreshDeck: {
-                    triggerSheen.toggle()
+                    // 扫光统一由 onChange(of: store.topCard?.id) 驱动，避免同事件双触发重启扫光
                     Task { await store.refreshDeck() }
                 }
             ))
@@ -660,7 +660,7 @@ struct CardDeckView: View {
                     HStack(spacing: 6) {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(.white)
+                            .tint(EditorialColor.aiAmber)
                         Text("正在收集新知识…")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(EditorialColor.textSecondary)
@@ -736,7 +736,6 @@ struct CardDeckView: View {
                     }
                     Section("卡库管理") {
                         Button("换一批新知识", systemImage: "arrow.clockwise") {
-                            triggerSheen.toggle()
                             Task { await store.refreshDeck() }
                         }
                         Button("重新探索全部卡片", systemImage: "arrow.counterclockwise") {
