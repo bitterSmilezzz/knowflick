@@ -64,21 +64,23 @@ public enum CardExportFormat: String, CaseIterable, Identifiable, Sendable {
 /// 卡片批量导出引擎
 public enum CardExportEngine {
 
-    private static let dateFormatter: DateFormatter = {
+    // DateFormatter 非线程安全，导出可能在后台 Task 并发执行，改为每次调用局部创建
+    private static func makeDateFormatter() -> DateFormatter {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd HH:mm"
         return df
-    }()
+    }
 
-    private static let dayFormatter: DateFormatter = {
+    private static func makeDayFormatter() -> DateFormatter {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
         return df
-    }()
+    }
 
     // MARK: - 1. 单文件 Markdown 导出
 
     public static func exportMarkdownSingleFile(cards: [KnowledgeCard], title: String = "KnowFlick 知识卡片") -> String {
+        let dateFormatter = makeDateFormatter()
         let nowStr = dateFormatter.string(from: Date())
         var md = """
         ---
@@ -162,6 +164,7 @@ public enum CardExportEngine {
     public static func exportObsidianFiles(cards: [KnowledgeCard]) -> [ExportFileItem] {
         var items: [ExportFileItem] = []
         var usedFilenames: Set<String> = []
+        let dayFormatter = makeDayFormatter()
 
         for card in cards {
             let categoryName = card.category.isEmpty ? "通用知识" : card.category

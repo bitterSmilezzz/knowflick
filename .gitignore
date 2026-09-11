@@ -27,3 +27,6 @@ Resources/AppIcon.iconset/
 
 # Linter caches
 .brooks-lint-history.json
+
+# 会话临时工作区
+.scratch/

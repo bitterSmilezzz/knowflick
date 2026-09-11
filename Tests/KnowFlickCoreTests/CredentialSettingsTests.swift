@@ -60,4 +60,23 @@ struct CredentialSettingsTests {
         #expect(store.settings.speech.profiles[0].apiKey == "keep-me")
         #expect(credentials.values["tts.siliconflow"] == "keep-me")
     }
+
+    @Test func failedSettingsWriteRollsBackCredentials() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = Storage(baseDir: directory)
+        let credentials = MemoryCredentials()
+        let store = AppStore(storage: storage, credentials: credentials)
+        defer { store.flushPersistence() }
+        // settings.json 是目录：钥匙串写入成功后 JSON 落盘必然失败
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("settings.json"), withIntermediateDirectories: false)
+        var settings = store.settings
+        settings.autoGenerate = false
+        settings.apiKey = "fresh-key"
+        let memoryBefore = store.settings
+        #expect(throws: (any Error).self) { try store.saveSettings(settings) }
+        // 内存保持旧值，钥匙串回滚到保存前状态（原本无密钥）
+        #expect(store.settings == memoryBefore)
+        #expect(credentials.values["apiKey"] == nil)
+    }
 }

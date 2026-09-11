@@ -596,30 +596,63 @@ public final class AppStore {
 
     // MARK: - 设置
 
-    /// 保存设置：key 单独进 Keychain，其余进 JSON；失败抛错
+    /// 保存设置：key 单独进 Keychain，其余进 JSON；失败抛错。
+    /// 提交顺序：钥匙串写入 → JSON 落盘 → 内存提交；任一步失败内存保持旧值，
+    /// 钥匙串尽力回滚，避免「新密钥配旧配置」跨启动错位。
     public func saveSettings(_ newSettings: AISettings) throws {
         let trimmedKey = newSettings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        // key 非空写钥匙串、为空则删除，与语音配置分支对称：清空后重启不会「复活」旧密钥。
-        if trimmedKey.isEmpty {
-            try credentials.delete(account: "apiKey")
-        } else {
-            try credentials.save(trimmedKey, account: "apiKey")
-        }
         var persisted = newSettings
         persisted.apiKey = trimmedKey
         for index in persisted.speech.profiles.indices {
             let key = persisted.speech.profiles[index].apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             persisted.speech.profiles[index].apiKey = key
-            let account = "tts." + persisted.speech.profiles[index].id
-            if key.isEmpty { try credentials.delete(account: account) }
-            else { try credentials.save(key, account: account) }
         }
-        let retainedIDs = Set(persisted.speech.profiles.map(\.id))
-        for profile in settings.speech.profiles where !retainedIDs.contains(profile.id) {
-            try credentials.delete(account: "tts." + profile.id)
+
+        // 快照旧凭据用于失败回滚（read 返回 nil 表示该账户本无密钥）
+        let previousAPIKey = credentials.read(account: "apiKey")
+        let previousProfileKeys = settings.speech.profiles.map {
+            (account: "tts." + $0.id, key: credentials.read(account: "tts." + $0.id))
         }
+
+        do {
+            // key 非空写钥匙串、为空则删除，与语音配置分支对称：清空后重启不会「复活」旧密钥。
+            if trimmedKey.isEmpty {
+                try credentials.delete(account: "apiKey")
+            } else {
+                try credentials.save(trimmedKey, account: "apiKey")
+            }
+            for profile in persisted.speech.profiles {
+                let account = "tts." + profile.id
+                if profile.apiKey.isEmpty { try credentials.delete(account: account) }
+                else { try credentials.save(profile.apiKey, account: account) }
+            }
+            let retainedIDs = Set(persisted.speech.profiles.map(\.id))
+            for profile in settings.speech.profiles where !retainedIDs.contains(profile.id) {
+                try credentials.delete(account: "tts." + profile.id)
+            }
+            try storage.saveSettingsThrowing(persisted)
+        } catch {
+            rollbackCredentials(previousAPIKey: previousAPIKey, previousProfileKeys: previousProfileKeys)
+            throw error
+        }
+
         settings = persisted
-        try storage.saveSettingsThrowing(persisted)
+    }
+
+    /// JSON 落盘或钥匙串写入失败后，尽力恢复到保存前的凭据状态
+    private func rollbackCredentials(previousAPIKey: String?, previousProfileKeys: [(account: String, key: String?)]) {
+        if let previousAPIKey {
+            try? credentials.save(previousAPIKey, account: "apiKey")
+        } else {
+            try? credentials.delete(account: "apiKey")
+        }
+        for entry in previousProfileKeys {
+            if let key = entry.key {
+                try? credentials.save(key, account: entry.account)
+            } else {
+                try? credentials.delete(account: entry.account)
+            }
+        }
     }
 
     /// 连通性测试：轻量 ping 请求，不消耗额度

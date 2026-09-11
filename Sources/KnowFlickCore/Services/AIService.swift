@@ -42,7 +42,7 @@ public struct AIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if request.url?.host?.lowercased().contains("opencode.ai") == true {
             request.setValue(Self.opencodeSessionID, forHTTPHeaderField: "x-opencode-session")
-            request.setValue("KnowFlick/3.2", forHTTPHeaderField: "User-Agent")
+            request.setValue("KnowFlick/" + AppVersion.current, forHTTPHeaderField: "User-Agent")
         }
         return request
     }

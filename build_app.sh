@@ -29,9 +29,16 @@ BINARY_SRC="$PROJECT_DIR/.build/release/$APP_NAME"
 RESOURCE_BUNDLE_SRC="$PROJECT_DIR/.build/release/${APP_NAME}_${APP_NAME}Core.bundle"
 RESOURCE_BUNDLE_NAME="$(basename "$RESOURCE_BUNDLE_SRC")"
 
+# 版本单一来源：从 KnowFlickCore 的 AppVersion.swift 读取，避免 Info.plist 与代码版本漂移
+APP_VERSION="$(sed -n 's/^    public static let current = "\(.*\)"$/\1/p' "$PROJECT_DIR/Sources/KnowFlickCore/Support/AppVersion.swift")"
+if [[ -z "$APP_VERSION" ]]; then
+    echo "错误: 未能从 Sources/KnowFlickCore/Support/AppVersion.swift 解析出版本号" >&2
+    exit 1
+fi
+
 # ---------- 1. 构建 ----------
+echo "==> [1/3] 图标校验 + swift build -c release"
 swift tools/verify_icon.swift Resources/AppIcon.icns Resources/AppIcon.png
-echo "==> [1/3] swift build -c release"
 swift build -c release "$@"
 
 if [[ ! -x "$BINARY_SRC" ]]; then
@@ -66,9 +73,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.2.0</string>
+	<string>__APP_VERSION__</string>
 	<key>CFBundleVersion</key>
-	<string>3.2.0</string>
+	<string>__APP_VERSION__</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -107,6 +114,7 @@ else
 fi
 
 # ---------- 校验与刷新 ----------
+sed -i '' "s/__APP_VERSION__/$APP_VERSION/g" "$CONTENTS_DIR/Info.plist"
 plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
 codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"

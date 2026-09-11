@@ -200,7 +200,13 @@ struct CardDeckView: View {
                             store.toggleFavorite(card)
                         },
                         onNext: {
-                            if let next = store.topCard, next.id != card.id { activeSheet = .detail(next) }
+                            if let next = store.topCard, next.id != card.id {
+                                activeSheet = .detail(next)
+                            } else if store.deck.count > 1 {
+                                // 详情页查看的正是顶卡时，「下一张」以系统跳过语义刷过当前卡并前进
+                                store.swipe(card, direction: .skip)
+                                if let next = store.topCard { activeSheet = .detail(next) } else { activeSheet = nil }
+                            }
                         },
                         onPrevious: {
                             if let prev = store.history.first { activeSheet = .detail(prev) }

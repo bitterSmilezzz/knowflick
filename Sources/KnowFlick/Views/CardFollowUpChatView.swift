@@ -265,7 +265,7 @@ struct CardFollowUpChatView: View {
                         }
                         .padding(.vertical, 4)
                     } else {
-                        Text(LocalizedStringKey(msg.content))
+                        Text(msg.content)
                             .font(EditorialFont.bodySerif)
                             .foregroundStyle(EditorialColor.textPrimary)
                             .lineSpacing(5)

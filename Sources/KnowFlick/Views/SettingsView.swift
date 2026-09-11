@@ -817,7 +817,7 @@ struct SettingsView: View {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
                         .foregroundStyle(EditorialColor.aiAmber)
-                    Text("KnowFlick v3.2.0")
+                    Text("KnowFlick v" + AppVersion.current)
                         .font(EditorialFont.captionSmall)
                         .foregroundStyle(EditorialColor.textTertiary)
                 }

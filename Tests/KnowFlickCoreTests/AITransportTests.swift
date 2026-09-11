@@ -14,7 +14,7 @@ private final class AIStubProtocol: URLProtocol, @unchecked Sendable {
         #expect(request.httpMethod == "POST")
         if request.url?.host == "opencode.ai" {
             #expect(request.value(forHTTPHeaderField: "x-opencode-session")?.isEmpty == false)
-            #expect(request.value(forHTTPHeaderField: "User-Agent") == "KnowFlick/3.2")
+            #expect(request.value(forHTTPHeaderField: "User-Agent") == "KnowFlick/" + AppVersion.current)
         }
         let isPing = request.url!.path.contains("ping") || request.url?.host == "opencode.ai"
         let body: Data
