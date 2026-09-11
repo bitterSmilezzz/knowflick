@@ -92,7 +92,10 @@ public final class KnowledgeSearchEngine: @unchecked Sendable {
             )
 
             lock.lock()
-            if values.count >= capacity { values.removeAll(keepingCapacity: true) }
+            if values.count >= capacity {
+                // 驱逐约一半（哈希奇偶）而非全清：保留热条目，避免输入高峰后的冷启动全量重算
+                values = values.filter { $0.key.hashValue.isMultiple(of: 2) }
+            }
             values[text] = pair
             lock.unlock()
             return pair

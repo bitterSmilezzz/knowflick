@@ -89,6 +89,7 @@ public final class AppStore {
         self.history = hist
         self.favorites = cards.filter(\.isFavorite)
             .sorted { ($0.favoritedAt ?? .distantPast) > ($1.favoritedAt ?? .distantPast) }
+        CardThemeResolver.pruneKeyCache(keeping: Set(cards.map(\.id)))
 
         var unseen = cards.filter { $0.seenAt == nil }
         // 来源开关：只开其一则只看该来源；全关则队列为空（含外部导入卡片，口径见 CONTEXT.md）
@@ -551,11 +552,6 @@ public final class AppStore {
     /// 获取指定卡片的相关灵感卡片列表
     public func getRelatedCards(for card: KnowledgeCard, limit: Int = 3) -> [RelatedCardItem] {
         KnowledgeGraphEngine.findRelatedCards(for: card, in: cards, limit: limit)
-    }
-
-    /// 生成全量星图引力拓扑数据
-    public func getKnowledgeGraphData(width: CGFloat = 860, height: CGFloat = 620) -> KnowledgeGraphData {
-        KnowledgeGraphEngine.buildGraph(from: cards, width: width, height: height)
     }
 
     // MARK: - AI 生成

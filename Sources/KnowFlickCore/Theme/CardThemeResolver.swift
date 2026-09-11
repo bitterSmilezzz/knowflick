@@ -276,6 +276,13 @@ public enum CardThemeResolver {
         return key
     }
 
+    /// 按当前卡片集合裁剪缓存（全量重排后调用），避免已删除卡片的条目永久驻留
+    public static func pruneKeyCache(keeping ids: Set<UUID>) {
+        lock.lock()
+        keyCache = keyCache.filter { ids.contains($0.key) }
+        lock.unlock()
+    }
+
     private static func containsAny(_ text: String, _ keywords: [String]) -> Bool {
         for kw in keywords {
             if text.contains(kw) { return true }
@@ -327,7 +334,10 @@ public enum CardThemeResolver {
                 }
             }
 
-            let chosen = remaining.remove(at: bestCandidateIdx)
+            // swap-remove：O(1) 摘除候选（remove(at:) 为 O(n)），全量重排路径在千卡库下省去数万次数组搬移。
+            // 扫描顺序扰动不影响正确性：候选判定只依赖 lastSeenPos 距离，与扫描顺序无关。
+            remaining.swapAt(bestCandidateIdx, remaining.count - 1)
+            let chosen = remaining.removeLast()
             let chosenKey = resolveKey(for: chosen)
             result.append(chosen)
             lastSeenPos[chosenKey] = currentIndex

@@ -10,6 +10,7 @@ struct KnowledgeGraphView: View {
 
     @State private var isLoadingGraph = true
     @State private var graphData: KnowledgeGraphData = .init(nodes: [], edges: [])
+    @State private var nodeById: [UUID: GraphNode] = [:]
     @State private var selectedNode: GraphNode? = nil
     @State private var hoveredNode: GraphNode? = nil
     @State private var selectedCategory: String? = nil
@@ -315,7 +316,7 @@ struct KnowledgeGraphView: View {
     // MARK: - Canvas 渲染核心
 
     private func drawGraph(context: GraphicsContext, size: CGSize) {
-        let nodeMap = Dictionary(uniqueKeysWithValues: graphData.nodes.map { ($0.cardId, $0) })
+        let nodeMap = nodeById
         let activeNode = hoveredNode ?? selectedNode
         let connectedSet = connectedNodeIdsForSelectedOrHovered
 
@@ -567,6 +568,8 @@ struct KnowledgeGraphView: View {
         }
         guard !Task.isCancelled else { return }
         graphData = result
+        // nodeMap 一次性预计算：此前每次 Canvas 重绘（含 hover 进出）都重建整表
+        nodeById = Dictionary(uniqueKeysWithValues: result.nodes.map { ($0.cardId, $0) })
         isLoadingGraph = false
     }
 

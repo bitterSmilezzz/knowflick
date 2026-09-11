@@ -336,7 +336,13 @@ public enum KnowledgeGraphEngine {
 
         let keywords = cards.map { extractKeywords(from: $0) }
         for i in 0..<cards.count {
-            if Task.isCancelled { return KnowledgeGraphData(nodes: [], edges: []) }
+            if Task.isCancelled {
+                // 取消时不丢弃已完成的工作：返回已建节点与当前累计边（连接度一致），而非空图
+                for idx in nodes.indices {
+                    nodes[idx].connectionsCount = connectionTally[nodes[idx].cardId, default: 0]
+                }
+                return KnowledgeGraphData(nodes: nodes, edges: edges)
+            }
             let cardA = cards[i]
             // 寻找最强的 1~2 个连线
             var bestMatches: [(other: KnowledgeCard, kind: RelationKind, score: Double)] = []
