@@ -84,7 +84,8 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 
     private let synthesizer = AVSpeechSynthesizer()
     private var currentCard: KnowledgeCard?
-    private var currentUtterance: AVSpeechUtterance?
+/// internal 以便测试通过 delegate 回调注入「播放完成」事件（AVSpeechUtterance 为引用类型）
+    var currentUtterance: AVSpeechUtterance?
     private var totalCharactersCount: Int = 0
 
     // 磨耳朵回调

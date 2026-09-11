@@ -51,7 +51,7 @@ public final class AppStore {
     public var chatErrorMessage: String? = nil
     private var chatStreamTask: Task<Void, Never>? = nil
 
-    private let aiService = AIService()
+    private let aiService: AIService
     private let storage: Storage
     private let credentials: any CredentialStore
     private var lastSwipedCardId: UUID?
@@ -60,11 +60,13 @@ public final class AppStore {
     public init(
         storage: Storage = Storage(),
         credentials: (any CredentialStore)? = nil,
-        speechService: SpeechSynthesizerService? = nil
+        speechService: SpeechSynthesizerService? = nil,
+        aiService: AIService? = nil
     ) {
         self.storage = storage
         self.credentials = credentials ?? SystemCredentialStore()
         self.speechService = speechService ?? SpeechSynthesizerService()
+        self.aiService = aiService ?? AIService()
         recomputeDeckAndHistory()
 
         self.speechService.speedMultiplier = settings.speechRate

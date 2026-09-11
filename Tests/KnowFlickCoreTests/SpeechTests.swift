@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Testing
 @testable import KnowFlickCore
 
@@ -9,6 +10,31 @@ struct SpeechTests {
         defer { service.stopAmbientMode() }
         #expect(!service.isAmbientMode)
         #expect(service.state == .idle)
+    }
+
+    @Test @MainActor func ambientPlaybackFinishAdvancesAndStopsWhenQueueEmpty() async throws {
+        let service = SpeechSynthesizerService()
+        var advanceRequests = 0
+        service.ambientGapSeconds = 0.05
+        service.onAmbientAdvanceRequest = {
+            advanceRequests += 1
+            return nil   // 空队列：磨耳朵应自动收束
+        }
+        let subject = KnowledgeCard(category: "学习", headline: "磨耳朵推进", summary: "摘要", details: "正文", source: .seed,
+                                    createdAt: Date(timeIntervalSince1970: 1_000_000))
+        service.startAmbientMode(initialCard: subject)
+        #expect(service.isAmbientMode)
+
+        // 模拟系统合成器的「播放完成」delegate 回调（须与 service 内部的 utterance 实例一致）
+        let utterance = try #require(service.currentUtterance)
+        service.speechSynthesizer(AVSpeechSynthesizer(), didFinish: utterance)
+
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while service.isAmbientMode && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(!service.isAmbientMode)
+        #expect(advanceRequests == 1)
     }
 
     @Test func pastedLocalAddressAcceptsSurroundingWhitespace() throws {

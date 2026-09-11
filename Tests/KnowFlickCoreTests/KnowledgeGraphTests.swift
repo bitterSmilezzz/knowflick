@@ -71,4 +71,29 @@ struct KnowledgeGraphTests {
             }
         }
     }
+
+    @Test func evaluateRelationScoresFollowTheFourBands() throws {
+        // 同领域深化：同分类即成立（无阈值门槛）
+        let deepenA = card("AI", "量子计算与量子纠缠原理")
+        let deepenB = card("AI", "量子纠缠实验验证")
+        let deepen = try #require(KnowledgeGraphEngine.evaluateRelation(cardA: deepenA, cardB: deepenB))
+        #expect(deepen.kind == .disciplineDeepen)
+
+        // 交叉学科碰撞：亲和矩阵内的跨分类（AI ↔ AI Agent）
+        let crossA = card("AI", "大语言模型推理优化")
+        let crossB = card("AI Agent", "智能体的工具调用循环")
+        let cross = try #require(KnowledgeGraphEngine.evaluateRelation(cardA: crossA, cardB: crossB))
+        #expect(cross.kind == .crossDiscipline)
+
+        // 概念共鸣：无亲和关系但概念重合度达标（jaccard >= 0.04）
+        let bridgeA = card("物理", "斐波那契数列")
+        let bridgeB = card("历史", "斐波那契数列")
+        let bridge = try #require(KnowledgeGraphEngine.evaluateRelation(cardA: bridgeA, cardB: bridgeB))
+        #expect(bridge.kind == .conceptBridge)
+
+        // 无关联：概念零重合（jaccard < 0.04）
+        let unrelatedA = card("物理", "量子纠缠的超距关联")
+        let unrelatedB = card("历史", "古罗马斗兽场")
+        #expect(KnowledgeGraphEngine.evaluateRelation(cardA: unrelatedA, cardB: unrelatedB) == nil)
+    }
 }

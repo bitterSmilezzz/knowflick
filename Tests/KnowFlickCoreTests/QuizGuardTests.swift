@@ -67,22 +67,29 @@ struct QuizGuardTests {
         #expect(first.map(\.id) == second.map(\.id))
     }
 
-    /// 评分守卫的判定语义：同一张卡已有本轮评分时，守卫必须阻止再次提交。
-    /// 这里用字典在模型层复现判定条件（`ratings[id] == nil`），确保「首次写入成功、
-    /// 后续写入被拒绝」这一契约在纯逻辑层成立（View 层的 @State 无法脱离 View 测试）。
-    @Test func ratingGuardAcceptsOnlyTheFirstSubmissionPerCard() {
-        let cardId = UUID()
-        var ratings: [UUID: AppStore.QuizRating] = [:]
+    /// 评分提交的真实 store 契约：`recordQuizResult` 每次调用都会累计 reviewCount 并
+    /// 覆盖 masteryLevel / lastReviewedAt —— 即「去重守卫」的职责在 View 层（ratings[id] == nil），
+    /// store 层忠实记录每次提交。该测试锚定这一分工，防止有人误改其一却未同步另一侧。
+    @Test func recordQuizResultCountsEverySubmissionAndUpdatesMastery() throws {
+        try withStore { store, _, _ in
+            let subject = card(seen: Date())
+            store.cards = [subject]
 
-        func submit(_ rating: AppStore.QuizRating) -> Bool {
-            guard ratings[cardId] == nil else { return false }
-            ratings[cardId] = rating
-            return true
+            store.recordQuizResult(cardId: subject.id, rating: .forgot)
+            var updated = try #require(store.cards.first { $0.id == subject.id })
+            #expect(updated.reviewCount == 1)
+            #expect(updated.masteryLevel == 0)
+            #expect(updated.lastReviewedAt != nil)
+
+            // 第二次提交（View 层守卫失效时的行为）：仍会累计并覆盖熟练度
+            store.recordQuizResult(cardId: subject.id, rating: .mastered)
+            updated = try #require(store.cards.first { $0.id == subject.id })
+            #expect(updated.reviewCount == 2)
+            #expect(updated.masteryLevel == 2)
+
+            // 未知卡片：静默忽略，不产生副作用
+            store.recordQuizResult(cardId: UUID(), rating: .mastered)
+            #expect(store.cards.first { $0.id == subject.id }?.reviewCount == 2)
         }
-
-        #expect(submit(.forgot) == true)
-        #expect(submit(.mastered) == false)
-        #expect(ratings[cardId] == .forgot)
-        #expect(ratings.count == 1)
     }
 }

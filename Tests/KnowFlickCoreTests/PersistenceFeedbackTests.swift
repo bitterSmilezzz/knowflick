@@ -64,4 +64,29 @@ struct PersistenceFeedbackTests {
         #expect(store.persistenceWarning == nil)
         #expect(storage.loadCards() == [subject])
     }
+
+    @Test @MainActor func rapidMutationsPersistOnlyTheLatestSnapshot() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = Storage(baseDir: directory)
+        let store = AppStore(storage: storage)
+        defer { store.flushPersistence(); try? FileManager.default.removeItem(at: directory) }
+        var a = card()
+        a.headline = "快照A"
+        var b = card()
+        b.headline = "快照B"
+        var c = card()
+        c.headline = "快照C"
+
+        // 连续快速变更：串行持久化队列按 revision 拒绝旧快照覆盖新快照
+        store.cards = [a]
+        store.cards = [a, b]
+        store.cards = [a, b, c]
+        store.flushPersistence()
+        #expect(storage.loadCards().map(\.id) == [a.id, b.id, c.id])
+
+        // 旧写不复活：落盘完成后再改再落盘，磁盘始终等于最后一次内存快照
+        store.cards = [a]
+        store.flushPersistence()
+        #expect(storage.loadCards().map(\.id) == [a.id])
+    }
 }
