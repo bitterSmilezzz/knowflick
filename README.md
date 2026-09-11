@@ -110,6 +110,16 @@ KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 ma
 测试使用 Swift Testing，脚本兼容 Xcode 与 Command Line Tools 的框架路径。
 覆盖分类、统计、文件恢复、密钥编码隔离、刷卡状态、追问会话、API 传输与星图。
 网络测试通过本地 URLProtocol 替身执行，不请求真实 AI 服务。
+文档中的测试计数为 `@Test` 声明数（参数化用例运行时会展开为多条）。
+
+```bash
+# 图标构建链路（build_icon 自动调用 iconutil 打包 ICNS，随后逐像素校验）
+swift tools/build_icon.swift Resources/AppIcon-artwork.png /tmp/icon-check
+swift tools/verify_icon.swift /tmp/icon-check/AppIcon.icns /tmp/icon-check/AppIcon.png
+
+# 课程导入脚本单元测试
+python3 tools/test_import_lessons.py
+```
 
 ### 语音配置
 

@@ -34,7 +34,7 @@ CATEGORY_MAP = {
 }
 
 # headline 硬限制
-MAX_HEADLINE_LEN = 40
+MAX_HEADLINE_LEN = 40  # 仅约束新增卡片；历史种子存在 52 字标题，属历史数据不做追溯
 
 # 个别超长标题的手工压缩（保留题干主干，≤40 字）
 HEADLINE_OVERRIDES = {
