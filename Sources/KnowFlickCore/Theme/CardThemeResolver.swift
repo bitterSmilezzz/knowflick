@@ -176,14 +176,15 @@ public enum CardThemeResolver {
         if containsAny(content, ["相对论", "时空", "引力波", "光速不变", "黑洞蒸发", "膨胀", "gps", "双生子", "爱因斯坦"]) {
             return "relativity"
         }
-        if containsAny(content, ["光学", "光", "折射", "反射", "透镜", "彩虹", "棱镜", "光谱", "激光", "干涉", "偏振"]) {
+        // A concrete subject takes priority over incidental words such as light in a summary.
+        if containsAny(content, ["天文", "宇宙", "星球", "光年", "黑洞", "太阳", "行星", "火星", "月球", "地球自转", "银河", "星系", "恒星", "轨道", "历法", "日食", "月食"]) {
+            return "astronomy"
+        }
+        if containsAny(content, ["光学", "光线", "折射", "反射", "透镜", "彩虹", "棱镜", "光谱", "激光", "干涉", "偏振"]) {
             return "optics"
         }
         if containsAny(content, ["太空", "火箭", "飞船", "航天", "空间站", "探测器", "登月", "阿波罗", "人造卫星", "卫星", "宇航员", "发射"]) {
             return "spacecraft"
-        }
-        if containsAny(content, ["天文", "宇宙", "星球", "光年", "黑洞", "太阳", "行星", "火星", "月球", "地球自转", "银河", "星系", "恒星", "轨道", "历法", "日食", "月食"]) {
-            return "astronomy"
         }
         // (2) 地球与生态自然
         if containsAny(content, ["海洋", "鲸", "鲨鱼", "深海", "珊瑚", "海啸", "海底", "水下", "潮汐", "马里亚纳", "海沟", "盐度"]) {
@@ -256,20 +257,21 @@ public enum CardThemeResolver {
     }
 
     private static let lock = NSLock()
-    private static var keyCache: [UUID: String] = [:]
+    private static var keyCache: [UUID: (category: String, headline: String, summary: String, key: String)] = [:]
 
     public static func resolveKey(for card: KnowledgeCard) -> String {
         lock.lock()
-        if let cached = keyCache[card.id] {
+        if let cached = keyCache[card.id], cached.category == card.category,
+           cached.headline == card.headline, cached.summary == card.summary {
             lock.unlock()
-            return cached
+            return cached.key
         }
         lock.unlock()
 
         let key = resolveKey(category: card.category, headline: card.headline, summary: card.summary)
 
         lock.lock()
-        keyCache[card.id] = key
+        keyCache[card.id] = (card.category, card.headline, card.summary, key)
         lock.unlock()
         return key
     }

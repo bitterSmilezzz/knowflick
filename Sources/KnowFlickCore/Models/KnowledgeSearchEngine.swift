@@ -92,26 +92,14 @@ public final class KnowledgeSearchEngine: Sendable {
             case .ai:
                 return card.source == .ai
             case .favorites:
-                return favorites.contains(card.id) || card.swiped == .right
+                return card.isFavorite || favorites.contains(card.id)
             }
         }
 
-        // 2. 空查询场景：返回最近浏览或默认推荐卡片
+        // 2. 空查询：返回空结果，由视图渲染「输入关键词探索」引导与搜索建议
+        //    （此前返回最近 40 条会让引导页与建议按钮永久不可达）
         if trimmed.isEmpty {
-            let sorted = filtered.sorted {
-                let d0 = $0.seenAt ?? $0.createdAt
-                let d1 = $1.seenAt ?? $1.createdAt
-                return d0 > d1
-            }
-            return sorted.prefix(40).map { card in
-                SearchResultItem(
-                    card: card,
-                    score: 0,
-                    matchedField: .browse,
-                    matchedExcerpt: card.summary.isEmpty ? card.headline : card.summary,
-                    isFavorite: favorites.contains(card.id) || card.swiped == .right
-                )
-            }
+            return []
         }
 
         // 3. 全文检索与打分匹配
@@ -120,7 +108,6 @@ public final class KnowledgeSearchEngine: Sendable {
         for card in filtered {
             let headlineLower = card.headline.lowercased()
             let summaryLower = card.summary.lowercased()
-            let detailsLower = card.details.lowercased()
             let categoryLower = card.category.lowercased()
             let linksText = card.links.map { "\($0.title) \($0.url)" }.joined(separator: " ").lowercased()
 
@@ -190,8 +177,8 @@ public final class KnowledgeSearchEngine: Sendable {
                 }
             }
 
-            // 4. 深度剖析正文匹配
-            if let range = detailsLower.range(of: trimmed) {
+            // 4. 深度剖析正文匹配（在原字符串上做大小写不敏感查找，避免跨 lowercased() 副本的索引失效）
+            if let range = card.details.range(of: trimmed, options: .caseInsensitive) {
                 totalScore += 20
                 if matchedField == nil {
                     matchedField = .details
@@ -224,7 +211,7 @@ public final class KnowledgeSearchEngine: Sendable {
             guard totalScore > 0, let field = matchedField else { continue }
 
             // 收藏额外加分
-            let isFav = favorites.contains(card.id) || card.swiped == .right
+            let isFav = card.isFavorite || favorites.contains(card.id)
             if isFav { totalScore += 5 }
 
             results.append(SearchResultItem(
@@ -247,10 +234,19 @@ public final class KnowledgeSearchEngine: Sendable {
         }
     }
 
-    /// 截取关键词周围的上下文片段
+    /// 截取关键词周围的上下文片段。
+    /// 注意：调用方传入的 range 必须与 text 同源；这里统一用字符偏移量重算，
+    /// 避免跨 lowercased() 副本传递 String.Index 造成索引失效 trap。
     private func extractSnippet(from text: String, around range: Range<String.Index>, radius: Int = 28) -> String {
-        let start = text.index(range.lowerBound, offsetBy: -radius, limitedBy: text.startIndex) ?? text.startIndex
-        let end = text.index(range.upperBound, offsetBy: radius, limitedBy: text.endIndex) ?? text.endIndex
+        let lowerBound = text.distance(from: text.startIndex, to: range.lowerBound)
+        let upperBound = text.distance(from: text.startIndex, to: range.upperBound)
+        let startOffset = max(0, lowerBound - radius)
+        let endOffset = min(text.count, upperBound + radius)
+        guard let start = text.index(text.startIndex, offsetBy: startOffset, limitedBy: text.endIndex),
+              let end = text.index(text.startIndex, offsetBy: endOffset, limitedBy: text.endIndex),
+              start <= end else {
+            return text
+        }
         var snippet = String(text[start..<end])
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)

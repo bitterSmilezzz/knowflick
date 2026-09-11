@@ -17,11 +17,14 @@ struct DetailView: View {
     var store: AppStore? = nil
     var relatedCards: [RelatedCardItem] = []
     var onSelectCard: ((KnowledgeCard) -> Void)? = nil
+    var onCompleteReading: (() -> Void)? = nil
+    /// 详情页内 ⌘Z 撤销：由宿主注入（底层卡堆的 ⌘Z 在 sheet 打开时被禁用）
+    var onUndo: (() -> Void)? = nil
 
     @Environment(\.openURL) private var openURL
     @State private var showPosterSheet = false
     @State private var showChatSheet = false
-    private var isFavorited: Bool { store?.isFavorite(card) ?? (card.swiped == .right) }
+    private var isFavorited: Bool { store?.isFavorite(card) ?? card.isFavorite }
 
     init(
         card: KnowledgeCard,
@@ -35,7 +38,9 @@ struct DetailView: View {
         onPrevious: @escaping () -> Void,
         onClose: @escaping () -> Void,
         relatedCards: [RelatedCardItem] = [],
-        onSelectCard: ((KnowledgeCard) -> Void)? = nil
+        onSelectCard: ((KnowledgeCard) -> Void)? = nil,
+        onCompleteReading: (() -> Void)? = nil,
+        onUndo: (() -> Void)? = nil
     ) {
         self.card = card
         self.store = store
@@ -49,6 +54,8 @@ struct DetailView: View {
         self.onClose = onClose
         self.relatedCards = relatedCards
         self.onSelectCard = onSelectCard
+        self.onCompleteReading = onCompleteReading
+        self.onUndo = onUndo
     }
 
     private var theme: CategoryTheme {
@@ -137,15 +144,19 @@ struct DetailView: View {
                             .shadow(color: theme.accent.opacity(0.38), radius: 8, y: 2)
 
                             if card.source == .ai {
-                                Label("AI 生成", systemImage: "sparkles")
-                                    .font(EditorialFont.caption.weight(.bold))
-                                    .foregroundStyle(EditorialColor.aiAmber)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(EditorialColor.aiAmberBg, in: Capsule())
-                                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                                // 关闭「AI 内容标记」后，AI 卡片不应被误标为「预置精选」，
+                                // 而是退化为不暴露来源的中性标签（与卡片正面 showAIMark 行为一致）。
+                                if showAIMark {
+                                    Label("AI 生成", systemImage: "sparkles")
+                                        .font(EditorialFont.caption.weight(.bold))
+                                        .foregroundStyle(EditorialColor.aiAmber)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(EditorialColor.aiAmberBg, in: Capsule())
+                                        .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                                }
                             } else {
-                                Text("预置精选")
+                                Text(card.source == .imported ? "导入笔记" : "预置精选")
                                     .font(EditorialFont.caption)
                                     .foregroundStyle(EditorialColor.textTertiary)
                                     .padding(.horizontal, 10)
@@ -229,6 +240,7 @@ struct DetailView: View {
 
                         // 操作底栏：上一张 | 不喜欢 | 跳过 | 感兴趣 | 下一张
                         VStack(spacing: 14) {
+                            if onCompleteReading == nil {
                             HStack(spacing: 12) {
                                 navButton(icon: "chevron.left", help: "上一张 ←", disabled: !hasPrevious, shortcut: .leftArrow) {
                                     onPrevious()
@@ -246,7 +258,8 @@ struct DetailView: View {
                                     onNext()
                                 }
                             }
-                            Text("⏎ / Esc 关闭详情 · ⌘S 导出海报 · ⌘Z 撤销上一张")
+                            }
+                            Text("⏎ / Esc 关闭详情 · ⌘S 导出海报" + (onUndo != nil ? " · ⌘Z 撤销上一张" : ""))
                                 .font(EditorialFont.captionSmall)
                                 .foregroundStyle(EditorialColor.textMuted)
                         }
@@ -259,13 +272,40 @@ struct DetailView: View {
                 .frame(maxWidth: .infinity)
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let onCompleteReading {
+                HStack(spacing: 20) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("读完，再回忆一下。").font(EditorialFont.label)
+                        Text("完成后计入今日目标，自动安排复习。")
+                            .font(EditorialFont.caption).foregroundStyle(EditorialColor.textSecondary)
+                    }
+                    Spacer()
+                    Button(action: onCompleteReading) {
+                        Label("完成阅读", systemImage: "checkmark.circle").padding(.vertical, 6)
+                    }.buttonStyle(.borderedProminent).tint(EditorialColor.aiAmber)
+                }.padding(.horizontal, 28).padding(.vertical, 16)
+                    .background(.regularMaterial)
+                    .overlay(alignment: .top) { Divider() }
+            }
+        }
         .background(
-            // ⏎ 关闭（与主界面 ⏎ 开详情形成开合对）
-            Button("") { onClose() }
-                .keyboardShortcut(.return, modifiers: [])
-                .frame(width: 0, height: 0)
-                .opacity(0)
-                .accessibilityHidden(true)
+            Group {
+                // ⏎ 关闭（与主界面 ⏎ 开详情形成开合对）
+                Button("") { onClose() }
+                    .keyboardShortcut(.return, modifiers: [])
+                    .frame(width: 0, height: 0)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+                // ⌘Z 撤销上一张：底层卡堆的同名快捷键在 sheet 打开时被禁用，故在此补上（与底部文案一致）
+                if let onUndo {
+                    Button("") { onUndo() }
+                        .keyboardShortcut("z", modifiers: .command)
+                        .frame(width: 0, height: 0)
+                        .opacity(0)
+                        .accessibilityHidden(true)
+                }
+            }
         )
         .overlay {
             if showPosterSheet {
@@ -377,7 +417,10 @@ struct DetailView: View {
                 if let onToggleFavorite {
                     onToggleFavorite()
                 } else {
-                    onSwipe(isFavorited ? .skip : .right)
+                    // 无收藏回调时的兜底：用喜好意图表达「收藏/取消收藏」。
+                    // 右划 = 感兴趣（同时写入收藏），左划 = 不喜欢（同时移出收藏）；
+                    // 不再用 `.skip`（skip 是系统跳过，不表达喜好，会把收藏写成「系统行为」）。
+                    onSwipe(isFavorited ? .left : .right)
                 }
             }
         }) {

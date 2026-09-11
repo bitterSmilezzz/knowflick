@@ -6,6 +6,7 @@ import KnowFlickCore
 struct QuizView: View {
     let store: AppStore
     var category: String? = nil
+    var plannedCards: [KnowledgeCard]? = nil
     let onClose: () -> Void
 
     @State private var quizCards: [KnowledgeCard] = []
@@ -14,6 +15,11 @@ struct QuizView: View {
     @State private var ratings: [UUID: AppStore.QuizRating] = [:]
     @State private var isCompleted: Bool = false
     @State private var animateRing: Bool = false
+    /// 评分输入锁：一次评分动作已受理、卡片切换动画尚未结束时，忽略重复的按钮/⌘1-3 输入，
+    /// 避免第二次输入落到下一张用户还没看到的卡片上并给它错误评分。
+    @State private var isAdvancing: Bool = false
+    /// 结算面板「再测一组」的题源，提前算好，保证按钮文案题量与实际出题张数一致
+    @State private var nextRoundCards: [KnowledgeCard] = []
 
     private var currentCard: KnowledgeCard? {
         guard currentIndex >= 0 && currentIndex < quizCards.count else { return nil }
@@ -59,7 +65,7 @@ struct QuizView: View {
                 }
             }
         }
-        .frame(minWidth: 800, minHeight: 620)
+        .frame(minWidth: 720, minHeight: 560)
         .onAppear {
             startNewQuiz(category: category)
         }
@@ -103,7 +109,7 @@ struct QuizView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(EditorialColor.aiAmber)
 
-                Text(category.map { "\($0) · 专项测验" } ?? "沉浸式知识测验")
+                Text(plannedCards != nil ? "到期复习" : category.map { "\($0) · 专项测验" } ?? "沉浸式知识测验")
                     .font(EditorialFont.modalTitle)
                     .foregroundStyle(EditorialColor.textPrimary)
 
@@ -318,21 +324,25 @@ struct QuizView: View {
                         .buttonStyle(PressableButtonStyle())
                     }
 
-                    Button {
-                        startNewQuiz(category: category)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "play.fill")
-                            Text("再测一组 (10 题)")
+                    // 题源在进入结算时算好（nextRoundCards），文案题量随实际张数变化；
+                    // 到期复习场景重新拉取到期队列后可能已无到期卡片，此时不展示该按钮。
+                    if !nextRoundCards.isEmpty {
+                        Button {
+                            startNextRound()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "play.fill")
+                                Text("再测一组 (\(nextRoundCards.count) 题)")
+                            }
+                            .font(EditorialFont.label)
+                            .foregroundStyle(EditorialColor.textPrimary)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(EditorialColor.glassSurface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
                         }
-                        .font(EditorialFont.label)
-                        .foregroundStyle(EditorialColor.textPrimary)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(EditorialColor.glassSurface, in: Capsule())
-                        .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        .buttonStyle(PressableButtonStyle())
                     }
-                    .buttonStyle(PressableButtonStyle())
 
                     Button(action: onClose) {
                         Text("完成并返回")
@@ -409,13 +419,39 @@ struct QuizView: View {
     // MARK: - 交互动作
 
     private func startNewQuiz(category: String?) {
-        let cards = store.generateQuizCards(category: category, limit: 10)
+        let cards = plannedCards ?? store.generateQuizCards(category: category, limit: 10)
         self.quizCards = cards
         self.currentIndex = 0
         self.isFlipped = false
         self.ratings = [:]
         self.isCompleted = false
         self.animateRing = false
+        self.isAdvancing = false
+        self.nextRoundCards = []
+    }
+
+    /// 计算「再测一组」的题源。到期复习场景选择「重新拉取到期队列」而不是重测旧数组：
+    /// 旧数组里的卡片刚在本轮被打分，`recordQuizResult` 已把 `lastReviewedAt` 推到今天，
+    /// 再测一遍只会重复累计复习次数并二次覆盖掌握度；重新拉取 `LearningPlan.due` 才是
+    /// 「到期复习」的语义（刚评过的卡若仍在到期窗口内会自然被再次纳入，否则不再出现）。
+    private func makeNextRoundCards() -> [KnowledgeCard] {
+        if plannedCards != nil {
+            return Array(LearningPlan(cards: store.cards).due.prefix(10))
+        }
+        return store.generateQuizCards(category: category, limit: 10)
+    }
+
+    /// 结算面板「再测一组」：使用进入结算时预算好的题源，避免把已评分的旧数组再测一遍
+    private func startNextRound() {
+        let cards = nextRoundCards
+        self.quizCards = cards
+        self.currentIndex = 0
+        self.isFlipped = false
+        self.ratings = [:]
+        self.isCompleted = false
+        self.animateRing = false
+        self.isAdvancing = false
+        self.nextRoundCards = []
     }
 
     private func reviewWeakCards() {
@@ -427,6 +463,8 @@ struct QuizView: View {
         self.ratings = [:]
         self.isCompleted = false
         self.animateRing = false
+        self.isAdvancing = false
+        self.nextRoundCards = []
     }
 
     private func toggleFlip() {
@@ -437,8 +475,11 @@ struct QuizView: View {
     }
 
     private func rateCurrent(_ rating: AppStore.QuizRating) {
-        guard !isCompleted, let card = currentCard else { return }
-        // 如果尚未翻面，允许快速翻看后打分，或直接记录
+        guard !isCompleted, !isAdvancing, let card = currentCard else { return }
+        // 同一张卡在本轮内只允许评分一次：连点（按钮双击/⌘1-3 连按）的第二次输入
+        // 会被这里的双重守卫挡掉，不会落到下一张尚未展示的卡片上。
+        guard ratings[card.id] == nil else { return }
+        isAdvancing = true
         ratings[card.id] = rating
         store.recordQuizResult(cardId: card.id, rating: rating)
         HapticFeedbackHelper.shared.cardSwiped()
@@ -453,9 +494,16 @@ struct QuizView: View {
                 isFlipped = false
             }
         } else {
+            // 结算前算好下一轮题源：此时本轮的评分已全部写入 store，
+            // 与用户点「再测一组」时的 store 状态一致，文案题量可直接取自它。
+            nextRoundCards = makeNextRoundCards()
             withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
                 isCompleted = true
             }
+        }
+        // 卡片切换动画结束后再解锁输入，避免动画期间的连点误评下一张
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            isAdvancing = false
         }
     }
 

@@ -417,9 +417,10 @@ struct GlobalSearchModalView: View {
 
                 if store.settings.isAIConfigured {
                     Button {
+                        let topic = query
                         dismiss()
                         Task {
-                            await store.generateNewCards(count: 3)
+                            await store.generateNewCards(count: 3, topic: topic)
                         }
                     } label: {
                         HStack(spacing: 6) {
@@ -503,7 +504,9 @@ struct HighlightedText: View {
     }
 
     private func buildHighlightedText(text: String, query: String) -> Text {
-        guard let range = text.lowercased().range(of: query) else {
+        // 在原字符串上做大小写不敏感查找：跨 lowercased() 副本传 String.Index，
+        // 遇到 İ 等小写化后长度变化的字符会越界崩溃。
+        guard let range = text.range(of: query, options: .caseInsensitive) else {
             return Text(text).foregroundColor(textColor)
         }
         let before = String(text[..<range.lowerBound])

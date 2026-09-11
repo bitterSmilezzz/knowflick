@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**macOS 领域知识卡片应用 — 打开即学，左右划卡**
+**macOS 个人学习工作台 — 阅读、复习与知识管理**
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
@@ -10,15 +10,22 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/bitterSmilezzz/knowflick?include_prereleases&logo=github)](https://github.com/bitterSmilezzz/knowflick/releases)
 
-<img src="assets/screenshot.png" width="720" alt="KnowFlick 截图"/>
+<img src="assets/screenshot.png" width="720" alt="KnowFlick 旧版沉浸刷卡界面（当前默认首页为学习工作台）"/>
 
 </div>
 
 ---
 
-KnowFlick 是一个用 SwiftUI 编写的 macOS 桌面应用（最低支持 macOS 14），采用「卡片 + 手势」的方式快速刷**你关心的领域知识**：每次随机展示一张知识卡片，左划/右划跳过或标记，按 `⏎` 展开详情和来源链接，历史记录自动保留。分类体系由你掌控——内置「冷知识」库之外，可以自定义分类（如 AI、AI 开发、AI Agent、中级会计、投资理财），AI（DeepSeek 等 OpenAI 兼容端点）按分类内容方向自动生成新卡。
+KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 macOS 14）。从今日目标开始阅读，完成后进入复习安排；在知识库搜索、分类、编辑和导出自己的卡片。沉浸刷卡、AI 追问与知识星图仍可从工作台进入。内置知识可离线使用，也可配置兼容的 AI 服务生成新卡。
+
+工作台的具体操作、复习规则与数据口径见 [学习工作台说明](docs/LEARNING_WORKSPACE.md)。
 
 ## 功能
+
+- **今日学习**：可调整每日目标、进度、下一篇阅读与主题掌握情况。
+- **复习计划**：按阅读时间和回忆反馈安排到期队列，显示未来复习日期。
+- **知识管理**：全文搜索、主题和状态筛选、保留学习记录的内容编辑、导出当前结果。
+- **可折叠导航**：今日学习、复习计划、知识库在同一窗口切换，窄窗口自动收起导航文字。
 
 - **双重画报外观模式（深色 / 浅色 / 跟随系统）**：深度适配 macOS 原生外观，提供暗色人文画报与浅色典雅画报两种完整排版风格。窗口画布、毛玻璃质感、42 类柔和光晕、弹窗与卡片阴影全量动态演算；顶栏提供快捷切换胶囊按钮，设置页可随时设定默认偏好
 - **暗色人文画报风（Dark Editorial）**：以原生宋体（Songti SC Black）为主标题字模，辅以高透气衬线正文排版，多阶非线性动态遮罩（DynamicScrim），带来沉浸式出版物级阅读质感

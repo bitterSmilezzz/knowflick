@@ -16,8 +16,10 @@
 
 规则：对 `seenAt`/`swiped` 的任何写入都必须经由 AppStore 的意图化方法（`swipe` / `undoLastSwipe` / `clearHistory` / `refreshDeck`），视图不得直接改字段。
 
+**收藏（isFavorite）与喜好（swiped）解耦**：`isFavorite` 是独立布尔字段，取消收藏**不会**改写 `swiped`（避免把「感兴趣」污染成 `skip`、或抹掉「不喜欢」）。两条写入路径：① `toggleFavorite` 只翻转 `isFavorite`（不写 `seenAt`，收藏未读卡不等于已浏览）；② `swipe` 在写喜好意图的同时同步收藏态——`right` 加入收藏、`left` 移出收藏、`skip` 不动收藏。旧数据无该字段时按 `swiped == .right` 回填，保证老用户收藏阁内容不丢。
+
 ## 卡堆 / 队列（Deck）
-未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关（enableSeed/enableAI）在偏好过滤前生效**：只开其一则只看该来源，全关则队列为空。**卡堆输出前统一经 `CardThemeResolver.interleavedAndDeduplicated` 处理**：先通过确定性盐值哈希交错打散学科批次，再执行双向相邻防重安全扫描（Anti-Consecutive Duplicate Filter），严格保证连续两张卡片背景绝不相同（0 撞图），并最大化可见卡片栈（visibleStack 3 张）的视觉多元呈现。
+未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关（enableSeed/enableAI）在偏好过滤前生效**：只开其一则只看该来源，**全关则队列为空（含导入卡片）**。**卡堆输出前统一经 `CardThemeResolver.interleavedAndDeduplicated` 处理**：先通过确定性盐值哈希交错打散学科批次，再执行双向相邻防重安全扫描（Anti-Consecutive Duplicate Filter），严格保证连续两张卡片背景绝不相同（0 撞图），并最大化可见卡片栈（visibleStack 3 张）的视觉多元呈现。
 
 ## 历史（History）
 看过（`seenAt != nil`）的卡片，按时间倒序。

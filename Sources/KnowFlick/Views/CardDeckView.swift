@@ -14,6 +14,10 @@ enum ActiveSheet: Identifiable {
     case graph
     case chat(KnowledgeCard)
     case search
+    case exportCards([KnowledgeCard]?)
+    case importNotes
+    case plannedReview([KnowledgeCard])
+    case editCard(KnowledgeCard)
 
     var id: String {
         switch self {
@@ -28,6 +32,10 @@ enum ActiveSheet: Identifiable {
         case .graph: return "graph"
         case .chat(let card): return "chat_\(card.id.uuidString)"
         case .search: return "search"
+        case .exportCards: return "exportCards"
+        case .importNotes: return "importNotes"
+        case .plannedReview: return "plannedReview"
+        case .editCard(let card): return "edit_\(card.id)"
         }
     }
 }
@@ -47,7 +55,14 @@ struct CardDeckView: View {
 
     @State private var activeSheet: ActiveSheet? = nil
     @State private var errorBanner = false
+    @State private var errorToken = 0
     @State private var triggerSheen = false
+    @State private var showingWorkspace = true
+
+    /// 三个知识来源（预置库 / AI 生成）全关时队列恒为空，空状态需给出可行动引导
+    private var allSourcesDisabled: Bool {
+        !store.settings.enableSeed && !store.settings.enableAI
+    }
 
     // 同步计算当前主题，绝不在 .task 异步延迟加载，杜绝换卡时背景与边框闪烁
     private var currentTheme: CategoryTheme {
@@ -60,6 +75,10 @@ struct CardDeckView: View {
                 .ignoresSafeArea()
                 .animation(.easeInOut(duration: 0.45), value: (swipingCard ?? store.topCard)?.id.uuidString ?? "")
 
+            Group {
+                if showingWorkspace {
+                    LearningWorkspaceView(store: store, open: { activeSheet = $0 }, explore: { showingWorkspace = false })
+                } else {
             VStack(spacing: 0) {
                 topBar
                     .padding(.horizontal, 30)
@@ -101,6 +120,7 @@ struct CardDeckView: View {
                 if store.speechService.isAmbientMode {
                     AmbientAudioPlayerBar(
                         store: store,
+                        isTransitioning: swipingCard != nil,
                         onPrevious: {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                                 store.undoLastSwipe()
@@ -132,21 +152,17 @@ struct CardDeckView: View {
                     .padding(.bottom, 26)
                     .zIndex(100)
             }
+                }
+            }
             .focusedSceneValue(\.macActions, MacActions(
                 canOpen: activeSheet == nil,
                 hasCard: store.topCard != nil,
-                canUndo: !store.history.isEmpty,
                 open: { activeSheet = $0 },
                 toggleSpeech: {
                     if let card = store.topCard { store.speechService.togglePlayPause(for: card) }
                 },
                 toggleAmbient: {
                     store.toggleAmbientSpeechMode()
-                },
-                undo: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                        store.undoLastSwipe()
-                    }
                 },
                 generate: {
                     if !store.settings.isAIConfigured {
@@ -193,6 +209,17 @@ struct CardDeckView: View {
                         relatedCards: store.getRelatedCards(for: card),
                         onSelectCard: { target in
                             activeSheet = .detail(target)
+                        },
+                        onCompleteReading: showingWorkspace ? {
+                            store.completeReading(card)
+                            activeSheet = nil
+                        } : nil,
+                        onUndo: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                store.undoLastSwipe()
+                            }
+                            // 撤销后详情页跟随回到新的顶卡，避免停留在已撤销的卡片上
+                            if let top = store.topCard { activeSheet = .detail(top) } else { activeSheet = nil }
                         }
                     )
                 case .sharePoster(let card):
@@ -200,9 +227,9 @@ struct CardDeckView: View {
                         activeSheet = nil
                     }
                 case .favorites:
-                    FavoritesView(store: store) {
+                    FavoritesView(store: store, showAIMark: store.settings.showAIMark, onClose: {
                         activeSheet = nil
-                    }
+                    })
                 case .settings:
                     SettingsView(store: store)
                 case .stats:
@@ -249,21 +276,50 @@ struct CardDeckView: View {
                             activeSheet = .chat(card)
                         }
                     )
+                case .exportCards(let cards):
+                    ExportCardsModalView(store: store, initialScopeCards: cards) {
+                        activeSheet = nil
+                    }
+                case .importNotes:
+                    ImportNotesModalView(store: store) {
+                        activeSheet = nil
+                    }
+                case .plannedReview(let cards):
+                    QuizView(store: store, plannedCards: cards) { activeSheet = nil }
+                case .editCard(let card):
+                    CardEditorView(card: card, store: store) { activeSheet = nil }
                 }
             }
         }
         .onChange(of: store.topCard?.id) { _, _ in
             triggerSheen.toggle()
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let warning = store.persistenceWarning {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "externaldrive.badge.exclamationmark")
+                        .foregroundStyle(EditorialColor.aiAmber)
+                    Text(warning).font(EditorialFont.labelSmall)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 8)
+                    Button("重试保存") { store.retryPersistence() }.buttonStyle(.bordered)
+                }
+                .padding(16)
+                .background(.regularMaterial)
+            }
+        }
         .onChange(of: store.lastError) { _, err in
             if err != nil {
                 errorBanner = true
+                errorToken &+= 1
             }
         }
 
         .overlay(alignment: .top) {
             if errorBanner, let msg = store.lastError {
                 errorToast(msg)
+                    .id(errorToken)
             }
         }
     }
@@ -562,6 +618,9 @@ struct CardDeckView: View {
 
     private var topBar: some View {
         HStack {
+            Button { showingWorkspace = true } label: {
+                Image(systemName: "arrow.left").padding(10)
+            }.buttonStyle(.plain).help("返回学习工作台")
             VStack(alignment: .leading, spacing: 2) {
                 Text("KnowFlick")
                     .font(EditorialFont.modalTitle)
@@ -632,6 +691,7 @@ struct CardDeckView: View {
                     store.toggleAmbientSpeechMode()
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
+                .disabled(store.topCard == nil)
 
                 iconButton(store.settings.appearance.icon, help: "外观：\(store.settings.appearance.title)（点击切换）") {
                     let all = AppearanceMode.allCases
@@ -652,7 +712,9 @@ struct CardDeckView: View {
                         Button("知识星图", systemImage: "point.3.connected.trianglepath.dotted") { activeSheet = .graph }
                         Button(store.speechService.isAmbientMode ? "停止连续朗读" : "连续朗读", systemImage: "headphones") {
                             store.toggleAmbientSpeechMode()
-                        }.keyboardShortcut("p", modifiers: [.command, .shift])
+                        }
+                        .keyboardShortcut("p", modifiers: [.command, .shift])
+                        .disabled(store.topCard == nil)
                         Button("知识收藏阁", systemImage: "bookmark") { activeSheet = .favorites }
                         Button("学习统计", systemImage: "chart.bar") { activeSheet = .stats }
                         Button("历史记录", systemImage: "clock") { activeSheet = .history }
@@ -710,7 +772,7 @@ struct CardDeckView: View {
                 }
             }
             .keyboardShortcut("z", modifiers: .command)
-            .disabled(store.history.isEmpty || swipingCard != nil)
+            .disabled(store.history.isEmpty || swipingCard != nil || activeSheet != nil)
 
             roundButton("xmark", size: 60, tint: EditorialColor.dislikeRed, help: "不喜欢 ←") {
                 performSwipe(.left)
@@ -779,6 +841,15 @@ struct CardDeckView: View {
 
     // MARK: - 空状态
 
+    private var emptyStateSubtitle: String {
+        if allSourcesDisabled {
+            return "当前已关闭全部知识来源（预置精选库与 AI 生成），开启后即可继续刷卡片"
+        }
+        return !store.settings.isAIConfigured
+            ? "去设置里配置 AI 服务，就能持续生成新知识"
+            : "让 AI 为你生成一批新的冷知识"
+    }
+
     private var emptyState: some View {
         VStack(spacing: 18) {
             Image(systemName: "sparkles")
@@ -787,11 +858,11 @@ struct CardDeckView: View {
             Text("今天的知识刷完了")
                 .font(EditorialFont.detailHeadline)
                 .foregroundStyle(EditorialColor.textPrimary)
-            Text(!store.settings.isAIConfigured
-                 ? "去设置里配置 AI 服务，就能持续生成新知识"
-                 : "让 AI 为你生成一批新的冷知识")
+            Text(emptyStateSubtitle)
                 .font(EditorialFont.bodySerif)
                 .foregroundStyle(EditorialColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 12) {
                 Button {
@@ -807,22 +878,38 @@ struct CardDeckView: View {
                 .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1.2))
                 .foregroundStyle(EditorialColor.textPrimary)
 
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        store.clearHistory()
+                if allSourcesDisabled {
+                    // 来源全关时队列恒为空，clearHistory 无效，改为直接打开偏好设置
+                    Button {
+                        activeSheet = .settings
+                    } label: {
+                        Label("打开偏好设置", systemImage: "gearshape")
+                            .font(EditorialFont.label)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
                     }
-                } label: {
-                    Label("重新探索全部卡片", systemImage: "arrow.counterclockwise")
-                        .font(EditorialFont.label)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
+                    .buttonStyle(PressableButtonStyle())
+                    .background(currentTheme.accent.opacity(0.24), in: Capsule())
+                    .overlay(Capsule().strokeBorder(currentTheme.accent.opacity(0.7), lineWidth: 1.3))
+                    .foregroundStyle(EditorialColor.textPrimary)
+                } else {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            store.clearHistory()
+                        }
+                    } label: {
+                        Label("重新探索全部卡片", systemImage: "arrow.counterclockwise")
+                            .font(EditorialFont.label)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .background(currentTheme.accent.opacity(0.24), in: Capsule())
+                    .overlay(Capsule().strokeBorder(currentTheme.accent.opacity(0.7), lineWidth: 1.3))
+                    .foregroundStyle(EditorialColor.textPrimary)
                 }
-                .buttonStyle(PressableButtonStyle())
-                .background(currentTheme.accent.opacity(0.24), in: Capsule())
-                .overlay(Capsule().strokeBorder(currentTheme.accent.opacity(0.7), lineWidth: 1.3))
-                .foregroundStyle(EditorialColor.textPrimary)
 
-                if store.settings.isAIConfigured {
+                if store.settings.isAIConfigured && store.settings.enableAI {
                     Button {
                         Task { await store.generateNewCards(count: 5) }
                     } label: {
@@ -879,7 +966,10 @@ struct CardDeckView: View {
         .padding(.top, 14)
         .task {
             try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
             errorBanner = false
+            // 展示完毕即清空，保证下一次内容完全相同的错误仍能触发 onChange 重新弹出
+            store.lastError = nil
         }
     }
 }

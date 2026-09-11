@@ -27,17 +27,17 @@ public enum EditorialColor {
 
     // 画布底色
     public static let canvasDark = dynamic(
-        light: NSColor(red: 0.960, green: 0.965, blue: 0.975, alpha: 1.0),
-        dark: NSColor(red: 0.050, green: 0.055, blue: 0.070, alpha: 1.0)
+        light: NSColor(red: 0.959, green: 0.951, blue: 0.933, alpha: 1.0),
+        dark: NSColor(red: 0.075, green: 0.079, blue: 0.075, alpha: 1.0)
     )
 
     public static let canvasGradientTop = dynamic(
-        light: NSColor(red: 0.985, green: 0.988, blue: 0.995, alpha: 1.0),
-        dark: NSColor(red: 0.075, green: 0.080, blue: 0.100, alpha: 1.0)
+        light: NSColor(red: 0.984, green: 0.979, blue: 0.966, alpha: 1.0),
+        dark: NSColor(red: 0.098, green: 0.102, blue: 0.094, alpha: 1.0)
     )
     public static let canvasGradientBottom = dynamic(
-        light: NSColor(red: 0.925, green: 0.935, blue: 0.955, alpha: 1.0),
-        dark: NSColor(red: 0.035, green: 0.038, blue: 0.050, alpha: 1.0)
+        light: NSColor(red: 0.942, green: 0.933, blue: 0.911, alpha: 1.0),
+        dark: NSColor(red: 0.060, green: 0.064, blue: 0.060, alpha: 1.0)
     )
     public static let canvasGradient = LinearGradient(
         colors: [canvasGradientTop, canvasGradientBottom],

@@ -76,11 +76,13 @@ public struct AIService {
     }
 
     /// 请求 AI 生成 count 张知识卡：流式接收，够数即停；排除已有标题（字面 + 近重复）
+    /// - Parameter topic: 可选主题，非空时围绕该主题生成（全局搜索「围绕关键词生成」入口使用）
     /// - 传输/解析层失败抛 `AIError`；请求成功但无可用产出抛 `AIError.noUsableCards`
     public func generateCards(
         settings: AISettings,
         count: Int,
-        excludeHeadlines: [String]
+        excludeHeadlines: [String],
+        topic: String? = nil
     ) async throws -> [KnowledgeCard] {
         guard !settings.requiresAPIKey || !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw AIError.missingKey
@@ -137,6 +139,17 @@ public struct AIService {
         ]
         """
 
+        let trimmedTopic = topic?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let topicHint: String
+        if let trimmedTopic, !trimmedTopic.isEmpty {
+            topicHint = """
+            本次必须围绕主题「\(trimmedTopic)」生成，所有卡片都要与该主题直接相关；
+            若该主题超出白名单分类范围，请选择最贴近的一个白名单分类，不要发明新分类。
+            """
+        } else {
+            topicHint = ""
+        }
+
         let userPrompt = """
         请生成 \(count) 条不重复的领域知识卡片，严格按 JSON 数组格式输出，不要输出任何其他文字：
         [
@@ -149,6 +162,8 @@ public struct AIService {
             "sources": ["权威来源站名1"]
           }
         ]
+
+        \(topicHint)
 
         \(customHint)
 
@@ -199,6 +214,47 @@ public struct AIService {
             )
         }
         // 「请求成功但无可用产出」是一等语义，不再用空数组当第二失败通道
+        guard !cards.isEmpty else { throw AIError.noUsableCards }
+        return cards
+    }
+
+    // MARK: - 从笔记或文章智能提炼知识卡片
+
+    public func transformNoteToCards(noteText: String, settings: AISettings) async throws -> [KnowledgeCard] {
+        let trimmed = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let systemPrompt = "你是一位博学敏锐的知识架构师。你的任务是将用户提供的非结构化笔记、长文或书摘，提炼提纯为 1 到 5 张结构精炼、具有深刻洞察力的 KnowFlick 知识卡片，必须且仅输出标准 JSON 数组。"
+        let userPrompt = CardImportEngine.buildAITransformPrompt(noteContent: trimmed)
+
+        let messages: [[String: String]] = [
+            ["role": "system", "content": systemPrompt],
+            ["role": "user", "content": userPrompt]
+        ]
+
+        let payloads = try await streamPayloadsWithRetry(
+            messages: messages,
+            settings: settings,
+            maxTokens: 3200,
+            targetCount: 3
+        )
+
+        let now = Date()
+        var cards: [KnowledgeCard] = []
+        for p in payloads {
+            let normalizedCat = CategoryRegistry.normalize(p.category, custom: settings.customCategoryNames)
+            let links = Self.buildSearchLinks(keywords: p.searchKeywords, sources: p.sources)
+            cards.append(KnowledgeCard(
+                category: normalizedCat,
+                headline: p.headline,
+                summary: p.summary,
+                details: p.details,
+                links: links,
+                source: .imported,
+                createdAt: now
+            ))
+        }
+
         guard !cards.isEmpty else { throw AIError.noUsableCards }
         return cards
     }

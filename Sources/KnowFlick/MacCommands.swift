@@ -4,11 +4,9 @@ import SwiftUI
 struct MacActions {
     let canOpen: Bool
     let hasCard: Bool
-    let canUndo: Bool
     let open: (ActiveSheet) -> Void
     let toggleSpeech: () -> Void
     let toggleAmbient: () -> Void
-    let undo: () -> Void
     let generate: () -> Void
     let chat: () -> Void
     let sharePoster: () -> Void
@@ -40,12 +38,16 @@ struct MacCommands: Commands {
             Button("AI 生成新知识卡片") { actions?.generate() }
                 .keyboardShortcut("n", modifiers: .command)
                 .disabled(actions?.canOpen != true)
-        }
 
-        CommandGroup(replacing: .undoRedo) {
-            Button("撤销上次滑卡") { actions?.undo() }
-                .keyboardShortcut("z", modifiers: .command)
-                .disabled(actions?.canUndo != true || actions?.canOpen != true)
+            Divider()
+
+            Button("导入笔记为卡片…") { actions?.open(.importNotes) }
+                .keyboardShortcut("i", modifiers: [.shift, .command])
+                .disabled(actions?.canOpen != true)
+
+            Button("导出知识卡片…") { actions?.open(.exportCards(nil)) }
+                .keyboardShortcut("e", modifiers: [.shift, .command])
+                .disabled(actions?.canOpen != true)
         }
 
         CommandMenu("学习与探索") {
@@ -76,7 +78,7 @@ struct MacCommands: Commands {
                 .disabled(actions?.hasCard != true || actions?.canOpen != true)
             Button("磨耳朵连续朗读") { actions?.toggleAmbient() }
                 .keyboardShortcut("p", modifiers: [.shift, .command])
-                .disabled(actions?.canOpen != true)
+                .disabled(actions?.hasCard != true || actions?.canOpen != true)
             Button("分享当前卡片海报…") { actions?.sharePoster() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(actions?.hasCard != true || actions?.canOpen != true)

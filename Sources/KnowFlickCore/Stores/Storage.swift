@@ -1,5 +1,11 @@
 import Foundation
 
+public enum CardSaveResult: Sendable {
+    case saved
+    case failed(String)
+    case savedWithoutBackup(String)
+}
+
 /// 本地 JSON 存储：卡片池、历史记录、设置
 /// 可注入目录以便测试；默认落在 ~/Library/Application Support/KnowFlick/
 public struct Storage: Sendable {
@@ -54,12 +60,13 @@ public struct Storage: Sendable {
     }
 
     /// 保存卡片：原子写主文件，并把旧主文件轮转进备份（先删旧备份，保证轮转真正生效）
-    public func saveCards(_ cards: [KnowledgeCard]) {
+    @discardableResult
+    public func saveCards(_ cards: [KnowledgeCard]) -> CardSaveResult {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(cards) else {
             NSLog("KnowFlick: 卡片编码失败，未落盘")
-            return
+            return .failed("卡片编码失败")
         }
         let url = fileURL("cards.json")
         let backup = fileURL("cards.backup.json")
@@ -69,16 +76,21 @@ public struct Storage: Sendable {
         let previous = try? Data(contentsOf: url)
         let previousCards = previous.flatMap { try? decoder.decode([KnowledgeCard].self, from: $0) }
         let backupData = (previousCards?.isEmpty == false) ? (previous ?? data) : data
+        var backupError: String?
         do {
             try backupData.write(to: backup, options: .atomic)
         } catch {
+            backupError = error.localizedDescription
             NSLog("KnowFlick: 备份轮转失败: %@", error.localizedDescription)
         }
         do {
             try data.write(to: url, options: .atomic)
         } catch {
             NSLog("KnowFlick: 卡片落盘失败: %@", error.localizedDescription)
+            return .failed(error.localizedDescription)
         }
+        if let backupError { return .savedWithoutBackup(backupError) }
+        return .saved
     }
 
     // MARK: - 设置（key 除外）

@@ -3,6 +3,14 @@ import AppKit
 import UniformTypeIdentifiers
 import KnowFlickCore
 
+/// 海报落盘结果：区分「已保存 / 用户取消 / 保存失败」三态。
+/// 失败与取消此前共用 `false`，导致界面上真实失败完全静默、也无法给出失败态提示。
+public enum PosterSaveResult: Sendable {
+    case saved(URL)
+    case cancelled
+    case failed(String)
+}
+
 @MainActor
 public final class PosterExportManager {
     public static let shared = PosterExportManager()
@@ -37,16 +45,17 @@ public final class PosterExportManager {
     }
 
     /// 弹出 NSSavePanel 保存为本地 PNG 文件
+    /// - Parameter completion: 回传三态结果，调用方据此区分成功、用户取消与真实失败。
     public func saveImageToDisk(
         image: NSImage,
         suggestedFilename: String,
         window: NSWindow? = nil,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping (PosterSaveResult) -> Void
     ) {
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),
               let pngData = bitmap.representation(using: .png, properties: [:]) else {
-            completion(false)
+            completion(.failed("海报 PNG 编码失败"))
             return
         }
 
@@ -64,13 +73,14 @@ public final class PosterExportManager {
             if response == .OK, let url = savePanel.url {
                 do {
                     try pngData.write(to: url, options: .atomic)
-                    completion(true)
+                    completion(.saved(url))
                 } catch {
                     NSLog("KnowFlick: 保存海报失败: %@", error.localizedDescription)
-                    completion(false)
+                    completion(.failed(error.localizedDescription))
                 }
             } else {
-                completion(false)
+                // 用户在 NSSavePanel 点「取消」：中性结果，不当作失败报错。
+                completion(.cancelled)
             }
         }
 

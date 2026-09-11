@@ -10,11 +10,9 @@ struct HelpView: View {
         let action: String
     }
 
-    private let mainShortcuts: [ShortcutRow] = [
+    /// 作用域：macOS 菜单命令，任何界面可用（需要当前卡片的命令在卡堆为空时不可用）
+    private let globalShortcuts: [ShortcutRow] = [
         .init(keys: "⌘ F", action: "全局智能搜索与全文检索（支持拼音）"),
-        .init(keys: "←", action: "不喜欢（划走）"),
-        .init(keys: "→", action: "感兴趣（划走）"),
-        .init(keys: "⏎ 回车", action: "展开卡片详情与来源链接"),
         .init(keys: "⌘ J", action: "向卡片追问（AI 伴学导师深入探讨）"),
         .init(keys: "⌘ P", action: "语音朗读 / 暂停（当前卡片）"),
         .init(keys: "⇧⌘ P", action: "开启 / 退出磨耳朵连续播报"),
@@ -22,13 +20,25 @@ struct HelpView: View {
         .init(keys: "⌘ G", action: "探索全景知识星图与引力链"),
         .init(keys: "⌘ B", action: "打开知识收藏阁（沉淀笔记）"),
         .init(keys: "⌘ S", action: "生成并导出分享海报"),
-        .init(keys: "⌘ Z", action: "撤销上一张卡片"),
         .init(keys: "⌘ N", action: "AI 生成 3 张新知识"),
         .init(keys: "⌘ ?", action: "打开此快捷键面板"),
-        .init(keys: "⌘ ,", action: "打开偏好设置"),
-        .init(keys: "Esc", action: "关闭弹出的面板")
+        .init(keys: "⌘ ,", action: "打开偏好设置")
     ]
 
+    /// 作用域：仅沉浸刷卡界面的底部操作栏生效（工作台内无效）
+    private let deckShortcuts: [ShortcutRow] = [
+        .init(keys: "←", action: "不喜欢（划走）"),
+        .init(keys: "→", action: "感兴趣（划走）"),
+        .init(keys: "⏎ 回车", action: "展开卡片详情与来源链接"),
+        .init(keys: "⌘ Z", action: "撤销上一张卡片")
+    ]
+
+    /// 作用域：任意弹出的面板 / 弹窗内
+    private let sheetShortcuts: [ShortcutRow] = [
+        .init(keys: "Esc", action: "关闭当前弹出的面板")
+    ]
+
+    /// 作用域：测验面板打开时
     private let quizShortcuts: [ShortcutRow] = [
         .init(keys: "⌘ K", action: "开启知识测验 (Flashcard Quiz)"),
         .init(keys: "␣ 空格 / ⏎", action: "翻转卡片（查看背面答案与解析）"),
@@ -38,15 +48,14 @@ struct HelpView: View {
         .init(keys: "Esc", action: "退出当前测验")
     ]
 
+    /// 作用域：详情页内（从工作台进入时中间的刷卡操作行会被隐藏，←/→ 仅在刷卡区进入详情时可用）
     private let detailShortcuts: [ShortcutRow] = [
         .init(keys: "⌘ J", action: "向当前知识卡片深入探讨追问"),
         .init(keys: "⌘ P", action: "朗读 / 暂停全文语音"),
         .init(keys: "⌘ D", action: "收藏 / 取消收藏当前卡片"),
-        .init(keys: "⌘ S", action: "导出精美分享海报"),
-        .init(keys: "←", action: "切换到上一张历史卡片"),
-        .init(keys: "→", action: "切换到下一张待刷卡片"),
         .init(keys: "⏎ 或 Esc", action: "关闭详情"),
-        .init(keys: "⌘ Z", action: "撤销上一张卡片")
+        .init(keys: "←", action: "切换到上一张历史卡片（刷卡区进入时）"),
+        .init(keys: "→", action: "切换到下一张待刷卡片（刷卡区进入时）")
     ]
 
     var body: some View {
@@ -79,9 +88,14 @@ struct HelpView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        shortcutSection(title: "主界面", rows: mainShortcuts)
+                        shortcutSection(title: "全局（任何界面）", rows: globalShortcuts)
+                        shortcutSection(title: "刷卡界面（仅沉浸刷卡时生效）", rows: deckShortcuts)
                         shortcutSection(title: "知识测验 (Flashcard)", rows: quizShortcuts)
                         shortcutSection(title: "详情页", rows: detailShortcuts)
+                        shortcutSection(title: "弹窗内", rows: sheetShortcuts)
+                        Text("提示：需要当前卡片的命令（⌘J / ⌘P / ⇧⌘P / ⌘S）在卡堆为空时不可用。")
+                            .font(EditorialFont.caption)
+                            .foregroundStyle(EditorialColor.textMuted)
                         Text("提示：测验支持全键盘盲操，按空格翻转卡片，按 ⌘1/⌘2/⌘3 快速自评并推进下一题。")
                             .font(EditorialFont.caption)
                             .foregroundStyle(EditorialColor.textMuted)

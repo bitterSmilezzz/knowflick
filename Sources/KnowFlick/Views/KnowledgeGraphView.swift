@@ -451,8 +451,9 @@ struct KnowledgeGraphView: View {
 
                     HStack {
                         Button {
+                            // 只回调选中卡片：宿主 CardDeckView 会把它映射成 activeSheet = .detail(card)。
+                            // 若同时调用 onClose()，宿主会把同一个 activeSheet 覆盖为 nil，详情页永不呈现。
                             onSelectCard?(card)
-                            onClose()
                         } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: "arrow.up.left.and.arrow.down.right")

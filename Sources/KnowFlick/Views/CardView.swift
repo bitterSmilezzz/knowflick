@@ -184,9 +184,9 @@ struct CardView: View {
                 Circle()
                     .fill(Color.white.opacity(0.6))
                     .frame(width: 5, height: 5)
-                Text("精选")
+                Text(card.source == .imported ? "导入笔记" : "精选")
                     .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(Color.white.opacity(0.85))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)

@@ -23,6 +23,7 @@ public final class AppStore {
     }
     public var isGenerating = false
     public var lastError: String?
+    public private(set) var persistenceWarning: String?
 
     // MARK: - 运行期状态
 
@@ -37,10 +38,10 @@ public final class AppStore {
     /// 全文检索与智能搜索引擎
     public let searchEngine = KnowledgeSearchEngine()
 
-    /// 收藏阁：右划感兴趣的卡片列表（按收藏时间倒序）
+    /// 收藏阁：显式收藏的卡片列表（按收藏时间倒序，与喜好意图解耦）
     public var favorites: [KnowledgeCard] {
-        cards.filter { $0.swiped == .right }
-            .sorted { ($0.seenAt ?? .distantPast) > ($1.seenAt ?? .distantPast) }
+        cards.filter(\.isFavorite)
+            .sorted { ($0.favoritedAt ?? .distantPast) > ($1.favoritedAt ?? .distantPast) }
     }
 
     public var topCard: KnowledgeCard? { deck.first }
@@ -81,9 +82,15 @@ public final class AppStore {
         self.history = hist
 
         var unseen = cards.filter { $0.seenAt == nil }
-        // 来源开关：只开其一则只看该来源；全关则队列为空
+        // 来源开关：只开其一则只看该来源；全关则队列为空（含外部导入卡片，口径见 CONTEXT.md）
         if !settings.enableSeed || !settings.enableAI {
-            unseen = unseen.filter { $0.source == .seed ? settings.enableSeed : settings.enableAI }
+            unseen = unseen.filter {
+                switch $0.source {
+                case .seed: return settings.enableSeed
+                case .ai: return settings.enableAI
+                case .imported: return false
+                }
+            }
         }
         let prefs = settings.preferredCategories
         let filtered: [KnowledgeCard]
@@ -163,19 +170,28 @@ public final class AppStore {
     // MARK: - 持久化
 
     private var persistTask: Task<Void, Never>?
+    private var persistenceRevision: UInt64 = 0
 
     private let persistenceQueue = DispatchQueue(label: "com.knowflick.persistence", qos: .utility)
 
     /// 合并连续变更，再通过串行队列写盘，防止旧快照覆盖新快照。
     private func persist() {
         persistTask?.cancel()
+        persistenceRevision &+= 1
+        let revision = persistenceRevision
         persistTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(0.35)) }
             catch { return }
             guard let self, !Task.isCancelled else { return }
             let snapshot = self.cards
             let storage = self.storage
-            self.persistenceQueue.async { storage.saveCards(snapshot) }
+            self.persistenceQueue.async { [weak self] in
+                let result = storage.saveCards(snapshot)
+                Task { @MainActor [weak self] in
+                    guard let self, self.persistenceRevision == revision else { return }
+                    self.receiveSaveResult(result)
+                }
+            }
         }
     }
 
@@ -183,28 +199,83 @@ public final class AppStore {
     public func flushPersistence() {
         persistTask?.cancel()
         persistTask = nil
+        persistenceRevision &+= 1
         let snapshot = cards
-        persistenceQueue.sync { storage.saveCards(snapshot) }
+        let result = persistenceQueue.sync { storage.saveCards(snapshot) }
+        receiveSaveResult(result)
+    }
+
+    public func retryPersistence() { persist() }
+
+    private func receiveSaveResult(_ result: CardSaveResult) {
+        switch result {
+        case .saved:
+            persistenceWarning = nil
+        case .failed(let message):
+            persistenceWarning = "最新卡片更改尚未保存，请保留应用并重试。\n\(message)"
+        case .savedWithoutBackup(let message):
+            persistenceWarning = "卡片已保存，但备份未能更新。\n\(message)"
+        }
     }
 
     // MARK: - 刷卡动作
 
-    /// 卡片被划走：记入历史并落盘
+    /// Explicit reading completion preserves collection membership and review history.
+    public func completeReading(_ card: KnowledgeCard) {
+        guard let index = cards.firstIndex(where: { $0.id == card.id }) else { return }
+        var updated = cards
+        updated[index].seenAt = Date()
+        cards = updated
+        persist()
+    }
+
+    /// Edit content without replacing the card or its learning state.
+    @discardableResult
+    public func updateCardContent(id: UUID, headline: String, category: String, summary: String, details: String) -> Bool {
+        let fields = [headline, category, summary, details].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard fields.allSatisfy({ !$0.isEmpty }), let index = cards.firstIndex(where: { $0.id == id }) else { return false }
+        var updated = cards
+        updated[index].headline = fields[0]
+        updated[index].category = fields[1]
+        updated[index].summary = fields[2]
+        updated[index].details = fields[3]
+        cards = updated
+        persist()
+        return true
+    }
+
+    /// 卡片被划走：记入历史并落盘。
+    /// - `right` = 感兴趣：同时写入收藏（与「收藏阁」入口语义一致）
+    /// - `left` = 不喜欢：同时移出收藏，避免「不喜欢却仍在收藏阁」
+    /// - `skip` = 系统跳过：只写浏览状态，不表达喜好，也不动收藏
+    /// 已看过的卡片（历史页/收藏阁打标签等场景）保留原 `seenAt`，避免时间线被重排。
     public func swipe(_ card: KnowledgeCard, direction: SwipeDirection) {
         guard let idx = cards.firstIndex(where: { $0.id == card.id }) else { return }
         lastSwipedCardId = card.id
         lastSwipedKey = CardThemeResolver.resolveKey(for: card)
         var updated = cards
-        updated[idx].seenAt = Date()
+        if updated[idx].seenAt == nil { updated[idx].seenAt = Date() }
         updated[idx].swiped = direction
+        switch direction {
+        case .right:
+            updated[idx].isFavorite = true
+            updated[idx].favoritedAt = updated[idx].favoritedAt ?? Date()
+        case .left:
+            updated[idx].isFavorite = false
+            updated[idx].favoritedAt = nil
+        case .skip: break
+        }
         cards = updated
         persist()
     }
 
-    /// 撤销上一张（从历史顶部退回卡堆）
+    /// 撤销上一张（从历史顶部退回卡堆顶部）
     public func undoLastSwipe() {
         guard let last = history.first,
               let idx = cards.firstIndex(where: { $0.id == last.id }) else { return }
+        // 与 recomputeDeckAndHistory 的「插回顶部」分支对齐：撤销目标就是这张卡。
+        lastSwipedCardId = last.id
+        lastSwipedKey = CardThemeResolver.resolveKey(for: last)
         var updated = cards
         updated[idx].seenAt = nil
         updated[idx].swiped = nil
@@ -212,12 +283,15 @@ public final class AppStore {
         persist()
     }
 
-    /// 清空历史（仅清 seenAt，保留卡片避免重复生成）
+    /// 清空历史（「重新探索全部卡片」）：重置浏览记录以重新开始探索。
+    /// - 清除 `seenAt`：卡片回到待刷卡堆，历史时间线与由此派生的统计（已刷/喜欢率/连续天数）随之归零，
+    ///   这是「重新探索」的预期语义。
+    /// - **保留 `isFavorite`**：收藏阁是用户显式沉淀的内容，不因重置浏览进度而丢失。
+    /// - 保留 `swiped`：它只在 `seenAt != nil` 时参与统计，清空后不可见，下次刷卡会覆写，无需额外清理。
     public func clearHistory() {
         var updated = cards
         for i in updated.indices {
             updated[i].seenAt = nil
-            updated[i].swiped = nil
         }
         cards = updated
         persist()
@@ -238,19 +312,18 @@ public final class AppStore {
     public func toggleFavorite(_ card: KnowledgeCard) {
         guard let idx = cards.firstIndex(where: { $0.id == card.id }) else { return }
         var updated = cards
-        if updated[idx].swiped == .right {
-            updated[idx].swiped = .skip
-        } else {
-            updated[idx].seenAt = updated[idx].seenAt ?? Date()
-            updated[idx].swiped = .right
-        }
+        // 收藏与喜好意图解耦：只翻转 isFavorite，不改写 swiped（否则会污染喜欢/不喜欢统计）。
+        // 也不写 seenAt：收藏一张未读卡不应被计为「已浏览」（否则今日目标/统计/复习队列都会凭空 +1）。
+        // 收藏时间单独记在 favoritedAt，供收藏阁排序（取消收藏时一并清空）。
+        updated[idx].isFavorite.toggle()
+        updated[idx].favoritedAt = updated[idx].isFavorite ? Date() : nil
         cards = updated
         persist()
     }
 
     /// 检查某张卡片是否已被收藏
     public func isFavorite(_ card: KnowledgeCard) -> Bool {
-        cards.first(where: { $0.id == card.id })?.swiped == .right
+        cards.first(where: { $0.id == card.id })?.isFavorite ?? false
     }
 
     /// 导出收藏夹为兼容 Obsidian / Notion 的 Markdown 格式
@@ -329,6 +402,41 @@ public final class AppStore {
         return md
     }
 
+    // MARK: - 卡片批量导入与笔记提炼
+
+    @discardableResult
+    public func importCards(_ incoming: [KnowledgeCard], insertAtTop: Bool = true) -> CardImportResult {
+        let (toAdd, dupCount) = CardImportEngine.deduplicateAndMerge(existing: cards, incoming: incoming)
+        guard !toAdd.isEmpty else {
+            return CardImportResult(parsedCards: [], duplicateCount: dupCount, sourceDescription: "所有卡片均已存在，已自动去重")
+        }
+
+        let processed = toAdd
+        if insertAtTop {
+            cards = processed + cards
+            recomputeDeckAndHistory()
+            let processedIds = Set(processed.map(\.id))
+            let promoted = deck.filter { processedIds.contains($0.id) }
+            let otherDeck = deck.filter { !processedIds.contains($0.id) }
+            self.deck = promoted + otherDeck
+        } else {
+            cards.append(contentsOf: processed)
+            recomputeDeckAndHistory()
+        }
+        persist()
+
+        return CardImportResult(
+            parsedCards: processed,
+            duplicateCount: dupCount,
+            sourceDescription: "成功导入 \(processed.count) 张新卡片\(dupCount > 0 ? "，自动去重跳过 \(dupCount) 张" : "")"
+        )
+    }
+
+    /// 通过 AI 将长文笔记提纯为知识卡片
+    public func transformNoteToCards(noteContent: String) async throws -> [KnowledgeCard] {
+        try await aiService.transformNoteToCards(noteText: noteContent, settings: settings)
+    }
+
     // MARK: - 知识测验 (Flashcard Quiz)
 
     public enum QuizRating: Int, CaseIterable, Identifiable {
@@ -373,7 +481,7 @@ public final class AppStore {
         case .forgot:
             updated[idx].masteryLevel = 0
         case .hesitant:
-            updated[idx].masteryLevel = max(updated[idx].masteryLevel, 1)
+            updated[idx].masteryLevel = 1
         case .mastered:
             updated[idx].masteryLevel = 2
         }
@@ -432,7 +540,8 @@ public final class AppStore {
     // MARK: - AI 生成
 
     /// 生成 count 张新卡片并追加到队列
-    public func generateNewCards(count: Int = 3) async {
+    /// - Parameter topic: 可选主题，非空时围绕该主题生成（全局搜索「围绕关键词生成」入口使用）
+    public func generateNewCards(count: Int = 3, topic: String? = nil) async {
         guard !isGenerating else { return }
         isGenerating = true
         defer { isGenerating = false }
@@ -443,7 +552,8 @@ public final class AppStore {
             let newCards = try await aiService.generateCards(
                 settings: settings,
                 count: count,
-                excludeHeadlines: existing
+                excludeHeadlines: existing,
+                topic: topic
             )
             cards.append(contentsOf: newCards)
             persist()
@@ -474,8 +584,10 @@ public final class AppStore {
     /// 保存设置：key 单独进 Keychain，其余进 JSON；失败抛错
     public func saveSettings(_ newSettings: AISettings) throws {
         let trimmedKey = newSettings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        // key 非空才写钥匙串；写入失败向上抛，视图可见
-        if !trimmedKey.isEmpty {
+        // key 非空写钥匙串、为空则删除，与语音配置分支对称：清空后重启不会「复活」旧密钥。
+        if trimmedKey.isEmpty {
+            try credentials.delete(account: "apiKey")
+        } else {
             try credentials.save(trimmedKey, account: "apiKey")
         }
         var persisted = newSettings

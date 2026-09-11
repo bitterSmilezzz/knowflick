@@ -25,8 +25,11 @@ struct SettingsView: View {
     @State private var newCategoryName = ""
     @State private var newCategoryDesc = ""
     @State private var savedToast = false
+    @State private var saveErrorMessage: String?
     @State private var testResult: String?
     @State private var isTesting = false
+    @State private var showExportModal = false
+    @State private var showImportModal = false
 
     @State private var selectedProviderId = "deepseek"
 
@@ -57,6 +60,9 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 header
+                if let message = saveErrorMessage {
+                    saveErrorBanner(message)
+                }
                 Divider().overlay(EditorialColor.glassDivider)
 
                 ScrollView {
@@ -66,6 +72,7 @@ struct SettingsView: View {
                         categoryManagementCard
                         sourcesCard
                         speechSettingsCard
+                        dataManagementCard
                         aboutCard
                     }
                     .padding(22)
@@ -113,6 +120,22 @@ struct SettingsView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .overlay {
+            if showExportModal {
+                ExportCardsModalView(store: store) {
+                    showExportModal = false
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
+        .overlay {
+            if showImportModal {
+                ImportNotesModalView(store: store) {
+                    showImportModal = false
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
     }
 
     private var header: some View {
@@ -127,8 +150,8 @@ struct SettingsView: View {
             }
             Spacer()
             Button("完成") {
-                save()
-                dismiss()
+                // 保存失败时不关闭：错误以顶部横幅呈现，用户可修正后重试或手动关闭
+                if save() { dismiss() }
             }
             .font(EditorialFont.label)
             .foregroundStyle(EditorialColor.textSecondary)
@@ -141,6 +164,49 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
+    }
+
+    /// 保存失败横幅：位于标题栏下方，不随底栏提示被忽略
+    private func saveErrorBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(EditorialColor.dislikeRed)
+            Text("保存失败：\(message)")
+                .font(EditorialFont.caption)
+                .foregroundStyle(EditorialColor.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button("放弃修改并关闭") {
+                dismiss()
+            }
+            .font(EditorialFont.captionSmall)
+            .foregroundStyle(EditorialColor.textSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(EditorialColor.glassSurface, in: Capsule())
+            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+            .buttonStyle(PressableButtonStyle())
+            .help("不保存本次修改，直接关闭设置页")
+            Button {
+                saveErrorMessage = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(EditorialColor.textTertiary)
+            }
+            .buttonStyle(PressableButtonStyle())
+            .help("忽略此提示，继续修正")
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EditorialColor.dislikeRed.opacity(0.12))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(EditorialColor.dislikeRed)
+                .frame(width: 3)
+        }
     }
 
     // MARK: - 卡片 0：外观表现（跟随系统 / 深色 / 浅色）
@@ -641,6 +707,64 @@ struct SettingsView: View {
         .editorialGlassCard(cornerRadius: EditorialRadius.container)
     }
 
+    // MARK: - 卡片 3.5：数据管理与迁移 (导入与导出)
+
+    private var dataManagementCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(EditorialColor.aiAmber)
+                Text("数据管理与双向迁移")
+                    .font(EditorialFont.sectionTitle)
+                    .foregroundStyle(EditorialColor.textPrimary)
+                Spacer()
+                Text("Markdown · Obsidian · Anki · JSON")
+                    .font(EditorialFont.captionSmall)
+                    .foregroundStyle(EditorialColor.textSecondary)
+            }
+
+            Text("支持将卡库或收藏阁批量导出为多种笔记与闪卡格式；亦支持将个人 Markdown 笔记或长文通过规则与 AI 解构导入为知识闪卡。")
+                .font(EditorialFont.captionSmall)
+                .foregroundStyle(EditorialColor.textTertiary)
+
+            HStack(spacing: 12) {
+                Button {
+                    showExportModal = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("批量导出知识卡片…")
+                    }
+                    .font(EditorialFont.label)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .foregroundStyle(EditorialColor.textPrimary)
+                }
+                .buttonStyle(PressableButtonStyle())
+
+                Button {
+                    showImportModal = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("导入笔记为卡片…")
+                    }
+                    .font(EditorialFont.label)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .foregroundStyle(EditorialColor.textPrimary)
+                }
+                .buttonStyle(PressableButtonStyle())
+            }
+        }
+        .padding(18)
+        .editorialGlassCard()
+    }
+
     // MARK: - 卡片 4：知识库状态与安全说明
 
     private var aboutCard: some View {
@@ -692,7 +816,7 @@ struct SettingsView: View {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
                         .foregroundStyle(EditorialColor.aiAmber)
-                    Text("KnowFlick v3.1.1")
+                    Text("KnowFlick v3.2.0")
                         .font(EditorialFont.captionSmall)
                         .foregroundStyle(EditorialColor.textTertiary)
                 }
@@ -787,7 +911,9 @@ struct SettingsView: View {
     }
 
     /// 保存：key 进 Keychain + 其余进 JSON，由 AppStore 单点负责分置落盘
-    private func save() {
+    /// 返回是否成功；失败时在设置页顶部展示可见错误，调用方不应关闭页面
+    @discardableResult
+    private func save() -> Bool {
         var updated = store.settings
         updated.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -809,13 +935,17 @@ struct SettingsView: View {
         updated.autoSpeakOnDetailOpen = autoSpeakOnDetailOpen
         do {
             try store.saveSettings(updated)
+            saveErrorMessage = nil
             savedToast = true
             Task {
                 try? await Task.sleep(for: .seconds(1.5))
                 savedToast = false
             }
+            return true
         } catch {
-            testResult = error.localizedDescription
+            // 失败提示放在页面顶部横幅，避免只写底栏（sheet 关闭后即不可见）
+            saveErrorMessage = error.localizedDescription
+            return false
         }
     }
 

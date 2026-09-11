@@ -131,7 +131,7 @@ public struct CardPosterRendererView: View {
                     .shadow(color: theme.accent.opacity(0.4), radius: 8, y: 3)
 
                     // 来源标签
-                    Text(card.source == .ai ? "AI 精研" : "预置典藏")
+                    Text(card.source == .ai ? "AI 精研" : (card.source == .imported ? "导入笔记" : "预置典藏"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.85))
                         .padding(.horizontal, 10)

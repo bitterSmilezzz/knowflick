@@ -6,9 +6,15 @@ import KnowFlickCore
 /// 悬浮在卡堆底部或顶部，提供实时声浪、播放进度、切歌、倍速与退出控制
 struct AmbientAudioPlayerBar: View {
     let store: AppStore
+    /// 卡片是否正在飞出（切卡动画中）。由调用方传入 `swipingCard != nil`；
+    /// 缺省 false 以保持既有调用点可编译，未接线时内部仍有连点守卫兜底。
+    var isTransitioning: Bool = false
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onClose: () -> Void
+
+    /// 连点守卫：切卡动画窗口内的重复点击不应重播当前卡
+    @State private var nextRequestInFlight = false
 
     private var speechService: SpeechSynthesizerService {
         store.speechService
@@ -98,7 +104,7 @@ struct AmbientAudioPlayerBar: View {
                 .help(isPlaying ? "暂停朗读 (⌘P)" : "继续朗读 (⌘P)")
 
                 // 下一张
-                Button(action: onNext) {
+                Button(action: handleNext) {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(EditorialColor.textSecondary)
@@ -106,7 +112,7 @@ struct AmbientAudioPlayerBar: View {
                         .background(Color.white.opacity(0.06), in: Circle())
                 }
                 .buttonStyle(PressableButtonStyle())
-                .disabled(store.deck.count <= 1)
+                .disabled(store.deck.count <= 1 || isTransitioning || nextRequestInFlight)
                 .help("切到下一张")
 
                 // 语速切换 (0.75x -> 1.0x -> 1.25x -> 1.5x)
@@ -137,7 +143,7 @@ struct AmbientAudioPlayerBar: View {
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(PressableButtonStyle())
-            .help("退出磨耳朵模式 (Esc)")
+            .help("退出磨耳朵模式")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
@@ -160,6 +166,19 @@ struct AmbientAudioPlayerBar: View {
         if abs(val - 1.25) < 0.05 { return "1.25x" }
         if abs(val - 1.5) < 0.05 { return "1.5x" }
         return String(format: "%.1fx", val)
+    }
+
+    /// 下一张：连点守卫 + 切卡完成后才允许再次触发，避免动画窗口内重播同一张
+    private func handleNext() {
+        guard !nextRequestInFlight, !isTransitioning else { return }
+        guard store.deck.count > 1 else { return }
+        nextRequestInFlight = true
+        onNext()
+        // 飞出动画约 0.25s，等顶部卡片真正换掉再解除守卫
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.3))
+            nextRequestInFlight = false
+        }
     }
 
     private func cycleSpeed() {

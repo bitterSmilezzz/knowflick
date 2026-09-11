@@ -6,6 +6,8 @@ import KnowFlickCore
 /// 知识收藏阁：沉淀心仪卡片，按学科分类筛选检索，并支持一键导出至 Obsidian / Notion 读书笔记
 struct FavoritesView: View {
     let store: AppStore
+    /// 设置：是否显示 AI 内容标记（与卡片正面/详情页保持一致）
+    var showAIMark: Bool = true
     let onClose: () -> Void
 
     @State private var selectedCategory: String? = nil
@@ -15,6 +17,7 @@ struct FavoritesView: View {
     @State private var toastMessage: String? = nil
     @State private var showQuiz: Bool = false
     @State private var quizCategory: String? = nil
+    @State private var showExportModal: Bool = false
 
     // MARK: - 计算属性
 
@@ -92,6 +95,17 @@ struct FavoritesView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
+        .overlay {
+            if showExportModal {
+                ExportCardsModalView(
+                    store: store,
+                    initialScopeCards: (selectedCategory != nil || !searchText.isEmpty) ? filteredCards : store.favorites
+                ) {
+                    showExportModal = false
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toastMessage)
         .frame(minWidth: 840, minHeight: 600)
     }
@@ -165,9 +179,18 @@ struct FavoritesView: View {
             // 导出 Markdown 笔记菜单
             Menu {
                 Button {
+                    showExportModal = true
+                } label: {
+                    Label("卡片批量导出中心 (Markdown/Obsidian/Anki/JSON)…", systemImage: "square.and.arrow.up.fill")
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button {
                     copyMarkdown(filteredOnly: false)
                 } label: {
-                    Label("复制全部收藏 Markdown (\(store.favorites.count) 篇)", systemImage: "doc.on.doc")
+                    Label("快速复制全部收藏 Markdown (\(store.favorites.count) 篇)", systemImage: "doc.on.doc")
                 }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
 
@@ -393,7 +416,7 @@ struct FavoritesView: View {
                 .background(theme.accent.opacity(0.12), in: Capsule())
                 .overlay(Capsule().strokeBorder(theme.accent.opacity(0.32), lineWidth: 0.8))
 
-                if card.source == .ai {
+                if card.source == .ai && showAIMark {
                     Text("AI")
                         .font(.system(size: 9, weight: .heavy))
                         .foregroundStyle(EditorialColor.aiAmber)
@@ -552,6 +575,14 @@ struct FavoritesView: View {
 
     // MARK: - 详情浮层
 
+    /// 收藏阁内位于 card 之后的下一条收藏卡（用于浮层内刷卡/下一张时连续浏览）
+    /// 与列表保持同一筛选口径：沿用当前分类/搜索过滤结果，避免浮层翻页跳出用户正在看的范围。
+    private func nextFavoriteCard(after card: KnowledgeCard) -> KnowledgeCard? {
+        let list = filteredCards
+        guard let idx = list.firstIndex(where: { $0.id == card.id }) else { return list.first }
+        return idx + 1 < list.count ? list[idx + 1] : nil
+    }
+
     private func detailOverlay(for card: KnowledgeCard) -> some View {
         ZStack {
             Color.black.opacity(0.6)
@@ -563,14 +594,28 @@ struct FavoritesView: View {
                 store: store,
                 showAIMark: store.settings.showAIMark,
                 hasPrevious: false,
-                hasNext: false,
-                onSwipe: { _ in
-                    store.toggleFavorite(card)
+                hasNext: nextFavoriteCard(after: card) != nil,
+                // 收藏阁内的「不喜欢 / 跳过 / 感兴趣」必须表达真实喜好意图：
+                // 此前三个按钮被统一映射为 toggleFavorite，既语义相反又行为重复。
+                // 现在统一走 store.swipe：不喜欢 → 移出收藏阁（swiped=.left 会同步 isFavorite=false）；
+                // 跳过 → 仅记浏览、保留收藏；感兴趣 → 保持收藏。swipe 后自动前进到下一张收藏卡。
+                onSwipe: { direction in
+                    store.swipe(card, direction: direction)
+                    if let next = nextFavoriteCard(after: card) {
+                        selectedCard = next
+                    } else {
+                        selectedCard = nil
+                    }
                 },
                 onToggleFavorite: {
                     store.toggleFavorite(card)
+                    // 取消收藏后卡片已不属于收藏阁（store.favorites 由 isFavorite 派生），
+                    // 关闭浮层，避免继续展示列表之外的卡片。
+                    if !store.isFavorite(card) { selectedCard = nil }
                 },
-                onNext: {},
+                onNext: {
+                    if let next = nextFavoriteCard(after: card) { selectedCard = next }
+                },
                 onPrevious: {},
                 onClose: { selectedCard = nil },
                 relatedCards: store.getRelatedCards(for: card),

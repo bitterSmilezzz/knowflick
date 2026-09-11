@@ -118,11 +118,15 @@ struct HistoryView: View {
                 showAIMark: showAIMark,
                 hasPrevious: false,
                 hasNext: nextHistoryCard(after: card) != nil,
+                // 历史页改标签：swiped 是真实的喜好意图，与收藏（isFavorite）解耦。
+                // 依赖：AppStore.swipe 对已有 seenAt 的卡片保留原时间（AppStore.swift:224-233），
+                // 因此这里打标签不会再重写 seenAt、把卡片顶到时间线顶部；统计口径保持稳定。
                 onSwipe: { direction in
                     store.swipe(card, direction: direction)
                     if let next = nextHistoryCard(after: card) { selectedCard = next } else { selectedCard = nil }
                 },
                 onToggleFavorite: {
+                    // 收藏状态读 isFavorite 字段（与 swiped 解耦），不再用 swiped == .right 判断。
                     store.toggleFavorite(card)
                 },
                 onNext: {

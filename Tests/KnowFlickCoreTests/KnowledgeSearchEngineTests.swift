@@ -31,16 +31,52 @@ struct KnowledgeSearchEngineTests {
             links: [],
             source: .seed,
             createdAt: Date(timeIntervalSince1970: 3000),
-            swiped: .right
+            swiped: .right,
+            isFavorite: true
         )
     ]
 
     let engine = KnowledgeSearchEngine()
 
-    @Test func testEmptyQueryReturnsAllCards() {
+    @Test func testEmptyQueryReturnsNothingSoGuideIsReachable() {
+        // 空查询返回空结果：视图据此渲染引导页与搜索建议按钮（此前返回 40 条导致引导页永久不可达）
         let results = engine.search(query: "", in: testCards)
-        #expect(results.count == 3)
-        #expect(results.first?.card.category == "计算机")
+        #expect(results.isEmpty)
+
+        let blankResults = engine.search(query: "   \n ", in: testCards)
+        #expect(blankResults.isEmpty)
+    }
+
+    @Test func testEmptyQueryStillHonoursCategoryAndSourceFilters() {
+        // 过滤维度本身仍要正确：先按查询词命中，再验证过滤生效
+        let categoryResults = engine.search(query: "O", category: "计算机", in: testCards)
+        #expect(categoryResults.allSatisfy { $0.card.category == "计算机" })
+
+        let seedResults = engine.search(query: "O", source: .seed, in: testCards)
+        #expect(seedResults.allSatisfy { $0.card.source == .seed })
+
+        let aiResults = engine.search(query: "量子", source: .ai, in: testCards)
+        #expect(aiResults.count == 1)
+        #expect(aiResults.first?.card.category == "物理")
+
+        let favResults = engine.search(query: "LRU", source: .favorites, in: testCards)
+        #expect(favResults.count == 1)
+        #expect(favResults.first?.card.category == "计算机")
+    }
+
+    @Test func testCaseInsensitiveDetailsMatchDoesNotCrash() {
+        // 大小写不敏感查找在原字符串上进行：小写化会改变长度的字符（İ）不应触发索引越界
+        let card = KnowledgeCard(
+            category: "语言",
+            headline: "İstanbul 的拼写与土耳其语点式大写 I",
+            summary: "土耳其语有带点与不带点两种 I，大小写转换规则与其他语言不同。",
+            details: "在土耳其语中，İ 小写化后是 i，而 I 小写化后是 ı；跨 lowercased() 副本传递 String.Index 会因长度变化而崩溃。",
+            links: [],
+            source: .seed
+        )
+        let results = engine.search(query: "İ", in: [card])
+        #expect(!results.isEmpty)
+        #expect(results.first?.card.category == "语言")
     }
 
     @Test func testHeadlineDirectMatch() {
@@ -79,25 +115,6 @@ struct KnowledgeSearchEngineTests {
         #expect(results.first?.card.category == "物理")
         #expect(results.first?.matchedField == .details)
         #expect(results.first?.matchedExcerpt.contains("EPR") == true)
-    }
-
-    @Test func testCategoryFilter() {
-        let results = engine.search(query: "", category: "计算机", in: testCards)
-        #expect(results.count == 1)
-        #expect(results.first?.card.category == "计算机")
-    }
-
-    @Test func testSourceFilter() {
-        let seedResults = engine.search(query: "", source: .seed, in: testCards)
-        #expect(seedResults.count == 2)
-
-        let aiResults = engine.search(query: "", source: .ai, in: testCards)
-        #expect(aiResults.count == 1)
-        #expect(aiResults.first?.card.category == "物理")
-
-        let favResults = engine.search(query: "", source: .favorites, in: testCards)
-        #expect(favResults.count == 1)
-        #expect(favResults.first?.card.category == "计算机")
     }
 
     @Test func testRankHeadlineHigherThanDetails() {
