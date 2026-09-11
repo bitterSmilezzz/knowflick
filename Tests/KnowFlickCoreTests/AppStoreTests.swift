@@ -155,8 +155,14 @@ struct AppStoreTests {
             let persisted = try await waitForChatSession(storage, for: first.id) { $0?.messages.count == 1 }
             #expect(persisted?.messages.count == 1)
             #expect(store.currentChatSession?.cardId == second.id)
+            // 让 second 的会话先落盘，清除断言才是非空洞的
+            store.currentChatSession?.messages.append(CardChatMessage(sender: .user, content: "second 的问题"))
+            store.openChat(for: first)
+            let secondSaved = try await waitForChatSession(storage, for: second.id) { $0 != nil }
+            #expect(secondSaved != nil)
+            store.openChat(for: second)
             store.clearCurrentChatSession()
-            // 清除的是当前卡（second）的会话；first 会话保留、second 从未产生会话
+            // 清除的是当前卡（second）的会话；first 会话保留
             let cleared = try await waitForChatSession(storage, for: second.id) { $0 == nil }
             #expect(cleared == nil)
             let preserved = try await waitForChatSession(storage, for: first.id) { $0?.messages.count == 1 }
@@ -296,6 +302,23 @@ extension AppStoreTests {
             store2.flushPersistence()
             #expect(Storage(baseDir: directory).loadSettings().appearance == .light)
             #expect(credentials.values.isEmpty)
+        }
+    }
+
+    /// 清除→立即重开同一张卡：后台 FIFO 的清除尚未执行时，openChat 不得从磁盘复活旧会话
+    @Test func clearedChatSessionDoesNotResurrectOnReopen() async throws {
+        try await withStoreAsync { store, storage, _ in
+            let subject = card("一")
+            store.openChat(for: subject)
+            store.currentChatSession?.messages.append(CardChatMessage(sender: .user, content: "将被清除的旧消息"))
+            store.cancelChatStreaming()   // 触发落盘
+            _ = try await waitForChatSession(storage, for: subject.id) { $0?.messages.count == 1 }
+
+            store.clearCurrentChatSession()
+            // 清除尚在后台队列（可能排在慢速卡片写入之后），立即重开同一张卡
+            store.openChat(for: subject)
+            #expect(store.currentChatSession?.messages.isEmpty == true)
+            #expect(store.currentChatSession?.cardId == subject.id)
         }
     }
 }

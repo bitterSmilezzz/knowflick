@@ -338,9 +338,11 @@ public enum KnowledgeGraphEngine {
         let keywords = cards.map { extractKeywords(from: $0) }
         for i in 0..<cards.count {
             if Task.isCancelled {
-                // 取消时不丢弃已完成的工作：返回已建节点与当前累计边（连接度一致），而非空图
+                // 取消时不丢弃已完成的工作：返回已建节点与当前累计边（连接度/半径口径一致），而非空图
                 for idx in nodes.indices {
-                    nodes[idx].connectionsCount = connectionTally[nodes[idx].cardId, default: 0]
+                    let count = connectionTally[nodes[idx].cardId, default: 0]
+                    nodes[idx].connectionsCount = count
+                    nodes[idx].radius = max(6.5, min(14.0, 7.0 + CGFloat(count) * 1.5))
                 }
                 return KnowledgeGraphData(nodes: nodes, edges: edges)
             }

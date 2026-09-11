@@ -263,7 +263,14 @@ public final class AppStore {
         let storage = self.storage
         persistenceQueue.async { [weak self] in
             let result = storage.saveCards(cardsSnapshot)
-            try? storage.saveSettingsThrowing(settingsSnapshot)
+            do {
+                try storage.saveSettingsThrowing(settingsSnapshot)
+            } catch {
+                Task { @MainActor [weak self] in
+                    guard let self, self.persistenceRevision == revision else { return }
+                    self.persistenceWarning = "设置保存失败：\(error.localizedDescription)"
+                }
+            }
             Task { @MainActor [weak self] in
                 guard let self, self.persistenceRevision == revision else { return }
                 self.receiveSaveResult(result)
@@ -300,7 +307,8 @@ public final class AppStore {
         flushPersistence()
     }
 
-    private func receiveSaveResult(_ result: CardSaveResult) {        switch result {
+    private func receiveSaveResult(_ result: CardSaveResult) {
+        switch result {
         case .saved:
             persistenceWarning = nil
         case .failed(let message):
@@ -696,16 +704,26 @@ public final class AppStore {
         cancelChatStreaming()
         self.activeChatCard = card
         self.chatErrorMessage = nil
-        // 加载历史会话或新建
-        if let existing = storage.loadChatSession(for: card.id) {
+        // 加载历史会话或新建。
+        // 清除走后台 FIFO，openChat 是同步读盘：刚清除的卡以内存墓碑为准，防止旧会话复活
+        if clearedChatCardIds.contains(card.id) {
+            self.currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
+        } else if let existing = storage.loadChatSession(for: card.id) {
             self.currentChatSession = existing
         } else {
             self.currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
         }
     }
 
+    /// 刚被清除（清除尚在后台队列执行）的会话卡 ID：openChat 同步读盘时以此为准
+    private var clearedChatCardIds: Set<UUID> = []
+
     /// 聊天会话写入移出主线程：经串行持久化队列与卡片写入排队，与清除操作保持先后顺序
     private func persistChatSession(_ session: CardChatSession) {
+        // 仅非空会话构成对清除的超越；空会话（如重开时的初始化落盘）不得摘除墓碑
+        if !session.messages.isEmpty {
+            clearedChatCardIds.remove(session.cardId)
+        }
         let storage = self.storage
         persistenceQueue.async { [weak self] in
             do { try storage.saveChatSessionThrowing(session) }
@@ -719,6 +737,7 @@ public final class AppStore {
 
     /// 清除会话同样走后台队列，保证与保存操作的先后顺序
     private func clearChatSessionOnDisk(for cardId: UUID) {
+        clearedChatCardIds.insert(cardId)
         let storage = self.storage
         persistenceQueue.async { [weak self] in
             do { try storage.clearChatSessionThrowing(for: cardId) }

@@ -523,13 +523,25 @@ struct CardDeckView: View {
         let targetX: CGFloat = direction == .left ? -760 : 760
         let targetY: CGFloat = initialOffset.height * 0.35 + (direction == .left ? -20 : 20)
 
-        withAnimation(.easeOut(duration: 0.24), completionCriteria: .removed, {
-            swipingOffset = CGSize(width: targetX, height: targetY)
-        }, completion: {
+        func reclaimFlyingCard() {
             swipingCard = nil
             swipingOffset = .zero
             swipingDirection = nil
+        }
+
+        withAnimation(.easeOut(duration: 0.24), completionCriteria: .removed, {
+            swipingOffset = CGSize(width: targetX, height: targetY)
+        }, completion: {
+            reclaimFlyingCard()
         })
+        // 兜底：飞行动画期间视图被整体卸载等极端情况下 completion 可能不回调，
+        // 超时强制回收，防止 swipingCard 残留把卡堆锁死
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            if swipingCard != nil {
+                reclaimFlyingCard()
+            }
+        }
     }
 
     // MARK: - 布局与 3D 动力学参数

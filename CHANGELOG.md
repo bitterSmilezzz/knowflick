@@ -2,7 +2,24 @@
 
 本项目所有重要版本更新均记录在此文档中。
 
-格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -16,7 +33,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -34,7 +68,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
 - **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
 - **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
-- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -48,7 +99,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -61,7 +129,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **图标链路端到端验证**：build_icon → iconutil → verify_icon 全链路以临时目录实测通过（10 阶 iconset 生成、ICNS 打包、逐像素校验一致）。
 - **README 质量检查扩充**：补充图标链路与课程导入脚本的自检命令；注明测试计数口径为 `@Test` 声明数（参数化用例运行时展开）。
 - **导入脚本注释**：明确 `MAX_HEADLINE_LEN` 仅约束新增卡片（历史种子存在 52 字标题，不追溯）。
-- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -75,7 +160,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -93,7 +195,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
 - **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
 - **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
-- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -107,7 +226,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -122,7 +258,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **CONTEXT.md 领域词汇更新**：修正「受控 21 类（未知兜底科技）」的过期描述（现行：normalize 兜底第一个自定义分类/冷知识）；图池数量改为实际值（15/15/10/8，共 42 张）；防重算法条目改为现名 `arrangeWithMinDistance` 并条件化「严格 0 撞图」措辞。
 - **README 数据存储表**：补 `cards.backup.json` 与 `chat_sessions.json` 两行。
 - **README 项目结构树**：补 CONTEXT.md、tools/、docs/、android/、assets/ 条目。
-- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -136,7 +289,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -154,7 +324,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
 - **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
 - **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
-- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -168,7 +355,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -181,7 +385,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **图标链路端到端验证**：build_icon → iconutil → verify_icon 全链路以临时目录实测通过（10 阶 iconset 生成、ICNS 打包、逐像素校验一致）。
 - **README 质量检查扩充**：补充图标链路与课程导入脚本的自检命令；注明测试计数口径为 `@Test` 声明数（参数化用例运行时展开）。
 - **导入脚本注释**：明确 `MAX_HEADLINE_LEN` 仅约束新增卡片（历史种子存在 52 字标题，不追溯）。
-- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -195,7 +416,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -213,7 +451,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
 - **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
 - **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
-- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -227,7 +482,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -243,7 +515,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **测试脚本引导**：`tools/test.sh` 在 xcode-select 未配置时给出安装指引。
 - **文档时效声明**：docs/ 下 5 份历史评审文档头部统一加入「快照基线声明」；`android/README` 标注当前为契约占位、无可编译工程。
 - **CHANGELOG 规范**：新增 `[Unreleased]` 段落，对齐 Keep a Changelog。
-- **验证**：图标逐像素校验通过；171 项 / 25 个 suite 全绿；Release 打包验证通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **验证**：图标逐像素校验通过；171 项 / 25 个 suite 全绿；Release 打包验证通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -257,7 +546,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -275,7 +581,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
 - **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
 - **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
-- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -289,7 +612,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -302,7 +642,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **图标链路端到端验证**：build_icon → iconutil → verify_icon 全链路以临时目录实测通过（10 阶 iconset 生成、ICNS 打包、逐像素校验一致）。
 - **README 质量检查扩充**：补充图标链路与课程导入脚本的自检命令；注明测试计数口径为 `@Test` 声明数（参数化用例运行时展开）。
 - **导入脚本注释**：明确 `MAX_HEADLINE_LEN` 仅约束新增卡片（历史种子存在 52 字标题，不追溯）。
-- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -316,7 +673,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -334,7 +708,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
 - **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
 - **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
-- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -348,7 +739,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -363,7 +771,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **CONTEXT.md 领域词汇更新**：修正「受控 21 类（未知兜底科技）」的过期描述（现行：normalize 兜底第一个自定义分类/冷知识）；图池数量改为实际值（15/15/10/8，共 42 张）；防重算法条目改为现名 `arrangeWithMinDistance` 并条件化「严格 0 撞图」措辞。
 - **README 数据存储表**：补 `cards.backup.json` 与 `chat_sessions.json` 两行。
 - **README 项目结构树**：补 CONTEXT.md、tools/、docs/、android/、assets/ 条目。
-- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -377,7 +802,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -395,7 +837,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
 - **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
 - **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
-- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -409,7 +868,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -422,7 +898,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **图标链路端到端验证**：build_icon → iconutil → verify_icon 全链路以临时目录实测通过（10 阶 iconset 生成、ICNS 打包、逐像素校验一致）。
 - **README 质量检查扩充**：补充图标链路与课程导入脚本的自检命令；注明测试计数口径为 `@Test` 声明数（参数化用例运行时展开）。
 - **导入脚本注释**：明确 `MAX_HEADLINE_LEN` 仅约束新增卡片（历史种子存在 52 字标题，不追溯）。
-- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -436,7 +929,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -454,7 +964,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
 - **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
 - **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
-- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 
@@ -468,7 +995,24 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **静态可变状态显式豁免**：`CardThemeResolver.keyCache` 与 `KnowledgeGraphEngine.keywordCache` 标注 `nonisolated(unsafe)` 并注明 NSLock 锁纪律——Swift 6 不认可「锁在手、全局可变」的隐式模式。
 - **Sendable 收口**：`AIService` 标记为 `Sendable`（不可变值类型 + Sendable URLSession），消除 AppStore 跨任务发送的结构性告警；语音服务对 AVFoundation 采用 `@preconcurrency` 导入处理系统框架类型的跨域发送。
 - **签名断言稳定化**：JSON 导出 throws 签名断言由运行期元类型比较改为编译期目标类型赋值（跨语言模式稳定）。
-- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。
+- **测试与验证**：171 项 / 25 个 suite 在 Swift 6 模式下全绿；Release 构建通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.8.1] - 2026-09-11
+
+### 全量交叉复审与回归修复（二十轮优化 · 第 19 轮）
+
+双 agent 交叉复审 v3.2.1 → v3.8.0 全部改动（核心层 + UI 层），修复确认的回归：
+
+- **P1 · 聊天清除→重开竞态**：清除改异步后，立即重开同一张卡可能从磁盘复活已删除的历史并被永久写回。新增内存墓碑机制——清除在后台 FIFO 执行期间，openChat 以内存状态为准；仅非空会话写入可摘除墓碑。新增竞态回归测试，并补强原清除测试中恒真的空洞断言。
+- **P2 · 刷卡飞出回调兜底**：动画完成回调在飞行窗口内视图被整体卸载等极端时序下可能不触发，导致悬浮卡残留、卡堆锁死；新增 1 秒超时强制回收。
+- **P2 · 切后台设置保存失败静默**：persistImmediately 的设置写入失败此前被 try? 吞掉，现与卡片保存同样走持久化告警。
+- **P3 集中修复**：星图滚轮监视器放行纯横向滚动（学科过滤横条恢复可用）；星图取消返回部分结果的节点半径口径与完整路径对齐；导出失败提示延长至 5 秒；receiveSaveResult 排版事故还原。
+- **评估后接受**：导出 Markdown 的字节级空行变化（Markdown 语义不变，锚点断言仍绿）；工作台跨零点「今天」计数延迟到下次交互刷新；学习工作台导入日期解析的 per-call formatter 开销（实测微秒级）。
+- **测试与验证**：172 项 / 25 个 suite 全绿（连续两轮稳定）；Release 构建通过。
 
 ## [Unreleased]
 

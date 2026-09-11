@@ -618,10 +618,9 @@ private struct GraphScrollZoomCatcher: NSViewRepresentable {
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
                 guard let self, event.window === self.window else { return event }
-                if event.scrollingDeltaY != 0 {
-                    // 向上滚动放大（自然滚动方向），系数平滑适配触控板与滚轮
-                    self.onZoom?(-event.scrollingDeltaY * 0.08)
-                }
+                guard event.scrollingDeltaY != 0 else { return event }   // 纯横向滚动放行（学科过滤横条）
+                // 向上滚动放大（自然滚动方向），系数平滑适配触控板与滚轮
+                self.onZoom?(-event.scrollingDeltaY * 0.08)
                 return nil
             }
         }

@@ -479,7 +479,7 @@ struct ExportCardsModalView: View {
                 toast.show("已复制 \(cards.count) 张卡片的完整内容")
             } catch {
                 guard !Task.isCancelled else { return }
-                toast.show("复制失败：\(error.localizedDescription)", style: .failure)
+                toast.show("复制失败：\(error.localizedDescription)", style: .failure, duration: .seconds(5))
             }
         }
     }
@@ -548,7 +548,7 @@ struct ExportCardsModalView: View {
                 toast.show("已导出 \(cards.count) 张卡片至 \(destination.lastPathComponent)")
             } catch {
                 guard !Task.isCancelled else { return }
-                toast.show("保存失败：\(error.localizedDescription)", style: .failure)
+                toast.show("保存失败：\(error.localizedDescription)", style: .failure, duration: .seconds(5))
             }
         }
     }
