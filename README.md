@@ -5,7 +5,7 @@
 **macOS 个人学习工作台 — 阅读、复习与知识管理**
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
-[![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
+[![Swift](https://img.shields.io/badge/Swift-6.0-orange?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
 [![SwiftUI](https://img.shields.io/badge/SwiftUI-%E5%8E%9F%E7%94%9F-blue?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/bitterSmilezzz/knowflick?include_prereleases&logo=github)](https://github.com/bitterSmilezzz/knowflick/releases)
@@ -48,22 +48,48 @@ KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 ma
 
 ## 键盘快捷键
 
-| 快捷键 | 功能 |
-| --- | --- |
-| `←` / `→` | 左右划卡（上一张 / 下一张） |
-| `⏎` | 展开 / 关闭详情 |
-| `⌘Z` | 撤销上一张 |
-| `⌘N` | 生成一张新卡（需配置 AI） |
-| `Esc` | 关闭详情 / 历史 / 设置 |
-| `⌘?` | 快捷键帮助 |
-
-详情页内：
+**系统菜单命令（任何界面可用；需要当前卡片的命令在卡堆为空时不可用）**
 
 | 快捷键 | 功能 |
 | --- | --- |
-| `←` / `→` | 切换上一张 / 下一张详情 |
-| `⏎` / `Esc` | 关闭详情 |
-| `⌘Z` | 撤销上一张 |
+| `⌘F` | 全局智能搜索与全文检索（支持拼音） |
+| `⌘J` | 向卡片追问（AI 伴学导师深入探讨） |
+| `⌘P` | 语音朗读 / 暂停（当前卡片） |
+| `⇧⌘P` | 开启 / 退出磨耳朵连续播报 |
+| `⌘K` | 开启沉浸式知识测验 |
+| `⌘G` | 探索全景知识星图与引力链 |
+| `⌘B` | 打开知识收藏阁（沉淀笔记） |
+| `⌘S` | 生成并导出分享海报 |
+| `⌘N` | AI 生成 3 张新知识 |
+| `⌘?` | 快捷键帮助面板 |
+| `⌘,` | 打开偏好设置 |
+
+**沉浸刷卡界面**
+
+| 快捷键 | 功能 |
+| --- | --- |
+| `←` / `→` | 不喜欢 / 感兴趣（划走） |
+| `⏎` | 展开卡片详情与来源链接 |
+| `⌘Z` | 撤销上一张卡片 |
+| `Esc` | 关闭当前弹出的面板 |
+
+**详情页内**
+
+| 快捷键 | 功能 |
+| --- | --- |
+| `⌘J` | 向当前知识卡片深入探讨追问 |
+| `⌘P` | 朗读 / 暂停全文语音 |
+| `⌘D` | 收藏 / 取消收藏当前卡片 |
+| `⏎` 或 `Esc` | 关闭详情 |
+| `←` / `→` | 切换上一张历史卡片 / 下一张待刷卡片（刷卡区进入时） |
+
+**测验面板内**
+
+| 快捷键 | 功能 |
+| --- | --- |
+| `空格` / `⏎` | 翻转卡片（查看背面答案与解析） |
+| `⌘1` / `⌘2` / `⌘3` | 自评：没想起来 / 犹豫想起 / 熟练掌握 |
+| `Esc` | 退出当前测验 |
 
 ## 下载安装
 
@@ -160,7 +186,9 @@ cd KnowFlick
 | 内容 | 位置 |
 | --- | --- |
 | 卡片数据（含历史） | `~/Library/Application Support/KnowFlick/cards.json` |
+| 卡片备份（上一版轮转） | `~/Library/Application Support/KnowFlick/cards.backup.json` |
 | AI 设置（base_url / model） | `~/Library/Application Support/KnowFlick/settings.json` |
+| 追问聊天会话 | `~/Library/Application Support/KnowFlick/chat_sessions.json` |
 | AI 密钥 | macOS 钥匙串（Keychain） |
 
 内置种子知识库（214 张）随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlickCore.bundle/seed_cards.json`）：
@@ -176,7 +204,12 @@ KnowFlick/
 ├── Package.swift            # SwiftPM 清单（macOS 14+）
 ├── build_app.sh             # 打包脚本 → dist/KnowFlick.app
 ├── CHANGELOG.md             # 完整版本更新日志
+├── CONTEXT.md               # 领域词汇表（架构评审与实现的统一语言）
 ├── Resources/               # 原生应用图标（AppIcon.icns / AppIcon.png）
+├── tools/                   # test.sh 测试脚本、build_icon / verify_icon 图标工具、import_lessons.py 课程导入
+├── docs/                    # 历史评审与优化报告快照
+├── android/                 # 跨端实施边界契约文档（暂无可编译工程）
+├── assets/                  # README 截图等展示资源
 ├── Sources/
 │   ├── KnowFlick/           # 应用层
 │   │   ├── KnowFlickApp.swift   # 应用生命周期入口

@@ -2,7 +2,22 @@
 
 本项目所有重要版本更新均记录在此文档中。
 
-格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.0] - 2026-09-11
+
+### 文档全面对齐（二十轮优化 · 第 15 轮）
+
+- **README 快捷键表重写**：与 HelpView 面板及 v3.1.1 原生菜单逐项对齐——补齐 ⌘F / ⌘K / ⌘G / ⌘B / ⌘S / ⌘P / ⇧⌘P / ⌘J / ⌘, 等，按「系统菜单 / 刷卡界面 / 详情页 / 测验面板」四个作用域分表。
+- **README 徽章纠偏**：Swift 5.9 → 6.0（Package.swift 为 swift-tools-version 6.0，语言模式 v5），消除三处口径矛盾。
+- **CONTEXT.md 领域词汇更新**：修正「受控 21 类（未知兜底科技）」的过期描述（现行：normalize 兜底第一个自定义分类/冷知识）；图池数量改为实际值（15/15/10/8，共 42 张）；防重算法条目改为现名 `arrangeWithMinDistance` 并条件化「严格 0 撞图」措辞。
+- **README 数据存储表**：补 `cards.backup.json` 与 `chat_sessions.json` 两行。
+- **README 项目结构树**：补 CONTEXT.md、tools/、docs/、android/、assets/ 条目。
+- **测试与验证**：171 项 / 25 个 suite 全绿。
 
 ## [Unreleased]
 
@@ -18,7 +33,22 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **测试脚本引导**：`tools/test.sh` 在 xcode-select 未配置时给出安装指引。
 - **文档时效声明**：docs/ 下 5 份历史评审文档头部统一加入「快照基线声明」；`android/README` 标注当前为契约占位、无可编译工程。
 - **CHANGELOG 规范**：新增 `[Unreleased]` 段落，对齐 Keep a Changelog。
-- **验证**：图标逐像素校验通过；171 项 / 25 个 suite 全绿；Release 打包验证通过。
+- **验证**：图标逐像素校验通过；171 项 / 25 个 suite 全绿；Release 打包验证通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.0] - 2026-09-11
+
+### 文档全面对齐（二十轮优化 · 第 15 轮）
+
+- **README 快捷键表重写**：与 HelpView 面板及 v3.1.1 原生菜单逐项对齐——补齐 ⌘F / ⌘K / ⌘G / ⌘B / ⌘S / ⌘P / ⇧⌘P / ⌘J / ⌘, 等，按「系统菜单 / 刷卡界面 / 详情页 / 测验面板」四个作用域分表。
+- **README 徽章纠偏**：Swift 5.9 → 6.0（Package.swift 为 swift-tools-version 6.0，语言模式 v5），消除三处口径矛盾。
+- **CONTEXT.md 领域词汇更新**：修正「受控 21 类（未知兜底科技）」的过期描述（现行：normalize 兜底第一个自定义分类/冷知识）；图池数量改为实际值（15/15/10/8，共 42 张）；防重算法条目改为现名 `arrangeWithMinDistance` 并条件化「严格 0 撞图」措辞。
+- **README 数据存储表**：补 `cards.backup.json` 与 `chat_sessions.json` 两行。
+- **README 项目结构树**：补 CONTEXT.md、tools/、docs/、android/、assets/ 条目。
+- **测试与验证**：171 项 / 25 个 suite 全绿。
 
 ## [Unreleased]
 
