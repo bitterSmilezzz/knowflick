@@ -502,7 +502,7 @@ struct ExportCardsModalView: View {
             openPanel.title = "选择导出 Obsidian 独立笔记集合的目录"
 
             let targetWindow = NSApp.keyWindow ?? NSApp.mainWindow
-            openPanel.beginSheetModal(for: targetWindow ?? NSWindow()) { response in
+            PanelPresenter.present(openPanel, in: targetWindow) { response in
                 guard response == .OK, let dirURL = openPanel.url else { isExporting = false; return }
                 writeExport(cards: cards, format: format, to: dirURL)
             }
@@ -533,7 +533,7 @@ struct ExportCardsModalView: View {
         savePanel.prompt = "保存"
         let targetWindow = NSApp.keyWindow ?? NSApp.mainWindow
 
-        savePanel.beginSheetModal(for: targetWindow ?? NSWindow()) { response in
+        PanelPresenter.present(savePanel, in: targetWindow) { response in
             guard response == .OK, let url = savePanel.url else { isExporting = false; return }
             writeExport(cards: cards, format: format, to: url)
         }

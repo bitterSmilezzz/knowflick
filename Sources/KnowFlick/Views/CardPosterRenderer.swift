@@ -142,7 +142,7 @@ public struct CardPosterRendererView: View {
                     Spacer()
 
                     // 出版物期号/卡号
-                    Text("№ \(String(format: "%04d", abs(card.headline.hashValue % 10000)))")
+                    Text("№ \(String(format: "%04d", Int(CardThemeResolver.deterministicHash(card.headline) % 10000)))")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundStyle(Color.white.opacity(0.55))
                         .tracking(1.5)

@@ -39,8 +39,9 @@ struct LearningWorkspaceView: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            let plan = LearningPlan(cards: store.cards, now: context.date)
+        // 原 60 秒 TimelineView 包裹整页仅为刷新 LearningPlan 的「今天」，纯属周期性整页重算；
+        // plan 本就随 store.cards 变化重算（复习行为即变化源），无需定时器驱动
+        let plan = LearningPlan(cards: store.cards)
             GeometryReader { geometry in
                 HStack(spacing: 0) {
                     sidebar(expanded: sidebarExpanded && geometry.size.width >= 900, plan: plan)
@@ -63,7 +64,6 @@ struct LearningWorkspaceView: View {
                     }
                 }
             }
-        }
         .background(EditorialColor.canvasDark)
         .foregroundStyle(EditorialColor.textPrimary)
     }

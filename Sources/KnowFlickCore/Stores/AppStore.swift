@@ -518,17 +518,20 @@ public final class AppStore {
 
         if let category = category, !category.isEmpty {
             let catFavs = favorites.filter { $0.category == category }
-            let catHistory = history.filter { $0.category == category && !catFavs.contains($0) }
+            let catFavIds = Set(catFavs.map(\.id))
+            let catHistory = history.filter { $0.category == category && !catFavIds.contains($0.id) }
             pool = catFavs + catHistory
             if pool.isEmpty {
                 pool = cards.filter { $0.category == category }
             }
         } else {
             let favs = favorites
-            let others = history.filter { c in !favs.contains(where: { $0.id == c.id }) }
+            let favIds = Set(favs.map(\.id))
+            let others = history.filter { !favIds.contains($0.id) }
             pool = favs + others
             if pool.count < limit {
-                let rest = cards.filter { c in !pool.contains(where: { $0.id == c.id }) }
+                let poolIds = Set(pool.map(\.id))
+                let rest = cards.filter { !poolIds.contains($0.id) }
                 pool += rest
             }
         }

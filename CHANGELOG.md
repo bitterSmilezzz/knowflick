@@ -2,7 +2,25 @@
 
 本项目所有重要版本更新均记录在此文档中。
 
-格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.2] - 2026-09-11
+
+### UI 与算法打磨（二十轮优化 · 第 17 轮）
+
+- **海报期号确定性**：卡片海报「№ 期号」由每进程随机种子的 `hashValue` 改为 FNV 确定性哈希——同一张卡两次导出的期号不再变化。
+- **到期排序降本**：学习计划到期队列先预计算到期时间再排序，消除比较器内 O(n log n) 次重复日历运算。
+- **测验选题降本**：`generateQuizCards` 的收藏/历史排除判定由嵌套线性扫描改为 Set O(1) 命中。
+- **测验进度保护**：宿主重建视图身份时不再静默重置答题进度（仅在卡组为空时初始化）。
+- **刷卡动画收口**：飞出卡清理由 0.25s `asyncAfter` 硬编码改为 `withAnimation(completion:)` 回调——改动画时长不再产生残影或提前消失；视图关闭时也不再有过期写入。
+- **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
+- **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
+- **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
 
 ## [Unreleased]
 
@@ -15,7 +33,25 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **图标链路端到端验证**：build_icon → iconutil → verify_icon 全链路以临时目录实测通过（10 阶 iconset 生成、ICNS 打包、逐像素校验一致）。
 - **README 质量检查扩充**：补充图标链路与课程导入脚本的自检命令；注明测试计数口径为 `@Test` 声明数（参数化用例运行时展开）。
 - **导入脚本注释**：明确 `MAX_HEADLINE_LEN` 仅约束新增卡片（历史种子存在 52 字标题，不追溯）。
-- **测试与验证**：171 项 / 25 个 suite 全绿。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.2] - 2026-09-11
+
+### UI 与算法打磨（二十轮优化 · 第 17 轮）
+
+- **海报期号确定性**：卡片海报「№ 期号」由每进程随机种子的 `hashValue` 改为 FNV 确定性哈希——同一张卡两次导出的期号不再变化。
+- **到期排序降本**：学习计划到期队列先预计算到期时间再排序，消除比较器内 O(n log n) 次重复日历运算。
+- **测验选题降本**：`generateQuizCards` 的收藏/历史排除判定由嵌套线性扫描改为 Set O(1) 命中。
+- **测验进度保护**：宿主重建视图身份时不再静默重置答题进度（仅在卡组为空时初始化）。
+- **刷卡动画收口**：飞出卡清理由 0.25s `asyncAfter` 硬编码改为 `withAnimation(completion:)` 回调——改动画时长不再产生残影或提前消失；视图关闭时也不再有过期写入。
+- **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
+- **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
+- **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
 
 ## [Unreleased]
 
@@ -30,7 +66,25 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **CONTEXT.md 领域词汇更新**：修正「受控 21 类（未知兜底科技）」的过期描述（现行：normalize 兜底第一个自定义分类/冷知识）；图池数量改为实际值（15/15/10/8，共 42 张）；防重算法条目改为现名 `arrangeWithMinDistance` 并条件化「严格 0 撞图」措辞。
 - **README 数据存储表**：补 `cards.backup.json` 与 `chat_sessions.json` 两行。
 - **README 项目结构树**：补 CONTEXT.md、tools/、docs/、android/、assets/ 条目。
-- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.2] - 2026-09-11
+
+### UI 与算法打磨（二十轮优化 · 第 17 轮）
+
+- **海报期号确定性**：卡片海报「№ 期号」由每进程随机种子的 `hashValue` 改为 FNV 确定性哈希——同一张卡两次导出的期号不再变化。
+- **到期排序降本**：学习计划到期队列先预计算到期时间再排序，消除比较器内 O(n log n) 次重复日历运算。
+- **测验选题降本**：`generateQuizCards` 的收藏/历史排除判定由嵌套线性扫描改为 Set O(1) 命中。
+- **测验进度保护**：宿主重建视图身份时不再静默重置答题进度（仅在卡组为空时初始化）。
+- **刷卡动画收口**：飞出卡清理由 0.25s `asyncAfter` 硬编码改为 `withAnimation(completion:)` 回调——改动画时长不再产生残影或提前消失；视图关闭时也不再有过期写入。
+- **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
+- **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
+- **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
 
 ## [Unreleased]
 
@@ -43,7 +97,25 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **图标链路端到端验证**：build_icon → iconutil → verify_icon 全链路以临时目录实测通过（10 阶 iconset 生成、ICNS 打包、逐像素校验一致）。
 - **README 质量检查扩充**：补充图标链路与课程导入脚本的自检命令；注明测试计数口径为 `@Test` 声明数（参数化用例运行时展开）。
 - **导入脚本注释**：明确 `MAX_HEADLINE_LEN` 仅约束新增卡片（历史种子存在 52 字标题，不追溯）。
-- **测试与验证**：171 项 / 25 个 suite 全绿。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.2] - 2026-09-11
+
+### UI 与算法打磨（二十轮优化 · 第 17 轮）
+
+- **海报期号确定性**：卡片海报「№ 期号」由每进程随机种子的 `hashValue` 改为 FNV 确定性哈希——同一张卡两次导出的期号不再变化。
+- **到期排序降本**：学习计划到期队列先预计算到期时间再排序，消除比较器内 O(n log n) 次重复日历运算。
+- **测验选题降本**：`generateQuizCards` 的收藏/历史排除判定由嵌套线性扫描改为 Set O(1) 命中。
+- **测验进度保护**：宿主重建视图身份时不再静默重置答题进度（仅在卡组为空时初始化）。
+- **刷卡动画收口**：飞出卡清理由 0.25s `asyncAfter` 硬编码改为 `withAnimation(completion:)` 回调——改动画时长不再产生残影或提前消失；视图关闭时也不再有过期写入。
+- **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
+- **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
+- **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
 
 ## [Unreleased]
 
@@ -59,7 +131,25 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **测试脚本引导**：`tools/test.sh` 在 xcode-select 未配置时给出安装指引。
 - **文档时效声明**：docs/ 下 5 份历史评审文档头部统一加入「快照基线声明」；`android/README` 标注当前为契约占位、无可编译工程。
 - **CHANGELOG 规范**：新增 `[Unreleased]` 段落，对齐 Keep a Changelog。
-- **验证**：图标逐像素校验通过；171 项 / 25 个 suite 全绿；Release 打包验证通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **验证**：图标逐像素校验通过；171 项 / 25 个 suite 全绿；Release 打包验证通过。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.2] - 2026-09-11
+
+### UI 与算法打磨（二十轮优化 · 第 17 轮）
+
+- **海报期号确定性**：卡片海报「№ 期号」由每进程随机种子的 `hashValue` 改为 FNV 确定性哈希——同一张卡两次导出的期号不再变化。
+- **到期排序降本**：学习计划到期队列先预计算到期时间再排序，消除比较器内 O(n log n) 次重复日历运算。
+- **测验选题降本**：`generateQuizCards` 的收藏/历史排除判定由嵌套线性扫描改为 Set O(1) 命中。
+- **测验进度保护**：宿主重建视图身份时不再静默重置答题进度（仅在卡组为空时初始化）。
+- **刷卡动画收口**：飞出卡清理由 0.25s `asyncAfter` 硬编码改为 `withAnimation(completion:)` 回调——改动画时长不再产生残影或提前消失；视图关闭时也不再有过期写入。
+- **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
+- **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
+- **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
 
 ## [Unreleased]
 
@@ -72,7 +162,25 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **图标链路端到端验证**：build_icon → iconutil → verify_icon 全链路以临时目录实测通过（10 阶 iconset 生成、ICNS 打包、逐像素校验一致）。
 - **README 质量检查扩充**：补充图标链路与课程导入脚本的自检命令；注明测试计数口径为 `@Test` 声明数（参数化用例运行时展开）。
 - **导入脚本注释**：明确 `MAX_HEADLINE_LEN` 仅约束新增卡片（历史种子存在 52 字标题，不追溯）。
-- **测试与验证**：171 项 / 25 个 suite 全绿。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.2] - 2026-09-11
+
+### UI 与算法打磨（二十轮优化 · 第 17 轮）
+
+- **海报期号确定性**：卡片海报「№ 期号」由每进程随机种子的 `hashValue` 改为 FNV 确定性哈希——同一张卡两次导出的期号不再变化。
+- **到期排序降本**：学习计划到期队列先预计算到期时间再排序，消除比较器内 O(n log n) 次重复日历运算。
+- **测验选题降本**：`generateQuizCards` 的收藏/历史排除判定由嵌套线性扫描改为 Set O(1) 命中。
+- **测验进度保护**：宿主重建视图身份时不再静默重置答题进度（仅在卡组为空时初始化）。
+- **刷卡动画收口**：飞出卡清理由 0.25s `asyncAfter` 硬编码改为 `withAnimation(completion:)` 回调——改动画时长不再产生残影或提前消失；视图关闭时也不再有过期写入。
+- **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
+- **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
+- **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
 
 ## [Unreleased]
 
@@ -87,7 +195,25 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **CONTEXT.md 领域词汇更新**：修正「受控 21 类（未知兜底科技）」的过期描述（现行：normalize 兜底第一个自定义分类/冷知识）；图池数量改为实际值（15/15/10/8，共 42 张）；防重算法条目改为现名 `arrangeWithMinDistance` 并条件化「严格 0 撞图」措辞。
 - **README 数据存储表**：补 `cards.backup.json` 与 `chat_sessions.json` 两行。
 - **README 项目结构树**：补 CONTEXT.md、tools/、docs/、android/、assets/ 条目。
-- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.2] - 2026-09-11
+
+### UI 与算法打磨（二十轮优化 · 第 17 轮）
+
+- **海报期号确定性**：卡片海报「№ 期号」由每进程随机种子的 `hashValue` 改为 FNV 确定性哈希——同一张卡两次导出的期号不再变化。
+- **到期排序降本**：学习计划到期队列先预计算到期时间再排序，消除比较器内 O(n log n) 次重复日历运算。
+- **测验选题降本**：`generateQuizCards` 的收藏/历史排除判定由嵌套线性扫描改为 Set O(1) 命中。
+- **测验进度保护**：宿主重建视图身份时不再静默重置答题进度（仅在卡组为空时初始化）。
+- **刷卡动画收口**：飞出卡清理由 0.25s `asyncAfter` 硬编码改为 `withAnimation(completion:)` 回调——改动画时长不再产生残影或提前消失；视图关闭时也不再有过期写入。
+- **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
+- **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
+- **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
 
 ## [Unreleased]
 
@@ -100,7 +226,25 @@ _进行中的变更将在下一版本发布时归档于此。_
 - **图标链路端到端验证**：build_icon → iconutil → verify_icon 全链路以临时目录实测通过（10 阶 iconset 生成、ICNS 打包、逐像素校验一致）。
 - **README 质量检查扩充**：补充图标链路与课程导入脚本的自检命令；注明测试计数口径为 `@Test` 声明数（参数化用例运行时展开）。
 - **导入脚本注释**：明确 `MAX_HEADLINE_LEN` 仅约束新增卡片（历史种子存在 52 字标题，不追溯）。
-- **测试与验证**：171 项 / 25 个 suite 全绿。
+- **测试与验证**：171 项 / 25 个 suite 全绿。格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+_进行中的变更将在下一版本发布时归档于此。_
+
+## [v3.7.2] - 2026-09-11
+
+### UI 与算法打磨（二十轮优化 · 第 17 轮）
+
+- **海报期号确定性**：卡片海报「№ 期号」由每进程随机种子的 `hashValue` 改为 FNV 确定性哈希——同一张卡两次导出的期号不再变化。
+- **到期排序降本**：学习计划到期队列先预计算到期时间再排序，消除比较器内 O(n log n) 次重复日历运算。
+- **测验选题降本**：`generateQuizCards` 的收藏/历史排除判定由嵌套线性扫描改为 Set O(1) 命中。
+- **测验进度保护**：宿主重建视图身份时不再静默重置答题进度（仅在卡组为空时初始化）。
+- **刷卡动画收口**：飞出卡清理由 0.25s `asyncAfter` 硬编码改为 `withAnimation(completion:)` 回调——改动画时长不再产生残影或提前消失；视图关闭时也不再有过期写入。
+- **文件面板回退统一**：新增 `PanelPresenter`，收藏/导出/导入四处保存与打开面板在无 key 窗口时回退为普通模态打开，不再挂到看不见的空白 `NSWindow()`。
+- **工作台周期重算移除**：移除包裹整页的 60 秒 TimelineView——学习计划本就随卡片变化重算，定时器徒增每分钟整页重算。
+- **评估后保留**：拖拽 `drawingGroup` 渲染分组与玻璃材质存在冲突风险，评估后不做；超大视图文件拆分为纯风格重构，暂缓。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
 
 ## [Unreleased]
 

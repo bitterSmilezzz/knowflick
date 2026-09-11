@@ -519,20 +519,17 @@ struct CardDeckView: View {
             store.swipe(card, direction: direction)
         }
 
-        // 飞出动画：处于独立悬浮层的 swipingCard 顺滑飞离屏幕并渐隐
+        // 飞出动画：处于独立悬浮层的 swipingCard 顺滑飞离屏幕并渐隐；完成后回收悬浮卡
         let targetX: CGFloat = direction == .left ? -760 : 760
         let targetY: CGFloat = initialOffset.height * 0.35 + (direction == .left ? -20 : 20)
 
-        withAnimation(.easeOut(duration: 0.24)) {
+        withAnimation(.easeOut(duration: 0.24), completionCriteria: .removed, {
             swipingOffset = CGSize(width: targetX, height: targetY)
-        }
-
-        // 飞离视野后安全销毁临时悬浮卡
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        }, completion: {
             swipingCard = nil
             swipingOffset = .zero
             swipingDirection = nil
-        }
+        })
     }
 
     // MARK: - 布局与 3D 动力学参数

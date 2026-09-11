@@ -448,7 +448,7 @@ struct ImportNotesModalView: View {
         openPanel.title = "选择导入的笔记文件"
 
         let targetWindow = NSApp.keyWindow ?? NSApp.mainWindow
-        openPanel.beginSheetModal(for: targetWindow ?? NSWindow()) { response in
+        PanelPresenter.present(openPanel, in: targetWindow) { response in
             guard response == .OK, let url = openPanel.url else { return }
             invalidatePreview()
             isProcessing = true

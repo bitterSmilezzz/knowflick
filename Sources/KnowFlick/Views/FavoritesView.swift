@@ -664,7 +664,7 @@ struct FavoritesView: View {
 
         let targetWindow = NSApp.keyWindow ?? NSApp.mainWindow
 
-        savePanel.beginSheetModal(for: targetWindow ?? NSWindow()) { response in
+        PanelPresenter.present(savePanel, in: targetWindow) { response in
             if response == .OK, let url = savePanel.url {
                 do {
                     try md.write(to: url, atomically: true, encoding: .utf8)

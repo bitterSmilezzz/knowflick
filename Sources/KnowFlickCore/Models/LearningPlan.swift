@@ -13,13 +13,16 @@ public struct LearningPlan: Sendable {
             }
         }.count
         mastered = cards.filter { $0.masteryLevel >= 2 }.count
-        due = cards.filter { Self.reviewDate(for: $0, calendar: calendar).map { $0 <= now } ?? false }
-            .sorted {
-                let lhs = Self.reviewDate(for: $0, calendar: calendar) ?? .distantFuture
-                let rhs = Self.reviewDate(for: $1, calendar: calendar) ?? .distantFuture
-                if lhs != rhs { return lhs < rhs }
-                return $0.id.uuidString < $1.id.uuidString
-            }
+        // 预计算到期时间再排序：避免比较器内 O(n log n) 次重复日历运算
+        due = cards.compactMap { card -> (card: KnowledgeCard, date: Date)? in
+            guard let date = Self.reviewDate(for: card, calendar: calendar), date <= now else { return nil }
+            return (card, date)
+        }
+        .sorted {
+            if $0.date != $1.date { return $0.date < $1.date }
+            return $0.card.id.uuidString < $1.card.id.uuidString
+        }
+        .map(\.card)
     }
 
     /// First review the day after reading; then 1 / 3 / 7 days by recall rating.

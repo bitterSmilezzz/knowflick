@@ -67,7 +67,10 @@ struct QuizView: View {
         }
         .frame(minWidth: 720, minHeight: 560)
         .onAppear {
-            startNewQuiz(category: category)
+            // 宿主重建视图身份时不清空答题进度（仅首次或明确重新开始时初始化）
+            if quizCards.isEmpty {
+                startNewQuiz(category: category)
+            }
         }
         // 全局键盘盲操快捷键绑定
         .background(
