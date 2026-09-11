@@ -346,8 +346,4 @@ public enum CardThemeResolver {
         return result
     }
 
-    /// 兼容接口：调用 arrangeWithMinDistance 保证同图至少相隔 5 张以上
-    public static func interleavedAndDeduplicated(_ cards: [KnowledgeCard], avoidingTopKey: String? = nil) -> [KnowledgeCard] {
-        return arrangeWithMinDistance(cards, minDistance: 5, avoidingTopKey: avoidingTopKey)
-    }
 }

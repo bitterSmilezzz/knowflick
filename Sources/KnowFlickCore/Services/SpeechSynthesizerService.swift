@@ -48,7 +48,6 @@ public enum SpeechPlaybackState: Equatable, Sendable {
 @MainActor
 @Observable
 public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
-    public static let shared = SpeechSynthesizerService()
 
     // MARK: - 观测状态
 
@@ -125,29 +124,6 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
         stopAmbientMode()
         currentCard = card
         speakText(text, cardId: card.id, category: card.category)
-    }
-
-    /// 针对特定词汇进行独立发音（如点击重点单词、专有名词、音标）
-    public func speakTerm(_ term: String, languageHint: String? = nil) {
-        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        let utterance = AVSpeechUtterance(string: trimmed)
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95
-        utterance.pitchMultiplier = 1.0
-        utterance.volume = 1.0
-
-        if let hint = languageHint, let voice = AVSpeechSynthesisVoice(language: hint) {
-            utterance.voice = voice
-        } else {
-            utterance.voice = detectBestVoice(for: trimmed, category: "")
-        }
-
-        if !synthesizer.isSpeaking {
-            synthesizer.speak(utterance)
-        } else {
-            synthesizer.speak(utterance)
-        }
     }
 
     /// 切换当前卡片的朗读 / 暂停

@@ -100,11 +100,11 @@ final class StorageTests {
 
     // MARK: - 设置
 
-    @Test func testSettingsRoundTrip() {
+    @Test func testSettingsRoundTrip() throws {
         var settings = AISettings.default
         settings.model = "deepseek-reasoner"
         settings.categoryFilter = "物理, 天文"
-        storage.saveSettings(settings)
+        try storage.saveSettingsThrowing(settings)
         #expect(storage.loadSettings() == settings)
     }
 
@@ -127,7 +127,7 @@ extension StorageTests {
         let encoded = try JSONEncoder().encode(settings)
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         #expect(object["apiKey"] == nil)
-        storage.saveSettings(settings)
+        try storage.saveSettingsThrowing(settings)
         let disk = try String(contentsOf: tempDir.appendingPathComponent("settings.json"), encoding: .utf8)
         #expect(!disk.contains(settings.apiKey))
         #expect(storage.loadSettings().apiKey.isEmpty)

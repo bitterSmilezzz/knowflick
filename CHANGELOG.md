@@ -4,6 +4,16 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [v3.6.1] - 2026-09-11
+
+### 死代码清理（二十轮优化 · 第 13 轮）
+
+- **语音服务**：删除无调用方的 `speakTerm`（含两分支完全相同的死分支）与 `SpeechSynthesizerService.shared` 单例（AppStore 自建实例为唯一正路，避免旁路单例绕过设置）；`CardView` 的语音服务默认值改为必传参数（两个调用点均已显式传入 store 服务，行为不变）。
+- **主题解析**：删除无调用的兼容包装 `interleavedAndDeduplicated`。
+- **存储层**：删除吞错误的非抛版包装 `saveSettings` / `saveChatSession` / `clearChatSession`，存储错误一律走 Throwing 通道暴露。
+- **视图层**：详情页语音服务回退从旁路单例改为显式实例；收藏阁重复的 `.fixedSize` 修饰符清理。
+- **测试与验证**：171 项 / 25 个 suite 全绿；Release 构建通过。
+
 ## [v3.6.0] - 2026-09-11
 
 ### 深浅色适配与视觉一致性（二十轮优化 · 第 12 轮）

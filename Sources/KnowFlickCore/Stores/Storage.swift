@@ -162,10 +162,6 @@ public struct Storage: Sendable {
         }
     }
 
-    public func saveSettings(_ settings: AISettings) {
-        try? saveSettingsThrowing(settings)
-    }
-
     public func saveSettingsThrowing(_ settings: AISettings) throws {
         let data: Data
         do { data = try JSONEncoder().encode(settings) }
@@ -209,10 +205,6 @@ public struct Storage: Sendable {
         loadChatSessions()[cardId]
     }
 
-    public func saveChatSession(_ session: CardChatSession) {
-        try? saveChatSessionThrowing(session)
-    }
-
     public func saveChatSessionThrowing(_ session: CardChatSession) throws {
         var sessions = loadChatSessions()
         sessions[session.cardId] = session
@@ -224,10 +216,6 @@ public struct Storage: Sendable {
         catch { throw StorageWriteError.encoding(error.localizedDescription) }
         do { try data.write(to: fileURL("chat_sessions.json"), options: .atomic) }
         catch { throw StorageWriteError.writing(error.localizedDescription) }
-    }
-
-    public func clearChatSession(for cardId: UUID) {
-        try? clearChatSessionThrowing(for: cardId)
     }
 
     public func clearChatSessionThrowing(for cardId: UUID) throws {

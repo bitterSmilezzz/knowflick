@@ -6,7 +6,7 @@ import KnowFlickCore
 struct CardView: View {
     let card: KnowledgeCard
     let showAIMark: Bool   // 设置：显示 AI 内容标记
-    var speechService: SpeechSynthesizerService = .shared
+    var speechService: SpeechSynthesizerService
     var isTop: Bool = false
     var dragOffset: CGSize = .zero
     var triggerSheen: Bool = false
