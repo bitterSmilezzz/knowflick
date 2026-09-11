@@ -96,7 +96,8 @@ struct ChatStreamTests {
             try await Task.sleep(for: .milliseconds(25))
         }
         #expect(!store.isChatStreaming)
-        #expect(store.chatErrorMessage?.isEmpty == false)
+        // 非 2xx 时应透出服务端错误 message（而非空串）
+        #expect(store.chatErrorMessage?.contains("模拟服务端故障") == true)
         // 空占位助手消息应被移除，只保留用户消息
         let messages = store.currentChatSession?.messages ?? []
         #expect(messages.count == 1)
@@ -105,6 +106,20 @@ struct ChatStreamTests {
 }
 
 struct SSEParserTests {
+    @Test func incrementalScannerMatchesWholeStringScanAcrossSplits() {
+        let text = "前言 {\"category\":\"AI\",\"headline\":\"增量扫描\",\"summary\":\"s\",\"details\":\"d\"} 中间 {\"category\":\"物理\",\"headline\":\"量子 \\\" 引号\",\"summary\":\"s\",\"details\":\"dd\"} 尾部"
+        let whole = AIService.scanObjects(in: text)
+        #expect(whole.count == 2)
+        let scanner = AIService.IncrementalObjectScanner()
+        var index = text.startIndex
+        while index < text.endIndex {
+            let end = text.index(index, offsetBy: 7, limitedBy: text.endIndex) ?? text.endIndex
+            scanner.append(String(text[index..<end]))
+            index = end
+        }
+        #expect(scanner.objects.map(\.headline) == whole.map(\.headline))
+    }
+
     @Test func parserHandlesDeltaAndMessagePayloads() {
         let delta = "data: " + "{\"choices\":[{\"delta\":{\"content\":\"碳纤维\"}}]}"
         #expect(AIService.sseContentDelta(delta) == "碳纤维")

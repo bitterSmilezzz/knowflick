@@ -43,4 +43,11 @@ struct AIProviderPresetTests {
         #expect(AIProviderPreset.match(baseURL: "https://api.example-unlisted-gateway.net/v1").id == "custom")
         #expect(AIProviderPreset.match(baseURL: "   ").id == "deepseek")
     }
+
+    @Test func matchDoesNotMisreadRemoteUrlsContainingLocalPortNumbers() {
+        #expect(AIProviderPreset.match(baseURL: "https://api.gateway.example.com/tokens/31415").id == "custom")
+        #expect(AIProviderPreset.match(baseURL: "https://mirror.example.com/11434/proxy").id == "custom")
+        #expect(AIProviderPreset.match(baseURL: "http://127.0.0.1:31415/v1").id == "local_freellm")
+        #expect(AIProviderPreset.match(baseURL: "http://localhost:11434/v1").id == "ollama")
+    }
 }

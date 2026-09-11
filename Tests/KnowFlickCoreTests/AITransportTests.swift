@@ -35,6 +35,38 @@ private final class AIStubProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+
+/// 429 后成功的重试替身：带锁计数器，验证 chat 流在首个 delta 前的重试行为
+private final class RetryStubProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) static var count = 0
+
+    static func reset() { lock.lock(); count = 0; lock.unlock() }
+    static var requestCount: Int { lock.lock(); defer { lock.unlock() }; return count }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let attempt: Int = {
+            Self.lock.lock(); defer { Self.lock.unlock() }
+            Self.count += 1
+            return Self.count
+        }()
+        let status = attempt == 1 ? 429 : 200
+        let body: Data = status == 429
+            ? Data("{\"error\":{\"message\":\"请稍后重试\"}}".utf8)
+            : Data("data: {\"choices\":[{\"delta\":{\"content\":\"重试成功\"}}]}\n\ndata: [DONE]\n\n".utf8)
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
+                                       headerFields: ["Content-Type": status == 200 ? "text/event-stream" : "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 struct AITransportTests {
     private func service() -> (AIService, URLSession) {
         let config = URLSessionConfiguration.ephemeral
@@ -91,5 +123,27 @@ struct AITransportTests {
             } catch AIError.badRequest { }
             catch { Issue.record("Unexpected error: \(error)") }
         }
+    }
+
+    @Test func chatStreamRetriesOn429BeforeFirstDelta() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RetryStubProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        RetryStubProtocol.reset()
+
+        let service = AIService(session: session)
+        var settings = AISettings.default
+        settings.baseURL = "http://localhost/retry/v1"
+        settings.apiKey = "k"
+        settings.model = "test-model"
+        let subject = KnowledgeCard(category: "AI", headline: "标题", summary: "摘要", details: "正文", source: .seed,
+                                    createdAt: Date(timeIntervalSince1970: 0))
+        var chunks: [String] = []
+        for try await delta in service.streamCardChat(card: subject, history: [], userPrompt: "问", settings: settings) {
+            chunks.append(delta)
+        }
+        #expect(chunks.joined() == "重试成功")
+        #expect(RetryStubProtocol.requestCount == 2)
     }
 }

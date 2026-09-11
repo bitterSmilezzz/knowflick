@@ -458,43 +458,43 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
         return seen
     }
 
+    /// 表驱动的域名 → 预设匹配规则（顺序敏感：先具体域名，后本地端口）
+    private static let matchRules: [(substring: String, id: String)] = [
+        ("api.deepseek.com", "deepseek"),
+        ("opencode.ai", "opencode"),
+        ("tokenrhythm.studio", "tokenrhythm"),
+        ("xiaomimimo.com", "xiaomi_mimo"),
+        ("dashscope.aliyuncs.com", "dashscope"),
+        ("longcat.chat", "longcat"),
+        ("antdigital.com", "antdigital"),
+        ("nvidia.com", "nvidia_nim"),
+        ("amd.com.cn", "amd_factory"),
+        (":31415", "local_freellm"),
+        ("siliconflow.cn", "siliconflow"),
+        ("moonshot.cn", "kimi"),
+        ("bigmodel.cn", "zhipu"),
+        ("z.ai", "zhipu"),
+        ("api.openai.com", "openai")
+    ]
+
+    private static func lookup(_ id: String) -> AIProviderPreset {
+        presets.first(where: { $0.id == id }) ?? presets[0]
+    }
+
     public static func match(baseURL: String) -> AIProviderPreset {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if trimmed.isEmpty {
-            return presets.first(where: { $0.id == "deepseek" }) ?? presets[0]
+            return lookup("deepseek")
         }
-        if trimmed.contains("api.deepseek.com") {
-            return presets.first(where: { $0.id == "deepseek" })!
-        } else if trimmed.contains("opencode.ai") {
-            return presets.first(where: { $0.id == "opencode" })!
-        } else if trimmed.contains("tokenrhythm.studio") {
-            return presets.first(where: { $0.id == "tokenrhythm" })!
-        } else if trimmed.contains("xiaomimimo.com") {
-            return presets.first(where: { $0.id == "xiaomi_mimo" })!
-        } else if trimmed.contains("dashscope.aliyuncs.com") {
-            return presets.first(where: { $0.id == "dashscope" })!
-        } else if trimmed.contains("longcat.chat") {
-            return presets.first(where: { $0.id == "longcat" })!
-        } else if trimmed.contains("antdigital.com") {
-            return presets.first(where: { $0.id == "antdigital" })!
-        } else if trimmed.contains("nvidia.com") {
-            return presets.first(where: { $0.id == "nvidia_nim" })!
-        } else if trimmed.contains("amd.com.cn") {
-            return presets.first(where: { $0.id == "amd_factory" })!
-        } else if trimmed.contains("31415") {
-            return presets.first(where: { $0.id == "local_freellm" })!
-        } else if trimmed.contains("siliconflow.cn") {
-            return presets.first(where: { $0.id == "siliconflow" })!
-        } else if trimmed.contains("moonshot.cn") {
-            return presets.first(where: { $0.id == "kimi" })!
-        } else if trimmed.contains("bigmodel.cn") || trimmed.contains("z.ai") {
-            return presets.first(where: { $0.id == "zhipu" })!
-        } else if trimmed.contains("api.openai.com") {
-            return presets.first(where: { $0.id == "openai" })!
-        } else if trimmed.contains("11434") || trimmed.contains("localhost") {
-            return presets.first(where: { $0.id == "ollama" })!
-        } else {
-            return presets.first(where: { $0.id == "custom" })!
+        if let hit = matchRules.first(where: { trimmed.contains($0.substring) }) {
+            return lookup(hit.id)
         }
+        // 本地部署识别：回环主机，或冒号前缀的 Ollama 默认端口
+        // （避免远程 URL 中恰好含 "11434"/"31415" 数字被误判为本地服务）
+        if trimmed.contains("localhost") || trimmed.contains("127.0.0.1") || trimmed.contains("::1") || trimmed.contains(":11434") {
+            return lookup("ollama")
+        }
+        return lookup("custom")
     }
 }
+

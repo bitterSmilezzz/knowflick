@@ -185,8 +185,9 @@ public struct AIService {
             ["role": "user", "content": userPrompt]
         ]
 
-        // 动态 max_tokens：约 900 token/张 + 400 缓冲（3 张≈3100，5 张≈4900），不再固定 4000 浪费额度
-        let maxTokens = max(1200, count * 900 + 400)
+        // 动态 max_tokens：约 900 token/张 + 400 缓冲；封顶 8192 兼容多数服务商单次输出上限，
+        // 超大数量的请求宁可分批也不让服务端 400/截断
+        let maxTokens = min(8192, max(1200, count * 900 + 400))
         let payloads = try await streamPayloadsWithRetry(
             messages: messages,
             settings: settings,
@@ -285,36 +286,60 @@ public struct AIService {
     /// 从（可能不完整的）文本中扫描出所有完整 JSON 对象并解码。
     /// 流式增量解析与坏输出挽救共用：对 `{...}` 深度扫描，不完整/非法对象跳过
     public static func scanObjects(in raw: String) -> [AICardPayload] {
-        let decoder = JSONDecoder()
-        var results: [AICardPayload] = []
-        var depth = 0
-        var start = raw.startIndex
-        var inString = false
-        var escape = false
-        var i = raw.startIndex
-        while i < raw.endIndex {
-            let ch = raw[i]
-            if escape { escape = false }
-            else if ch == "\\" && inString { escape = true }
-            else if ch == "\"" { inString.toggle() }
-            else if !inString {
-                if ch == "{" {
-                    if depth == 0 { start = i }
-                    depth += 1
-                } else if ch == "}" {
-                    depth -= 1
-                    if depth == 0 {
-                        let objText = String(raw[start...i])
-                        if let objData = objText.data(using: .utf8),
-                           let obj = try? decoder.decode(AICardPayload.self, from: objData) {
-                            results.append(obj)
+        let scanner = IncrementalObjectScanner()
+        scanner.append(raw)
+        return scanner.objects
+    }
+
+    /// 增量对象扫描器：流式解析 SSE 累积 buffer 中的顶层 JSON 对象。
+    /// 记录扫描位置与状态机，每个 delta 只扫新增字节，消除原「每 delta 全量重扫」的 O(n²)。
+    /// 字节级状态机：JSON 转义与结构字符均为 ASCII，多字节 UTF-8 内容不会误触。
+    public final class IncrementalObjectScanner {
+        private let decoder = JSONDecoder()
+        private var buffer: [UInt8] = []
+        private var position = 0
+        private var depth = 0
+        private var inString = false
+        private var escape = false
+        private var start = 0
+        private var found: [AICardPayload] = []
+
+        public init() {}
+
+        public func append(_ delta: String) {
+            guard !delta.isEmpty else { return }
+            buffer.append(contentsOf: delta.utf8)
+            scan()
+        }
+
+        public var objects: [AICardPayload] { found }
+
+        private func scan() {
+            while position < buffer.count {
+                let byte = buffer[position]
+                if escape {
+                    escape = false
+                } else if byte == UInt8(ascii: "\\") && inString {
+                    escape = true
+                } else if byte == UInt8(ascii: "\"") {
+                    inString.toggle()
+                } else if !inString {
+                    if byte == UInt8(ascii: "{") {
+                        if depth == 0 { start = position }
+                        depth += 1
+                    } else if byte == UInt8(ascii: "}") {
+                        depth -= 1
+                        if depth == 0 {
+                            let objData = Data(buffer[start...position])
+                            if let obj = try? decoder.decode(AICardPayload.self, from: objData) {
+                                found.append(obj)
+                            }
                         }
                     }
                 }
+                position += 1
             }
-            i = raw.index(after: i)
         }
-        return results
     }
 
     /// 解析 SSE 事件行："data: {json}" → 内容增量（兼容 delta.content 流式 / message.content 非流式字段）
@@ -415,21 +440,20 @@ public struct AIService {
             defer { bytes.task.cancel() }
             guard let http = response as? HTTPURLResponse else { throw AIError.network("无响应") }
             guard (200..<300).contains(http.statusCode) else {
-                throw AIError.httpStatus(http.statusCode, "")
+                throw AIError.httpStatus(http.statusCode, await Self.readErrorBody(from: bytes))
             }
-            var buffer = ""
+            let scanner = IncrementalObjectScanner()
             for try await line in bytes.lines {
                 try Task.checkCancellation()
                 if line.trimmingCharacters(in: .whitespaces) == "data: [DONE]" { break }
                 guard let delta = Self.sseContentDelta(line) else { continue }
-                buffer += delta
-                let extracted = Self.scanObjects(in: buffer)
-                if extracted.count >= targetCount {
-                    return Array(extracted.prefix(targetCount))   // 够数即停
+                scanner.append(delta)
+                if scanner.objects.count >= targetCount {
+                    return Array(scanner.objects.prefix(targetCount))   // 够数即停
                 }
             }
             // 流结束兜底：buffer 中所有完整对象
-            return Self.scanObjects(in: buffer)
+            return scanner.objects
         }()
     }
 
@@ -545,32 +569,44 @@ public struct AIService {
                     "stream": true
                 ]
 
+                // 与生成路径同级的 429/5xx 重试；一旦产出过内容则不再重来（用户已看到部分回答）
+                var hasYielded = false
                 do {
-                    var request = try makeRequest(settings: settings, timeout: 90)
-                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                    try Task.checkCancellation()
-                    let (bytes, response) = try await session.bytes(for: request)
-                    defer { bytes.task.cancel() }
-                    guard let http = response as? HTTPURLResponse else {
-                        continuation.finish(throwing: AIError.network("无响应"))
-                        return
-                    }
-                    guard (200..<300).contains(http.statusCode) else {
-                        continuation.finish(throwing: AIError.httpStatus(http.statusCode, ""))
-                        return
-                    }
+                    attempt: for attempt in 0..<3 {
+                        do {
+                            var request = try makeRequest(settings: settings, timeout: 90)
+                            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                            try Task.checkCancellation()
+                            let (bytes, response) = try await session.bytes(for: request)
+                            defer { bytes.task.cancel() }
+                            guard let http = response as? HTTPURLResponse else {
+                                throw AIError.network("无响应")
+                            }
+                            guard (200..<300).contains(http.statusCode) else {
+                                throw AIError.httpStatus(http.statusCode, await Self.readErrorBody(from: bytes))
+                            }
 
-                    var receivedContent = false
-                    for try await line in bytes.lines {
-                        if line.trimmingCharacters(in: .whitespaces) == "data: [DONE]" { break }
-                        if Task.isCancelled { break }
-                        guard let delta = Self.sseContentDelta(line) else { continue }
-                        if !delta.isEmpty { receivedContent = true }
-                        continuation.yield(delta)
+                            for try await line in bytes.lines {
+                                if line.trimmingCharacters(in: .whitespaces) == "data: [DONE]" { break }
+                                if Task.isCancelled { break }
+                                guard let delta = Self.sseContentDelta(line) else { continue }
+                                if !delta.isEmpty {
+                                    hasYielded = true
+                                    continuation.yield(delta)
+                                }
+                            }
+                            try Task.checkCancellation()
+                            guard hasYielded else { throw AIError.parse("AI 未返回可用回复，请重试") }
+                            continuation.finish()
+                            return
+                        } catch let e as AIError {
+                            guard case let .httpStatus(code, _) = e,
+                                  code == 429 || (500...599).contains(code),
+                                  !hasYielded, attempt < 2 else { throw e }
+                            try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                            continue attempt
+                        }
                     }
-                    try Task.checkCancellation()
-                    guard receivedContent else { throw AIError.parse("AI 未返回可用回复，请重试") }
-                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -583,6 +619,27 @@ public struct AIService {
     }
 
     // MARK: - 工具
+
+    /// 非 2xx 时读取响应体中的错误原因（上限 600 字符），让用户看到服务端 message 而非空串
+    static func readErrorBody(from bytes: URLSession.AsyncBytes, limit: Int = 600) async -> String {
+        var collected = ""
+        do {
+            for try await line in bytes.lines {
+                collected += line
+                if collected.count >= limit { break }
+            }
+        } catch {}
+        if let data = collected.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let error = obj["error"] as? [String: Any], let message = error["message"] as? String, !message.isEmpty {
+                return message
+            }
+            if let message = obj["message"] as? String, !message.isEmpty {
+                return message
+            }
+        }
+        return String(collected.prefix(limit))
+    }
 
     /// 把关键词构造成真实可用的科普检索链接（避免幻觉 URL）。
     /// 若 AI 给了权威来源站名，拼入查询（"香蕉 浆果 维基百科" 比裸关键词更易命中真实页面）
