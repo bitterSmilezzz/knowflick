@@ -86,6 +86,7 @@ struct AmbientAudioPlayerBar: View {
                 .buttonStyle(PressableButtonStyle())
                 .disabled(store.history.isEmpty)
                 .help("上一张 (⌘Z)")
+                .accessibilityLabel("上一张")
 
                 // 播放 / 暂停
                 Button {
@@ -102,6 +103,7 @@ struct AmbientAudioPlayerBar: View {
                 }
                 .buttonStyle(PressableButtonStyle())
                 .help(isPlaying ? "暂停朗读 (⌘P)" : "继续朗读 (⌘P)")
+                .accessibilityLabel(isPlaying ? "暂停朗读" : "继续朗读")
 
                 // 下一张
                 Button(action: handleNext) {
@@ -114,6 +116,7 @@ struct AmbientAudioPlayerBar: View {
                 .buttonStyle(PressableButtonStyle())
                 .disabled(store.deck.count <= 1 || isTransitioning || nextRequestInFlight)
                 .help("切到下一张")
+                .accessibilityLabel("下一张")
 
                 // 语速切换 (0.75x -> 1.0x -> 1.25x -> 1.5x)
                 Button {
@@ -129,6 +132,8 @@ struct AmbientAudioPlayerBar: View {
                 }
                 .buttonStyle(PressableButtonStyle())
                 .help("切换朗读语速 (当前 \(speedText))")
+                .accessibilityLabel("切换朗读语速")
+                .accessibilityValue(speedText)
             }
 
             Divider()
@@ -144,6 +149,7 @@ struct AmbientAudioPlayerBar: View {
             }
             .buttonStyle(PressableButtonStyle())
             .help("退出磨耳朵模式")
+            .accessibilityLabel("退出磨耳朵模式")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
@@ -188,7 +194,8 @@ struct AmbientAudioPlayerBar: View {
             let next = speeds[(idx + 1) % speeds.count]
             speechService.speedMultiplier = next
             store.settings.speechRate = next
-            try? store.saveSettings(store.settings)
+            do { try store.saveSettings(store.settings) }
+            catch { store.lastError = "语音设置保存失败：\(error.localizedDescription)" }
         } else {
             speechService.speedMultiplier = 1.0
         }

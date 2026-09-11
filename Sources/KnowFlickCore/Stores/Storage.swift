@@ -6,6 +6,18 @@ public enum CardSaveResult: Sendable {
     case savedWithoutBackup(String)
 }
 
+public enum StorageWriteError: LocalizedError, Sendable {
+    case encoding(String)
+    case writing(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .encoding(let message): return "数据编码失败：\(message)"
+        case .writing(let message): return "本地文件写入失败：\(message)"
+        }
+    }
+}
+
 /// 本地 JSON 存储：卡片池、历史记录、设置
 /// 可注入目录以便测试；默认落在 ~/Library/Application Support/KnowFlick/
 public struct Storage: Sendable {
@@ -50,13 +62,24 @@ public struct Storage: Sendable {
             saveCards(cards)
             return cards
         }
-        // 备份也没有 → 把损坏文件挪开，首启重新播种
+        // 备份也没有 → 保留损坏文件副本后再重新播种，避免静默抹掉用户最后的恢复线索。
         if (try? Data(contentsOf: url)) != nil || (try? Data(contentsOf: backup)) != nil {
             NSLog("KnowFlick: 卡片数据不可恢复，将重新初始化")
         }
-        try? fileManager.removeItem(at: url)
-        try? fileManager.removeItem(at: backup)
+        quarantineIfPresent(url)
+        quarantineIfPresent(backup)
         return []
+    }
+
+    private func quarantineIfPresent(_ url: URL) {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        // 目录/特殊节点可能是写入冲突模拟或权限问题，不能移动它们来掩盖真正的写入失败。
+        guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return }
+        let stamp = Int(Date().timeIntervalSince1970)
+        let target = url.deletingPathExtension()
+            .appendingPathExtension("corrupt-\(stamp)-\(UUID().uuidString.prefix(8))")
+        do { try fileManager.moveItem(at: url, to: target) }
+        catch { NSLog("KnowFlick: 无法保留损坏文件 %@: %@", url.path, error.localizedDescription) }
     }
 
     /// 保存卡片：原子写主文件，并把旧主文件轮转进备份（先删旧备份，保证轮转真正生效）
@@ -96,17 +119,30 @@ public struct Storage: Sendable {
     // MARK: - 设置（key 除外）
 
     public func loadSettings() -> AISettings {
-        guard let data = try? Data(contentsOf: fileURL("settings.json")),
-              let s = try? JSONDecoder().decode(AISettings.self, from: data) else {
+        let url = fileURL("settings.json")
+        guard fileManager.fileExists(atPath: url.path) else {
             return .default
         }
-        return s
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode(AISettings.self, from: data)
+        } catch {
+            NSLog("KnowFlick: settings.json 损坏，将保留隔离副本: %@", error.localizedDescription)
+            quarantineIfPresent(url)
+            return .default
+        }
     }
 
     public func saveSettings(_ settings: AISettings) {
-        if let data = try? JSONEncoder().encode(settings) {
-            try? data.write(to: fileURL("settings.json"), options: .atomic)
-        }
+        try? saveSettingsThrowing(settings)
+    }
+
+    public func saveSettingsThrowing(_ settings: AISettings) throws {
+        let data: Data
+        do { data = try JSONEncoder().encode(settings) }
+        catch { throw StorageWriteError.encoding(error.localizedDescription) }
+        do { try data.write(to: fileURL("settings.json"), options: .atomic) }
+        catch { throw StorageWriteError.writing(error.localizedDescription) }
     }
 
     // MARK: - 首启标记
@@ -120,8 +156,17 @@ public struct Storage: Sendable {
     public func loadChatSessions() -> [UUID: CardChatSession] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let data = try? Data(contentsOf: fileURL("chat_sessions.json")),
-              let list = try? decoder.decode([CardChatSession].self, from: data) else {
+        let url = fileURL("chat_sessions.json")
+        guard fileManager.fileExists(atPath: url.path) else {
+            return [:]
+        }
+        let list: [CardChatSession]
+        do {
+            let data = try Data(contentsOf: url)
+            list = try decoder.decode([CardChatSession].self, from: data)
+        } catch {
+            NSLog("KnowFlick: chat_sessions.json 损坏，将保留隔离副本: %@", error.localizedDescription)
+            quarantineIfPresent(url)
             return [:]
         }
         var dict: [UUID: CardChatSession] = [:]
@@ -136,24 +181,36 @@ public struct Storage: Sendable {
     }
 
     public func saveChatSession(_ session: CardChatSession) {
+        try? saveChatSessionThrowing(session)
+    }
+
+    public func saveChatSessionThrowing(_ session: CardChatSession) throws {
         var sessions = loadChatSessions()
         sessions[session.cardId] = session
         let list = Array(sessions.values)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(list) {
-            try? data.write(to: fileURL("chat_sessions.json"), options: .atomic)
-        }
+        let data: Data
+        do { data = try encoder.encode(list) }
+        catch { throw StorageWriteError.encoding(error.localizedDescription) }
+        do { try data.write(to: fileURL("chat_sessions.json"), options: .atomic) }
+        catch { throw StorageWriteError.writing(error.localizedDescription) }
     }
 
     public func clearChatSession(for cardId: UUID) {
+        try? clearChatSessionThrowing(for: cardId)
+    }
+
+    public func clearChatSessionThrowing(for cardId: UUID) throws {
         var sessions = loadChatSessions()
         sessions.removeValue(forKey: cardId)
         let list = Array(sessions.values)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(list) {
-            try? data.write(to: fileURL("chat_sessions.json"), options: .atomic)
-        }
+        let data: Data
+        do { data = try encoder.encode(list) }
+        catch { throw StorageWriteError.encoding(error.localizedDescription) }
+        do { try data.write(to: fileURL("chat_sessions.json"), options: .atomic) }
+        catch { throw StorageWriteError.writing(error.localizedDescription) }
     }
 }

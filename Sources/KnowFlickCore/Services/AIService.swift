@@ -4,6 +4,9 @@ import Foundation
 /// 默认对接 DeepSeek，可在设置里改 baseURL / model
 public struct AIService {
     private let session: URLSession
+    /// OpenCode Go uses this header for routing and prompt-cache affinity.
+    /// One stable identifier per app process is sufficient for KnowFlick's short-lived requests.
+    private static let opencodeSessionID = UUID().uuidString.lowercased()
 
     init(session: URLSession = .shared) { self.session = session }
 
@@ -37,6 +40,10 @@ public struct AIService {
         request.timeoutInterval = timeout
         if !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if request.url?.host?.lowercased().contains("opencode.ai") == true {
+            request.setValue(Self.opencodeSessionID, forHTTPHeaderField: "x-opencode-session")
+            request.setValue("KnowFlick/3.2", forHTTPHeaderField: "User-Agent")
+        }
         return request
     }
 

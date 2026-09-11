@@ -65,7 +65,42 @@ public enum PinyinHelper {
 }
 
 /// 全文检索引擎：支持多字段加权排序、拼音全拼/首字母模糊查询与摘要截取
-public final class KnowledgeSearchEngine: Sendable {
+public final class KnowledgeSearchEngine: @unchecked Sendable {
+    private struct PhoneticPair: Sendable {
+        let full: String
+        let initials: String
+    }
+
+    /// 拼音转换会调用 CoreFoundation，搜索框每输入一个字符都会重复触发。
+    /// 在引擎实例内缓存字段转换结果，避免 400 张卡片反复做相同转换。
+    private final class PhoneticCache: @unchecked Sendable {
+        private var values: [String: PhoneticPair] = [:]
+        private let lock = NSLock()
+        private let capacity = 2048
+
+        func value(for text: String) -> PhoneticPair {
+            lock.lock()
+            if let cached = values[text] {
+                lock.unlock()
+                return cached
+            }
+            lock.unlock()
+
+            let pair = PhoneticPair(
+                full: PinyinHelper.pinyin(for: text),
+                initials: PinyinHelper.initials(for: text)
+            )
+
+            lock.lock()
+            if values.count >= capacity { values.removeAll(keepingCapacity: true) }
+            values[text] = pair
+            lock.unlock()
+            return pair
+        }
+    }
+
+    private let phoneticCache = PhoneticCache()
+
     public init() {}
 
     /// 执行智能搜索
@@ -125,9 +160,8 @@ public final class KnowledgeSearchEngine: Sendable {
                 matchedField = .headline
                 excerpt = card.headline
             } else {
-                let hp = PinyinHelper.pinyin(for: card.headline)
-                let hi = PinyinHelper.initials(for: card.headline)
-                if hp.contains(pinyinQuery) || hi.contains(pinyinQuery) {
+                let phonetics = phoneticCache.value(for: card.headline)
+                if phonetics.full.contains(pinyinQuery) || phonetics.initials.contains(pinyinQuery) {
                     totalScore += 65
                     matchedField = .headline
                     excerpt = card.headline
@@ -148,9 +182,8 @@ public final class KnowledgeSearchEngine: Sendable {
                     excerpt = "学科分类：\(card.category)"
                 }
             } else {
-                let cp = PinyinHelper.pinyin(for: card.category)
-                let ci = PinyinHelper.initials(for: card.category)
-                if cp.contains(pinyinQuery) || ci.contains(pinyinQuery) {
+                let phonetics = phoneticCache.value(for: card.category)
+                if phonetics.full.contains(pinyinQuery) || phonetics.initials.contains(pinyinQuery) {
                     totalScore += 40
                     if matchedField == nil {
                         matchedField = .category
@@ -167,8 +200,8 @@ public final class KnowledgeSearchEngine: Sendable {
                     excerpt = card.summary
                 }
             } else {
-                let sp = PinyinHelper.pinyin(for: card.summary)
-                if sp.contains(pinyinQuery) {
+                let phonetics = phoneticCache.value(for: card.summary)
+                if phonetics.full.contains(pinyinQuery) {
                     totalScore += 25
                     if matchedField == nil {
                         matchedField = .summary
@@ -185,8 +218,8 @@ public final class KnowledgeSearchEngine: Sendable {
                     excerpt = extractSnippet(from: card.details, around: range)
                 }
             } else {
-                let dp = PinyinHelper.pinyin(for: card.details)
-                if dp.contains(pinyinQuery) {
+                let phonetics = phoneticCache.value(for: card.details)
+                if phonetics.full.contains(pinyinQuery) {
                     totalScore += 12
                     if matchedField == nil {
                         matchedField = .details

@@ -122,7 +122,11 @@ struct LearningWorkspaceView: View {
                 // 窄窗口会自动折叠导航，此时该按钮改变不了状态，故只在展开时可用。
                 Button { sidebarExpanded.toggle() } label: {
                     Image(systemName: "sidebar.left").frame(maxWidth: .infinity, alignment: .leading)
-                }.buttonStyle(.plain).padding(.horizontal, 14).help("折叠导航")
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .help("折叠导航")
+                .accessibilityLabel("折叠导航")
             }
         }
         .padding(.horizontal, 14).padding(.top, 34).padding(.bottom, 22)
@@ -154,6 +158,7 @@ struct LearningWorkspaceView: View {
                 Button("快捷键帮助") { open(.help) }
             } label: { Image(systemName: "ellipsis").padding(8) }
             .menuStyle(.borderlessButton).fixedSize().help("更多功能")
+            .accessibilityLabel("更多功能")
         }.padding(.horizontal, 28).padding(.vertical, 23)
     }
 
@@ -164,6 +169,8 @@ struct LearningWorkspaceView: View {
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(EditorialColor.textTertiary)
                 Text("把好奇，变成自己的知识。")
                     .font(.system(size: 29, weight: .semibold, design: .serif)).tracking(-0.7)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.78)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("读一点新知，回忆一次旧知。今天从这里继续。")
                     .font(.system(size: 13)).foregroundStyle(EditorialColor.textSecondary)
@@ -269,6 +276,8 @@ struct LearningWorkspaceView: View {
                 }.frame(height: 148).clipped()
                 VStack(alignment: .leading, spacing: 12) {
                     Text(card.headline).font(.system(size: 22, weight: .semibold, design: .serif))
+                        .allowsTightening(true)
+                        .minimumScaleFactor(0.78)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(card.summary).font(.system(size: 12)).foregroundStyle(EditorialColor.textSecondary)
                         .lineLimit(3)
@@ -361,7 +370,12 @@ struct LearningWorkspaceView: View {
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(EditorialColor.textTertiary)
                 TextField("搜索标题、正文或主题", text: $query).textFieldStyle(.plain)
-                if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).help("清除搜索") }
+                if !query.isEmpty {
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain)
+                        .help("清除搜索")
+                        .accessibilityLabel("清除搜索")
+                }
             }.padding(14).background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 10))
             ViewThatFits(in: .horizontal) {
                 HStack { libraryFilters; Spacer(); categoryPicker }

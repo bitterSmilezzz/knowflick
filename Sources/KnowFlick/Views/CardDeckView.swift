@@ -343,6 +343,7 @@ struct CardDeckView: View {
         let base = CardView(
             card: card,
             showAIMark: store.settings.showAIMark,
+            speechService: store.speechService,
             isTop: isTop,
             dragOffset: isTop ? dragOffset : .zero,
             triggerSheen: triggerSheen
@@ -433,6 +434,7 @@ struct CardDeckView: View {
         CardView(
             card: card,
             showAIMark: store.settings.showAIMark,
+            speechService: store.speechService,
             isTop: true,
             dragOffset: swipingOffset,
             triggerSheen: false
@@ -620,7 +622,10 @@ struct CardDeckView: View {
         HStack {
             Button { showingWorkspace = true } label: {
                 Image(systemName: "arrow.left").padding(10)
-            }.buttonStyle(.plain).help("返回学习工作台")
+            }
+            .buttonStyle(.plain)
+            .help("返回学习工作台")
+            .accessibilityLabel("返回学习工作台")
             VStack(alignment: .leading, spacing: 2) {
                 Text("KnowFlick")
                     .font(EditorialFont.modalTitle)
@@ -702,7 +707,8 @@ struct CardDeckView: View {
                         store.settings.appearance = nextMode
                     }
                     HapticFeedbackHelper.shared.cardSnapBack()
-                    try? store.saveSettings(store.settings)
+                    do { try store.saveSettings(store.settings) }
+                    catch { store.lastError = "外观设置保存失败：\(error.localizedDescription)" }
                 }
                 Menu {
                     Section("探索与学习") {

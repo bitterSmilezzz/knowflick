@@ -1,7 +1,24 @@
 import Foundation
 
 /// CPU and file work stays off the UI actor; callers own presentation and cancellation.
+public enum CardTransferError: LocalizedError, Sendable {
+    case fileTooLarge(maxBytes: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .fileTooLarge(let maxBytes):
+            let megabytes = maxBytes / (1024 * 1024)
+            return "导入文件过大，当前最多支持 \(megabytes) MB。"
+        }
+    }
+}
+
 public enum CardTransferService {
+    /// Protect the UI and parser from accidentally importing an unbounded file.
+    /// This is intentionally generous for notes while keeping malformed input from
+    /// consuming the whole process on a single import action.
+    public static let maximumNoteBytes = 32 * 1024 * 1024
+
     private static func background<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
         try Task.checkCancellation()
         let task = Task.detached(priority: .userInitiated) {
@@ -21,6 +38,10 @@ public enum CardTransferService {
         try await background {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            if let byteCount = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+               byteCount > maximumNoteBytes {
+                throw CardTransferError.fileTooLarge(maxBytes: maximumNoteBytes)
+            }
             return try String(contentsOf: url, encoding: .utf8)
         }
     }

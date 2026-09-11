@@ -47,6 +47,23 @@ struct CardTransferServiceTests {
         } catch { #expect(!(error is CancellationError)) }
     }
 
+    @Test func oversizedNoteIsRejectedBeforeDecoding() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).md")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let data = Data(repeating: 0x20, count: CardTransferService.maximumNoteBytes + 1)
+        try data.write(to: url)
+
+        do {
+            _ = try await CardTransferService.readNote(at: url)
+            Issue.record("Oversized note must be rejected before loading into memory")
+        } catch let error as CardTransferError {
+            guard case .fileTooLarge = error else {
+                Issue.record("Unexpected transfer error")
+                return
+            }
+        }
+    }
+
     @Test @MainActor func cancelledRequestDoesNotStartWriting() async {
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
         let subjects = cards(1)

@@ -156,6 +156,17 @@ final class StatsCalculatorTests {
         #expect(Set(rest) == ["历史", "物理"])
         #expect(stats.categories.first { $0.category == "历史" }?.likeRate == 1.0)
     }
+
+    @Test func testCategoryGroupingUsesStableNameOrderForTies() {
+        let cards = [
+            makeCard(category: "Beta"),
+            makeCard(category: "Alpha"),
+            makeCard(category: "Beta"),
+            makeCard(category: "Alpha")
+        ]
+        let stats = StatsCalculator.compute(from: cards)
+        #expect(stats.categories.map(\.category) == ["Alpha", "Beta"])
+    }
 }
 
 extension StatsCalculatorTests {

@@ -6,9 +6,17 @@ private final class AIStubProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+        if request.url?.host == "opencode.ai" {
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
+        } else {
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+        }
         #expect(request.httpMethod == "POST")
-        let isPing = request.url!.path.contains("ping")
+        if request.url?.host == "opencode.ai" {
+            #expect(request.value(forHTTPHeaderField: "x-opencode-session")?.isEmpty == false)
+            #expect(request.value(forHTTPHeaderField: "User-Agent") == "KnowFlick/3.2")
+        }
+        let isPing = request.url!.path.contains("ping") || request.url?.host == "opencode.ai"
         let body: Data
         if isPing {
             body = Data(#"{"choices":[{"message":{"content":"pong"}}]}"#.utf8)
@@ -44,6 +52,15 @@ struct AITransportTests {
         let (service, session) = service()
         defer { session.invalidateAndCancel() }
         try await service.ping(settings: settings("ping"))
+    }
+
+    @Test func opencodeGoPingSendsStableSessionHeader() async throws {
+        let (service, session) = service()
+        defer { session.invalidateAndCancel() }
+        var testSettings = settings()
+        testSettings.baseURL = "https://opencode.ai/zen/go/v1"
+        testSettings.apiKey = "test-key"
+        try await service.ping(settings: testSettings)
     }
 
     @Test func streamingGenerationProducesUsableCards() async throws {

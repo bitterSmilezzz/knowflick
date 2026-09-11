@@ -136,6 +136,7 @@ struct GlobalSearchModalView: View {
                         .foregroundStyle(EditorialColor.textTertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("清除搜索")
             }
 
             // 关闭按钮
@@ -150,6 +151,7 @@ struct GlobalSearchModalView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.escape, modifiers: [])
+            .accessibilityLabel("关闭搜索")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)

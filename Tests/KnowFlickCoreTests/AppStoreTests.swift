@@ -35,6 +35,30 @@ struct AppStoreTests {
         }
     }
 
+    @Test @MainActor func injectedSpeechServiceIsUsedByTheStore() {
+        let service = SpeechSynthesizerService()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = AppStore(storage: Storage(baseDir: directory), speechService: service)
+        #expect(store.speechService === service)
+        store.closeChat()
+        store.flushPersistence()
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    @Test @MainActor func shutdownStopsSpeechAndFlushesWithoutLeakingState() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let service = SpeechSynthesizerService()
+        let store = AppStore(storage: Storage(baseDir: directory), speechService: service)
+        let card = card("退出测试")
+        store.cards = [card]
+        service.speak(card: card)
+        store.shutdown()
+        #expect(service.state == .idle)
+        #expect(!service.isAmbientMode)
+        #expect(store.persistenceWarning == nil)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
     @Test func exhaustedPreferencesFallBackAndUndoReturnsCardToTop() throws {
         try withStore { store, _, _ in
             let preferred = card("优先", category: "AI")

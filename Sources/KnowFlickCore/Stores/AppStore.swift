@@ -33,7 +33,7 @@ public final class AppStore {
     public private(set) var history: [KnowledgeCard] = []
 
     /// 语音朗读与磨耳朵服务
-    public let speechService = SpeechSynthesizerService.shared
+    public let speechService: SpeechSynthesizerService
 
     /// 全文检索与智能搜索引擎
     public let searchEngine = KnowledgeSearchEngine()
@@ -59,16 +59,21 @@ public final class AppStore {
     private var lastSwipedCardId: UUID?
     private var lastSwipedKey: String?
 
-    public init(storage: Storage = Storage(), credentials: (any CredentialStore)? = nil) {
+    public init(
+        storage: Storage = Storage(),
+        credentials: (any CredentialStore)? = nil,
+        speechService: SpeechSynthesizerService? = nil
+    ) {
         self.storage = storage
         self.credentials = credentials ?? SystemCredentialStore()
+        self.speechService = speechService ?? SpeechSynthesizerService()
         recomputeDeckAndHistory()
 
-        speechService.speedMultiplier = settings.speechRate
-        speechService.preferredVoiceIdentifier = settings.speechVoiceIdentifier
-        speechService.ambientGapSeconds = settings.ambientGapSeconds
+        self.speechService.speedMultiplier = settings.speechRate
+        self.speechService.preferredVoiceIdentifier = settings.speechVoiceIdentifier
+        self.speechService.ambientGapSeconds = settings.ambientGapSeconds
 
-        speechService.onAmbientAdvanceRequest = { [weak self] in
+        self.speechService.onAmbientAdvanceRequest = { [weak self] in
             guard let self = self else { return nil }
             if let current = self.topCard {
                 self.swipe(current, direction: .skip)
@@ -148,11 +153,11 @@ public final class AppStore {
         let legacyKey = settings.apiKey
         if let key = credentials.read(account: "apiKey") {
             settings.apiKey = key
-            if !legacyKey.isEmpty { storage.saveSettings(settings) }
+            if !legacyKey.isEmpty { try? storage.saveSettingsThrowing(settings) }
         } else if !legacyKey.isEmpty {
             do {
                 try credentials.save(legacyKey, account: "apiKey")
-                storage.saveSettings(settings)
+                try? storage.saveSettingsThrowing(settings)
             } catch {
                 lastError = error.localizedDescription
             }
@@ -206,6 +211,16 @@ public final class AppStore {
     }
 
     public func retryPersistence() { persist() }
+
+    /// 进入后台或应用退出前释放异步任务和音频资源，避免窗口关闭后仍继续播报或持有状态。
+    public func shutdown() {
+        closeChat()
+        speechService.stopAmbientMode()
+        speechService.onAmbientAdvanceRequest = nil
+        persistTask?.cancel()
+        persistTask = nil
+        flushPersistence()
+    }
 
     private func receiveSaveResult(_ result: CardSaveResult) {
         switch result {
@@ -604,7 +619,7 @@ public final class AppStore {
             try credentials.delete(account: "tts." + profile.id)
         }
         settings = persisted
-        storage.saveSettings(persisted)
+        try storage.saveSettingsThrowing(persisted)
     }
 
     /// 连通性测试：轻量 ping 请求，不消耗额度
@@ -706,7 +721,8 @@ public final class AppStore {
                 }
                 self.isChatStreaming = false
                 if let session = self.currentChatSession {
-                    self.storage.saveChatSession(session)
+                    do { try self.storage.saveChatSessionThrowing(session) }
+                    catch { self.chatErrorMessage = "聊天记录保存失败：\(error.localizedDescription)" }
                 }
             } catch {
                 if !Task.isCancelled {
@@ -720,7 +736,8 @@ public final class AppStore {
                         }
                     }
                     if let session = self.currentChatSession {
-                        self.storage.saveChatSession(session)
+                        do { try self.storage.saveChatSessionThrowing(session) }
+                        catch { self.chatErrorMessage = "聊天记录保存失败：\(error.localizedDescription)" }
                     }
                 }
             }
@@ -737,7 +754,8 @@ public final class AppStore {
             for i in session.messages.indices { session.messages[i].isStreaming = false }
             session.updatedAt = Date()
             currentChatSession = session
-            storage.saveChatSession(session)
+            do { try storage.saveChatSessionThrowing(session) }
+            catch { chatErrorMessage = "聊天记录保存失败：\(error.localizedDescription)" }
         }
     }
 
@@ -745,7 +763,8 @@ public final class AppStore {
     public func clearCurrentChatSession() {
         cancelChatStreaming()
         guard let card = activeChatCard else { return }
-        storage.clearChatSession(for: card.id)
+        do { try storage.clearChatSessionThrowing(for: card.id) }
+        catch { chatErrorMessage = "聊天记录清除失败：\(error.localizedDescription)" }
         currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
     }
 

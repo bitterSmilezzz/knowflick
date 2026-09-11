@@ -318,7 +318,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
             defaultBaseURL: "https://opencode.ai/zen/go/v1",
             models: ["deepseek-v4-flash", "deepseek-v4-pro", "glm-5.2", "qwen3.7-max", "kimi-k3", "minimax-m3", "mimo-v2.5"],
             defaultModel: "deepseek-v4-flash",
-            helpText: "OpenCode 开发者中转服务，汇聚 DeepSeek、GLM、Qwen、Kimi 等多模型",
+            helpText: "OpenCode Go 聚合服务。应用会自动发送 Session ID（x-opencode-session）用于请求路由和缓存",
             apiKeyPlaceholder: "sk-...",
             requiresKey: true
         ),

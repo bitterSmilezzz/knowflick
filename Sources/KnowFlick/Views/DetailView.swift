@@ -645,7 +645,7 @@ struct DetailView: View {
     // MARK: - 语音朗读声学导读组件
 
     private var speechTopButton: some View {
-        let service = SpeechSynthesizerService.shared
+        let service = store?.speechService ?? .shared
         let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
 
         return Button {
@@ -673,7 +673,7 @@ struct DetailView: View {
     }
 
     private var audioPlayerBar: some View {
-        let service = SpeechSynthesizerService.shared
+        let service = store?.speechService ?? .shared
         let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
         let isPausedThis = service.state.activeCardId == card.id && service.state.isPaused
         let progress = (service.state.activeCardId == card.id) ? service.state.progress : 0.0

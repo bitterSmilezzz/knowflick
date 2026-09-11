@@ -233,7 +233,8 @@ struct SettingsView: View {
                             appearance = mode
                             store.settings.appearance = mode
                         }
-                        try? store.saveSettings(store.settings)
+                        do { try store.saveSettings(store.settings) }
+                        catch { store.lastError = "外观设置保存失败：\(error.localizedDescription)" }
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: mode.icon)
@@ -840,11 +841,7 @@ struct SettingsView: View {
 
     private var bottomBar: some View {
         HStack {
-            if let result = testResult {
-                Label(result, systemImage: isTesting ? "ellipsis" : (result.contains("成功") ? "checkmark.circle.fill" : "xmark.circle.fill"))
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(isTesting ? EditorialColor.textSecondary : (result.contains("成功") ? EditorialColor.likeGreen : EditorialColor.dislikeRed))
-            }
+            connectionStatus
 
             Spacer()
 
@@ -872,6 +869,31 @@ struct SettingsView: View {
             .buttonStyle(PressableButtonStyle(scale: 1.02))
         }
         .padding(18)
+    }
+
+    /// 连通性反馈必须始终占据底栏空间：测试中显示进度，完成后保留明确的成功或失败状态。
+    private var connectionStatus: some View {
+        Group {
+            if isTesting {
+                HStack(spacing: 7) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在测试连接…")
+                }
+                .foregroundStyle(EditorialColor.textSecondary)
+            } else if let result = testResult {
+                let succeeded = result.hasPrefix("连接成功")
+                Label(result, systemImage: succeeded ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(succeeded ? EditorialColor.likeGreen : EditorialColor.dislikeRed)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(succeeded ? "连接测试成功：\(result)" : "连接测试失败：\(result)")
+            } else {
+                Text("测试连接会使用当前输入的配置")
+                    .foregroundStyle(EditorialColor.textTertiary)
+            }
+        }
+        .font(EditorialFont.caption)
+        .lineLimit(2)
     }
 
     private func fieldRow<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
@@ -968,13 +990,13 @@ struct SettingsView: View {
     /// 连通测试：轻量 ping 请求，不消耗 AI 额度
     private func testConnection() {
         isTesting = true
-        testResult = nil
+        testResult = "正在测试连接…"
         // 用当前输入值组一个临时设置做探测
         var temp = store.settings
         temp.baseURL = baseURL
         temp.model = model
         temp.apiKey = apiKey
-        Task {
+        Task { @MainActor in
             testResult = await store.testConnection(settings: temp)
             isTesting = false
         }

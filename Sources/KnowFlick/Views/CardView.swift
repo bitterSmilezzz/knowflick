@@ -6,6 +6,7 @@ import KnowFlickCore
 struct CardView: View {
     let card: KnowledgeCard
     let showAIMark: Bool   // 设置：显示 AI 内容标记
+    var speechService: SpeechSynthesizerService = .shared
     var isTop: Bool = false
     var dragOffset: CGSize = .zero
     var triggerSheen: Bool = false
@@ -84,6 +85,8 @@ struct CardView: View {
                 .foregroundStyle(EditorialColor.cardTextPrimary)
                 .lineSpacing(7.5)
                 .lineLimit(nil)
+                .allowsTightening(true)
+                .minimumScaleFactor(0.72)
                 .shadow(color: .black.opacity(0.65), radius: 10, y: 3)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -99,6 +102,8 @@ struct CardView: View {
                 .foregroundStyle(EditorialColor.cardTextSecondary)
                 .lineSpacing(5.5)
                 .lineLimit(nil)
+                .allowsTightening(true)
+                .minimumScaleFactor(0.82)
                 .fixedSize(horizontal: false, vertical: true)
                 .shadow(color: .black.opacity(0.55), radius: 6, y: 1.5)
 
@@ -147,6 +152,8 @@ struct CardView: View {
             Text(card.category)
                 .font(EditorialFont.badge)
                 .tracking(0.8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
             Text("·")
                 .font(.system(size: 9.5, weight: .heavy))
                 .opacity(0.6)
@@ -197,7 +204,7 @@ struct CardView: View {
 
     // MARK: - 语音朗读胶囊按键
     private var speechButton: some View {
-        let service = SpeechSynthesizerService.shared
+        let service = speechService
         let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
         let isPausedThis = service.state.activeCardId == card.id && service.state.isPaused
 
@@ -232,5 +239,7 @@ struct CardView: View {
         }
         .buttonStyle(PressableButtonStyle())
         .help(isSpeakingThis ? "暂停朗读 (⌘P)" : "朗读此卡片观点 (⌘P)")
+        .accessibilityLabel(isSpeakingThis ? "暂停朗读" : (isPausedThis ? "继续朗读" : "朗读此卡片观点"))
+        .accessibilityValue(isSpeakingThis ? "进度 \(Int(service.state.progress * 100))%" : "")
     }
 }

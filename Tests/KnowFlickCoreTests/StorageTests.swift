@@ -39,20 +39,20 @@ final class StorageTests {
 
     // MARK: - 保存/加载往返
 
-    @Test func testSaveLoadRoundTrip() {
+    @Test func saveThenLoadReturnsTheSameCards() {
         let cards = [makeCard("往返测试")]
         storage.saveCards(cards)
         #expect(storage.loadCards().map(\.headline) == ["往返测试"])
     }
 
-    @Test func testLoadMissingReturnsEmpty() {
+    @Test func loadingBeforeFirstSaveReturnsEmptyAndUnseeded() {
         #expect(storage.loadCards().isEmpty)
         #expect(!(storage.hasSeeded()))
     }
 
     // MARK: - 备份轮转（C1 核心回归）
 
-    @Test func testBackupRotationKeepsPreviousVersion() {
+    @Test func savingThreeVersionsLeavesTheSecondVersionAsBackup() {
         storage.saveCards([makeCard("第一版")])
         storage.saveCards([makeCard("第二版")])
         storage.saveCards([makeCard("第三版")])
@@ -67,7 +67,7 @@ final class StorageTests {
         #expect(backup.map(\.headline) == ["第二版"])
     }
 
-    @Test func testLoadFromBackupWhenMainCorrupted() {
+    @Test func corruptedMainFileFallsBackToBackupAndRepairsMain() {
         storage.saveCards([makeCard("健康版")])
         // 主文件写坏
         try! writeMain(Data("{ not valid json".utf8))
@@ -81,18 +81,21 @@ final class StorageTests {
         #expect(main.map(\.headline) == ["健康版"])
     }
 
-    @Test func testLoadFromBackupWhenMainEmptyArray() {
+    @Test func emptyMainArrayFallsBackToNonEmptyBackup() {
         storage.saveCards([makeCard("内容卡")])
         try! writeMain(encodeCards([]))   // 空数组视为损坏
         #expect(storage.loadCards().map(\.headline) == ["内容卡"])
     }
 
-    @Test func testReseedWhenBothCorrupted() {
+    @Test func corruptedMainAndBackupAreQuarantinedBeforeReseeding() {
         try! writeMain(Data("{ bad".utf8))
         try! Data("{ also bad".utf8).write(to: tempDir.appendingPathComponent("cards.backup.json"))
         #expect(storage.loadCards().isEmpty)
-        // 损坏文件被清走，下次可重新播种
+        // 损坏文件被隔离保留，下次可重新播种
         #expect(!(FileManager.default.fileExists(atPath: tempDir.appendingPathComponent("cards.json").path)))
+        let quarantined = try! FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.contains("corrupt-") }
+        #expect(quarantined.count == 2)
     }
 
     // MARK: - 设置
@@ -103,6 +106,17 @@ final class StorageTests {
         settings.categoryFilter = "物理, 天文"
         storage.saveSettings(settings)
         #expect(storage.loadSettings() == settings)
+    }
+
+    @Test func corruptedSettingsAndChatSessionsAreQuarantined() throws {
+        try Data("{bad".utf8).write(to: tempDir.appendingPathComponent("settings.json"))
+        try Data("{bad".utf8).write(to: tempDir.appendingPathComponent("chat_sessions.json"))
+
+        #expect(storage.loadSettings() == .default)
+        #expect(storage.loadChatSessions().isEmpty)
+        let quarantined = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.contains("corrupt-") }
+        #expect(quarantined.count == 2)
     }
 }
 
