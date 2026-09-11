@@ -50,13 +50,14 @@ struct HistoryView: View {
                     }
 
                     if let cat = categoryFilter {
+                        let catAccent = CategoryTheme.visualSpec(for: cat).accent
                         Text(cat)
                             .font(EditorialFont.caption.weight(.semibold))
-                            .foregroundStyle(CategoryTheme.theme(for: cat, cache: .shared).accent)
+                            .foregroundStyle(catAccent)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
                             .background(EditorialColor.glassSurface, in: Capsule())
-                            .overlay(Capsule().strokeBorder(CategoryTheme.theme(for: cat, cache: .shared).accent.opacity(0.4), lineWidth: 1))
+                            .overlay(Capsule().strokeBorder(catAccent.opacity(0.4), lineWidth: 1))
                     }
 
                     Spacer()
@@ -161,7 +162,7 @@ struct HistoryView: View {
 
     private func historyRow(_ card: KnowledgeCard) -> some View {
         let mark = directionMark(card.swiped)
-        let catAccent = CategoryTheme.theme(for: card, cache: .shared).accent
+        let catAccent = CategoryTheme.visualSpec(for: card).accent
         return Button {
             selectedCard = card
         } label: {

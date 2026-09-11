@@ -17,6 +17,12 @@ struct GlobalSearchModalView: View {
     @State private var selectedIndex: Int = 0
     @FocusState private var isSearchFocused: Bool
 
+    // 搜索结果改为防抖异步计算：引擎在后台线程执行，结果回主线程；
+    // 避免 body 每次求值重复跑 3 遍全量检索 + 拼音转换造成输入卡顿。
+    @State private var results: [SearchResultItem] = []
+    @State private var searchGeneration = 0
+    @State private var searchDebounceTask: Task<Void, Never>?
+
     private let searchEngine = KnowledgeSearchEngine()
 
     private var allCategories: [String] {
@@ -25,16 +31,32 @@ struct GlobalSearchModalView: View {
         return ["全部"] + Array(set).sorted()
     }
 
-    private var results: [SearchResultItem] {
+    /// 过滤条件变化后调度一次防抖搜索
+    private func scheduleSearch() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            performSearch()
+        }
+    }
+
+    private func performSearch() {
+        searchGeneration += 1
+        let generation = searchGeneration
+        let engine = searchEngine
+        let cards = store.cards
         let favs = Set(store.favorites.map(\.id))
-        let cat = selectedCategory == "全部" ? nil : selectedCategory
-        return searchEngine.search(
-            query: query,
-            category: cat,
-            source: selectedSource,
-            in: store.cards,
-            favorites: favs
-        )
+        let category = selectedCategory == "全部" ? nil : selectedCategory
+        let source = selectedSource
+        let currentQuery = query
+        Task.detached(priority: .userInitiated) {
+            let outcome = engine.search(query: currentQuery, category: category, source: source, in: cards, favorites: favs)
+            await MainActor.run {
+                guard generation == searchGeneration else { return }
+                results = outcome
+            }
+        }
     }
 
     var body: some View {
@@ -73,6 +95,17 @@ struct GlobalSearchModalView: View {
         .shadow(color: Color.black.opacity(0.35), radius: 28, y: 12)
         .onAppear {
             isSearchFocused = true
+            scheduleSearch()
+        }
+        .onChange(of: query) { _, _ in
+            selectedIndex = 0
+            scheduleSearch()
+        }
+        .onChange(of: selectedCategory) { _, _ in
+            scheduleSearch()
+        }
+        .onChange(of: selectedSource) { _, _ in
+            scheduleSearch()
         }
         .onKeyPress(.downArrow) {
             if selectedIndex < results.count - 1 {
@@ -266,7 +299,7 @@ struct GlobalSearchModalView: View {
 
     private func searchResultRow(item: SearchResultItem, index: Int) -> some View {
         let isSelected = index == selectedIndex
-        let theme = CategoryTheme.theme(for: item.card, cache: .shared)
+        let theme = CategoryTheme.visualSpec(for: item.card)
 
         return HStack(alignment: .top, spacing: 12) {
             // 学科分类与匹配指示器

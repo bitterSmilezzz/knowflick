@@ -297,7 +297,7 @@ struct FavoritesView: View {
 
                         ForEach(categoryCounts, id: \.category) { item in
                             let isSelected = selectedCategory == item.category
-                            let theme = CategoryTheme.theme(for: item.category, cache: .shared)
+                            let theme = CategoryTheme.visualSpec(for: item.category)
 
                             Button {
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
@@ -395,7 +395,7 @@ struct FavoritesView: View {
     }
 
     private func favoriteCardItem(_ card: KnowledgeCard) -> some View {
-        let theme = CategoryTheme.theme(for: card, cache: .shared)
+        let theme = CategoryTheme.visualSpec(for: card)
 
         return VStack(alignment: .leading, spacing: 12) {
             // 卡片头部行：分类标签 + 来源 + 收藏时间 + 取消收藏心形

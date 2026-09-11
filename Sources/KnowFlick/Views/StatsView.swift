@@ -207,7 +207,7 @@ struct StatsView: View {
 
     /// 一行分类：名称 + 条形（总宽=已刷占比，白色段=感兴趣占比）+ 数值
     private func categoryRow(_ stat: LearningStats.CategoryStat, maxSeen: Int) -> some View {
-        let accent = CategoryTheme.theme(for: stat.category, cache: .shared).accent
+        let accent = CategoryTheme.visualSpec(for: stat.category).accent
         return Button {
             historyCategory = CategoryNav(category: stat.category)
         } label: {

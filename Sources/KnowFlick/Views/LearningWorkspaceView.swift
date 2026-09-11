@@ -201,7 +201,7 @@ struct LearningWorkspaceView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 14) {
                             HStack {
-                                Image(systemName: CategoryTheme.theme(for: name).iconName).foregroundStyle(EditorialColor.aiAmber)
+                                Image(systemName: CategoryTheme.visualSpec(for: name).iconName).foregroundStyle(EditorialColor.aiAmber)
                                 Spacer()
                                 Text("\(cards.count)").monospacedDigit().foregroundStyle(EditorialColor.textTertiary)
                             }
@@ -419,7 +419,7 @@ struct LearningWorkspaceView: View {
     }
     private func cardRow(_ card: KnowledgeCard, review: Bool = false) -> some View {
         HStack(spacing: 16) {
-            Image(systemName: CategoryTheme.theme(for: card).iconName)
+            Image(systemName: CategoryTheme.visualSpec(for: card).iconName)
                 .font(.system(size: 19)).foregroundStyle(EditorialColor.aiAmber)
                 .frame(width: 42, height: 48).background(EditorialColor.aiAmberBg, in: RoundedRectangle(cornerRadius: 8))
             Button { open(review ? .plannedReview([card]) : .detail(card)) } label: {

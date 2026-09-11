@@ -89,6 +89,26 @@ struct CategoryTheme {
         return theme(forKey: key, category: category, cache: cache)
     }
 
+    /// 轻量视觉规格查询：仅取图标、主色与领域代号，绝不触发背景图解码。
+    /// 列表行、搜索结果、统计标签等只需 icon/accent 的场景请用此入口，避免滚动路径上同步解码 900px 底图。
+    @MainActor
+    static func visualSpec(for card: KnowledgeCard) -> (iconName: String, accent: Color, domainCode: String) {
+        visualSpec(category: card.category, headline: card.headline, summary: card.summary)
+    }
+
+    @MainActor
+    static func visualSpec(for category: String) -> (iconName: String, accent: Color, domainCode: String) {
+        visualSpec(category: category)
+    }
+
+    @MainActor
+    private static func visualSpec(category: String, headline: String = "", summary: String = "") -> (iconName: String, accent: Color, domainCode: String) {
+        let key = CardThemeResolver.resolveKey(category: category, headline: headline, summary: summary)
+        let specKey = specs[key] != nil ? key : (categoryAliases[key] ?? categoryAliases[category] ?? "tech")
+        let spec = specs[specKey] ?? fallbackSpec
+        return (spec.iconName, spec.accent, spec.domainCode)
+    }
+
     @MainActor
     private static func theme(forKey key: String, category: String, cache: BackgroundImageCache?) -> CategoryTheme {
         let imageCache = cache ?? .shared

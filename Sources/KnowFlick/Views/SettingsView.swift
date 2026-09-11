@@ -458,7 +458,7 @@ struct SettingsView: View {
                 // 内置分类
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(CategoryTheme.theme(for: CategoryRegistry.builtinCategory, cache: .shared).accent)
+                        .fill(CategoryTheme.visualSpec(for: CategoryRegistry.builtinCategory).accent)
                         .frame(width: 8, height: 8)
                     Text(CategoryRegistry.builtinCategory)
                         .font(EditorialFont.labelSmall)
@@ -477,7 +477,7 @@ struct SettingsView: View {
 
                 // 自定义分类列表
                 ForEach(customCategories) { cat in
-                    let accent = CategoryTheme.theme(for: cat.name, cache: .shared).accent
+                    let accent = CategoryTheme.visualSpec(for: cat.name).accent
                     HStack(spacing: 8) {
                         Circle()
                             .fill(accent)
@@ -908,7 +908,7 @@ struct SettingsView: View {
     /// 偏好分类选择 chip
     private func categoryChip(_ cat: String) -> some View {
         let selected = selectedCategories.contains(cat)
-        let accent = CategoryTheme.theme(for: cat, cache: .shared).accent
+        let accent = CategoryTheme.visualSpec(for: cat).accent
         return Button {
             if selected {
                 selectedCategories.remove(cat)

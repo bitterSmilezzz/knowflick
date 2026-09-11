@@ -38,11 +38,9 @@ public final class AppStore {
     /// 全文检索与智能搜索引擎
     public let searchEngine = KnowledgeSearchEngine()
 
-    /// 收藏阁：显式收藏的卡片列表（按收藏时间倒序，与喜好意图解耦）
-    public var favorites: [KnowledgeCard] {
-        cards.filter(\.isFavorite)
-            .sorted { ($0.favoritedAt ?? .distantPast) > ($1.favoritedAt ?? .distantPast) }
-    }
+    /// 收藏阁：显式收藏的卡片列表（按收藏时间倒序，与喜好意图解耦）。
+    /// 存储派生快照，随 recomputeDeckAndHistory 刷新；避免视图 body 每次访问都全库 filter+sort。
+    public private(set) var favorites: [KnowledgeCard] = []
 
     public var topCard: KnowledgeCard? { deck.first }
 
@@ -85,6 +83,8 @@ public final class AppStore {
     private func recomputeDeckAndHistory() {
         let hist = cards.filter { $0.seenAt != nil }.sorted { ($0.seenAt ?? .distantPast) > ($1.seenAt ?? .distantPast) }
         self.history = hist
+        self.favorites = cards.filter(\.isFavorite)
+            .sorted { ($0.favoritedAt ?? .distantPast) > ($1.favoritedAt ?? .distantPast) }
 
         var unseen = cards.filter { $0.seenAt == nil }
         // 来源开关：只开其一则只看该来源；全关则队列为空（含外部导入卡片，口径见 CONTEXT.md）

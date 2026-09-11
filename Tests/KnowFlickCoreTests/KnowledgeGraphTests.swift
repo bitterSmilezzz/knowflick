@@ -42,4 +42,33 @@ struct KnowledgeGraphTests {
         #expect(KnowledgeGraphEngine.findRelatedCards(for: a, in: [a, b], limit: -1).isEmpty)
         #expect(KnowledgeGraphEngine.findRelatedCards(for: a, in: [a, b], limit: 1).map(\.id) == [b.id])
     }
+
+    @Test func extractKeywordsTracksContentChanges() {
+        var subject = card("物理", "量子纠缠的超距关联性")
+        subject.details = "纠缠粒子之间的关联无法用经典局域隐变量理论解释。"
+        let before = KnowledgeGraphEngine.extractKeywords(from: subject)
+        subject.details += "贝尔不等式的实验检验推翻了局域实在论。"
+        let after = KnowledgeGraphEngine.extractKeywords(from: subject)
+        #expect(after.count > before.count)
+        #expect(after.isSuperset(of: before))
+    }
+
+    @Test func extractKeywordsIsSafeUnderConcurrentAccess() async {
+        let subjects = (0..<32).map { index in
+            card("AI", "并发压力测试卡片\(index)")
+        }
+        await withTaskGroup(of: Set<String>.self) { group in
+            for subject in subjects {
+                group.addTask {
+                    KnowledgeGraphEngine.extractKeywords(from: subject)
+                }
+                group.addTask {
+                    KnowledgeGraphEngine.extractKeywords(from: subject)
+                }
+            }
+            for await keywords in group {
+                #expect(!keywords.isEmpty)
+            }
+        }
+    }
 }

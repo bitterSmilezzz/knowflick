@@ -136,8 +136,30 @@ public enum KnowledgeGraphEngine {
         "这是一种", "这是", "在", "的", "了", "和", "是", "与", "或", "等", "而", "及"
     ]
 
-    /// 提取卡片核心关键词集合
+    /// 提取卡片核心关键词集合。
+    /// 结果按内容哈希缓存（详情页相关卡、星图构建会反复对全池调用），线程安全。
     public static func extractKeywords(from card: KnowledgeCard) -> Set<String> {
+        let key = CardThemeResolver.deterministicHash("\(card.category)|\(card.headline)|\(card.summary)|\(card.details)")
+        cacheLock.lock()
+        if let cached = keywordCache[key] {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
+        let computed = computeKeywords(from: card)
+
+        cacheLock.lock()
+        if keywordCache.count >= 4096 { keywordCache.removeAll(keepingCapacity: false) }
+        keywordCache[key] = computed
+        cacheLock.unlock()
+        return computed
+    }
+
+    private static let cacheLock = NSLock()
+    private static var keywordCache: [UInt64: Set<String>] = [:]
+
+    private static func computeKeywords(from card: KnowledgeCard) -> Set<String> {
         let text = "\(card.headline) \(card.summary) \(card.details)".lowercased()
         var words = Set<String>()
 
