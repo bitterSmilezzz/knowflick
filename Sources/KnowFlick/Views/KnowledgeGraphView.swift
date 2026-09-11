@@ -19,6 +19,7 @@ struct KnowledgeGraphView: View {
     @State private var panOffset: CGSize = .zero
     @State private var currentDragTranslation: CGSize = .zero
     @State private var zoomScale: CGFloat = 1.0
+    @State private var pinchStartZoom: CGFloat? = nil
 
     // 星尘粒子随机种子
     private let starDustCount = 80
@@ -64,6 +65,18 @@ struct KnowledgeGraphView: View {
                     .scaleEffect(zoomScale)
                     .offset(x: panOffset.width + currentDragTranslation.width, y: panOffset.height + currentDragTranslation.height)
                     .gesture(panGesture)
+                    .simultaneousGesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                let start = pinchStartZoom ?? zoomScale
+                                if pinchStartZoom == nil { pinchStartZoom = zoomScale }
+                                zoomScale = min(2.2, max(0.6, start * value))
+                            }
+                            .onEnded { _ in pinchStartZoom = nil }
+                    )
+                    .background(GraphScrollZoomCatcher { zoomDelta in
+                        zoomScale = min(2.2, max(0.6, zoomScale + zoomDelta))
+                    })
 
                     // 节点轻触与悬停热区层
                     nodeHitTestingLayer
@@ -275,11 +288,12 @@ struct KnowledgeGraphView: View {
                 .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
             }
             .buttonStyle(PressableButtonStyle())
+            .keyboardShortcut(.space, modifiers: [])
             .help("重置缩放与平移视野 (空格键)")
 
             Spacer()
 
-            Text("拖拽画布平移 · 滚轮缩放 · 点击星宿探秘知识灵感")
+            Text("拖拽平移 · 滚轮/捏合缩放 · 点击星宿探秘知识灵感")
                 .font(EditorialFont.captionSmall)
                 .foregroundStyle(Color.white.opacity(0.45))
         }
@@ -579,5 +593,50 @@ struct KnowledgeGraphView: View {
         case .conceptBridge: return EditorialColor.likeGreen
         case .serendipity: return Color(red: 0.85, green: 0.45, blue: 0.85)
         }
+    }
+}
+
+/// 星图画布滚轮缩放捕获层。
+/// SwiftUI 在 macOS 14 没有原生滚轮手势，这里用局部事件监视器把星图窗口内的
+/// 滚轮事件转换为缩放增量；其他窗口的滚轮行为不受影响。
+private struct GraphScrollZoomCatcher: NSViewRepresentable {
+    let onZoom: (CGFloat) -> Void
+
+    final class CatchView: NSView {
+        var onZoom: ((CGFloat) -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, event.window === self.window else { return event }
+                if event.scrollingDeltaY != 0 {
+                    // 向上滚动放大（自然滚动方向），系数平滑适配触控板与滚轮
+                    self.onZoom?(-event.scrollingDeltaY * 0.08)
+                }
+                return nil
+            }
+        }
+
+        deinit {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+        }
+    }
+
+    func makeNSView(context: Context) -> CatchView {
+        let view = CatchView()
+        view.onZoom = onZoom
+        return view
+    }
+
+    func updateNSView(_ nsView: CatchView, context: Context) {
+        nsView.onZoom = onZoom
     }
 }

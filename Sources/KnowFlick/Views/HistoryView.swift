@@ -29,7 +29,14 @@ struct HistoryView: View {
             VStack(spacing: 0) {
                 // 头部
                 HStack(spacing: 16) {
-                    Button(action: onClose) {
+                    Button(action: {
+                        // Esc 所有权跟随最上层：详情浮层打开时先收起详情，再退回卡堆
+                        if selectedCard != nil {
+                            selectedCard = nil
+                        } else {
+                            onClose()
+                        }
+                    }) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(EditorialColor.textPrimary)
