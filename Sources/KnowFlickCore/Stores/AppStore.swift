@@ -56,6 +56,8 @@ public final class AppStore {
     private let credentials: any CredentialStore
     private var lastSwipedCardId: UUID?
     private var lastSwipedKey: String?
+    private var settingsPersistTask: Task<Void, Never>?
+    private var settingsPersistRevision = 0
 
     public init(
         storage: Storage = Storage(),
@@ -182,6 +184,43 @@ public final class AppStore {
     private let persistenceQueue = DispatchQueue(label: "com.knowflick.persistence", qos: .utility)
 
     /// 合并连续变更，再通过串行队列写盘，防止旧快照覆盖新快照。
+    /// 非密钥类设置的轻量变更（外观循环、磨耳朵语速等高频开关）：
+    /// 内存即时生效，JSON 落盘经后台节流队列异步执行，不触碰钥匙串。
+    /// 密钥类变更请走 `saveSettings`（同步抛错 + 钥匙串回滚语义）。
+    public func applySettingsChange(_ mutate: (inout AISettings) -> Void) {
+        var updated = settings
+        mutate(&updated)
+        settings = updated
+
+        settingsPersistTask?.cancel()
+        settingsPersistRevision &+= 1
+        let revision = settingsPersistRevision
+        settingsPersistTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(0.35)) }
+            catch { return }
+            guard let self, !Task.isCancelled else { return }
+            let snapshot = self.settings
+            let storage = self.storage
+            self.persistenceQueue.async { [weak self] in
+                do {
+                    try storage.saveSettingsThrowing(snapshot)
+                    Task { @MainActor [weak self] in
+                        guard let self, self.settingsPersistRevision == revision else { return }
+                        // 仅清理本通道产生的告警，不掩盖卡片保存告警
+                        if self.persistenceWarning?.hasPrefix("设置保存失败") == true {
+                            self.persistenceWarning = nil
+                        }
+                    }
+                } catch {
+                    Task { @MainActor [weak self] in
+                        guard let self, self.settingsPersistRevision == revision else { return }
+                        self.persistenceWarning = "设置保存失败：\(error.localizedDescription)"
+                    }
+                }
+            }
+        }
+    }
+
     private func persist() {
         persistTask?.cancel()
         persistenceRevision &+= 1
@@ -206,9 +245,16 @@ public final class AppStore {
     public func flushPersistence() {
         persistTask?.cancel()
         persistTask = nil
+        settingsPersistTask?.cancel()
+        settingsPersistTask = nil
         persistenceRevision &+= 1
         let snapshot = cards
-        let result = persistenceQueue.sync { storage.saveCards(snapshot) }
+        let settingsSnapshot = settings
+        let result = persistenceQueue.sync {
+            let cardResult = storage.saveCards(snapshot)
+            try? storage.saveSettingsThrowing(settingsSnapshot)
+            return cardResult
+        }
         receiveSaveResult(result)
     }
 
@@ -224,8 +270,7 @@ public final class AppStore {
         flushPersistence()
     }
 
-    private func receiveSaveResult(_ result: CardSaveResult) {
-        switch result {
+    private func receiveSaveResult(_ result: CardSaveResult) {        switch result {
         case .saved:
             persistenceWarning = nil
         case .failed(let message):

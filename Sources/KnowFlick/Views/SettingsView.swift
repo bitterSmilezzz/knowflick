@@ -24,9 +24,11 @@ struct SettingsView: View {
     @State private var autoSpeakOnDetailOpen: Bool = false
     @State private var newCategoryName = ""
     @State private var newCategoryDesc = ""
-    @State private var savedToast = false
+    @State private var toast = ToastCenter()
     @State private var saveErrorMessage: String?
     @State private var testResult: String?
+    // 分类管理的独立提示：与连通性测试状态分离，避免「分类已存在」被误渲染为连接失败
+    @State private var categoryNotice: String?
     @State private var isTesting = false
     @State private var showExportModal = false
     @State private var showImportModal = false
@@ -103,22 +105,9 @@ struct SettingsView: View {
             autoSpeakOnDetailOpen = store.settings.autoSpeakOnDetailOpen
         }
         .overlay(alignment: .bottom) {
-            if savedToast {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(EditorialColor.likeGreen)
-                    Text("设置已保存并生效")
-                        .font(EditorialFont.labelSmall)
-                        .foregroundStyle(EditorialColor.textPrimary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .background(Color.black.opacity(0.8), in: Capsule())
-                .overlay(Capsule().strokeBorder(EditorialColor.likeGreen.opacity(0.6), lineWidth: 1))
-                .shadow(color: EditorialColor.likeGreen.opacity(0.3), radius: 10, y: 4)
+            EditorialToast(center: toast)
                 .padding(.bottom, 64)
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            }
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
         .overlay {
             if showExportModal {
@@ -230,11 +219,10 @@ struct SettingsView: View {
                     let isSelected = (appearance == mode)
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            // 与其余 18 项一致：仅写入本地编辑态，点击「保存配置」统一生效，
+                            // 保证「放弃修改并关闭」承诺可兑现
                             appearance = mode
-                            store.settings.appearance = mode
                         }
-                        do { try store.saveSettings(store.settings) }
-                        catch { store.lastError = "外观设置保存失败：\(error.localizedDescription)" }
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: mode.icon)
@@ -545,6 +533,12 @@ struct SettingsView: View {
                     Text("新增分类后，系统将自动映射唯一的摄影底图与主题色彩")
                         .font(EditorialFont.captionSmall)
                         .foregroundStyle(EditorialColor.textMuted)
+
+                    if let notice = categoryNotice {
+                        Label(notice, systemImage: "exclamationmark.circle.fill")
+                            .font(EditorialFont.captionSmall)
+                            .foregroundStyle(EditorialColor.aiAmber)
+                    }
                 }
                 .padding(.top, 4)
             }
@@ -958,11 +952,7 @@ struct SettingsView: View {
         do {
             try store.saveSettings(updated)
             saveErrorMessage = nil
-            savedToast = true
-            Task {
-                try? await Task.sleep(for: .seconds(1.5))
-                savedToast = false
-            }
+            toast.show("配置已保存", style: .success)
             return true
         } catch {
             // 失败提示放在页面顶部横幅，避免只写底栏（sheet 关闭后即不可见）
@@ -976,9 +966,10 @@ struct SettingsView: View {
         let name = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         guard name != CategoryRegistry.builtinCategory, !customCategories.contains(where: { $0.name == name }) else {
-            testResult = "分类「\(name)」已存在"
+            categoryNotice = "分类「\(name)」已存在"
             return
         }
+        categoryNotice = nil
         customCategories.append(CategoryConfig(
             name: name,
             description: newCategoryDesc.trimmingCharacters(in: .whitespacesAndNewlines)

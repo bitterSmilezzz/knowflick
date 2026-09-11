@@ -193,9 +193,8 @@ struct AmbientAudioPlayerBar: View {
         if let idx = speeds.firstIndex(where: { abs($0 - current) < 0.05 }) {
             let next = speeds[(idx + 1) % speeds.count]
             speechService.speedMultiplier = next
-            store.settings.speechRate = next
-            do { try store.saveSettings(store.settings) }
-            catch { store.lastError = "语音设置保存失败：\(error.localizedDescription)" }
+            // 高频开关走轻量通道：内存即时生效，落盘异步节流
+            store.applySettingsChange { $0.speechRate = next }
         } else {
             speechService.speedMultiplier = 1.0
         }

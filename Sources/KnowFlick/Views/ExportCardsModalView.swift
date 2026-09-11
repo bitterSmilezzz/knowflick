@@ -21,8 +21,7 @@ struct ExportCardsModalView: View {
     @State private var selectedScope: ExportScope = .all
     @State private var selectedCategory: String = "全部"
     @State private var selectedFormat: CardExportFormat = .markdownSingle
-    @State private var toastMessage: String?
-    @State private var toastIsFailure: Bool = false
+    @State private var toast = ToastCenter()
     @State private var isExporting: Bool = false
     @State private var previewContent = "正在准备预览…"
     @State private var previewReady = false
@@ -90,27 +89,12 @@ struct ExportCardsModalView: View {
                 bottomActionBar
             }
 
-            if let toast = toastMessage {
-                let accent = toastIsFailure ? EditorialColor.dislikeRed : EditorialColor.likeGreen
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: toastIsFailure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                            .foregroundStyle(accent)
-                        Text(toast)
-                            .font(EditorialFont.labelSmall)
-                            .foregroundStyle(.white)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.85), in: Capsule())
-                    .overlay(Capsule().strokeBorder(accent.opacity(0.6), lineWidth: 1))
-                    .shadow(color: Color.black.opacity(0.2), radius: 10, y: 4)
+            VStack {
+                Spacer()
+                EditorialToast(center: toast)
                     .padding(.bottom, 68)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
         .frame(minWidth: 720, idealWidth: 760, minHeight: 560, idealHeight: 640)
         .onAppear {
@@ -378,7 +362,7 @@ struct ExportCardsModalView: View {
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(previewContent, forType: .string)
-                    triggerToast("已复制当前预览样本")
+                    toast.show("已复制当前预览样本")
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "doc.on.doc")
@@ -492,10 +476,10 @@ struct ExportCardsModalView: View {
                 guard !Task.isCancelled else { return }
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
-                triggerToast("已复制 \(cards.count) 张卡片的完整内容")
+                toast.show("已复制 \(cards.count) 张卡片的完整内容")
             } catch {
                 guard !Task.isCancelled else { return }
-                triggerToast("复制失败：\(error.localizedDescription)", isFailure: true)
+                toast.show("复制失败：\(error.localizedDescription)", style: .failure)
             }
         }
     }
@@ -561,23 +545,10 @@ struct ExportCardsModalView: View {
             do {
                 let destination = try await CardTransferService.save(cards: cards, format: format, to: url)
                 guard !Task.isCancelled else { return }
-                triggerToast("已导出 \(cards.count) 张卡片至 \(destination.lastPathComponent)")
+                toast.show("已导出 \(cards.count) 张卡片至 \(destination.lastPathComponent)")
             } catch {
                 guard !Task.isCancelled else { return }
-                triggerToast("保存失败：\(error.localizedDescription)", isFailure: true)
-            }
-        }
-    }
-
-    private func triggerToast(_ message: String, isFailure: Bool = false) {
-        toastMessage = message
-        toastIsFailure = isFailure
-        guard !isFailure else { return }
-        Task {
-            try? await Task.sleep(for: .seconds(2.5))
-            if toastMessage == message {
-                toastMessage = nil
-                toastIsFailure = false
+                toast.show("保存失败：\(error.localizedDescription)", style: .failure)
             }
         }
     }

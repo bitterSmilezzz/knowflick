@@ -34,7 +34,7 @@ struct ImportNotesModalView: View {
     @State private var selectedCardIds: Set<UUID> = []
     @State private var insertAtTop: Bool = true
     @State private var importResultDescription: String?
-    @State private var toastMessage: String?
+    @State private var toast = ToastCenter()
     @State private var parsingTask: Task<Void, Never>?
     @State private var readingTask: Task<Void, Never>?
     @State private var closeTask: Task<Void, Never>?
@@ -88,25 +88,12 @@ struct ImportNotesModalView: View {
                 bottomActionBar
             }
 
-            if let toast = toastMessage {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(EditorialColor.likeGreen)
-                        Text(toast)
-                            .font(EditorialFont.labelSmall)
-                            .foregroundStyle(EditorialColor.textPrimary)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.85), in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.likeGreen.opacity(0.6), lineWidth: 1))
-                    .shadow(color: Color.black.opacity(0.2), radius: 10, y: 4)
+            VStack {
+                Spacer()
+                EditorialToast(center: toast)
                     .padding(.bottom, 68)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
         .frame(minWidth: 740, idealWidth: 780, minHeight: 580, idealHeight: 660)
         .onChange(of: noteText) { _, _ in invalidatePreview() }
@@ -547,7 +534,7 @@ struct ImportNotesModalView: View {
         guard !cardsToImport.isEmpty else { return }
 
         let result = store.importCards(cardsToImport, insertAtTop: insertAtTop)
-        triggerToast("已成功导入 \(result.parsedCards.count) 张卡片\(result.duplicateCount > 0 ? "（去重跳过 \(result.duplicateCount) 张）" : "")")
+        toast.show("已成功导入 \(result.parsedCards.count) 张卡片\(result.duplicateCount > 0 ? "（去重跳过 \(result.duplicateCount) 张）" : "")")
 
         closeTask = Task {
             do { try await Task.sleep(for: .seconds(1.2)) } catch { return }
@@ -559,16 +546,6 @@ struct ImportNotesModalView: View {
         let norm = CardImportEngine.normalizeHeadline(card.headline)
         return store.cards.contains {
             $0.id == card.id || CardImportEngine.normalizeHeadline($0.headline) == norm
-        }
-    }
-
-    private func triggerToast(_ message: String) {
-        toastMessage = message
-        Task {
-            try? await Task.sleep(for: .seconds(2.5))
-            if toastMessage == message {
-                toastMessage = nil
-            }
         }
     }
 }

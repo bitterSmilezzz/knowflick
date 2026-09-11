@@ -41,7 +41,7 @@ struct CardFollowUpChatView: View {
                 }
 
                 if let error = store.chatErrorMessage {
-                    errorBanner(message: error)
+                    chatErrorBanner(message: error)
                 }
 
                 Divider().overlay(EditorialColor.glassDivider)
@@ -360,7 +360,8 @@ struct CardFollowUpChatView: View {
 
     // MARK: - 错误提示
 
-    private func errorBanner(message: String) -> some View {
+    /// 聊天页内联错误横幅（非 Toast，常驻显示直至下一条消息）
+    private func chatErrorBanner(message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)

@@ -8,31 +8,8 @@ public struct CardPosterExportSheet: View {
     public let onClose: () -> Void
 
     @State private var selectedStyle: CardPosterStyle = .editorial
-    @State private var toastMessage: String? = nil
-    @State private var toastStyle: ToastStyle = .success
-    @State private var toastWorkItem: DispatchWorkItem? = nil
+    @State private var toast = ToastCenter()
     @State private var isExporting: Bool = false
-
-    /// Toast 语义样式：成功用绿色对勾，失败用红色感叹号，中性提示（如用户取消）用灰色信息图标。
-    private enum ToastStyle {
-        case success, failure, neutral
-
-        var icon: String {
-            switch self {
-            case .success: "checkmark.circle.fill"
-            case .failure: "exclamationmark.triangle.fill"
-            case .neutral: "info.circle.fill"
-            }
-        }
-
-        var tint: Color {
-            switch self {
-            case .success: EditorialColor.likeGreen
-            case .failure: EditorialColor.dislikeRed
-            case .neutral: EditorialColor.skipGray
-            }
-        }
-    }
 
     public init(card: KnowledgeCard, onClose: @escaping () -> Void) {
         self.card = card
@@ -67,27 +44,13 @@ public struct CardPosterExportSheet: View {
             }
 
             // 浮动 HUD Toast 反馈
-            if let toast = toastMessage {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: toastStyle.icon)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(toastStyle.tint)
-                        Text(toast)
-                            .font(EditorialFont.labelSmall)
-                            .foregroundStyle(Color.white)
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 11)
-                    .background(Color.black.opacity(0.85), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.2), lineWidth: 0.8))
-                    .shadow(color: Color.black.opacity(0.4), radius: 14, y: 6)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            VStack {
+                Spacer()
+                EditorialToast(center: toast)
                     .padding(.bottom, 80)
-                }
-                .zIndex(200)
             }
+            .zIndex(200)
+            .animation(.spring(response: 0.28, dampingFraction: 0.8), value: toast.message)
         }
         .frame(minWidth: 700, idealWidth: 760, minHeight: 680, idealHeight: 720)
     }
@@ -239,22 +202,22 @@ public struct CardPosterExportSheet: View {
 
     private func copyToClipboard() {
         guard let image = PosterExportManager.shared.renderImage(for: card, style: selectedStyle, scale: 2.0) else {
-            showToast("生成海报图片失败", style: .failure)
+            toast.show("生成海报图片失败", style: .failure)
             return
         }
 
         let success = PosterExportManager.shared.copyToPasteboard(image: image)
         if success {
             HapticFeedbackHelper.shared.cardThresholdReached()
-            showToast("已复制到剪贴板，随时可 ⌘V 粘贴分享", style: .success)
+            toast.show("已复制到剪贴板，随时可 ⌘V 粘贴分享", style: .success)
         } else {
-            showToast("写入剪贴板失败", style: .failure)
+            toast.show("写入剪贴板失败", style: .failure)
         }
     }
 
     private func saveToDisk() {
         guard let image = PosterExportManager.shared.renderImage(for: card, style: selectedStyle, scale: 2.0) else {
-            showToast("生成海报图片失败", style: .failure)
+            toast.show("生成海报图片失败", style: .failure)
             return
         }
 
@@ -266,30 +229,14 @@ public struct CardPosterExportSheet: View {
             switch result {
             case .saved(let url):
                 HapticFeedbackHelper.shared.cardThresholdReached()
-                showToast("海报已保存至 \(url.lastPathComponent)", style: .success)
+                toast.show("海报已保存至 \(url.lastPathComponent)", style: .success)
             case .cancelled:
                 // 用户主动取消属正常操作，不当作错误。
-                showToast("已取消保存", style: .neutral)
+                toast.show("已取消保存", style: .neutral)
             case .failed(let reason):
-                showToast("保存失败：\(reason)", style: .failure)
+                toast.show("保存失败：\(reason)", style: .failure)
             }
         }
-    }
-
-    private func showToast(_ message: String, style: ToastStyle = .success) {
-        toastWorkItem?.cancel()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-            toastStyle = style
-            toastMessage = message
-        }
-
-        let work = DispatchWorkItem {
-            withAnimation(.easeOut(duration: 0.3)) {
-                toastMessage = nil
-            }
-        }
-        toastWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
     }
 }
 

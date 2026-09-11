@@ -54,8 +54,7 @@ struct CardDeckView: View {
     @State private var swipingDirection: SwipeDirection? = nil
 
     @State private var activeSheet: ActiveSheet? = nil
-    @State private var errorBanner = false
-    @State private var errorToken = 0
+    @State private var toast = ToastCenter()
     @State private var triggerSheen = false
     @State private var showingWorkspace = true
 
@@ -316,17 +315,22 @@ struct CardDeckView: View {
             }
         }
         .onChange(of: store.lastError) { _, err in
-            if err != nil {
-                errorBanner = true
-                errorToken &+= 1
+            if let err {
+                toast.show(err, style: .failure, duration: .seconds(5))
+            }
+        }
+        // 提示结束（自动到期或手动关闭）即清空 lastError，
+        // 保证下一次内容完全相同的错误仍能触发 onChange 重新弹出
+        .onChange(of: toast.message) { _, message in
+            if message == nil {
+                store.lastError = nil
             }
         }
 
         .overlay(alignment: .top) {
-            if errorBanner, let msg = store.lastError {
-                errorToast(msg)
-                    .id(errorToken)
-            }
+            EditorialToast(center: toast)
+                .padding(.top, 14)
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
     }
 
@@ -710,11 +714,10 @@ struct CardDeckView: View {
                     let nextIndex = (currentIndex + 1) % all.count
                     let nextMode = all[nextIndex]
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        store.settings.appearance = nextMode
+                        // 高频开关走轻量通道：内存即时生效，落盘异步节流，不阻塞主线程
+                        store.applySettingsChange { $0.appearance = nextMode }
                     }
                     HapticFeedbackHelper.shared.cardSnapBack()
-                    do { try store.saveSettings(store.settings) }
-                    catch { store.lastError = "外观设置保存失败：\(error.localizedDescription)" }
                 }
                 Menu {
                     Section("探索与学习") {
@@ -954,36 +957,6 @@ struct CardDeckView: View {
         }
     }
 
-    // MARK: - 错误提示
-
-    private func errorToast(_ msg: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-            Text(msg)
-                .lineLimit(2)
-            Button {
-                errorBanner = false
-                store.lastError = nil
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.plain)
-        }
-        .font(.callout)
-        .foregroundStyle(.white)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(red: 0.55, green: 0.22, blue: 0.20).opacity(0.92), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
-        .padding(.top, 14)
-        .task {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            errorBanner = false
-            // 展示完毕即清空，保证下一次内容完全相同的错误仍能触发 onChange 重新弹出
-            store.lastError = nil
-        }
-    }
 }
 
 // MARK: - 按压反馈按钮样式（hover 亮起 + 按压缩小）

@@ -250,3 +250,27 @@ struct AppStoreTests {
         }
     }
 }
+
+/// 非密钥设置轻量变更通道：内存即时生效 + 落盘异步节流 + 不触碰钥匙串
+extension AppStoreTests {
+    @Test func applySettingsChangeAppliesAndPersistsWithoutKeychain() throws {
+        try withStore { store, _, directory in
+            let credentials = MemoryCredentialProbe()
+            let store2 = AppStore(storage: Storage(baseDir: directory), credentials: credentials)
+            defer { store2.flushPersistence() }
+            store2.applySettingsChange { $0.appearance = .light }
+            #expect(store2.settings.appearance == .light)
+            store2.flushPersistence()
+            #expect(Storage(baseDir: directory).loadSettings().appearance == .light)
+            #expect(credentials.values.isEmpty)
+        }
+    }
+}
+
+@MainActor
+private final class MemoryCredentialProbe: CredentialStore {
+    var values: [String: String] = [:]
+    func read(account: String) -> String? { values[account] }
+    func save(_ value: String, account: String) throws { values[account] = value }
+    func delete(account: String) throws { values.removeValue(forKey: account) }
+}

@@ -14,7 +14,7 @@ struct FavoritesView: View {
     @State private var searchText: String = ""
     @State private var selectedCard: KnowledgeCard? = nil
     @State private var sharePosterCard: KnowledgeCard? = nil
-    @State private var toastMessage: String? = nil
+    @State private var toast = ToastCenter()
     @State private var showQuiz: Bool = false
     @State private var quizCategory: String? = nil
     @State private var showExportModal: Bool = false
@@ -68,11 +68,12 @@ struct FavoritesView: View {
             }
 
             // 悬浮反馈 Toast
-            if let toast = toastMessage {
-                toastView(toast)
-                    .zIndex(200)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            VStack {
+                EditorialToast(center: toast)
+                    .padding(.top, 24)
+                Spacer()
             }
+            .zIndex(200)
         }
         .overlay {
             if let card = selectedCard {
@@ -106,7 +107,7 @@ struct FavoritesView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toastMessage)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         .frame(minWidth: 840, minHeight: 600)
     }
 
@@ -438,7 +439,7 @@ struct FavoritesView: View {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                         store.toggleFavorite(card)
-                        triggerToast("已将《\(card.headline)》移出收藏阁")
+                        toast.show("已将《\(card.headline)》移出收藏阁")
                     }
                 } label: {
                     Image(systemName: "heart.fill")
@@ -641,7 +642,7 @@ struct FavoritesView: View {
         pb.clearContents()
         pb.setString(md, forType: .string)
 
-        triggerToast("已复制 \(exportList.count) 篇知识笔记 (Markdown) 至剪贴板")
+        toast.show("已复制 \(exportList.count) 篇知识笔记 (Markdown) 至剪贴板")
     }
 
     private func saveMarkdownToFile(filteredOnly: Bool) {
@@ -667,43 +668,11 @@ struct FavoritesView: View {
             if response == .OK, let url = savePanel.url {
                 do {
                     try md.write(to: url, atomically: true, encoding: .utf8)
-                    triggerToast("已成功导出笔记至 \(url.lastPathComponent)")
+                    toast.show("已成功导出笔记至 \(url.lastPathComponent)")
                 } catch {
-                    triggerToast("导出失败：\(error.localizedDescription)")
+                    toast.show("导出失败：\(error.localizedDescription)", style: .failure)
                 }
             }
-        }
-    }
-
-    private func triggerToast(_ message: String) {
-        toastMessage = message
-        Task {
-            try? await Task.sleep(for: .seconds(2.5))
-            if toastMessage == message {
-                toastMessage = nil
-            }
-        }
-    }
-
-    private func toastView(_ text: String) -> some View {
-        VStack {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(EditorialColor.likeGreen)
-                    .font(.system(size: 13, weight: .bold))
-
-                Text(text)
-                    .font(EditorialFont.labelSmall)
-                    .foregroundStyle(EditorialColor.textPrimary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .background(Color.black.opacity(0.78), in: Capsule())
-            .overlay(Capsule().strokeBorder(EditorialColor.glassBorderHover, lineWidth: 1))
-            .shadow(color: Color.black.opacity(0.35), radius: 12, y: 5)
-            .padding(.top, 24)
-
-            Spacer()
         }
     }
 }
