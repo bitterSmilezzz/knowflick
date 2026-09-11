@@ -137,39 +137,45 @@ public final class AppStore {
 
     public func bootstrap() async {
         guard isLoadingSeed else { return }
-        let loadedCards = storage.loadCards()
-        if !loadedCards.isEmpty {
-            cards = loadedCards
+        // 文件 IO 与种子解码（338KB JSON）放后台线程，钥匙串读取保持主线程（协议隔离）；
+        // 卡片与设置均一次性赋值，避免逐字段变更触发 didSet → recompute 风暴
+        let storage = self.storage
+        let io = Task.detached(priority: .userInitiated) { () -> (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings) in
+            (storage.loadCards(), Self.loadSeedCards(), storage.loadSettings())
+        }
+        let loaded = await io.value
+
+        if !loaded.loaded.isEmpty {
+            var merged = loaded.loaded
             // 自动同步增量种子卡：若内置 seed 库有新扩充卡片，增量合并到用户卡库。
             // 口径与导入去重一致：归一化 headline 比较，用户改过标点/大小写的种子卡不重复灌入
-            let existingHeadlines = Set(cards.map { CardImportEngine.normalizeHeadline($0.headline) })
-            let seeds = loadSeedCards()
-            let newSeeds = seeds.filter { !existingHeadlines.contains(CardImportEngine.normalizeHeadline($0.headline)) }
-            if !newSeeds.isEmpty {
-                cards.append(contentsOf: newSeeds)
-                persist()
-            }
+            let existingHeadlines = Set(merged.map { CardImportEngine.normalizeHeadline($0.headline) })
+            let newSeeds = loaded.seeds.filter { !existingHeadlines.contains(CardImportEngine.normalizeHeadline($0.headline)) }
+            merged.append(contentsOf: newSeeds)
+            cards = merged
+            if !newSeeds.isEmpty { persist() }
         } else {
-            cards = loadSeedCards()
+            cards = loaded.seeds
             persist()
         }
-        settings = storage.loadSettings()
+        var migratedSettings = loaded.settings
         // 迁移旧版本可能写入 JSON 的密钥；成功进入 Keychain 后再清除明文。
-        let legacyKey = settings.apiKey
+        let legacyKey = migratedSettings.apiKey
         if let key = credentials.read(account: "apiKey") {
-            settings.apiKey = key
-            if !legacyKey.isEmpty { try? storage.saveSettingsThrowing(settings) }
+            migratedSettings.apiKey = key
+            if !legacyKey.isEmpty { try? storage.saveSettingsThrowing(migratedSettings) }
         } else if !legacyKey.isEmpty {
             do {
                 try credentials.save(legacyKey, account: "apiKey")
-                try? storage.saveSettingsThrowing(settings)
+                try? storage.saveSettingsThrowing(migratedSettings)
             } catch {
                 lastError = error.localizedDescription
             }
         }
-        for i in settings.speech.profiles.indices {
-            settings.speech.profiles[i].apiKey = credentials.read(account: "tts." + settings.speech.profiles[i].id) ?? ""
+        for i in migratedSettings.speech.profiles.indices {
+            migratedSettings.speech.profiles[i].apiKey = credentials.read(account: "tts." + migratedSettings.speech.profiles[i].id) ?? ""
         }
+        settings = migratedSettings
         isLoadingSeed = false
         // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）
         if deck.count < 5 && settings.autoGenerate && settings.isAIConfigured && settings.enableAI {
@@ -238,6 +244,28 @@ public final class AppStore {
                     guard let self, self.persistenceRevision == revision else { return }
                     self.receiveSaveResult(result)
                 }
+            }
+        }
+    }
+
+    /// 切后台等场景的即时保存：取消节流并立即在后台队列落盘，不阻塞主线程。
+    /// 真正退出（willTerminate）请用 `shutdown()`，其同步等待写入完成。
+    public func persistImmediately() {
+        persistTask?.cancel()
+        persistTask = nil
+        settingsPersistTask?.cancel()
+        settingsPersistTask = nil
+        persistenceRevision &+= 1
+        let revision = persistenceRevision
+        let cardsSnapshot = cards
+        let settingsSnapshot = settings
+        let storage = self.storage
+        persistenceQueue.async { [weak self] in
+            let result = storage.saveCards(cardsSnapshot)
+            try? storage.saveSettingsThrowing(settingsSnapshot)
+            Task { @MainActor [weak self] in
+                guard let self, self.persistenceRevision == revision else { return }
+                self.receiveSaveResult(result)
             }
         }
     }
@@ -406,8 +434,8 @@ public final class AppStore {
 
         let processed = toAdd
         if insertAtTop {
+            // didSet 已同步触发 recomputeDeckAndHistory，无需再显式重算一遍
             cards = processed + cards
-            recomputeDeckAndHistory()
             let processedIds = Set(processed.map(\.id))
             let promoted = deck.filter { processedIds.contains($0.id) }
             let otherDeck = deck.filter { !processedIds.contains($0.id) }
@@ -677,6 +705,32 @@ public final class AppStore {
         }
     }
 
+    /// 聊天会话写入移出主线程：经串行持久化队列与卡片写入排队，与清除操作保持先后顺序
+    private func persistChatSession(_ session: CardChatSession) {
+        let storage = self.storage
+        persistenceQueue.async { [weak self] in
+            do { try storage.saveChatSessionThrowing(session) }
+            catch {
+                Task { @MainActor [weak self] in
+                    self?.chatErrorMessage = "聊天记录保存失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// 清除会话同样走后台队列，保证与保存操作的先后顺序
+    private func clearChatSessionOnDisk(for cardId: UUID) {
+        let storage = self.storage
+        persistenceQueue.async { [weak self] in
+            do { try storage.clearChatSessionThrowing(for: cardId) }
+            catch {
+                Task { @MainActor [weak self] in
+                    self?.chatErrorMessage = "聊天记录清除失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     /// 关闭追问面板
     public func closeChat() {
         cancelChatStreaming()
@@ -732,8 +786,7 @@ public final class AppStore {
                 }
                 self.isChatStreaming = false
                 if let session = self.currentChatSession {
-                    do { try self.storage.saveChatSessionThrowing(session) }
-                    catch { self.chatErrorMessage = "聊天记录保存失败：\(error.localizedDescription)" }
+                    self.persistChatSession(session)
                 }
             } catch {
                 if !Task.isCancelled {
@@ -747,8 +800,7 @@ public final class AppStore {
                         }
                     }
                     if let session = self.currentChatSession {
-                        do { try self.storage.saveChatSessionThrowing(session) }
-                        catch { self.chatErrorMessage = "聊天记录保存失败：\(error.localizedDescription)" }
+                        self.persistChatSession(session)
                     }
                 }
             }
@@ -765,8 +817,7 @@ public final class AppStore {
             for i in session.messages.indices { session.messages[i].isStreaming = false }
             session.updatedAt = Date()
             currentChatSession = session
-            do { try storage.saveChatSessionThrowing(session) }
-            catch { chatErrorMessage = "聊天记录保存失败：\(error.localizedDescription)" }
+            persistChatSession(session)
         }
     }
 
@@ -774,14 +825,13 @@ public final class AppStore {
     public func clearCurrentChatSession() {
         cancelChatStreaming()
         guard let card = activeChatCard else { return }
-        do { try storage.clearChatSessionThrowing(for: card.id) }
-        catch { chatErrorMessage = "聊天记录清除失败：\(error.localizedDescription)" }
+        clearChatSessionOnDisk(for: card.id)
         currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
     }
 
     // MARK: - 预置库
 
-    private func loadSeedCards() -> [KnowledgeCard] {
+    private nonisolated static func loadSeedCards() -> [KnowledgeCard] {
         guard let url = Bundle.module.url(forResource: "seed_cards", withExtension: "json"),
               let data = try? Data(contentsOf: url) else { return [] }
         struct SeedCard: Decodable {

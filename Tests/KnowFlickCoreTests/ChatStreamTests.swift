@@ -70,8 +70,14 @@ struct ChatStreamTests {
         #expect(messages.last?.content == "碳纤维比铝还轻")
         #expect(messages.last?.isStreaming == false)
 
-        // 会话已落盘（Streaming 完成即保存）
-        let persisted = Storage(baseDir: directory).loadChatSession(for: subject.id)
+        // 会话已落盘（写入走后台串行队列，轮询等待）
+        let persistedStorage = Storage(baseDir: directory)
+        let persistDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var persisted = persistedStorage.loadChatSession(for: subject.id)
+        while persisted?.messages.last?.content != "碳纤维比铝还轻" && ContinuousClock.now < persistDeadline {
+            try await Task.sleep(for: .milliseconds(25))
+            persisted = persistedStorage.loadChatSession(for: subject.id)
+        }
         #expect(persisted?.messages.last?.content == "碳纤维比铝还轻")
     }
 

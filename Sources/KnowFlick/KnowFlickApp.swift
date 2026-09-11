@@ -14,7 +14,9 @@ struct KnowFlickApp: App {
                     store.shutdown()
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase != .active { store.flushPersistence() }
+                    // 切后台不再主线程同步写盘（会随卡库增长造成 Cmd-Tab 掉帧）；
+                    // 立即写入交给后台队列，真正退出由 willTerminate 的 shutdown 同步收口
+                    if phase != .active { store.persistImmediately() }
                 }
                 .preferredColorScheme(store.settings.appearance.colorScheme)
                 .task {

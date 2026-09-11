@@ -23,6 +23,9 @@ public enum StorageWriteError: LocalizedError, Sendable {
 public struct Storage: Sendable {
     private let baseDir: URL
     private var fileManager: FileManager { .default }
+    // 加载期检测到损坏后置位：下次轮转备份前先解码校验旧主文件，避免坏字节污染备份。
+    // 常态跳过全量解码（每次落盘省一整轮 JSON decode）；保存成功后复位。
+    private let corruptionFlag = CorruptionFlagBox()
 
     /// 默认存储目录（Application Support/KnowFlick）
     public init() {
@@ -38,6 +41,19 @@ public struct Storage: Sendable {
 
     private func fileURL(_ name: String) -> URL {
         baseDir.appendingPathComponent(name)
+    }
+
+    /// 线程安全损坏标记（Storage 为值类型，用引用盒跨副本共享）
+    private final class CorruptionFlagBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        var get: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return value
+        }
+        func set(_ newValue: Bool) {
+            lock.lock(); value = newValue; lock.unlock()
+        }
     }
 
     // MARK: - 卡片库
@@ -59,6 +75,7 @@ public struct Storage: Sendable {
            let cards = try? decoder.decode([KnowledgeCard].self, from: bdata),
            !cards.isEmpty {
             NSLog("KnowFlick: cards.json 损坏，已从备份恢复 %d 张卡片", cards.count)
+            corruptionFlag.set(true)
             saveCards(cards)
             return cards
         }
@@ -66,6 +83,7 @@ public struct Storage: Sendable {
         if (try? Data(contentsOf: url)) != nil || (try? Data(contentsOf: backup)) != nil {
             NSLog("KnowFlick: 卡片数据不可恢复，将重新初始化")
         }
+        corruptionFlag.set(true)
         quarantineIfPresent(url)
         quarantineIfPresent(backup)
         return []
@@ -93,12 +111,22 @@ public struct Storage: Sendable {
         }
         let url = fileURL("cards.json")
         let backup = fileURL("cards.backup.json")
-        // 只轮转可解码的健康主文件；恢复备份时不能用损坏内容覆盖它。
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        // 备份内容 = 上一版主文件字节。常态直接轮转原始字节（零解码开销）；
+        // 仅当加载期发现过损坏时才解码校验，避免把坏字节转进备份。
         let previous = try? Data(contentsOf: url)
-        let previousCards = previous.flatMap { try? decoder.decode([KnowledgeCard].self, from: $0) }
-        let backupData = (previousCards?.isEmpty == false) ? (previous ?? data) : data
+        let backupData: Data
+        if let previous {
+            if corruptionFlag.get {
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let previousCards = try? decoder.decode([KnowledgeCard].self, from: previous)
+                backupData = (previousCards?.isEmpty == false) ? previous : data
+            } else {
+                backupData = previous
+            }
+        } else {
+            backupData = data
+        }
         var backupError: String?
         do {
             try backupData.write(to: backup, options: .atomic)
@@ -108,6 +136,7 @@ public struct Storage: Sendable {
         }
         do {
             try data.write(to: url, options: .atomic)
+            corruptionFlag.set(false)   // 主文件已是本进程写出的健康内容
         } catch {
             NSLog("KnowFlick: 卡片落盘失败: %@", error.localizedDescription)
             return .failed(error.localizedDescription)

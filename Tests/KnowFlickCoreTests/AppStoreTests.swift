@@ -20,6 +20,34 @@ struct AppStoreTests {
         try body(store, storage, directory)
     }
 
+    /// 异步版：聊天落盘已移至后台串行队列，断言需轮询等待
+    private func withStoreAsync(_ body: (AppStore, Storage, URL) async throws -> Void) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = Storage(baseDir: directory)
+        let store = AppStore(storage: storage)
+        defer {
+            store.closeChat()
+            store.flushPersistence()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try await body(store, storage, directory)
+    }
+
+    /// 轮询等待聊天会话在磁盘上达到期望状态（超时保护避免慢机误报）
+    private func waitForChatSession(
+        _ storage: Storage,
+        for id: UUID,
+        until condition: (CardChatSession?) -> Bool
+    ) async throws -> CardChatSession? {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var session = storage.loadChatSession(for: id)
+        while !condition(session) && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(25))
+            session = storage.loadChatSession(for: id)
+        }
+        return session
+    }
+
     @Test func sourceSwitchesRespectAllFourCombinations() throws {
         try withStore { store, _, _ in
             let seed = card("种子"), ai = card("人工智能", source: .ai)
@@ -100,8 +128,8 @@ struct AppStoreTests {
         }
     }
 
-    @Test func cancelChatRemovesEmptyPlaceholderAndPersistsPartialReply() throws {
-        try withStore { store, storage, _ in
+    @Test func cancelChatRemovesEmptyPlaceholderAndPersistsPartialReply() async throws {
+        try await withStoreAsync { store, storage, _ in
             let first = card("一")
             store.openChat(for: first)
             store.currentChatSession?.messages = [
@@ -110,24 +138,29 @@ struct AppStoreTests {
             ]
             store.cancelChatStreaming()
             #expect(store.currentChatSession?.messages.last?.isStreaming == false)
-            #expect(storage.loadChatSession(for: first.id)?.messages.last?.content == "部分回答")
+            let persisted = try await waitForChatSession(storage, for: first.id) { $0?.messages.last?.content == "部分回答" }
+            #expect(persisted?.messages.last?.content == "部分回答")
             store.currentChatSession?.messages.append(CardChatMessage(sender: .assistant, content: "", isStreaming: true))
             store.cancelChatStreaming()
             #expect(store.currentChatSession?.messages.count == 2)
         }
     }
 
-    @Test func switchingChatSavesPreviousCardAndClearKeepsOtherSessions() throws {
-        try withStore { store, storage, _ in
+    @Test func switchingChatSavesPreviousCardAndClearKeepsOtherSessions() async throws {
+        try await withStoreAsync { store, storage, _ in
             let first = card("一"), second = card("二")
             store.openChat(for: first)
             store.currentChatSession?.messages.append(CardChatMessage(sender: .user, content: "问题"))
             store.openChat(for: second)
-            #expect(storage.loadChatSession(for: first.id)?.messages.count == 1)
+            let persisted = try await waitForChatSession(storage, for: first.id) { $0?.messages.count == 1 }
+            #expect(persisted?.messages.count == 1)
             #expect(store.currentChatSession?.cardId == second.id)
             store.clearCurrentChatSession()
-            #expect(storage.loadChatSession(for: first.id)?.messages.count == 1)
-            #expect(storage.loadChatSession(for: second.id) == nil)
+            // 清除的是当前卡（second）的会话；first 会话保留、second 从未产生会话
+            let cleared = try await waitForChatSession(storage, for: second.id) { $0 == nil }
+            #expect(cleared == nil)
+            let preserved = try await waitForChatSession(storage, for: first.id) { $0?.messages.count == 1 }
+            #expect(preserved?.messages.count == 1)
         }
     }
 
