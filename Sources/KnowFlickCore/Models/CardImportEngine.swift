@@ -20,7 +20,23 @@ public enum CardImportEngine {
 
     public static func parseJSON(data: Data) throws -> [KnowledgeCard] {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            if let raw = try? container.decode(String.self) {
+                // 兼容毫秒级（外部工具常见）与秒级 ISO8601
+                let fractional = ISO8601DateFormatter()
+                fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                let plain = ISO8601DateFormatter()
+                if let date = fractional.date(from: raw) ?? plain.date(from: raw) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "无法识别的日期格式：\(raw)")
+            }
+            if let seconds = try? container.decode(Double.self) {
+                return Date(timeIntervalSince1970: seconds)
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "日期字段类型无效")
+        }
 
         if let list = try? decoder.decode([KnowledgeCard].self, from: data), !list.isEmpty {
             return list
@@ -28,10 +44,15 @@ public enum CardImportEngine {
         if let single = try? decoder.decode(KnowledgeCard.self, from: data) {
             return [single]
         }
-        // 尝试宽松解码器（允许日期解码失败时赋当前日期）
-        let relaxedDecoder = JSONDecoder()
-        if let list = try? relaxedDecoder.decode([KnowledgeCard].self, from: data), !list.isEmpty {
-            return list
+        // 逐卡挽救：一张坏卡不再拖垮整个文件（校验必填字段仍是单卡硬门槛）
+        if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            let salvaged = array.compactMap { item -> KnowledgeCard? in
+                guard let itemData = try? JSONSerialization.data(withJSONObject: item) else { return nil }
+                return try? decoder.decode(KnowledgeCard.self, from: itemData)
+            }
+            if !salvaged.isEmpty {
+                return salvaged
+            }
         }
         throw AIError.parse("无法解析 JSON 文件，格式与 KnowFlick 卡片结构不匹配")
     }
@@ -192,8 +213,8 @@ public enum CardImportEngine {
                 }
             }
 
-            // 识别标题：# 标题 或 ### 1. 标题
-            if headline.isEmpty && (line.hasPrefix("#") || line.hasPrefix("【") || line.contains("：")) {
+            // 识别标题：# 标题 或 ### 1. 标题；冒号行需排除列表项（如「- **收藏时间**：…」）
+            if headline.isEmpty && (line.hasPrefix("#") || line.hasPrefix("【") || (line.contains("：") && !isBulletLine(line))) {
                 let cleaned = cleanHeadline(line)
                 if !cleaned.isEmpty {
                     headline = cleaned
@@ -260,6 +281,12 @@ public enum CardImportEngine {
             createdAt: Date(),
             seenAt: nil
         )
+    }
+
+    /// 列表行（- / * / • 开头）不作为标题候选，避免把「- **收藏时间**：…」这类元数据抓成标题
+    private static func isBulletLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.hasPrefix("-") || trimmed.hasPrefix("*") || trimmed.hasPrefix("•") || trimmed.hasPrefix("+")
     }
 
     private static func cleanHeadline(_ raw: String) -> String {

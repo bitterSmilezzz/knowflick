@@ -180,4 +180,52 @@ struct CardImportEngineTests {
 
         try? FileManager.default.removeItem(at: tempDir)
     }
+
+    @Test("JSON 导入兼容毫秒级 ISO8601 日期并逐卡挽救坏档")
+    func testParseJSONTolerantDatesAndPerCardSalvage() throws {
+        let jsonStr = """
+        [
+          {
+            "id": "AAAAAAAA-2222-3333-4444-555555555555",
+            "category": "物理学",
+            "headline": "毫秒日期卡",
+            "summary": "摘要",
+            "details": "正文",
+            "source": "imported",
+            "createdAt": "2026-01-02T03:04:05.678Z"
+          },
+          {
+            "headline": 42
+          },
+          {
+            "id": "BBBBBBBB-2222-3333-4444-555555555555",
+            "category": "历史学",
+            "headline": "坏邻居旁边的正常卡",
+            "summary": "摘要",
+            "details": "正文",
+            "source": "imported"
+          }
+        ]
+        """
+        let cards = try CardImportEngine.parseJSON(data: jsonStr.data(using: .utf8)!)
+        #expect(cards.count == 2)
+        #expect(cards.map(\.headline) == ["毫秒日期卡", "坏邻居旁边的正常卡"])
+        // 毫秒级 ISO8601 已正确解析（2026-01-02T03:04:05.678Z ≈ 1767325445.678）
+        let createdAt = try #require(cards.first?.createdAt)
+        #expect(abs(createdAt.timeIntervalSince1970 - 1_767_323_045.678) < 1)
+    }
+
+    @Test("Markdown 列表项元数据不再被误抓为标题")
+    func testParseMarkdownBulletMetadataIsNotHeadline() {
+        let md = """
+        # 冰箱保鲜的真实原理
+        - **收藏时间**：2024-01-01 08:00
+        - **卡片来源**：精选经典
+        正文说明：低温只是延缓代谢，并不能杀菌。
+        """
+        let cards = CardImportEngine.parseMarkdown(text: md)
+        #expect(cards.count == 1)
+        #expect(cards[0].headline == "冰箱保鲜的真实原理")
+        #expect(!cards[0].headline.contains("收藏时间"))
+    }
 }
