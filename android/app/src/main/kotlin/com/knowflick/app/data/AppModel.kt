@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonArray
  * 无视图依赖，可在 JVM 测试中注入临时目录与种子直接驱动。
  */
 class AppModel(
-    private val storage: CardStorage,
+    internal val storage: CardStorage,
     seedCards: List<KnowledgeCard>,
 ) {
     val store = com.knowflick.app.domain.CardStore(seedCards = seedCards)

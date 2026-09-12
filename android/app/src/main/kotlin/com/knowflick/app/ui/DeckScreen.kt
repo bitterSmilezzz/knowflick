@@ -16,10 +16,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
@@ -66,6 +73,10 @@ fun DeckScreen(
     onOpenDetail: (KnowledgeCard) -> Unit,
     onOpenStats: () -> Unit,
     onOpenFavorites: () -> Unit,
+    onOpenSettings: () -> Unit = {},
+    onGenerateRequest: () -> Unit = {},
+    isGenerating: Boolean = false,
+    notice: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -112,13 +123,25 @@ fun DeckScreen(
                     fontFamily = FontFamily.Serif,
                 )
                 Spacer(Modifier.weight(1f))
+                if (isGenerating) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                }
+                IconButton(onClick = {
+                    if (!isGenerating) onGenerateRequest()
+                }) {
+                    Icon(Icons.Filled.AddCircle, contentDescription = "AI 生成新知识", tint = EditorialColor.aiAmber)
+                }
                 IconButton(onClick = onOpenFavorites) {
                     Icon(Icons.Filled.Bookmarks, contentDescription = "收藏阁", tint = MaterialTheme.colorScheme.onBackground)
                 }
                 IconButton(onClick = onOpenStats) {
                     Icon(Icons.Filled.BarChart, contentDescription = "学习统计", tint = MaterialTheme.colorScheme.onBackground)
                 }
-                TextButton(onClick = {
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Filled.Settings, contentDescription = "AI 服务设置", tint = MaterialTheme.colorScheme.onBackground)
+                }
+                IconButton(onClick = {
                     topCard?.let { card ->
                         flyingCard = card
                         flyingDirection = SwipeDirection.SKIP
@@ -126,7 +149,7 @@ fun DeckScreen(
                         store.swipe(card, SwipeDirection.SKIP)
                     }
                 }) {
-                    Text("换一批", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), fontSize = 12.sp)
+                    Icon(Icons.Filled.Sync, contentDescription = "换一批", tint = MaterialTheme.colorScheme.onBackground)
                 }
             }
 
@@ -234,6 +257,14 @@ fun DeckScreen(
                 }
             }
 
+            if (notice != null) {
+                Text(
+                    notice,
+                    color = EditorialColor.aiAmber,
+                    fontSize = 11.sp,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                )
+            }
             // 底部意图按钮
             Row(
                 Modifier

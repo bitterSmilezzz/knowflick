@@ -1,4 +1,4 @@
-> 📌 状态（android-v0.1.0 / M1）：可编译的 Kotlin + Compose 工程已落地——领域核心（卡片模型/JSON 线格式对齐/分类注册表/统计/学习计划/卡堆防重排布/状态机/文件存储）+ 38 项 JVM 测试全绿，Debug APK 可装配。构建：`cd android && ./gradlew :app:assembleDebug`（需 JDK 17 与 Android SDK 35）。M2 已接入 Compose 刷卡主界面（卡堆拖拽/详情/统计）；android-v0.2.1 补齐四层测试（JVM 40 + 模拟器 instrumented 5，`./gradlew :app:connectedDebugAndroidTest` 需先启动 `knowflick-test` AVD）。
+> 📌 状态（android-v0.1.0 / M1）：可编译的 Kotlin + Compose 工程已落地——领域核心（卡片模型/JSON 线格式对齐/分类注册表/统计/学习计划/卡堆防重排布/状态机/文件存储）+ 38 项 JVM 测试全绿，Debug APK 可装配。构建：`cd android && ./gradlew :app:assembleDebug`（需 JDK 17 与 Android SDK 35）。M2 已接入 Compose 刷卡主界面（卡堆拖拽/详情/统计）；android-v0.2.1 补齐四层测试（`./gradlew :app:connectedDebugAndroidTest` 需先启动 `knowflick-test` AVD）；android-v0.4.0 接入 AI 生成 + 设置页 + 16 服务商预设（OkHttp SSE 流式 + MockWebServer 测试）。
 
 # KnowFlick Android
 

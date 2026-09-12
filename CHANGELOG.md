@@ -5,6 +5,17 @@
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
 ## [Unreleased]
+## [v4.1.5] - 2026-09-12
+
+### Android M4：AI 生成、设置页与 16 服务商预设（安卓开发 · 里程碑 4）
+
+- **AI 服务层**：OpenAI 兼容客户端（OkHttp 流式 + 字节级增量对象扫描，够数即停）、endpoint 拼接口径与 macOS 一致（保留自定义前缀、裸域名补 /v1）、429/5xx 指数退避重试（退避可注入）、非 2xx 错误体提取服务端 message、近重复抑制（归一化标题 + bigram Jaccard > 0.35）与 ≥80 字门槛、超 6 张自动分批衔接跨批排除口径。
+- **16 档服务商预设移植**：三分组（在线 13 / 本地 2 / 自定义 1），id 唯一、defaultModel ∈ models、免密约定（Ollama/本地网关）、`match()` 域名反查与端口误判防护——一致性测试与 macOS 同语义。
+- **设置页落地**：分组预设 chips（FlowRow 自动换行）+ Base URL/模型/密钥三字段 + 测试连通性（进度态与结果着色）+ 保存配置；密钥与 JSON 设置分置（CredentialStore 接口 + 内存替身，Keystore 版后续接入）。
+- **生成入口**：卡堆顶栏 AI 生成按钮（加载态 + 完成提示「已生成 N 张新知识 ✓」，未配置时提示先去设置）；ViewModel 承接生成链路与节流落盘。
+- **验证**：51 项 JVM 测试（新增 AI 预设/解析/生成/重试 11 项）+ 模拟器 instrumented 5 项全绿；模拟器实测设置页全量渲染与 FlowRow 换行。
+
+
 ## [v4.1.4] - 2026-09-12
 
 ### Android 视觉精修：布局密度与字号对齐 Mac 端（安卓开发 · 里程碑 3）

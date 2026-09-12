@@ -16,7 +16,7 @@ import com.knowflick.app.ui.StatsScreen
 /** 应用入口：三个顶层屏幕（卡堆 / 详情 / 统计）；收藏阁与历史在 M4 接入 */
 class MainActivity : ComponentActivity() {
 
-    private enum class Screen { DECK, DETAIL, STATS }
+    private enum class Screen { DECK, DETAIL, STATS, SETTINGS }
 
     private val viewModel: KnowFlickViewModel by viewModels()
 
@@ -37,7 +37,10 @@ class MainActivity : ComponentActivity() {
                             screen = Screen.DETAIL
                         },
                         onOpenStats = { screen = Screen.STATS },
-                        onOpenFavorites = { screen = Screen.STATS },   // 收藏阁在 M4 接入
+                        onOpenFavorites = { screen = Screen.STATS },   // 收藏阁在 M5 接入
+                        onOpenSettings = { screen = Screen.SETTINGS },
+                        isGenerating = viewModel.isGenerating,
+                        notice = viewModel.generateNotice,
                     )
                     Screen.DETAIL -> {
                         val card = detailCard
@@ -60,6 +63,13 @@ class MainActivity : ComponentActivity() {
                     Screen.STATS -> StatsScreen(
                         cards = viewModel.model.store.cards,
                         onBack = { screen = Screen.DECK },
+                    )
+                    Screen.SETTINGS -> com.knowflick.app.ui.SettingsScreen(
+                        initial = viewModel.settings,
+                        initialApiKey = viewModel.currentApiKey(),
+                        onBack = { screen = Screen.DECK },
+                        onTestConnection = { temp, key -> viewModel.testConnection(temp, key) },
+                        onSave = { updated, key -> viewModel.saveSettings(updated, key) },
                     )
                 }
             }
