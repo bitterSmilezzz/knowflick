@@ -74,6 +74,7 @@ fun DeckScreen(
     onOpenStats: () -> Unit,
     onOpenFavorites: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    onOpenQuiz: () -> Unit = {},
     onGenerateRequest: () -> Unit = {},
     isGenerating: Boolean = false,
     notice: String? = null,
@@ -143,6 +144,10 @@ fun DeckScreen(
                         Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onBackground)
                     }
                     androidx.compose.material3.DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("知识测验", fontSize = 13.sp) },
+                            onClick = { showMore = false; onOpenQuiz() },
+                        )
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("学习统计", fontSize = 13.sp) },
                             onClick = { showMore = false; onOpenStats() },

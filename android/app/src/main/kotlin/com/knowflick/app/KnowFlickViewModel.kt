@@ -13,7 +13,6 @@ import com.knowflick.app.ai.AiSettings
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
 import com.knowflick.app.data.CredentialStore
-import com.knowflick.app.data.InMemoryCredentialStore
 import com.knowflick.app.data.SeedLoader
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +28,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         seedCards = SeedLoader(application).load(),
     )
 
-    private val credentials: CredentialStore = InMemoryCredentialStore()   // 进程内凭据（Keystore 版后续接入）
+    private val credentials: CredentialStore = com.knowflick.app.data.SystemCredentialStore(application)
     private val aiService = AiService()
 
     /** 语音播放控制器（三通道 + 磨耳朵） */
@@ -49,6 +48,10 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** 已保存的设置与密钥 */
     var settings: AiSettings by mutableStateOf(AiSettings())
+        private set
+
+    /** 测验会话（null = 未在测验） */
+    var quizSession: com.knowflick.app.domain.QuizSession? by mutableStateOf(null)
         private set
 
     private var persistScheduled = false
@@ -167,6 +170,46 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
                 isGenerating = false
             }
         }
+    }
+
+    // ---------- 知识测验 ----------
+
+    /** 开始/刷新测验：到期复习优先，其后收藏与历史，单轮 10 张 */
+    fun startQuiz(category: String? = null) {
+        quizSession = com.knowflick.app.domain.QuizSession.build(
+            cards = model.store.cards,
+            today = java.time.LocalDate.now(),
+            limit = 10,
+            category = category,
+        )
+        version++
+    }
+
+    /** 再测一组：剔除本轮已评卡，剩余不足则回到全部（与 macOS 到期队列刷新同精神） */
+    fun nextQuizRound() {
+        val rated = quizSession?.ratedIds().orEmpty()
+        val pool = model.store.cards.filter { it.id !in rated }
+        quizSession = com.knowflick.app.domain.QuizSession.build(
+            cards = if (pool.isNotEmpty()) pool else model.store.cards,
+            today = java.time.LocalDate.now(),
+            limit = 10,
+        )
+        version++
+    }
+
+    /** 提交测验评分：store 记账（reviewCount + masteryLevel），到期队列随之刷新 */
+    fun rateQuiz(rating: com.knowflick.app.domain.QuizRating) {
+        val session = quizSession ?: return
+        val card = session.current ?: return
+        if (!session.rate(rating)) return
+        model.store.recordQuizResult(card.id, rating.masteryLevel)
+        version++
+        schedulePersist()
+    }
+
+    fun exitQuiz() {
+        quizSession = null
+        version++
     }
 
     /** 意图操作统一入口：执行动作 + 重组 + 节流落盘 */

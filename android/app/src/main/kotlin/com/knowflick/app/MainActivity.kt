@@ -18,7 +18,7 @@ import com.knowflick.app.ui.StatsScreen
 /** 应用入口：卡堆 / 详情 / 统计 / 知识库 / 设置；语音朗读挂接全局控制器 */
 class MainActivity : ComponentActivity() {
 
-    private enum class Screen { DECK, DETAIL, STATS, SETTINGS, LIBRARY }
+    private enum class Screen { DECK, DETAIL, STATS, SETTINGS, LIBRARY, QUIZ }
 
     private val viewModel: KnowFlickViewModel by viewModels()
 
@@ -60,6 +60,10 @@ class MainActivity : ComponentActivity() {
                         isGenerating = viewModel.isGenerating,
                         notice = viewModel.generateNotice,
                         onGenerateRequest = { viewModel.generateNewCards(count = 3) },
+                        onOpenQuiz = {
+                            viewModel.startQuiz()
+                            screen = Screen.QUIZ
+                        },
                         isAmbientMode = viewModel.speech.isAmbientMode,
                         onToggleAmbient = {
                             viewModel.speech.toggleAmbient(viewModel.model.store.topCard)
@@ -103,6 +107,22 @@ class MainActivity : ComponentActivity() {
                         onSave = { updated, key -> viewModel.saveSettings(updated, key) },
                         onSaveSpeech = { speech, key -> viewModel.saveSpeechSettings(speech, key) },
                     )
+                    Screen.QUIZ -> {
+                        val session = viewModel.quizSession
+                        if (session == null) {
+                            screen = Screen.DECK
+                        } else {
+                            com.knowflick.app.ui.QuizScreen(
+                                session = session,
+                                onRate = { rating -> viewModel.rateQuiz(rating) },
+                                onNextRound = { viewModel.nextQuizRound() },
+                                onExit = {
+                                    viewModel.exitQuiz()
+                                    screen = Screen.DECK
+                                },
+                            )
+                        }
+                    }
                     Screen.LIBRARY -> com.knowflick.app.ui.LibraryScreen(
                         cards = viewModel.model.store.cards,
                         version = viewModel.version,
