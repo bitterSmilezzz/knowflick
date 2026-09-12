@@ -607,7 +607,8 @@ private struct GraphScrollZoomCatcher: NSViewRepresentable {
 
     final class CatchView: NSView {
         var onZoom: ((CGFloat) -> Void)?
-        private var monitor: Any?
+        // NSEvent.removeMonitor 线程安全；deinit 摘除时跨隔离访问，显式豁免
+        nonisolated(unsafe) private var monitor: Any?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()

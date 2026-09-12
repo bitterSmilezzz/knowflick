@@ -21,7 +21,11 @@ let package = Package(
         .executableTarget(
             name: "KnowFlick",
             dependencies: ["KnowFlickCore"],
-            path: "Sources/KnowFlick"
+            path: "Sources/KnowFlick",
+            swiftSettings: [
+                // 应用层（SwiftUI 视图）同样迁移至 Swift 6 严格并发（第二阶段 R22）
+                .swiftLanguageMode(.v6)
+            ]
         ),
         .testTarget(
             name: "KnowFlickCoreTests",

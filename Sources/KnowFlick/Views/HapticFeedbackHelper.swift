@@ -1,6 +1,8 @@
 import AppKit
 
-/// macOS 触控板多阶精密触觉反馈辅助类
+/// macOS 触控板多阶精密触觉反馈辅助类。
+/// 状态仅在手势回调（主线程）读写，整体 @MainActor 隔离。
+@MainActor
 public final class HapticFeedbackHelper {
     public static let shared = HapticFeedbackHelper()
     private init() {}

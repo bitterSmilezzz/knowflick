@@ -4,6 +4,16 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
+
+## [v4.0.0] - 2026-09-12
+
+### 全包 Swift 6 严格并发（二十轮优化续作 · 第 22 轮）
+
+- **应用层迁移完成**：`KnowFlick` 可执行目标同样迁至 `swiftLanguageMode(.v6)`——整个 Package（核心 + 应用 + 测试）现在全部运行于 Swift 6 严格并发，实际迁移面远小于预估（仅 2 处修复）。
+- **触觉反馈隔离**：`HapticFeedbackHelper` 整体 `@MainActor` 隔离（状态仅在手势回调主线程读写），替代单例旁路豁免。
+- **事件监视器豁免**：星图滚轮捕获层的 monitor 句柄标注 `nonisolated(unsafe)`（`NSEvent.removeMonitor` 线程安全，deinit 摘除为合法跨隔离访问）。
+- **验证**：173 项 / 25 个 suite 全绿；Release 构建零警告。
+
 ## [Unreleased]
 ## [v3.6.2] - 2026-09-11
 
