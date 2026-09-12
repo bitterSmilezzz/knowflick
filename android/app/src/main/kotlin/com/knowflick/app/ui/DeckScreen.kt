@@ -2,10 +2,11 @@ package com.knowflick.app.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,14 +34,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,11 +50,13 @@ import androidx.compose.ui.unit.sp
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.SwipeDirection
 import kotlin.math.abs
-import kotlinx.coroutines.launch
 
 /**
  * 沉浸刷卡界面：3 张可见卡堆 + 拖拽划走 + 磁吸回弹 + 底部意图按钮。
- * 拖拽飞出阈值 300px（约 85pt 的 3x 缩放口径）；skip 由「换一批」表达，不计喜好。
+ *
+ * 手势模型：输入追踪（rawDrag，同步更新）与渲染动画（offsetAnim，弹簧追赶）解耦，
+ * 松手判定读取同步位移，杜绝「动画未追上输入」的竞态；划走的卡片进入独立飞出层
+ * （与 macOS FlyingCardOverlay 同构），底层新顶卡从零位移就位。
  */
 @Composable
 fun DeckScreen(
@@ -65,23 +69,27 @@ fun DeckScreen(
     modifier: Modifier = Modifier,
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val scope = rememberCoroutineScope()
-    val dragX = remember { Animatable(0f) }
-    val dragY = remember { Animatable(0f) }
+
+    var rawDrag by remember { mutableStateOf(Offset.Zero) }
     var thresholdCrossed by remember { mutableStateOf(false) }
     var flyingCard by remember { mutableStateOf<KnowledgeCard?>(null) }
     var flyingDirection by remember { mutableStateOf<SwipeDirection?>(null) }
+    var flyingStart by remember { mutableStateOf(Offset.Zero) }
+
+    // 渲染层动画：把位移弹簧式逼近 rawDrag（输入与渲染解耦）
+    val offsetAnim = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            if (offsetAnim.value != rawDrag) {
+                offsetAnim.animateTo(rawDrag, spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.85f))
+            } else {
+                kotlinx.coroutines.delay(16)
+            }
+        }
+    }
 
     val topCard = store.topCard
     val stack = store.deck.take(3)
-
-    fun resetDrag() {
-        thresholdCrossed = false
-        scope.launch {
-            dragX.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
-            dragY.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
-        }
-    }
 
     Box(
         modifier = modifier
@@ -112,6 +120,9 @@ fun DeckScreen(
                 }
                 TextButton(onClick = {
                     topCard?.let { card ->
+                        flyingCard = card
+                        flyingDirection = SwipeDirection.SKIP
+                        flyingStart = Offset.Zero
                         store.swipe(card, SwipeDirection.SKIP)
                     }
                 }) {
@@ -130,7 +141,7 @@ fun DeckScreen(
                 if (topCard == null) {
                     EmptyState(onRestart = { store.clearHistory() })
                 } else {
-                    // 底层两张静态卡（缩放 + 下移）
+                    // 底层卡：被飞出层遮盖期间顶卡透明占位，其余按层次缩放下沉
                     stack.asReversed().forEachIndexed { index, card ->
                         val isTop = index == 0
                         val depth = index
@@ -138,32 +149,41 @@ fun DeckScreen(
                         val cardModifier = if (isTop && flyingCard == null) {
                             Modifier
                                 .fillMaxSize()
+                                .testTag("deck_top_card")
                                 .graphicsLayer {
-                                    translationX = dragX.value
-                                    translationY = dragY.value
-                                    rotationZ = dragX.value / 22f
+                                    translationX = offsetAnim.value.x
+                                    translationY = offsetAnim.value.y
+                                    rotationZ = offsetAnim.value.x / 22f
                                 }
                                 .pointerInput(topCard.id) {
                                     detectDragGestures(
                                         onDragEnd = {
-                                            if (abs(dragX.value) > 300f) {
-                                                val direction = if (dragX.value > 0) SwipeDirection.RIGHT else SwipeDirection.LEFT
+                                            if (abs(rawDrag.x) > 220f) {
+                                                val direction = if (rawDrag.x > 0) SwipeDirection.RIGHT else SwipeDirection.LEFT
+                                                // 划走的卡片移入飞出层；同步复位底层位移，新顶卡从零就位
+                                                flyingCard = topCard
+                                                flyingDirection = direction
+                                                flyingStart = rawDrag
                                                 store.swipe(topCard, direction)
+                                                rawDrag = Offset.Zero
+                                                thresholdCrossed = false
+                                            } else {
+                                                rawDrag = Offset.Zero
+                                                thresholdCrossed = false
                                             }
-                                            resetDrag()
                                         },
-                                        onDragCancel = { resetDrag() },
+                                        onDragCancel = {
+                                            rawDrag = Offset.Zero
+                                            thresholdCrossed = false
+                                        },
                                     ) { change, drag ->
                                         change.consume()
-                                        scope.launch {
-                                            dragX.animateTo(dragX.value + drag.x, spring(stiffness = Spring.StiffnessHigh))
-                                            dragY.animateTo(dragY.value + drag.y, spring(stiffness = Spring.StiffnessHigh))
-                                        }
-                                        val crossed = abs(dragX.value) > 260f && !thresholdCrossed
+                                        rawDrag += drag
+                                        val crossed = abs(rawDrag.x) > 260f && !thresholdCrossed
                                         if (crossed) {
                                             thresholdCrossed = true
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        } else if (abs(dragX.value) < 200f) {
+                                        } else if (abs(rawDrag.x) < 200f) {
                                             thresholdCrossed = false
                                         }
                                     }
@@ -181,26 +201,29 @@ fun DeckScreen(
                         CardFace(card = card, showAIMark = showAIMark, modifier = cardModifier, isTop = isTop)
                     }
 
-                    // 飞出层：底层顶卡透明后，划走的卡片独立飞离淡出
+                    // 飞出层：从划走时刻的位移出发，独立飞离淡出
                     flyingCard?.let { card ->
-                        val direction = flyingDirection
+                        val start = flyingStart
+                        val fly = remember(card.id) { Animatable(start, Offset.VectorConverter) }
                         LaunchedEffect(card.id) {
-                            val target = if (direction == SwipeDirection.LEFT) -900f else 900f
-                            val drift = if (direction == SwipeDirection.SKIP) 0f else 90f
-                            dragY.snapTo(drift)
-                            dragX.animateTo(target, spring(stiffness = Spring.StiffnessMediumLow))
+                            val direction = flyingDirection
+                            val targetX = when (direction) {
+                                SwipeDirection.LEFT -> -900f
+                                SwipeDirection.RIGHT -> 900f
+                                else -> start.x * 1.6f
+                            }
+                            val targetY = if (direction == SwipeDirection.SKIP) start.y else start.y + 90f
+                            fly.animateTo(Offset(targetX, targetY), spring(stiffness = Spring.StiffnessMediumLow))
                             flyingCard = null
                             flyingDirection = null
-                            dragX.snapTo(0f)
-                            dragY.snapTo(0f)
                         }
                         Box(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    translationX = dragX.value
-                                    translationY = dragY.value
-                                    alpha = (1f - (abs(dragX.value) / 900f)).coerceIn(0f, 1f)
+                                    translationX = fly.value.x
+                                    translationY = fly.value.y
+                                    alpha = (1f - (abs(fly.value.x) / 900f)).coerceIn(0f, 1f)
                                 },
                         ) {
                             CardFace(card = card, showAIMark = showAIMark, Modifier.fillMaxSize(), isTop = true)
@@ -218,7 +241,12 @@ fun DeckScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IntentButton(icon = Icons.Filled.Close, tint = EditorialColor.dislikeRed, label = "不喜欢") {
-                    topCard?.let { store.swipe(it, SwipeDirection.LEFT) }
+                    topCard?.let { card ->
+                        flyingCard = card
+                        flyingDirection = SwipeDirection.LEFT
+                        flyingStart = Offset.Zero
+                        store.swipe(card, SwipeDirection.LEFT)
+                    }
                 }
                 IntentButton(
                     icon = if (topCard?.isFavorite == true) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
@@ -265,7 +293,7 @@ private fun EmptyState(onRestart: () -> Unit) {
             .fillMaxSize()
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        verticalArrangement = Arrangement.Center,
     ) {
         Text(
             "已刷完全部卡片",

@@ -5,6 +5,17 @@
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
 ## [Unreleased]
+## [v4.1.3] - 2026-09-12
+
+### Android 测试基建四层补齐与真机缺陷修复（安卓开发 · 里程碑 2.5）
+
+- **四层测试体系落地**：JVM 单元测试（38 项）+ **Robolectric**（2 项：assets 种子库 214 张全量加载、42 图池 key 全覆盖）+ **模拟器 instrumented 测试**（5 项 Compose UI 测试：顶栏语义、顶卡渲染、右划推进、详情打开、收藏切换）+ 模拟器实机跑通并截图验证（卡堆/详情/统计/返回/真实划卡手势）。
+- **模拟器环境**：emulator + android-35 google_apis arm64-v8a 镜像安装，`knowflick-test` AVD 创建（HVF 硬件加速）；instrumentation 显式指定 `androidx.test.runner.AndroidJUnitRunner`（AGP 默认落成了旧版 runner 导致 0 测试被发现）。
+- **实机测试发现并修复 3 个真实缺陷**：① `BackgroundImageCache` 在 `asImageBitmap` 后 recycle 底层位图导致划卡时 Canvas 崩溃；② 拖拽出界路径未挂飞出层（新顶卡带残留位移出现）；③ 系统返回键在详情/统计页直接退出应用（补 BackHandler 与屏内导航一致）。
+- **手势模型重构**：输入追踪（同步 rawDrag）与渲染动画（弹簧追赶）解耦，松手判定读取同步位移，消除「动画未追上输入」竞态；划卡阈值对齐 macOS 85pt 口径（≈220px@2.6x）。
+- **验证**：45 项自动化测试全绿（40 JVM + 5 instrumented）；模拟器实测零崩溃。
+
+
 ## [v4.1.2] - 2026-09-12
 
 ### Android M2：Compose 刷卡主界面（安卓开发 · 里程碑 2）

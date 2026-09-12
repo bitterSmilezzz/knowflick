@@ -54,6 +54,9 @@ fun DetailScreen(
     val context = LocalContext.current
     val bg: ImageBitmap? = remember(card.id) { BackgroundImageCache.image(context, ThemeKey.forCard(card)) }
 
+    // 系统返回键与屏内返回语义一致（否则返回键会直接退出应用）
+    androidx.activity.compose.BackHandler { onBack() }
+
     Box(Modifier.fillMaxSize().background(Color(0xFF101012))) {
         Box(Modifier.fillMaxSize()) {
             if (bg != null) {
@@ -97,7 +100,7 @@ fun DetailScreen(
             ) {
                 Icon(
                     if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = if (isFavorite) "取消收藏" else "收藏",
+                    contentDescription = "收藏或取消收藏",
                     tint = if (isFavorite) EditorialColor.likeGreen else Color.White,
                 )
             }

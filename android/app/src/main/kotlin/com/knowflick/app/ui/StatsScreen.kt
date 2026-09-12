@@ -39,6 +39,8 @@ fun StatsScreen(
     cards: List<com.knowflick.app.domain.KnowledgeCard>,
     onBack: () -> Unit,
 ) {
+    // 系统返回键与顶栏返回一致
+    androidx.activity.compose.BackHandler { onBack() }
     val today = LocalDate.now()
     val stats = StatsCalculator.compute(cards, today)
     val daily = StatsCalculator.dailyCounts(cards, today, days = 7)

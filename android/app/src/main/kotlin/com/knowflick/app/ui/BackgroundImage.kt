@@ -26,8 +26,8 @@ object BackgroundImageCache {
             }
             val bitmap = context.assets.open("bg/$key.jpg").use { BitmapFactory.decodeStream(it, null, options) }
                 ?: return null
+            // 注意：asImageBitmap 包装的是同一块底层 Bitmap，绝不可 recycle（UI 仍在引用）
             val image = bitmap.asImageBitmap()
-            bitmap.recycle()
             synchronized(cache) { cache[key] = image }
             image
         }.getOrNull()
