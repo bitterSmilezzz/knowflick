@@ -67,6 +67,46 @@ private final class RetryStubProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+
+/// 分批生成替身：每次请求只产出 1 张卡，验证 count 超过单请求上限时自动分批。
+/// 标题彼此语义无关，避免被近重复过滤（bigram Jaccard > 0.35）拒绝。
+private let batchHeadlines = ["碳纤维为何比铝轻", "冰箱制冷不是制造冷", "鲸鱼其实不是鱼", "蜂巢的六边形密码", "火焰温度的错觉", "香蕉是浆果草莓不是", "水在4度的密度反常"]
+
+private final class BatchStubProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var counter = 0
+    static func reset() { lock.lock(); counter = 0; lock.unlock() }
+    static var requestCount: Int { lock.lock(); defer { lock.unlock() }; return counter }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let index: Int = {
+            Self.lock.lock(); defer { Self.lock.unlock() }
+            Self.counter += 1
+            return Self.counter
+        }()
+        let details = String(repeating: "这是分批生成的深入说明内容。", count: 12)
+        let payload: [String: Any] = [
+            "category": "AI", "headline": batchHeadlines[(index - 1) % batchHeadlines.count], "summary": "摘要",
+            "details": details, "searchKeywords": [String](), "sources": [String]()
+        ]
+        // 生成路径约定：delta.content 是「卡片 JSON 数组」的字符串形式
+        let arrayText = String(data: try! JSONSerialization.data(withJSONObject: [payload]), encoding: .utf8)!
+        let event: [String: Any] = ["choices": [["delta": ["content": arrayText]]]]
+        let text = String(data: try! JSONSerialization.data(withJSONObject: event), encoding: .utf8)!
+        let body = Data("data: \(text)\n\ndata: [DONE]\n\n".utf8)
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "text/event-stream"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 struct AITransportTests {
     private func service() -> (AIService, URLSession) {
         let config = URLSessionConfiguration.ephemeral
@@ -145,5 +185,23 @@ struct AITransportTests {
         }
         #expect(chunks.joined() == "重试成功")
         #expect(RetryStubProtocol.requestCount == 2)
+    }
+
+    @Test func generateCardsBatchesCountsBeyondSingleRequestLimit() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [BatchStubProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        BatchStubProtocol.reset()
+
+        let service = AIService(session: session)
+        var settings = AISettings.default
+        settings.baseURL = "http://localhost/batch/v1"
+        settings.apiKey = "k"
+        // 单请求上限 6 张：count=7 需要两批；每批替身只产出 1 张
+        let cards = try await service.generateCards(settings: settings, count: 7, excludeHeadlines: [])
+        #expect(cards.count == 2)
+        #expect(Set(cards.map(\.headline)).count == 2)
+        #expect(BatchStubProtocol.requestCount == 2)
     }
 }

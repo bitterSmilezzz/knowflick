@@ -36,7 +36,7 @@ struct ChatStreamTests {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ChatStubProtocol.self]
         let session = URLSession(configuration: config)
-        let store = AppStore(storage: storage, aiService: AIService(session: session))
+        let store = AppStore(storage: storage, aiService: AIService(session: session, retryBaseDelay: 0.01))
         var settings = store.settings
         settings.autoGenerate = false
         settings.baseURL = failing ? "http://localhost:9/fail/v1" : "http://localhost:9/v1"

@@ -14,6 +14,7 @@ struct SpeechTests {
 
     @Test @MainActor func ambientPlaybackFinishAdvancesAndStopsWhenQueueEmpty() async throws {
         let service = SpeechSynthesizerService()
+        service.suppressesRealSynthesis = true   // 单测不驱动真实合成，避免系统 TextToSpeech 回调崩溃
         var advanceRequests = 0
         service.ambientGapSeconds = 0.05
         service.onAmbientAdvanceRequest = {
@@ -63,6 +64,7 @@ struct SpeechTests {
 
     @Test @MainActor func pauseBeforeAudioArrivesAndResume() {
         let service = SpeechSynthesizerService()
+        service.suppressesRealSynthesis = true   // 单测不驱动真实合成
         service.configuration.selectedID = "kokoro"
         let card = KnowledgeCard(category: "AI", headline: "测试", summary: "摘要", details: "正文", source: .seed)
         service.speak(card: card)

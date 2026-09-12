@@ -4,11 +4,16 @@ import Foundation
 /// 默认对接 DeepSeek，可在设置里改 baseURL / model
 public struct AIService: Sendable {
     private let session: URLSession
+    /// 429/5xx 重试基础退避秒数；测试可注入小值避免真实等待
+    let retryBaseDelay: TimeInterval
     /// OpenCode Go uses this header for routing and prompt-cache affinity.
     /// One stable identifier per app process is sufficient for KnowFlick's short-lived requests.
     private static let opencodeSessionID = UUID().uuidString.lowercased()
 
-    init(session: URLSession = .shared) { self.session = session }
+    init(session: URLSession = .shared, retryBaseDelay: TimeInterval = 1.0) {
+        self.session = session
+        self.retryBaseDelay = retryBaseDelay
+    }
 
     /// 保留服务商的自定义 API 前缀，只有裸域名才补 /v1。
     static func completionURL(baseURL: String) throws -> URL {
@@ -99,9 +104,10 @@ public struct AIService: Sendable {
         }
         guard (1...20).contains(count) else { throw AIError.badRequest("生成数量须为 1–20") }
         // 排除标题上限收敛在服务单点，调用方传全量即可（避免决策分裂）
-        let excludeList = Array(excludeHeadlines.prefix(100))
-        let excludedKeys = Set(excludeHeadlines.map(Self.normalizeHeadline))
-        let excludedBigrams = excludeHeadlines.map(Self.bigramSet)
+        // 排除标题上限收敛在服务单点，调用方传全量即可（避免决策分裂）
+        let excludeListParam = Array(excludeHeadlines.prefix(100))
+        let excludedKeysParam = Set(excludeHeadlines.map(Self.normalizeHeadline))
+        let excludedBigramsParam = excludeHeadlines.map(Self.bigramSet)
         // 用户配置的 AI 引用站点偏好（生成内容与检索链接都优先这些站点）
         let preferredSources = settings.preferredSources
         let sourcesHint = preferredSources.isEmpty
@@ -118,47 +124,87 @@ public struct AIService: Sendable {
             ? ""
             : "若没有偏好分类，请尽量平均覆盖以下分类：\(settings.customCategoryNames.joined(separator: "、"))。"
 
-        let systemPrompt = """
-        你是一个严谨的知识卡片编辑，为中文读者生成真实、可查证的领域知识卡。
+        let systemPrompt = Self.cardSystemPrompt(
+            categoryWhitelist: categoryWhitelist,
+            categoryGuides: categoryGuides,
+            sourcesHint: sourcesHint
+        )
 
-        硬性要求：
-        - 每条内容必须真实准确；不确定的事实宁可不写，严禁编造数字、人名、年份
-        - 标题一句话点出反直觉、有趣或有用的点（如「香蕉是浆果，草莓不是」）
-        - 摘要一句话概括核心
-        - 详情 3-6 段，每段讲一个角度（机制解释、历史背景、冷门细节、相关现象/实操要点），用 \\n\\n 分段
-        - 分类必须从下列白名单中选择，不要发明新分类：
-          \(categoryWhitelist)
-        \(categoryGuides)
-        - sources 从下列用户偏好站点中选择 1-2 个（只允许用列表内的，不要编造其他站点名）：
-          \(sourcesHint)
-        - 每次返回 count 条，避免与已有标题重复或高度相似
+        // 单次请求产出上限：约 900 token/张、max_tokens 封顶 8192 → 单请求最多约 6 张。
+        // 更大批量分多次请求，每批把前批产出纳入排除口径，避免跨批重复。
+        var excludedKeys = excludedKeysParam
+        var excludedBigrams = excludedBigramsParam
+        var seenKeys = Set<String>()
+        var seenBigrams: [Set<String>] = []
+        var excludeList = excludeListParam
+        var allCards: [KnowledgeCard] = []
+        let now = Date()
 
-        示例输出（仅示范结构与字段，内容请原创）：
-        [
-          {
-            "category": "AI",
-            "headline": "过拟合：模型把「背题」当成了「学会」",
-            "summary": "训练集上满分、新题上失分，是机器学习最常见的翻车现场",
-            "details": "第一段。\\n\\n第二段。",
-            "searchKeywords": ["过拟合", "正则化", "泛化"],
-            "sources": ["维基百科"]
-          }
-        ]
-        """
+        var remaining = count
+        while remaining > 0 {
+            let batch = min(remaining, Self.maxCardsPerRequest)
+            let payloads = try await requestBatch(
+                systemPrompt: systemPrompt,
+                settings: settings,
+                batchCount: batch,
+                topic: topic,
+                customHint: customHint,
+                excludeList: excludeList,
+                preferredSources: preferredSources
+            )
 
-        let trimmedTopic = topic?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let topicHint: String
-        if let trimmedTopic, !trimmedTopic.isEmpty {
-            topicHint = """
-            本次必须围绕主题「\(trimmedTopic)」生成，所有卡片都要与该主题直接相关；
-            若该主题超出白名单分类范围，请选择最贴近的一个白名单分类，不要发明新分类。
-            """
-        } else {
-            topicHint = ""
+            var acceptedThisBatch = 0
+            for p in payloads {
+                guard p.details.count >= 80 else { continue }
+                let key = Self.normalizeHeadline(p.headline)
+                let bigram = Self.bigramSet(p.headline)
+                guard !key.isEmpty, !excludedKeys.contains(key), seenKeys.insert(key).inserted else { continue }
+                guard !excludedBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { continue }
+                guard !seenBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { continue }
+                excludedKeys.insert(key)
+                excludedBigrams.append(bigram)
+                excludeList.append(p.headline)
+                seenBigrams.append(bigram)
+                acceptedThisBatch += 1
+                allCards.append(KnowledgeCard(
+                    category: CategoryRegistry.normalize(p.category, custom: settings.customCategoryNames),
+                    headline: p.headline,
+                    summary: p.summary,
+                    details: p.details,
+                    links: Self.buildSearchLinks(
+                        keywords: p.searchKeywords,
+                        sources: p.sources.isEmpty ? preferredSources : p.sources
+                    ),
+                    source: .ai,
+                    createdAt: now
+                ))
+            }
+            // 该批无任何可用产出且仍有后续批时，继续（可能是全部撞上去重）；
+            // 所有批次均无产出时由末尾 noUsableCards 兜底
+            remaining -= batch
         }
 
+        // 「请求成功但无可用产出」是一等语义，不再用空数组当第二失败通道
+        guard !allCards.isEmpty else { throw AIError.noUsableCards }
+        return allCards
+    }
+
+    /// 单次请求数量上限：见 generateCards 注释
+    private static let maxCardsPerRequest = 6
+
+    /// 单批流式请求（含 429/5xx 重试）：构建用户提示词并解析产出
+    private func requestBatch(
+        systemPrompt: String,
+        settings: AISettings,
+        batchCount: Int,
+        topic: String?,
+        customHint: String,
+        excludeList: [String],
+        preferredSources: [String]
+    ) async throws -> [AICardPayload] {
+        let topicHint = Self.topicHint(for: topic)
         let userPrompt = """
-        请生成 \(count) 条不重复的领域知识卡片，严格按 JSON 数组格式输出，不要输出任何其他文字：
+        请生成 \(batchCount) 条不重复的领域知识卡片，严格按 JSON 数组格式输出，不要输出任何其他文字：
         [
           {
             "category": "分类（白名单内）",
@@ -185,45 +231,49 @@ public struct AIService: Sendable {
             ["role": "user", "content": userPrompt]
         ]
 
-        // 动态 max_tokens：约 900 token/张 + 400 缓冲；封顶 8192 兼容多数服务商单次输出上限，
-        // 超大数量的请求宁可分批也不让服务端 400/截断
-        let maxTokens = min(8192, max(1200, count * 900 + 400))
-        let payloads = try await streamPayloadsWithRetry(
+        let maxTokens = min(8192, max(1200, batchCount * 900 + 400))
+        return try await streamPayloadsWithRetry(
             messages: messages,
             settings: settings,
             maxTokens: maxTokens,
-            targetCount: count
+            targetCount: batchCount
         )
+    }
 
-        let now = Date()
-        // 过滤链：字面重复 → 与已有标题近重复 → 本次已选内近重复 → 内容过短
-        var seenKeys = Set<String>()
-        var seenBigrams: [Set<String>] = []
-        let cards: [KnowledgeCard] = payloads.compactMap { p in
-            guard p.details.count >= 80 else { return nil }
-            let key = Self.normalizeHeadline(p.headline)
-            let bigram = Self.bigramSet(p.headline)
-            guard !key.isEmpty, !excludedKeys.contains(key), seenKeys.insert(key).inserted else { return nil }
-            guard !excludedBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { return nil }
-            guard !seenBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { return nil }
-            seenBigrams.append(bigram)
-            return KnowledgeCard(
-                category: CategoryRegistry.normalize(p.category, custom: settings.customCategoryNames),   // 归一化到分类体系
-                headline: p.headline,
-                summary: p.summary,
-                details: p.details,
-                // 链接：AI 给了站点用 AI 的；没给则用用户站点偏好兜底
-                links: Self.buildSearchLinks(
-                    keywords: p.searchKeywords,
-                    sources: p.sources.isEmpty ? preferredSources : p.sources
-                ),
-                source: .ai,
-                createdAt: now
-            )
-        }
-        // 「请求成功但无可用产出」是一等语义，不再用空数组当第二失败通道
-        guard !cards.isEmpty else { throw AIError.noUsableCards }
-        return cards
+    /// 生成系统提示词（分类白名单/内容方向/信源偏好，与批次无关）
+    private static func cardSystemPrompt(categoryWhitelist: String, categoryGuides: String, sourcesHint: String) -> String {
+        """
+        你是一个严谨的知识卡片编辑，为中文读者生成真实、可查证的领域知识卡。
+
+        硬性要求：
+        - 每条内容必须真实准确；不确定的事实宁可不写，严禁编造数字、人名、年份
+        - 标题一句话点出反直觉、有趣或有用的点（如「香蕉是浆果，草莓不是」）
+        - 摘要一句话概括核心
+        - 详情 3-6 段，每段讲一个角度（机制解释、历史背景、冷门细节、相关现象/实操要点），用 \n\n 分段
+        - 分类必须从下列白名单中选择，不要发明新分类：
+          \(categoryWhitelist)
+        \(categoryGuides)
+        - sources 从下列用户偏好站点中选择 1-2 个（只允许用列表内的，不要编造其他站点名）：
+          \(sourcesHint)
+        - 每次返回 count 条，避免与已有标题重复或高度相似
+
+        示例输出（仅示范结构与字段，内容请原创）：
+        [
+          {
+            "category": "AI",
+            "headline": "过拟合：模型把「背题」当成了「学会」",
+            "summary": "训练集上满分、新题上失分，是机器学习最常见的翻车现场",
+            "details": "第一段。\n\n第二段。",
+            "searchKeywords": ["过拟合", "正则化", "泛化"],
+            "sources": ["维基百科"]
+          }
+        ]
+        """
+    }
+
+    private static func topicHint(for topic: String?) -> String {
+        guard let topic, !topic.isEmpty else { return "" }
+        return "请围绕主题「\(topic)」展开。"
     }
 
     // MARK: - 从笔记或文章智能提炼知识卡片
@@ -407,7 +457,7 @@ public struct AIService: Sendable {
                     throw e
                 }
                 lastError = e
-                try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                try await Task.sleep(for: .seconds(retryBaseDelay * pow(2.0, Double(attempt))))
             } catch {
                 lastError = error
                 throw error
@@ -603,7 +653,7 @@ public struct AIService: Sendable {
                             guard case let .httpStatus(code, _) = e,
                                   code == 429 || (500...599).contains(code),
                                   !hasYielded, attempt < 2 else { throw e }
-                            try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                            try await Task.sleep(for: .seconds(retryBaseDelay * pow(2.0, Double(attempt))))
                             continue attempt
                         }
                     }

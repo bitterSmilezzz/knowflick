@@ -339,8 +339,15 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
         self.currentUtterance = utterance
 
         state = .playing(cardId: cardId, text: trimmed, progress: 0.0)
-        synthesizer.speak(utterance)
+        // 测试替身：真实合成会让系统 TextToSpeech 引擎在进程内挂回调，
+        // 测试拆解期触发悬空引用（objc_retain 崩溃），故单测抑制真实 speak
+        if !suppressesRealSynthesis {
+            synthesizer.speak(utterance)
+        }
     }
+
+    /// 测试专用：置位后只更新状态机与 utterance，不调用系统合成器
+    var suppressesRealSynthesis = false
 
     /// 智能语种与音色探测
     private func detectBestVoice(for text: String, category: String, voiceIdentifier: String? = nil) -> AVSpeechSynthesisVoice? {
