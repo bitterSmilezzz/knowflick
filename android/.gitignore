@@ -1,0 +1,12 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# 本地 SDK 路径
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
