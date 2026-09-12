@@ -1,0 +1,167 @@
+package com.knowflick.app.ui
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.knowflick.app.data.ThemeKey
+import com.knowflick.app.domain.KnowledgeCard
+
+/** 详情页：整页摄影底图 + 遮罩 + 正文段落 + 延伸阅读 + 收藏切换 */
+@Composable
+fun DetailScreen(
+    card: KnowledgeCard,
+    isFavorite: Boolean,
+    showAIMark: Boolean,
+    onToggleFavorite: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val bg: ImageBitmap? = remember(card.id) { BackgroundImageCache.image(context, ThemeKey.forCard(card)) }
+
+    Box(Modifier.fillMaxSize().background(Color(0xFF101012))) {
+        Box(Modifier.fillMaxSize()) {
+            if (bg != null) {
+                Image(
+                    bitmap = bg,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.55f),
+                                0.35f to Color(0xE6141416),
+                                1f to Color(0xFF101012),
+                            ),
+                        ),
+                )
+            }
+        }
+
+        // 顶栏浮动按钮
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+            ) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+            }
+            IconButton(
+                onClick = onToggleFavorite,
+                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+            ) {
+                Icon(
+                    if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = if (isFavorite) "取消收藏" else "收藏",
+                    tint = if (isFavorite) EditorialColor.likeGreen else Color.White,
+                )
+            }
+        }
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 26.dp, vertical = 64.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    card.category.ifBlank { "未分类" },
+                    color = EditorialColor.aiAmber,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.width(12.dp))
+                if (showAIMark && card.source == com.knowflick.app.domain.CardSource.AI) {
+                    Text("AI 生成 · 请核实", color = Color(0xFFE4B45C), fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                card.headline,
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Serif,
+                lineHeight = 44.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                card.summary,
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                fontFamily = FontFamily.Serif,
+            )
+            Spacer(Modifier.height(26.dp))
+            card.paragraphs.forEachIndexed { index, para ->
+                if (index > 0) Spacer(Modifier.height(16.dp))
+                Text(
+                    para,
+                    color = Color.White.copy(alpha = 0.78f),
+                    fontSize = 15.sp,
+                    lineHeight = 26.sp,
+                )
+            }
+            if (card.links.isNotEmpty()) {
+                Spacer(Modifier.height(30.dp))
+                Text("延伸阅读", color = EditorialColor.aiAmber, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(10.dp))
+                card.links.forEach { link ->
+                    Text(
+                        "◦ ${link.title}",
+                        color = Color.White.copy(alpha = 0.65f),
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}

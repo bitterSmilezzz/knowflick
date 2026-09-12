@@ -5,6 +5,18 @@
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
 ## [Unreleased]
+## [v4.1.2] - 2026-09-12
+
+### Android M2：Compose 刷卡主界面（安卓开发 · 里程碑 2）
+
+- **卡堆界面**：3 张可见卡堆（缩放/下沉层次）、拖拽划走（阈值 260px 预警触觉 + 300px 飞出、旋转与回弹弹簧）、飞出层独立动画（划走的卡片从底层剥离独立飞离淡出，底层平滑就位——与 macOS FlyingCardOverlay 同构）、底部意图按钮（不喜欢/收藏/详情）与「换一批」（skip 语义不计喜好）。
+- **卡面视觉**：assets 摄影底图降采样缓存（RGB_565 + inSampleSize）、多阶非线性暗化遮罩、衬线黑体大标题、分类印章与 AI 生成徽章——对齐 macOS Dark Editorial 视觉结构。
+- **详情页**：整页底图 + 渐变、正文双换行分段、延伸阅读列表、收藏切换、AI 提示条。
+- **统计页**：已刷/感兴趣率/连续天数/已掌握四格 + 近 7 天趋势柱（今日高亮）+ 分类双轨条形行。
+- **架构**：`AppModel`（存储 + 种子增量合并）与 `KnowFlickViewModel`（350ms 节流持久化、onPause flush）分离；`ThemeKey` 分类别名映射与 macOS CategoryTheme 对齐，未知名确定性哈希兜底。
+- **验证**：38 项 JVM 测试全绿；Debug APK 装配成功。真机/模拟器实测待后续（本机无连接设备）。
+
+
 ## [v4.1.1] - 2026-09-12
 
 ### Android M1：可编译工程与领域核心移植（安卓开发 · 里程碑 1）
