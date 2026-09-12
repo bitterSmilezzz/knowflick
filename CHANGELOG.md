@@ -5,6 +5,16 @@
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
 ## [Unreleased]
+## [v4.1.1] - 2026-09-12
+
+### Android M1：可编译工程与领域核心移植（安卓开发 · 里程碑 1）
+
+- **工程落地**：`android/` 新增 Kotlin 2.0 + Jetpack Compose + AGP 8.7 的可编译工程（minSdk 26 / targetSdk 35），含 Gradle wrapper 与 `.gitignore`；种子库（214 张）与 42 张摄影底图随包进入 assets。
+- **领域核心移植**（与 macOS 逐语义对齐）：`KnowledgeCard`（收藏/喜好解耦、缺失字段回填）、`CategoryRegistry`（别名白名单语义）、`StatsCalculator`（意图计数/连续天数/7 日趋势）、`LearningPlan`（次日复习 + 1/3/7 间隔）、`CardStore`（来源开关四组合、偏好耗尽回退+撤销、卡堆保序、防重排布、测验记账）、`CardStorage`（主文件 + 备份轮转 + 损坏标记快路径）。
+- **线格式对齐**：JSON 与 Swift Codable 逐字段一致（ISO8601 秒级、CamelCase、旧数据 isFavorite 从右划回填、未知来源兜底 seed、毫秒级/epoch 数字日期宽容解码）；FNV-1a 哈希与 macOS 端跨平台锚点一致。
+- **测试**：38 项 JVM 测试全绿（JSON 往返/宽松解码、分类解析、统计边界、状态机承诺、存储轮转/损坏恢复、学习计划间隔）；Debug APK（16.3MB）装配成功。
+
+
 ## [v4.1.0] - 2026-09-12
 
 ### 第二阶段收官（二十轮优化续作 · 第 25 轮）

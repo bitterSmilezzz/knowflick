@@ -1,4 +1,4 @@
-> 📌 状态（截至 v3.6.2）：本目录当前仅包含跨端实施边界契约文档（语音协议等），无可编译 Android 工程。
+> 📌 状态（android-v0.1.0 / M1）：可编译的 Kotlin + Compose 工程已落地——领域核心（卡片模型/JSON 线格式对齐/分类注册表/统计/学习计划/卡堆防重排布/状态机/文件存储）+ 38 项 JVM 测试全绿，Debug APK 可装配。构建：`cd android && ./gradlew :app:assembleDebug`（需 JDK 17 与 Android SDK 35）。
 
 # KnowFlick Android
 
