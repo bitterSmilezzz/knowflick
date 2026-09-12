@@ -64,13 +64,13 @@ fun StatsScreen(
             Text(
                 "学习统计",
                 color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 19.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Serif,
             )
         }
 
-        Column(Modifier.padding(horizontal = 26.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 StatCell(value = "${stats.seenCount}", label = "已刷")
                 StatCell(value = "${(stats.likeRate * 100).toInt()}%", label = "感兴趣率")
@@ -79,12 +79,12 @@ fun StatsScreen(
             }
 
             Spacer(Modifier.height(28.dp))
-            Text("近 7 天趋势", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f), fontSize = 13.sp)
+            Text("近 7 天趋势", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f), fontSize = 12.sp)
             Spacer(Modifier.height(12.dp))
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(110.dp),
+                    .height(96.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
@@ -93,7 +93,7 @@ fun StatsScreen(
                     Box(
                         Modifier
                             .weight(1f)
-                            .height((14 + 96 * fraction).dp)
+                            .height((12 + 84 * fraction).dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(
                                 if (day.day == today) EditorialColor.aiAmber
@@ -110,14 +110,14 @@ fun StatsScreen(
                     Text(
                         "${day.day.monthValue}/${day.day.dayOfMonth}",
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
-                        fontSize = 9.sp,
+                        fontSize = 8.5.sp,
                         modifier = Modifier.weight(1f),
                     )
                 }
             }
 
             Spacer(Modifier.height(30.dp))
-            Text("分类分布", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f), fontSize = 13.sp)
+            Text("分类分布", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f), fontSize = 12.sp)
             Spacer(Modifier.height(12.dp))
             val maxSeen = maxOf(1, stats.categories.maxOfOrNull { it.seen } ?: 1)
             stats.categories.forEach { row ->
@@ -130,8 +130,8 @@ fun StatsScreen(
                     Text(
                         row.category,
                         color = MaterialTheme.colorScheme.onBackground,
-                        fontSize = 13.sp,
-                        modifier = Modifier.width(92.dp),
+                        fontSize = 12.sp,
+                        modifier = Modifier.width(88.dp),
                         maxLines = 1,
                     )
                     Box(
@@ -152,7 +152,7 @@ fun StatsScreen(
                     Text(
                         "${row.seen} · ♥${row.liked}",
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         modifier = Modifier.padding(start = 10.dp),
                     )
                 }
@@ -168,11 +168,11 @@ private fun StatCell(value: String, label: String) {
         Text(
             value,
             color = EditorialColor.aiAmber,
-            fontSize = 30.sp,
+            fontSize = 24.sp,
             fontWeight = FontWeight.Black,
             fontFamily = FontFamily.Monospace,
         )
         Spacer(Modifier.height(4.dp))
-        Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f), fontSize = 12.sp)
+        Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f), fontSize = 10.5.sp)
     }
 }

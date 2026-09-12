@@ -110,28 +110,28 @@ fun DetailScreen(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 26.dp, vertical = 64.dp),
+                .padding(horizontal = 20.dp, vertical = 54.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     card.category.ifBlank { "未分类" },
                     color = EditorialColor.aiAmber,
-                    fontSize = 13.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.width(12.dp))
                 if (showAIMark && card.source == com.knowflick.app.domain.CardSource.AI) {
-                    Text("AI 生成 · 请核实", color = Color(0xFFE4B45C), fontSize = 12.sp)
+                    Text("AI 生成 · 请核实", color = Color(0xFFE4B45C), fontSize = 11.sp)
                 }
             }
             Spacer(Modifier.height(10.dp))
             Text(
                 card.headline,
                 color = Color.White,
-                fontSize = 32.sp,
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Serif,
-                lineHeight = 44.sp,
+                lineHeight = 34.sp,
             )
             Spacer(Modifier.height(12.dp))
             Text(
@@ -147,21 +147,21 @@ fun DetailScreen(
                 Text(
                     para,
                     color = Color.White.copy(alpha = 0.78f),
-                    fontSize = 15.sp,
-                    lineHeight = 26.sp,
+                    fontSize = 13.5.sp,
+                    lineHeight = 23.sp,
                 )
             }
             if (card.links.isNotEmpty()) {
                 Spacer(Modifier.height(30.dp))
-                Text("延伸阅读", color = EditorialColor.aiAmber, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("延伸阅读", color = EditorialColor.aiAmber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(10.dp))
                 card.links.forEach { link ->
                     Text(
                         "◦ ${link.title}",
                         color = Color.White.copy(alpha = 0.65f),
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        fontSize = 12.sp,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(vertical = 3.dp),
                     )
                 }
             }

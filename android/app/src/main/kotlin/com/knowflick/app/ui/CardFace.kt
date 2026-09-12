@@ -44,7 +44,7 @@ fun CardFace(
     val context = LocalContext.current
     val bg: ImageBitmap? = remember(card.id) { BackgroundImageCache.image(context, ThemeKey.forCard(card)) }
 
-    Box(modifier = modifier.clip(RoundedCornerShape(20.dp))) {
+    Box(modifier = modifier.clip(RoundedCornerShape(18.dp))) {
         if (bg != null) {
             Image(
                 bitmap = bg,
@@ -71,7 +71,7 @@ fun CardFace(
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 26.dp, vertical = 26.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CategoryStamp(category = card.category)
@@ -80,7 +80,7 @@ fun CardFace(
                     Text(
                         "AI 生成",
                         color = Color(0xFFE4B45C),
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .background(Color(0x33C79A4B), RoundedCornerShape(6.dp))
@@ -92,17 +92,17 @@ fun CardFace(
             Text(
                 card.headline,
                 color = Color.White,
-                fontSize = 30.sp,
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Serif,
-                lineHeight = 42.sp,
+                lineHeight = 34.sp,
             )
             Spacer(Modifier.height(14.dp))
             Text(
                 card.summary,
                 color = Color.White.copy(alpha = 0.82f),
-                fontSize = 15.sp,
-                lineHeight = 23.sp,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
                 maxLines = 4,
             )
             if (isTop) {
@@ -110,7 +110,7 @@ fun CardFace(
                 Text(
                     "点击卡片查看详情与来源 →",
                     color = Color.White.copy(alpha = 0.45f),
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                 )
             }
         }
@@ -121,13 +121,13 @@ fun CardFace(
 private fun CategoryStamp(category: String) {
     Box(
         Modifier
-            .background(Color.White.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .background(Color.White.copy(alpha = 0.14f), RoundedCornerShape(7.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Text(
             category.ifBlank { "未分类" },
             color = Color.White.copy(alpha = 0.9f),
-            fontSize = 13.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Serif,
         )

@@ -107,7 +107,7 @@ fun DeckScreen(
                 Text(
                     "KnowFlick",
                     color = EditorialColor.aiAmber,
-                    fontSize = 19.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Serif,
                 )
@@ -126,7 +126,7 @@ fun DeckScreen(
                         store.swipe(card, SwipeDirection.SKIP)
                     }
                 }) {
-                    Text("换一批", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), fontSize = 13.sp)
+                    Text("换一批", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), fontSize = 12.sp)
                 }
             }
 
@@ -141,10 +141,12 @@ fun DeckScreen(
                 if (topCard == null) {
                     EmptyState(onRestart = { store.clearHistory() })
                 } else {
-                    // 底层卡：被飞出层遮盖期间顶卡透明占位，其余按层次缩放下沉
-                    stack.asReversed().forEachIndexed { index, card ->
-                        val isTop = index == 0
-                        val depth = index
+                    // 底层卡：最深的先绘制；变换按真实堆叠位置计算
+                    //（此前 asReversed 的索引被直接当作深度，导致最深卡全尺寸渲染、图章阶梯外漏）
+                    stack.asReversed().forEachIndexed { reverseIndex, card ->
+                        val position = stack.size - 1 - reverseIndex   // 0 = 顶卡
+                        val isTop = position == 0
+                        val depth = position
                         val layerAlpha = if (flyingCard != null && isTop) 0f else 1f
                         val cardModifier = if (isTop && flyingCard == null) {
                             Modifier
@@ -192,9 +194,9 @@ fun DeckScreen(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    scaleX = 1f - depth * 0.045f
-                                    scaleY = 1f - depth * 0.045f
-                                    translationY = depth * 46f
+                                    scaleX = 1f - depth * 0.028f
+                                    scaleY = 1f - depth * 0.028f
+                                    translationY = depth * 24f
                                     alpha = layerAlpha
                                 }
                         }
@@ -236,7 +238,7 @@ fun DeckScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 40.dp, vertical = 18.dp),
+                    .padding(horizontal = 44.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -251,7 +253,7 @@ fun DeckScreen(
                 IntentButton(
                     icon = if (topCard?.isFavorite == true) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     tint = EditorialColor.likeGreen,
-                    size = 62,
+                    size = 54,
                     label = "收藏",
                 ) {
                     topCard?.let { store.toggleFavorite(it) }
@@ -268,7 +270,7 @@ fun DeckScreen(
 private fun IntentButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     tint: androidx.compose.ui.graphics.Color,
-    size: Int = 56,
+    size: Int = 48,
     label: String,
     onClick: () -> Unit,
 ) {
@@ -282,7 +284,7 @@ private fun IntentButton(
             Icon(icon, contentDescription = label, tint = tint)
         }
         Spacer(Modifier.height(4.dp))
-        Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f), fontSize = 11.sp)
+        Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f), fontSize = 10.sp)
     }
 }
 
@@ -298,18 +300,18 @@ private fun EmptyState(onRestart: () -> Unit) {
         Text(
             "已刷完全部卡片",
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-            fontSize = 20.sp,
+            fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.height(10.dp))
         Text(
             "换一批已读知识重新探索，或稍后配置 AI 生成新卡",
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
-            fontSize = 13.sp,
+            fontSize = 12.sp,
         )
         Spacer(Modifier.height(22.dp))
         TextButton(onClick = onRestart) {
-            Text("重新探索全部卡片 ↻", color = EditorialColor.aiAmber, fontSize = 14.sp)
+            Text("重新探索全部卡片 ↻", color = EditorialColor.aiAmber, fontSize = 13.sp)
         }
     }
 }
