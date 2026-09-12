@@ -86,6 +86,28 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** 从 JSON 文本导入卡片（逐卡挽救 + 归一化去重，置顶插入） */
+    fun importFromJson(text: String) {
+        val imported = com.knowflick.app.data.CardFileIO.decodeListSalvaging(text)
+        if (imported.isEmpty()) {
+            generateNotice = "无法解析该文件，格式与 KnowFlick 卡片结构不匹配"
+            return
+        }
+        val incoming = imported.map { card ->
+            // 导入卡强制 imported 来源，清空浏览状态（导入不覆盖学习历史语义与 macOS 一致）
+            card.copy(
+                id = java.util.UUID.randomUUID().toString().uppercase(),
+                source = com.knowflick.app.domain.CardSource.IMPORTED,
+                seenAt = null,
+                swiped = null,
+                lastReviewedAt = null,
+            )
+        }
+        val added = model.store.addCards(incoming, insertAtTop = true)
+        generateNotice = "已导入 $added 张卡片 ✓"
+        version++
+    }
+
     /** AI 生成 count 张新卡并置顶插入（AI 不可用/未配置时静默返回提示） */
     fun generateNewCards(count: Int = 3, topic: String? = null) {
         if (isGenerating) return

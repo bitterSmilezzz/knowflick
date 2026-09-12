@@ -18,7 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -48,7 +49,9 @@ fun DetailScreen(
     card: KnowledgeCard,
     isFavorite: Boolean,
     showAIMark: Boolean,
+    isSpeakingState: Boolean,
     onToggleFavorite: () -> Unit,
+    onToggleSpeech: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -80,7 +83,7 @@ fun DetailScreen(
             }
         }
 
-        // 顶栏浮动按钮
+        // 顶栏浮动按钮：返回 / 朗读 / 收藏
         Row(
             Modifier
                 .fillMaxWidth()
@@ -92,17 +95,29 @@ fun DetailScreen(
                 onClick = onBack,
                 modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
             ) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
             }
-            IconButton(
-                onClick = onToggleFavorite,
-                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
-            ) {
-                Icon(
-                    if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = "收藏或取消收藏",
-                    tint = if (isFavorite) EditorialColor.likeGreen else Color.White,
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                IconButton(
+                    onClick = { onToggleSpeech() },
+                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                ) {
+                    Icon(
+                        if (isSpeakingState) Icons.Filled.Close else Icons.Filled.VolumeUp,
+                        contentDescription = if (isSpeakingState) "停止朗读" else "朗读全文",
+                        tint = if (isSpeakingState) EditorialColor.aiAmber else Color.White,
+                    )
+                }
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                ) {
+                    Icon(
+                        if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = "收藏或取消收藏",
+                        tint = if (isFavorite) EditorialColor.likeGreen else Color.White,
+                    )
+                }
             }
         }
 
