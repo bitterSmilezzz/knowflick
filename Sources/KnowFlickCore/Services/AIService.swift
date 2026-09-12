@@ -104,7 +104,6 @@ public struct AIService: Sendable {
         }
         guard (1...20).contains(count) else { throw AIError.badRequest("生成数量须为 1–20") }
         // 排除标题上限收敛在服务单点，调用方传全量即可（避免决策分裂）
-        // 排除标题上限收敛在服务单点，调用方传全量即可（避免决策分裂）
         let excludeListParam = Array(excludeHeadlines.prefix(100))
         let excludedKeysParam = Set(excludeHeadlines.map(Self.normalizeHeadline))
         let excludedBigramsParam = excludeHeadlines.map(Self.bigramSet)
@@ -149,11 +148,11 @@ public struct AIService: Sendable {
                 batchCount: batch,
                 topic: topic,
                 customHint: customHint,
-                excludeList: excludeList,
+                excludeList: Array(excludeList.prefix(100)),
                 preferredSources: preferredSources
             )
 
-            var acceptedThisBatch = 0
+
             for p in payloads {
                 guard p.details.count >= 80 else { continue }
                 let key = Self.normalizeHeadline(p.headline)
@@ -165,7 +164,6 @@ public struct AIService: Sendable {
                 excludedBigrams.append(bigram)
                 excludeList.append(p.headline)
                 seenBigrams.append(bigram)
-                acceptedThisBatch += 1
                 allCards.append(KnowledgeCard(
                     category: CategoryRegistry.normalize(p.category, custom: settings.customCategoryNames),
                     headline: p.headline,
@@ -249,7 +247,7 @@ public struct AIService: Sendable {
         - 每条内容必须真实准确；不确定的事实宁可不写，严禁编造数字、人名、年份
         - 标题一句话点出反直觉、有趣或有用的点（如「香蕉是浆果，草莓不是」）
         - 摘要一句话概括核心
-        - 详情 3-6 段，每段讲一个角度（机制解释、历史背景、冷门细节、相关现象/实操要点），用 \n\n 分段
+        - 详情 3-6 段，每段讲一个角度（机制解释、历史背景、冷门细节、相关现象/实操要点），用 \\n\\n 分段
         - 分类必须从下列白名单中选择，不要发明新分类：
           \(categoryWhitelist)
         \(categoryGuides)
@@ -263,7 +261,7 @@ public struct AIService: Sendable {
             "category": "AI",
             "headline": "过拟合：模型把「背题」当成了「学会」",
             "summary": "训练集上满分、新题上失分，是机器学习最常见的翻车现场",
-            "details": "第一段。\n\n第二段。",
+            "details": "第一段。\\n\\n第二段。",
             "searchKeywords": ["过拟合", "正则化", "泛化"],
             "sources": ["维基百科"]
           }
@@ -272,8 +270,12 @@ public struct AIService: Sendable {
     }
 
     private static func topicHint(for topic: String?) -> String {
-        guard let topic, !topic.isEmpty else { return "" }
-        return "请围绕主题「\(topic)」展开。"
+        guard let trimmedTopic = topic?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmedTopic.isEmpty else { return "" }
+        return """
+        本次必须围绕主题「\(trimmedTopic)」生成，所有卡片都要与该主题直接相关；
+        若该主题超出白名单分类范围，请选择最贴近的一个白名单分类，不要发明新分类。
+        """
     }
 
     // MARK: - 从笔记或文章智能提炼知识卡片

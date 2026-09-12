@@ -407,8 +407,9 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 
 extension SpeechSynthesizerService: AVSpeechSynthesizerDelegate {
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        nonisolated(unsafe) let utteranceToken = utterance
         Task { @MainActor in
-            guard self.currentUtterance === utterance else { return }
+            guard self.currentUtterance === utteranceToken else { return }
             if let card = self.currentCard {
                 self.state = .playing(cardId: card.id, text: self.currentSpeakingText, progress: 0.0)
             }
@@ -416,8 +417,9 @@ extension SpeechSynthesizerService: AVSpeechSynthesizerDelegate {
     }
 
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+        nonisolated(unsafe) let utteranceToken = utterance
         Task { @MainActor in
-            guard self.currentUtterance === utterance else { return }
+            guard self.currentUtterance === utteranceToken else { return }
             self.currentWordRange = characterRange
             let progress = min(1.0, Double(characterRange.location + characterRange.length) / Double(self.totalCharactersCount))
             if let card = self.currentCard {
@@ -427,15 +429,17 @@ extension SpeechSynthesizerService: AVSpeechSynthesizerDelegate {
     }
 
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        nonisolated(unsafe) let utteranceToken = utterance
         Task { @MainActor in
-            guard self.currentUtterance === utterance else { return }
+            guard self.currentUtterance === utteranceToken else { return }
             self.finishPlayback()
         }
     }
 
     public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        nonisolated(unsafe) let utteranceToken = utterance
         Task { @MainActor in
-            guard self.currentUtterance === utterance else { return }
+            guard self.currentUtterance === utteranceToken else { return }
             self.state = .idle
             self.currentWordRange = nil
         }

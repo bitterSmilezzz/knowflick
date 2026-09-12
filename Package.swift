@@ -14,7 +14,7 @@ let package = Package(
                 .process("Resources")
             ],
             swiftSettings: [
-                // Core 以值类型 + @MainActor 为主，先行迁移到 Swift 6 严格并发；App 层维持 v5
+                // Swift 6 严格并发（v3.8.0 起 Core 先行，v4.0.0 起全包迁移）
                 .swiftLanguageMode(.v6)
             ]
         ),
@@ -23,7 +23,7 @@ let package = Package(
             dependencies: ["KnowFlickCore"],
             path: "Sources/KnowFlick",
             swiftSettings: [
-                // 应用层（SwiftUI 视图）同样迁移至 Swift 6 严格并发（第二阶段 R22）
+                // Swift 6 严格并发（v4.0.0 起与 Core 一致）
                 .swiftLanguageMode(.v6)
             ]
         ),
