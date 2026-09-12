@@ -54,9 +54,12 @@ import com.knowflick.app.ai.AiSettings
 fun SettingsScreen(
     initial: AiSettings,
     initialApiKey: String,
+    initialSpeech: com.knowflick.app.speech.SpeechSettings,
+    initialSpeechKey: String,
     onBack: () -> Unit,
     onTestConnection: suspend (AiSettings, String) -> String,
     onSave: (AiSettings, String) -> Unit,
+    onSaveSpeech: (com.knowflick.app.speech.SpeechSettings, String) -> Unit,
 ) {
     androidx.activity.compose.BackHandler { onBack() }
 
@@ -67,6 +70,11 @@ fun SettingsScreen(
     var testStatus by rememberSaveable { mutableStateOf("") }
     var isTesting by rememberSaveable { mutableStateOf(false) }
     var saveNotice by rememberSaveable { mutableStateOf("") }
+    var speechChannel by rememberSaveable { mutableStateOf(initialSpeech.channel) }
+    var speechBaseURL by rememberSaveable { mutableStateOf(initialSpeech.baseURL) }
+    var speechModel by rememberSaveable { mutableStateOf(initialSpeech.model) }
+    var speechVoice by rememberSaveable { mutableStateOf(initialSpeech.voice) }
+    var speechKey by rememberSaveable { mutableStateOf(initialSpeechKey) }
     val scope = rememberCoroutineScope()
 
     val currentPreset = AiProviderPresets.presets.firstOrNull { it.id == providerId } ?: AiProviderPresets.fallback()
@@ -214,6 +222,65 @@ fun SettingsScreen(
             if (currentPreset.id in AiProviderPresets.keylessIds && currentPreset.id != "custom") {
                 Spacer(Modifier.height(6.dp))
                 Text("该分组无需 API Key，应用只连接本机/局域网服务", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f), fontSize = 11.sp)
+            }
+
+            Spacer(Modifier.height(26.dp))
+            Text(
+                "语音朗读",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(
+                    com.knowflick.app.speech.SpeechChannel.SYSTEM to "系统语音",
+                    com.knowflick.app.speech.SpeechChannel.CLOUD to "云端 /audio/speech",
+                    com.knowflick.app.speech.SpeechChannel.LOCAL to "本地网关",
+                ).forEach { (channel, label) ->
+                    val selected = channel.name == speechChannel
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) EditorialColor.aiAmber.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
+                            .clickable { speechChannel = channel.name }
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                    ) {
+                        Text(label, color = if (selected) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f), fontSize = 12.sp)
+                    }
+                }
+            }
+            if (speechChannel != com.knowflick.app.speech.SpeechChannel.SYSTEM.name) {
+                Spacer(Modifier.height(8.dp))
+                FieldRow(label = "语音服务 Base URL", value = speechBaseURL, onValueChange = { speechBaseURL = it }, placeholder = if (speechChannel == "LOCAL") "http://127.0.0.1:8880" else "https://api.example.com")
+                FieldRow(label = "语音模型", value = speechModel, onValueChange = { speechModel = it }, placeholder = "kokoro")
+                FieldRow(label = "发音人 voice", value = speechVoice, onValueChange = { speechVoice = it }, placeholder = "zf_xiaobei")
+                FieldRow(label = "语音 API Key", value = speechKey, onValueChange = { speechKey = it }, placeholder = "sk-...")
+            }
+            Spacer(Modifier.height(10.dp))
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable {
+                        onSaveSpeech(
+                            com.knowflick.app.speech.SpeechSettings(
+                                channel = speechChannel,
+                                baseURL = speechBaseURL.trim(),
+                                model = speechModel.trim(),
+                                voice = speechVoice.trim(),
+                                speed = 1.0f,
+                            ),
+                            speechKey.trim(),
+                        )
+                        saveNotice = "语音配置已保存 ✓"
+                    }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text("保存语音配置", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(40.dp))
         }

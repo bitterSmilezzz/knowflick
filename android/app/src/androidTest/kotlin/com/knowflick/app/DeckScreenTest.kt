@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeRight
@@ -30,8 +31,17 @@ class DeckScreenTest {
 
     @Test
     fun titleIsDisplayed() {
+        // 顶栏主入口：收藏阁 / 更多（统计与设置收纳其中）/ 磨耳朵
         rule.onNodeWithContentDescription("收藏阁").assertIsDisplayed()
-        rule.onNodeWithContentDescription("学习统计").assertIsDisplayed()
+        rule.onNodeWithContentDescription("更多").assertIsDisplayed()
+        rule.onNodeWithContentDescription("磨耳朵连续朗读").assertIsDisplayed()
+    }
+
+    @Test
+    fun moreMenuExposesStatsAndSettings() {
+        rule.onNodeWithContentDescription("更多").performClick()
+        rule.onNodeWithText("学习统计").assertIsDisplayed()
+        rule.onNodeWithText("AI 服务设置").assertIsDisplayed()
     }
 
     @Test

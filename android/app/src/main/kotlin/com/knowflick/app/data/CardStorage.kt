@@ -92,6 +92,17 @@ class CardStorage(private val baseDir: File) {
         false
     }
 
+    /** 语音配置单独落盘（settings.json 之外，密钥仍走 CredentialStore） */
+    fun loadSpeechJson(): String? =
+        readFileSafe(File(baseDir, "speech.json"))?.decodeToString()
+
+    fun saveSpeechJson(json: String): Boolean = try {
+        File(baseDir, "speech.json").writeText(json)
+        true
+    } catch (_: Exception) {
+        false
+    }
+
     private fun readFileSafe(file: File): ByteArray? = try {
         if (file.exists() && file.isFile) file.readBytes() else null
     } catch (_: Exception) {

@@ -5,6 +5,17 @@
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
 ## [Unreleased]
+## [v4.1.7] - 2026-09-12
+
+### Android M6：语音三通道、磨耳朵连续播报与设备级验证（安卓开发 · 里程碑 6）
+
+- **语音三通道**：系统 TTS（默认）/ 云端 HTTPS `/v1/audio/speech` / 本地回环网关（免密）；通道决策收敛到 `SpeechChannelPolicy`（云端强制 HTTPS + 密钥、本地限定 127.0.0.1/localhost、裸域名补 /v1 且保留自定义前缀）；远程失败自动回退系统语音并提示原因。
+- **磨耳朵连续模式**：卡片播完 → 间隔 → 系统跳过当前卡并自动播报下一张（与 macOS `onAmbientAdvanceRequest` 同语义）；无卡时自动收束退出。
+- **设备测试抓到并修复 3 个真问题**：① Android 9+ 明文策略拦截本地网关——新增 network security config 仅对回环地址放行，其余强制 HTTPS；② 详情页内容滚动层压在顶栏之上导致朗读/收藏按钮看得见点不动——层级顺序调整；③ 顶栏图标增至 5 个在 320dp 屏挤掉「设置」——统计与设置收纳进「更多」菜单，顶栏收敛为 4 项。
+- **验证手段升级**：新增两条设备级端到端语音测试（设备内 MockWebServer 扮演 Kokoro 网关）——详情朗读「POST → WAV → MediaPlayer 播放」与磨耳朵「播完自动推进到下一张并再次合成」均在模拟器上断言通过；另以 adb reverse + 本机 mock 服务实测连续 3 次真实合成请求与播放态 UI。
+- **验证**：58 项 JVM 测试 + 8 项模拟器 instrumented 测试全绿；Release APK（17.3MB）构建通过。
+
+
 ## [v4.1.6] - 2026-09-12
 
 ### Android M5：知识库（收藏阁 + 历史足迹）、导入导出与语音朗读（安卓开发 · 里程碑 5）

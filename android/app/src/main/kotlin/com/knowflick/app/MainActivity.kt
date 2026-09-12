@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        com.knowflick.app.ui.SpeechController.ensure(this)
+        viewModel.speech.ensureTts()
         setContent {
             KnowFlickTheme {
                 when (screen) {
@@ -60,6 +60,11 @@ class MainActivity : ComponentActivity() {
                         isGenerating = viewModel.isGenerating,
                         notice = viewModel.generateNotice,
                         onGenerateRequest = { viewModel.generateNewCards(count = 3) },
+                        isAmbientMode = viewModel.speech.isAmbientMode,
+                        onToggleAmbient = {
+                            viewModel.speech.toggleAmbient(viewModel.model.store.topCard)
+                            viewModel.bump()
+                        },
                     )
                     Screen.DETAIL -> {
                         val card = detailCard
@@ -72,15 +77,13 @@ class MainActivity : ComponentActivity() {
                                 card = card,
                                 isFavorite = isFavorite,
                                 showAIMark = viewModel.settings.showAIMark,
-                                isSpeakingState = com.knowflick.app.ui.SpeechController.currentSpeakingId == card.id &&
-                                    com.knowflick.app.ui.SpeechController.isSpeakingState,
+                                isSpeakingState = viewModel.speech.speakingCardId == card.id && viewModel.speech.isSpeaking,
                                 onToggleFavorite = {
                                     viewModel.mutate { viewModel.model.store.toggleFavorite(card) }
                                 },
                                 onToggleSpeech = {
-                                    viewModel.mutate {
-                                        com.knowflick.app.ui.SpeechController.toggle(this@MainActivity, card)
-                                    }
+                                    viewModel.speech.toggle(card)
+                                    viewModel.bump()
                                 },
                                 onBack = { screen = Screen.DECK },
                             )
@@ -93,9 +96,12 @@ class MainActivity : ComponentActivity() {
                     Screen.SETTINGS -> com.knowflick.app.ui.SettingsScreen(
                         initial = viewModel.settings,
                         initialApiKey = viewModel.currentApiKey(),
+                        initialSpeech = viewModel.speechSettings,
+                        initialSpeechKey = viewModel.currentSpeechApiKey(),
                         onBack = { screen = Screen.DECK },
                         onTestConnection = { temp, key -> viewModel.testConnection(temp, key) },
                         onSave = { updated, key -> viewModel.saveSettings(updated, key) },
+                        onSaveSpeech = { speech, key -> viewModel.saveSpeechSettings(speech, key) },
                     )
                     Screen.LIBRARY -> com.knowflick.app.ui.LibraryScreen(
                         cards = viewModel.model.store.cards,

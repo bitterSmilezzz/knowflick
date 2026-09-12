@@ -21,15 +21,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +77,8 @@ fun DeckScreen(
     onGenerateRequest: () -> Unit = {},
     isGenerating: Boolean = false,
     notice: String? = null,
+    isAmbientMode: Boolean = false,
+    onToggleAmbient: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -135,11 +137,28 @@ fun DeckScreen(
                 IconButton(onClick = onOpenFavorites) {
                     Icon(Icons.Filled.Bookmarks, contentDescription = "收藏阁", tint = MaterialTheme.colorScheme.onBackground)
                 }
-                IconButton(onClick = onOpenStats) {
-                    Icon(Icons.Filled.BarChart, contentDescription = "学习统计", tint = MaterialTheme.colorScheme.onBackground)
+                var showMore by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { showMore = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onBackground)
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("学习统计", fontSize = 13.sp) },
+                            onClick = { showMore = false; onOpenStats() },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("AI 服务设置", fontSize = 13.sp) },
+                            onClick = { showMore = false; onOpenSettings() },
+                        )
+                    }
                 }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = "AI 服务设置", tint = MaterialTheme.colorScheme.onBackground)
+                IconButton(onClick = onToggleAmbient) {
+                    Icon(
+                        Icons.Filled.Headphones,
+                        contentDescription = if (isAmbientMode) "退出磨耳朵" else "磨耳朵连续朗读",
+                        tint = if (isAmbientMode) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground,
+                    )
                 }
                 IconButton(onClick = {
                     topCard?.let { card ->

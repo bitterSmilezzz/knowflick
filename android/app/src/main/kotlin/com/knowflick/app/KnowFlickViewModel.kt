@@ -29,8 +29,13 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         seedCards = SeedLoader(application).load(),
     )
 
-    private val credentials: CredentialStore = InMemoryCredentialStore()   // 进程内凭据（Keystore 版在 M5 接入）
+    private val credentials: CredentialStore = InMemoryCredentialStore()   // 进程内凭据（Keystore 版后续接入）
     private val aiService = AiService()
+
+    /** 语音播放控制器（三通道 + 磨耳朵） */
+    val speech = com.knowflick.app.speech.SpeechController(application)
+    var speechSettings by mutableStateOf(com.knowflick.app.speech.SpeechSettings())
+        private set
 
     /** 重组触发器 */
     var version by mutableIntStateOf(0)
@@ -51,7 +56,32 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     init {
         model.bootstrap()
         settings = loadSettings()
+        speechSettings = com.knowflick.app.speech.SpeechSettings.fromJson(model.storage.loadSpeechJson() ?: "")
+            ?: com.knowflick.app.speech.SpeechSettings()
+        applySpeechConfig()
+        // 磨耳朵推进：系统跳过当前卡，返回下一张（与 macOS onAmbientAdvanceRequest 同语义）
+        speech.onAdvanceRequest = {
+            model.store.topCard?.let { current -> model.store.swipe(current, com.knowflick.app.domain.SwipeDirection.SKIP) }
+            version++
+            schedulePersist()
+            model.store.topCard
+        }
     }
+
+    private fun applySpeechConfig() {
+        speech.settings = speechSettings
+        speech.apiKey = credentials.read("tts.key").orEmpty()
+    }
+
+    fun saveSpeechSettings(updated: com.knowflick.app.speech.SpeechSettings, apiKey: String) {
+        model.storage.saveSpeechJson(updated.toJson())
+        if (apiKey.isNotBlank()) credentials.save(apiKey, "tts.key") else credentials.delete("tts.key")
+        speechSettings = updated
+        applySpeechConfig()
+        version++
+    }
+
+    fun currentSpeechApiKey(): String = credentials.read("tts.key").orEmpty()
 
     private fun loadSettings(): AiSettings {
         val loaded = AiSettings.fromJson(model.storage.loadSettingsJson() ?: "") ?: AiSettings()
@@ -144,6 +174,16 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         action()
         version++
         schedulePersist()
+    }
+
+    /** 仅触发重组（用于播放状态等非持久化状态变化） */
+    fun bump() {
+        version++
+    }
+
+    override fun onCleared() {
+        speech.release()
+        super.onCleared()
     }
 
     private fun schedulePersist() {

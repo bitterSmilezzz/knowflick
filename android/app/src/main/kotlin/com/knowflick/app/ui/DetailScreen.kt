@@ -83,44 +83,6 @@ fun DetailScreen(
             }
         }
 
-        // 顶栏浮动按钮：返回 / 朗读 / 收藏
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                IconButton(
-                    onClick = { onToggleSpeech() },
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
-                ) {
-                    Icon(
-                        if (isSpeakingState) Icons.Filled.Close else Icons.Filled.VolumeUp,
-                        contentDescription = if (isSpeakingState) "停止朗读" else "朗读全文",
-                        tint = if (isSpeakingState) EditorialColor.aiAmber else Color.White,
-                    )
-                }
-                IconButton(
-                    onClick = onToggleFavorite,
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
-                ) {
-                    Icon(
-                        if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = "收藏或取消收藏",
-                        tint = if (isFavorite) EditorialColor.likeGreen else Color.White,
-                    )
-                }
-            }
-        }
-
         Column(
             Modifier
                 .fillMaxSize()
@@ -177,6 +139,44 @@ fun DetailScreen(
                         fontSize = 12.sp,
                         lineHeight = 19.sp,
                         modifier = Modifier.padding(vertical = 3.dp),
+                    )
+                }
+            }
+        }
+
+        // 顶栏浮动按钮：返回 / 朗读 / 收藏
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                IconButton(
+                    onClick = { onToggleSpeech() },
+                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                ) {
+                    Icon(
+                        if (isSpeakingState) Icons.Filled.Close else Icons.Filled.VolumeUp,
+                        contentDescription = if (isSpeakingState) "停止朗读" else "朗读全文",
+                        tint = if (isSpeakingState) EditorialColor.aiAmber else Color.White,
+                    )
+                }
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                ) {
+                    Icon(
+                        if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = "收藏或取消收藏",
+                        tint = if (isFavorite) EditorialColor.likeGreen else Color.White,
                     )
                 }
             }
