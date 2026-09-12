@@ -95,17 +95,8 @@ struct QuizView: View {
 
     private var topBar: some View {
         HStack(spacing: 16) {
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(EditorialColor.textPrimary)
-                    .frame(width: 32, height: 32)
-                    .background(EditorialColor.glassSurface, in: Circle())
-                    .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-            }
-            .buttonStyle(PressableButtonStyle())
-            .keyboardShortcut(.escape, modifiers: [])
-            .help("退出测验 (Esc)")
+            GlassIconButton(icon: "xmark", iconSize: 12, help: "退出测验 (Esc)", action: onClose)
+                .keyboardShortcut(.escape, modifiers: [])
 
             HStack(spacing: 8) {
                 Image(systemName: "graduationcap.fill")

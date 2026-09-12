@@ -229,3 +229,50 @@ public struct NoiseOverlay: View {
         EmptyView()
     }
 }
+
+// MARK: - 按压反馈按钮样式（hover 亮起 + 按压缩小）
+// 原位于 CardDeckView.swift 底部，17 个文件使用；归属设计系统文件
+
+struct PressableButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.94
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+    }
+}
+
+// MARK: - 玻璃圆形图标按钮（弹窗返回/关闭统一组件）
+
+/// 32×32 玻璃圆底图标按钮：弹窗顶栏「返回 / 关闭」的标准形态。
+/// 图标字号/前景色可调（12pt xmark 关闭、13pt chevron 返回）。
+struct GlassIconButton: View {
+    let icon: String
+    var size: CGFloat = 32
+    var iconSize: CGFloat = 13
+    var tint: Color = EditorialColor.textPrimary
+    var help: String
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: iconSize, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: size, height: size)
+                .background(EditorialColor.glassSurface, in: Circle())
+                .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .help(help)
+    }
+}

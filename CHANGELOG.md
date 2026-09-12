@@ -14,6 +14,15 @@
 - **事件监视器豁免**：星图滚轮捕获层的 monitor 句柄标注 `nonisolated(unsafe)`（`NSEvent.removeMonitor` 线程安全，deinit 摘除为合法跨隔离访问）。
 - **验证**：173 项 / 25 个 suite 全绿；Release 构建零警告。
 
+
+## [v4.0.1] - 2026-09-12
+
+### 共享组件归位与样式统一（二十轮优化续作 · 第 23 轮）
+
+- **设计系统归位**：`PressableButtonStyle` 从 CardDeckView 底部迁至 `ThemeTokens.swift`（17 个文件 90 处使用的全应用基础样式，归属设计系统文件）。
+- **弹窗返回/关闭统一组件**：新增 `GlassIconButton`（32×32 玻璃圆底图标按钮），收藏阁/历史/测验三处同形态按钮迁移复用；帮助页与统计页为胶囊文字按钮（不同形态族），保持原样。
+- **测试与验证**：173 项 / 25 个 suite 全绿。
+
 ## [Unreleased]
 ## [v3.6.2] - 2026-09-11
 

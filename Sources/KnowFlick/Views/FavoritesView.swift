@@ -115,7 +115,7 @@ struct FavoritesView: View {
 
     private var topBar: some View {
         HStack(spacing: 16) {
-            Button(action: {
+            GlassIconButton(icon: "chevron.left", help: "返回 (Esc)") {
                 if selectedCard != nil {
                     withAnimation { selectedCard = nil }
                 } else if sharePosterCard != nil {
@@ -125,17 +125,8 @@ struct FavoritesView: View {
                 } else {
                     onClose()
                 }
-            }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(EditorialColor.textPrimary)
-                    .frame(width: 32, height: 32)
-                    .background(EditorialColor.glassSurface, in: Circle())
-                    .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
             }
-            .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
-            .help("返回 (Esc)")
 
             HStack(spacing: 9) {
                 Image(systemName: "bookmark.fill")

@@ -968,23 +968,3 @@ struct CardDeckView: View {
     }
 
 }
-
-// MARK: - 按压反馈按钮样式（hover 亮起 + 按压缩小）
-
-struct PressableButtonStyle: ButtonStyle {
-    var scale: CGFloat = 0.94
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-    }
-}
