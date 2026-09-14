@@ -13,10 +13,13 @@
 
 set -euo pipefail
 
-# 组装中途失败时清理半成品 .app，避免留下表面完整的残缺产物
+# 组装中途失败时清理半成品 .app，避免留下表面完整的残缺产物。
+# 只在本次运行已经动过产物目录后才清理：若在编译阶段就失败，dist 里可能是上一次的成功产物，
+# 不能因为这次失败把它删掉（此前会误删，2026-09-14 实际发生过一次）。
+app_dir_owned=0
 cleanup_on_failure() {
     local status=$?
-    if [[ $status -ne 0 && -d "$APP_DIR" ]]; then
+    if [[ $status -ne 0 && "$app_dir_owned" -eq 1 && -d "$APP_DIR" ]]; then
         rm -rf "$APP_DIR"
         echo "构建失败，已清理半成品 $APP_DIR" >&2
     fi
@@ -66,6 +69,8 @@ fi
 
 # ---------- 2. 组装 app 目录 ----------
 echo "==> [2/3] 组装 $APP_DIR"
+# 从这里开始产物目录归本次运行所有，失败时由 cleanup_on_failure 清理
+app_dir_owned=1
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
