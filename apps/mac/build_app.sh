@@ -148,8 +148,10 @@ SMOKE_LOG="$(mktemp)"
 "$APP_DIR/Contents/MacOS/$(basename "$BINARY_SRC")" >"$SMOKE_LOG" 2>&1 &
 SMOKE_PID=$!
 sleep 3
-kill "$SMOKE_PID" 2>/dev/null
-wait "$SMOKE_PID" 2>/dev/null
+# 收尾必须容错：被 kill 的子进程会让 wait 返回 143，而 set -e 下这会直接终止脚本
+# （此前误报为「打包失败」）。真实判据只有日志里有没有资源加载错误。
+kill "$SMOKE_PID" 2>/dev/null || true
+wait "$SMOKE_PID" 2>/dev/null || true
 if grep -q "could not load resource bundle" "$SMOKE_LOG"; then
     echo "错误: 资源 bundle 无法加载，产物启动即崩" >&2
     sed -n '1,5p' "$SMOKE_LOG" >&2
