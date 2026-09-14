@@ -123,14 +123,12 @@ if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
 fi
 
 if [[ -d "$RESOURCE_BUNDLE_SRC" ]]; then
-    # 资源 bundle 必须放在 .app 根目录，不能放 Contents/Resources/。
-    # SwiftPM 生成的 resource_bundle_accessor 在各工具链下候选路径不同：
-    #   CLT 27       → Bundle.main.resourceURL(Contents/Resources) → bundleURL(.app)
-    #   Xcode 26.3   → Bundle.main.bundleURL(.app) → 编译期 .build 路径
-    # 只有 .app 根目录是两者都覆盖的位置；此前放 Contents/Resources 会让
-    # Xcode 构建的产物启动即崩（Fatal error: could not load resource bundle）。
-    echo "    复制资源 bundle 到 .app 根目录（$RESOURCE_BUNDLE_NAME）"
-    cp -R "$RESOURCE_BUNDLE_SRC" "$APP_DIR/"
+    # 资源 bundle 放在 .app/Contents/Resources（标准位置，签名要求）。
+    # 注意不能放 .app 根目录：那样会破坏代码签名
+    # （unsealed contents present in the bundle root）。
+    # 代码侧（CoreResources）已按多个候选位置查找，兼容各工具链的 accessor 差异。
+    echo "    复制资源 bundle ($RESOURCE_BUNDLE_NAME)"
+    cp -R "$RESOURCE_BUNDLE_SRC" "$RESOURCES_DIR/"
 else
     echo "警告: 未找到资源 bundle $RESOURCE_BUNDLE_SRC, 跳过资源复制" >&2
 fi

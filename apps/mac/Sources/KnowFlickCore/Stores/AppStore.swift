@@ -850,7 +850,9 @@ public final class AppStore {
     // MARK: - 预置库
 
     private nonisolated static func loadSeedCards() -> [KnowledgeCard] {
-        guard let url = Bundle.module.url(forResource: "seed_cards", withExtension: "json"),
+        // 用 CoreResources.bundle 而非 Bundle.module：后者在 Xcode 26.x 构建的 .app 里
+        // 找不到 Contents/Resources 下的资源 bundle（详见 CoreResources 的说明）
+        guard let url = CoreResources.bundle.url(forResource: "seed_cards", withExtension: "json"),
               let data = try? Data(contentsOf: url) else { return [] }
         struct SeedCard: Decodable {
             let category: String

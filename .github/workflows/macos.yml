@@ -70,12 +70,12 @@ jobs:
           test -x "$APP/Contents/MacOS/KnowFlick" || { echo "缺少可执行文件"; exit 1; }
           codesign --verify --deep --strict "$APP"
 
-          # 资源 bundle 必须在 .app 根目录：SwiftPM 的 resource_bundle_accessor 在
-          # Xcode 26.x 下的候选路径是 bundleURL(.app) 与编译期路径，不含 Contents/Resources，
-          # 放错位置会导致启动即崩。这里同时校验位置与内容。
-          BUNDLE="$APP/KnowFlick_KnowFlickCore.bundle"
+          # 资源 bundle 在 .app/Contents/Resources（标准位置，签名要求；
+          # 放 .app 根目录会破坏签名）。bundle 内部布局随工具链不同（扁平或
+          # Contents/Resources），因此按文件名查找而非写死路径。
+          BUNDLE="$APP/Contents/Resources/KnowFlick_KnowFlickCore.bundle"
           if [[ ! -d "$BUNDLE" ]]; then
-            echo "资源 bundle 不在 .app 根目录；实际布局："
+            echo "缺少资源 bundle；实际布局："
             find "$APP" -maxdepth 3 -name "*.bundle" | head
             exit 1
           fi
