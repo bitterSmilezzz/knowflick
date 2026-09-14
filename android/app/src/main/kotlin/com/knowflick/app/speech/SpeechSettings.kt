@@ -22,7 +22,13 @@ data class SpeechSettings(
 
     /** 本地回环判定：127.0.0.1 / localhost / [::1] */
     val isLoopback: Boolean
-        get() = baseURL.contains("127.0.0.1") || baseURL.contains("localhost") || baseURL.contains("[::1]")
+        get() {
+            val host = runCatching { java.net.URI(baseURL.trim()).host }
+                .getOrNull()
+                ?.lowercase()
+                ?.trim('[', ']')
+            return host == "127.0.0.1" || host == "localhost" || host == "::1"
+        }
 
     fun toJson(): String = json.encodeToString(serializer(), this)
 

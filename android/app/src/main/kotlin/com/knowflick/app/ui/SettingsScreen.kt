@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -39,6 +41,9 @@ import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knowflick.app.ai.AiProviderPreset
@@ -58,8 +63,8 @@ fun SettingsScreen(
     initialSpeechKey: String,
     onBack: () -> Unit,
     onTestConnection: suspend (AiSettings, String) -> String,
-    onSave: (AiSettings, String) -> Unit,
-    onSaveSpeech: (com.knowflick.app.speech.SpeechSettings, String) -> Unit,
+    onSave: (AiSettings, String) -> Boolean,
+    onSaveSpeech: (com.knowflick.app.speech.SpeechSettings, String) -> Boolean,
 ) {
     androidx.activity.compose.BackHandler { onBack() }
 
@@ -67,9 +72,12 @@ fun SettingsScreen(
     var baseURL by rememberSaveable { mutableStateOf(initial.baseURL) }
     var model by rememberSaveable { mutableStateOf(initial.model) }
     var apiKey by rememberSaveable { mutableStateOf(initialApiKey) }
-    var testStatus by rememberSaveable { mutableStateOf("") }
-    var isTesting by rememberSaveable { mutableStateOf(false) }
+    // 连通性测试属于当前 Composition 的临时任务。旋转会取消旧协程，状态也必须复位，
+    // 否则 rememberSaveable 会恢复 isTesting=true，让按钮永久停在“测试中”。
+    var testStatus by remember { mutableStateOf("") }
+    var isTesting by remember { mutableStateOf(false) }
     var saveNotice by rememberSaveable { mutableStateOf("") }
+    var saveSucceeded by rememberSaveable { mutableStateOf(true) }
     var speechChannel by rememberSaveable { mutableStateOf(initialSpeech.channel) }
     var speechBaseURL by rememberSaveable { mutableStateOf(initialSpeech.baseURL) }
     var speechModel by rememberSaveable { mutableStateOf(initialSpeech.model) }
@@ -105,6 +113,7 @@ fun SettingsScreen(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .imePadding()
             .verticalScroll(rememberScrollState()),
     ) {
         Row(
@@ -114,7 +123,7 @@ fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
             }
             Text(
                 "AI 服务设置",
@@ -170,6 +179,7 @@ fun SettingsScreen(
                 value = apiKey,
                 onValueChange = { apiKey = it },
                 placeholder = "sk-...",
+                secret = true,
             )
 
             Spacer(Modifier.height(16.dp))
@@ -196,8 +206,8 @@ fun SettingsScreen(
                         .clip(RoundedCornerShape(8.dp))
                         .background(EditorialColor.likeGreen)
                         .clickable {
-                            onSave(currentSettings(), apiKey.trim())
-                            saveNotice = "已保存并生效 ✓"
+                            saveSucceeded = onSave(currentSettings(), apiKey.trim())
+                            saveNotice = if (saveSucceeded) "已保存并生效 ✓" else "当前会话已生效，但写入设备失败，请重试"
                             testStatus = ""
                         }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -217,7 +227,7 @@ fun SettingsScreen(
             }
             if (saveNotice.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text(saveNotice, color = EditorialColor.likeGreen, fontSize = 12.sp)
+                Text(saveNotice, color = if (saveSucceeded) EditorialColor.likeGreen else EditorialColor.dislikeRed, fontSize = 12.sp)
             }
             if (currentPreset.id in AiProviderPresets.keylessIds && currentPreset.id != "custom") {
                 Spacer(Modifier.height(6.dp))
@@ -258,7 +268,7 @@ fun SettingsScreen(
                 FieldRow(label = "语音服务 Base URL", value = speechBaseURL, onValueChange = { speechBaseURL = it }, placeholder = if (speechChannel == "LOCAL") "http://127.0.0.1:8880" else "https://api.example.com")
                 FieldRow(label = "语音模型", value = speechModel, onValueChange = { speechModel = it }, placeholder = "kokoro")
                 FieldRow(label = "发音人 voice", value = speechVoice, onValueChange = { speechVoice = it }, placeholder = "zf_xiaobei")
-                FieldRow(label = "语音 API Key", value = speechKey, onValueChange = { speechKey = it }, placeholder = "sk-...")
+                FieldRow(label = "语音 API Key", value = speechKey, onValueChange = { speechKey = it }, placeholder = "sk-...", secret = true)
             }
             Spacer(Modifier.height(10.dp))
             Box(
@@ -266,7 +276,7 @@ fun SettingsScreen(
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surface)
                     .clickable {
-                        onSaveSpeech(
+                        saveSucceeded = onSaveSpeech(
                             com.knowflick.app.speech.SpeechSettings(
                                 channel = speechChannel,
                                 baseURL = speechBaseURL.trim(),
@@ -276,7 +286,7 @@ fun SettingsScreen(
                             ),
                             speechKey.trim(),
                         )
-                        saveNotice = "语音配置已保存 ✓"
+                        saveNotice = if (saveSucceeded) "语音配置已保存 ✓" else "当前会话已生效，但写入设备失败，请重试"
                     }
                     .padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
@@ -288,7 +298,13 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun FieldRow(label: String, value: String, onValueChange: (String) -> Unit, placeholder: String) {
+private fun FieldRow(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    secret: Boolean = false,
+) {
     Column(Modifier.padding(vertical = 6.dp)) {
         Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f), fontSize = 11.sp)
         Spacer(Modifier.height(4.dp))
@@ -298,6 +314,8 @@ private fun FieldRow(label: String, value: String, onValueChange: (String) -> Un
             placeholder = { Text(placeholder, fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)) },
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground),
             singleLine = true,
+            visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+            keyboardOptions = if (secret) KeyboardOptions(keyboardType = KeyboardType.Password) else KeyboardOptions.Default,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp),
         )

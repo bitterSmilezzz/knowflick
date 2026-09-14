@@ -1,5 +1,7 @@
 package com.knowflick.app.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,12 +29,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -55,7 +54,7 @@ fun DetailScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val bg: ImageBitmap? = remember(card.id) { BackgroundImageCache.image(context, ThemeKey.forCard(card)) }
+    val bg = rememberBackgroundImage(ThemeKey.forCard(card))
 
     // 系统返回键与屏内返回语义一致（否则返回键会直接退出应用）
     androidx.activity.compose.BackHandler { onBack() }
@@ -133,12 +132,24 @@ fun DetailScreen(
                 Text("延伸阅读", color = EditorialColor.aiAmber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(10.dp))
                 card.links.forEach { link ->
+                    val linkUri = runCatching { Uri.parse(link.url) }.getOrNull()
+                        ?.takeIf { it.scheme == "https" || it.scheme == "http" }
                     Text(
                         "◦ ${link.title}",
                         color = Color.White.copy(alpha = 0.65f),
                         fontSize = 12.sp,
                         lineHeight = 19.sp,
-                        modifier = Modifier.padding(vertical = 3.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                enabled = linkUri != null,
+                                onClickLabel = "打开延伸阅读",
+                            ) {
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, linkUri))
+                                }
+                            }
+                            .padding(vertical = 8.dp),
                     )
                 }
             }
@@ -164,7 +175,7 @@ fun DetailScreen(
                     modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
                 ) {
                     Icon(
-                        if (isSpeakingState) Icons.Filled.Close else Icons.Filled.VolumeUp,
+                        if (isSpeakingState) Icons.Filled.Close else AppIcons.VolumeUp,
                         contentDescription = if (isSpeakingState) "停止朗读" else "朗读全文",
                         tint = if (isSpeakingState) EditorialColor.aiAmber else Color.White,
                     )

@@ -10,3 +10,7 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+.kotlin/
+signing.properties
+*.jks
+*.keystore

@@ -1,17 +1,20 @@
 package com.knowflick.app
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeRight
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.knowflick.app.data.AppModel
-import com.knowflick.app.domain.SwipeDirection
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,6 +61,46 @@ class DeckScreenTest {
     }
 
     @Test
+    fun draggedCardTracksTheFingerOnTheNextFrame() {
+        rule.mainClock.autoAdvance = false
+        val card = rule.onNodeWithTag("deck_top_card")
+        val startCenterX = card.fetchSemanticsNode().boundsInRoot.center.x
+
+        card.performTouchInput {
+            down(center)
+            moveBy(Offset(140f, 0f))
+            advanceEventTime(16)
+        }
+        rule.mainClock.advanceTimeByFrame()
+
+        val movedCenterX = card.fetchSemanticsNode().boundsInRoot.center.x
+        card.performTouchInput { up() }
+        rule.mainClock.autoAdvance = true
+        assertTrue(
+            "卡片下一帧应跟随手指，实际只移动 ${movedCenterX - startCenterX}px",
+            // Android 的触摸 slop 会消费约 20px；剩余位移必须在下一帧完整呈现。
+            movedCenterX - startCenterX >= 110f,
+        )
+    }
+
+    @Test
+    fun nextCardIsVisibleWhilePreviousCardLeaves() {
+        val model: AppModel = viewModel().model
+        val beforeId = model.store.topCard!!.id
+        val beforeHeadline = model.store.topCard!!.headline
+        rule.mainClock.autoAdvance = false
+
+        rule.onNodeWithTag("deck_top_card").performTouchInput { swipeRight(durationMillis = 200) }
+        rule.mainClock.advanceTimeByFrame()
+
+        assertNotEquals(beforeId, model.store.topCard?.id)
+        rule.onNodeWithTag("deck_top_card").assertIsDisplayed()
+        rule.mainClock.advanceTimeBy(300)
+        assertTrue(rule.onAllNodesWithText(beforeHeadline).fetchSemanticsNodes().isEmpty())
+        rule.mainClock.autoAdvance = true
+    }
+
+    @Test
     fun detailButtonOpensDetailScreen() {
         rule.onNodeWithContentDescription("详情").performClick()
         rule.onNodeWithContentDescription("返回").assertIsDisplayed()
@@ -71,6 +114,6 @@ class DeckScreenTest {
         val before = model.store.cards.first { it.id == cardId }.isFavorite
         rule.onNodeWithContentDescription("收藏").performClick()
         val after = model.store.cards.first { it.id == cardId }.isFavorite
-        org.junit.Assert.assertNotEquals(before, after)
+        assertNotEquals(before, after)
     }
 }

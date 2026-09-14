@@ -1,8 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    // 应用 baseline profile：把 :baselineprofile 采集到的规则合并进发布包
+    id("androidx.baselineprofile")
+}
+
+val releaseSigning = Properties().apply {
+    val config = rootProject.file("signing.properties")
+    if (config.isFile) config.inputStream().use { load(it) }
 }
 
 android {
@@ -13,14 +22,27 @@ android {
         applicationId = "com.knowflick.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 12
+        versionName = "0.8.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseSigning.isNotEmpty()) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (releaseSigning.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
@@ -49,7 +71,9 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
+    // 只用 material-icons-core：扩展包含 2277 个图标，会让每个 debug 构建多出约 3.8 MB dex。
+    // 本项目额外需要的 4 个图标见 ui/AppIcons.kt。
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
 
@@ -74,4 +98,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // baseline profile 采集器（:baselineprofile 模块）
+    baselineProfile(project(":baselineprofile"))
 }

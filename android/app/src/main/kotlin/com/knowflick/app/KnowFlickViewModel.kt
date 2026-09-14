@@ -1,6 +1,7 @@
 package com.knowflick.app
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -12,15 +13,21 @@ import com.knowflick.app.ai.AiService
 import com.knowflick.app.ai.AiSettings
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
+import com.knowflick.app.data.CardPersistenceQueue
+import com.knowflick.app.data.CardSaveResult
 import com.knowflick.app.data.CredentialStore
 import com.knowflick.app.data.SeedLoader
 import java.io.File
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 
 /**
  * 应用级状态持有者：卡库持久化 + 卡堆状态机 + AI 服务。
- * version 自增驱动 Compose 重组；落盘经 IO 调度器 350ms 节流合并；onPause flush。
+ * version 自增驱动 Compose 重组；落盘经串行 IO 队列 350ms 节流合并；onPause 非阻塞 flush。
  */
 class KnowFlickViewModel(application: Application) : AndroidViewModel(application) {
     val model: AppModel = AppModel(
@@ -29,7 +36,11 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     )
 
     private val credentials: CredentialStore = com.knowflick.app.data.SystemCredentialStore(application)
-    private val aiService = AiService()
+    private val aiService = AiService(
+        versionName = runCatching {
+            application.packageManager.getPackageInfo(application.packageName, 0).versionName
+        }.getOrNull() ?: "unknown",
+    )
 
     /** 语音播放控制器（三通道 + 磨耳朵） */
     val speech = com.knowflick.app.speech.SpeechController(application)
@@ -45,6 +56,8 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var generateNotice by mutableStateOf<String?>(null)
         private set
+    var persistenceNotice by mutableStateOf<String?>(null)
+        private set
 
     /** 已保存的设置与密钥 */
     var settings: AiSettings by mutableStateOf(AiSettings())
@@ -53,8 +66,10 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     /** 测验会话（null = 未在测验） */
     var quizSession: com.knowflick.app.domain.QuizSession? by mutableStateOf(null)
         private set
+    private val quizCycleRatedIds = LinkedHashSet<String>()
 
-    private var persistScheduled = false
+    private var persistJob: Job? = null
+    private val persistenceQueue = CardPersistenceQueue(model.storage, ::handlePersistenceResult)
 
     init {
         model.bootstrap()
@@ -76,35 +91,50 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         speech.apiKey = credentials.read("tts.key").orEmpty()
     }
 
-    fun saveSpeechSettings(updated: com.knowflick.app.speech.SpeechSettings, apiKey: String) {
-        model.storage.saveSpeechJson(updated.toJson())
-        if (apiKey.isNotBlank()) credentials.save(apiKey, "tts.key") else credentials.delete("tts.key")
+    fun saveSpeechSettings(updated: com.knowflick.app.speech.SpeechSettings, apiKey: String): Boolean {
+        val settingsSaved = model.storage.saveSpeechJson(updated.toJson())
+        val credentialSaved = if (updated.channelEnum == com.knowflick.app.speech.SpeechChannel.CLOUD && apiKey.isNotBlank()) {
+            credentials.save(apiKey, "tts.key")
+        } else {
+            credentials.delete("tts.key")
+        }
         speechSettings = updated
         applySpeechConfig()
         version++
+        return settingsSaved && credentialSaved
     }
 
     fun currentSpeechApiKey(): String = credentials.read("tts.key").orEmpty()
 
     private fun loadSettings(): AiSettings {
-        val loaded = AiSettings.fromJson(model.storage.loadSettingsJson() ?: "") ?: AiSettings()
+        val loaded = (AiSettings.fromJson(model.storage.loadSettingsJson() ?: "") ?: AiSettings())
+            .withMissingPresetDefaults()
+        applySettings(loaded)
+        return loaded
+    }
+
+    private fun applySettings(loaded: AiSettings) {
         // 卡堆口径：来源开关与偏好分类与设置联动
         model.store.enableSeed = loaded.enableSeed
         model.store.enableAI = loaded.enableAI
         model.store.preferredCategories = loaded.preferredCategories.toSet()
         model.store.recompute()
-        return loaded
     }
 
     fun currentApiKey(): String = credentials.read("apiKey").orEmpty()
 
-    fun saveSettings(updated: AiSettings, apiKey: String) {
-        model.storage.saveSettingsJson(updated.toJson())
-        if (updated.baseURL.isNotBlank()) credentials.save(apiKey, "apiKey")
-        else credentials.delete("apiKey")
-        settings = loadSettings()
+    fun saveSettings(updated: AiSettings, apiKey: String): Boolean {
+        val settingsSaved = model.storage.saveSettingsJson(updated.toJson())
+        val credentialSaved = if (AiService.requiresKey(updated.baseURL) && apiKey.isNotBlank()) {
+            credentials.save(apiKey, "apiKey")
+        } else {
+            credentials.delete("apiKey")
+        }
+        settings = updated
+        applySettings(updated)
         version++
         schedulePersist()
+        return settingsSaved && credentialSaved
     }
 
     /** 连通性测试：返回用户可读状态 */
@@ -114,31 +144,53 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             "连接成功，AI 服务可用"
         } catch (e: AiError) {
             e.message ?: "连接失败"
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             "网络错误：${e.message}"
         }
     }
 
-    /** 从 JSON 文本导入卡片（逐卡挽救 + 归一化去重，置顶插入） */
+    /** 从 JSON 归档恢复卡片（逐卡挽救；保留收藏、历史、来源与复习进度） */
     fun importFromJson(text: String) {
         val imported = com.knowflick.app.data.CardFileIO.decodeListSalvaging(text)
+        applyImportedCards(imported)
+    }
+
+    /** 文件读取和 JSON 解析放到 IO 线程，避免大归档阻塞 Compose 主线程。 */
+    fun importFromUri(uri: Uri) {
+        viewModelScope.launch {
+            generateNotice = "正在导入归档…"
+            val imported = try {
+                withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { input ->
+                        com.knowflick.app.data.CardFileIO.decodeStreamSalvaging(input)
+                    } ?: throw IllegalArgumentException("无法读取所选文件")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                generateNotice = e.message ?: "无法读取所选文件"
+                return@launch
+            }
+            applyImportedCards(imported)
+        }
+    }
+
+    private fun applyImportedCards(imported: List<com.knowflick.app.domain.KnowledgeCard>) {
         if (imported.isEmpty()) {
             generateNotice = "无法解析该文件，格式与 KnowFlick 卡片结构不匹配"
             return
         }
-        val incoming = imported.map { card ->
-            // 导入卡强制 imported 来源，清空浏览状态（导入不覆盖学习历史语义与 macOS 一致）
-            card.copy(
-                id = java.util.UUID.randomUUID().toString().uppercase(),
-                source = com.knowflick.app.domain.CardSource.IMPORTED,
-                seenAt = null,
-                swiped = null,
-                lastReviewedAt = null,
-            )
+        val result = model.store.restoreArchive(imported, insertNewAtTop = true)
+        generateNotice = when {
+            result.accepted == 0 -> "归档中没有可导入的卡片"
+            result.restored > 0 && result.added > 0 -> "已恢复 ${result.restored} 张，新增 ${result.added} 张 ✓"
+            result.restored > 0 -> "已恢复 ${result.restored} 张卡片及学习进度 ✓"
+            else -> "已导入 ${result.added} 张卡片 ✓"
         }
-        val added = model.store.addCards(incoming, insertAtTop = true)
-        generateNotice = "已导入 $added 张卡片 ✓"
         version++
+        schedulePersist()
     }
 
     /** AI 生成 count 张新卡并置顶插入（AI 不可用/未配置时静默返回提示） */
@@ -151,7 +203,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
         isGenerating = true
         generateNotice = null
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             try {
                 val cards = aiService.generateCards(
                     settings = current,
@@ -162,6 +214,8 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
                 )
                 mutate { model.store.addCards(cards, insertAtTop = true) }
                 generateNotice = "已生成 ${cards.size} 张新知识 ✓"
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: AiError) {
                 generateNotice = e.message
             } catch (e: Exception) {
@@ -176,6 +230,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** 开始/刷新测验：到期复习优先，其后收藏与历史，单轮 10 张 */
     fun startQuiz(category: String? = null) {
+        quizCycleRatedIds.clear()
         quizSession = com.knowflick.app.domain.QuizSession.build(
             cards = model.store.cards,
             today = java.time.LocalDate.now(),
@@ -187,10 +242,13 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** 再测一组：剔除本轮已评卡，剩余不足则回到全部（与 macOS 到期队列刷新同精神） */
     fun nextQuizRound() {
-        val rated = quizSession?.ratedIds().orEmpty()
-        val pool = model.store.cards.filter { it.id !in rated }
+        var pool = model.store.cards.filter { it.id !in quizCycleRatedIds }
+        if (pool.isEmpty()) {
+            quizCycleRatedIds.clear()
+            pool = model.store.cards
+        }
         quizSession = com.knowflick.app.domain.QuizSession.build(
-            cards = if (pool.isNotEmpty()) pool else model.store.cards,
+            cards = pool,
             today = java.time.LocalDate.now(),
             limit = 10,
         )
@@ -202,6 +260,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         val session = quizSession ?: return
         val card = session.current ?: return
         if (!session.rate(rating)) return
+        quizCycleRatedIds += card.id
         model.store.recordQuizResult(card.id, rating.masteryLevel)
         version++
         schedulePersist()
@@ -209,6 +268,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun exitQuiz() {
         quizSession = null
+        quizCycleRatedIds.clear()
         version++
     }
 
@@ -224,22 +284,52 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         version++
     }
 
+    fun showNotice(message: String) {
+        generateNotice = message
+    }
+
     override fun onCleared() {
+        persistJob?.cancel()
+        persistJob = null
+        persistenceQueue.closeAfter(model.store.cards)
         speech.release()
         super.onCleared()
     }
 
     private fun schedulePersist() {
-        if (persistScheduled) return
-        persistScheduled = true
-        viewModelScope.launch(Dispatchers.IO) {
-            Thread.sleep(350)   // 与 macOS 端 350ms 节流合并口径一致
-            persistScheduled = false
-            model.persistNow()
+        if (persistJob?.isActive == true) return
+        persistJob = viewModelScope.launch {
+            delay(350)
+            // 在主线程取不可变快照，串行 IO 保证旧快照不会覆盖新操作。
+            val snapshot = model.store.cards.toList()
+            persistenceQueue.enqueue(snapshot)
         }
     }
 
-    fun flushNow() {
-        model.persistNow()
+    /** 生命周期 flush：同步把最新快照写盘，避免退到后台后被系统回收丢失最后一批改动。 */
+    fun flushPending() {
+        persistJob?.cancel()
+        persistJob = null
+        val snapshot = model.store.cards.toList()
+        // 走串行队列的同步提交：队列保证顺序，等待落盘完成再返回。
+        val done = java.util.concurrent.CountDownLatch(1)
+        val accepted = persistenceQueue.enqueueAndWait(snapshot) { done.countDown() }
+        if (!accepted) {
+            // 队列已关闭（ViewModel 已清理）时直接同步写一次，避免静默丢数据。
+            handlePersistenceResult(model.storage.saveCards(snapshot))
+            return
+        }
+        // onPause 允许极短等待；超时说明写入较慢，交给队列自然完成，不阻塞界面。
+        done.await(400, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    private fun handlePersistenceResult(result: CardSaveResult) {
+        viewModelScope.launch {
+            persistenceNotice = when (result) {
+                CardSaveResult.Saved -> null
+                is CardSaveResult.SavedWithoutBackup -> "卡片已保存，但备份写入失败：${result.reason}"
+                is CardSaveResult.Failed -> "卡片保存失败：${result.message}"
+            }
+        }
     }
 }

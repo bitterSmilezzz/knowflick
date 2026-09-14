@@ -9,8 +9,8 @@ import kotlinx.serialization.json.put
 @Serializable
 data class AiSettings(
     val providerId: String = "deepseek",
-    val baseURL: String = "",
-    val model: String = "",
+    val baseURL: String = "https://api.deepseek.com",
+    val model: String = "deepseek-chat",
     val autoGenerate: Boolean = true,
     val enableSeed: Boolean = true,
     val enableAI: Boolean = true,
@@ -18,6 +18,16 @@ data class AiSettings(
     val preferredCategories: List<String> = emptyList(),
 ) {
     val isConfigured: Boolean get() = baseURL.isNotBlank() && model.isNotBlank()
+
+    /** 迁移旧版“已选预设但端点/模型仍为空”的设置文件。 */
+    fun withMissingPresetDefaults(): AiSettings {
+        val preset = AiProviderPresets.presets.firstOrNull { it.id == providerId } ?: return this
+        if (preset.id == "custom") return this
+        return copy(
+            baseURL = baseURL.ifBlank { preset.defaultBaseURL },
+            model = model.ifBlank { preset.defaultModel },
+        )
+    }
 
     fun toJson(): String = json.encodeToString(serializer(), this)
 

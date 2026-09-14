@@ -11,6 +11,14 @@ class CardStore(
     private val keyFor: (KnowledgeCard) -> String = CardArrange::defaultKeyFor,
 ) {
 
+    data class ArchiveRestoreResult(
+        val added: Int,
+        val restored: Int,
+        val ignored: Int,
+    ) {
+        val accepted: Int get() = added + restored
+    }
+
     // ---------- 可持久化状态 ----------
 
     var cards: List<KnowledgeCard> = emptyList()
@@ -194,6 +202,76 @@ class CardStore(
         cards = if (insertAtTop) unique + cards else cards + unique
         recompute()
         return unique.size
+    }
+
+    /**
+     * 合并完整 JSON 归档：优先按 id、其次按归一化标题匹配已有卡片。
+     * 已有卡保留本机 id 并恢复归档里的正文、来源和全部学习状态；新卡保留归档 id。
+     * 这与 [addCards] 的“新增内容并去重”语义分开，避免恢复备份时丢失收藏、历史和复习进度。
+     */
+    fun restoreArchive(incoming: List<KnowledgeCard>, insertNewAtTop: Boolean = true): ArchiveRestoreResult {
+        val working = cards.toMutableList()
+        val addedIds = LinkedHashSet<String>()
+        var restored = 0
+        var ignored = 0
+
+        // id → 位置、归一化标题 → 位置的索引：归档可达上万张卡，逐张线性扫描是 O(n×m)，
+        // 在 25 MiB 上限的大归档下会阻塞主线程。索引在插入新卡时同步维护。
+        val indexById = HashMap<String, Int>(working.size * 2)
+        val indexByHeadline = HashMap<String, Int>(working.size * 2)
+        working.forEachIndexed { i, card ->
+            indexById.putIfAbsent(card.id, i)
+            val key = CardTextUtils.normalizeHeadline(card.headline)
+            if (key.isNotEmpty()) indexByHeadline.putIfAbsent(key, i)
+        }
+
+        for (raw in incoming) {
+            val headlineKey = CardTextUtils.normalizeHeadline(raw.headline)
+            if (headlineKey.isEmpty()) {
+                ignored++
+                continue
+            }
+            val matchIndex = indexById[raw.id] ?: indexByHeadline[headlineKey]
+
+            if (matchIndex != null) {
+                val local = working[matchIndex]
+                val localId = local.id
+                // 合并而非整卡替换：归档负责内容与来源，本机负责学习状态。
+                // 归档常来自未带 isFavorite/seenAt 的旧导出版本，整卡覆盖会把收藏清空、
+                // 并把已浏览的卡按 seenAt=null 塞回卡堆。
+                working[matchIndex] = raw.copy(
+                    id = localId,
+                    createdAt = local.createdAt,
+                    seenAt = raw.seenAt ?: local.seenAt,
+                    swiped = raw.swiped ?: local.swiped,
+                    isFavorite = local.isFavorite || raw.isFavorite,
+                    favoritedAt = raw.favoritedAt ?: local.favoritedAt,
+                    reviewCount = maxOf(local.reviewCount, raw.reviewCount),
+                    masteryLevel = maxOf(local.masteryLevel, raw.masteryLevel),
+                    lastReviewedAt = raw.lastReviewedAt ?: local.lastReviewedAt,
+                )
+                restored++
+            } else {
+                var safeId = raw.id.trim()
+                while (safeId.isEmpty() || indexById.containsKey(safeId)) {
+                    safeId = java.util.UUID.randomUUID().toString().uppercase()
+                }
+                val added = raw.copy(id = safeId)
+                val newIndex = working.size
+                working += added
+                addedIds += safeId
+                indexById[safeId] = newIndex
+                indexByHeadline.putIfAbsent(headlineKey, newIndex)
+            }
+        }
+
+        cards = if (insertNewAtTop && addedIds.isNotEmpty()) {
+            working.filter { it.id in addedIds } + working.filter { it.id !in addedIds }
+        } else {
+            working
+        }
+        recompute()
+        return ArchiveRestoreResult(added = addedIds.size, restored = restored, ignored = ignored)
     }
 
     /** 用卡库快照整体替换（持久化层加载 / 清空历史等场景） */

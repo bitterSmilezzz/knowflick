@@ -48,4 +48,39 @@ class AiProviderPresetsTest {
         assertEquals("ollama", AiProviderPresets.match("http://localhost:11434/v1").id)
         assertEquals("deepseek", AiProviderPresets.match("   ").id)
     }
+
+    @Test
+    fun defaultSettingsContainTheSelectedProvidersRealDefaults() {
+        val preset = AiProviderPresets.fallback()
+        val settings = AiSettings()
+
+        assertEquals(preset.id, settings.providerId)
+        assertEquals(preset.defaultBaseURL, settings.baseURL)
+        assertEquals(preset.defaultModel, settings.model)
+    }
+
+    @Test
+    fun customRemoteProviderRequiresItsApiKey() {
+        val custom = AiProviderPresets.presets.first { it.id == "custom" }
+
+        assertTrue(custom.requiresKey)
+        assertTrue(custom.id !in AiProviderPresets.keylessIds)
+        assertTrue(AiService.requiresKey("https://private.example.com/v1"))
+    }
+
+    @Test
+    fun providerMatchingUsesTheUrlHostInsteadOfPathOrQueryText() {
+        assertEquals("custom", AiProviderPresets.match("https://gateway.example.com/proxy/api.deepseek.com").id)
+        assertEquals("custom", AiProviderPresets.match("https://gateway.example.com/?target=localhost:11434").id)
+        assertEquals("custom", AiProviderPresets.match("https://localhost.attacker.example/v1").id)
+    }
+
+    @Test
+    fun legacyBlankPresetSettingsAreMigratedToUsableDefaults() {
+        val migrated = AiSettings(providerId = "deepseek", baseURL = "", model = "")
+            .withMissingPresetDefaults()
+
+        assertEquals("https://api.deepseek.com", migrated.baseURL)
+        assertEquals("deepseek-chat", migrated.model)
+    }
 }

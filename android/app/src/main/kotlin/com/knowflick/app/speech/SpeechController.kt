@@ -13,10 +13,15 @@ import com.knowflick.app.domain.KnowledgeCard
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 语音播放控制器：三通道（系统 TTS / 云端 / 本地网关）+ 磨耳朵连续模式。
@@ -46,11 +51,12 @@ class SpeechController(
     var lastError by mutableStateOf<String?>(null)
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val scope = CoroutineScope(Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var pendingCard: KnowledgeCard? = null
     private var mediaPlayer: MediaPlayer? = null
+    private var remoteJob: Job? = null
     private var ambientJob: Job? = null
     private val activeScope: CoroutineScope get() = scope
 
@@ -64,10 +70,10 @@ class SpeechController(
                 ttsReady = true
                 pendingCard?.let { card ->
                     pendingCard = null
-                    speak(card)
+                    if (isSpeaking && speakingCardId == card.id) speak(card)
                 }
             } else {
-                lastError = "系统语音引擎不可用"
+                failSystemTts("系统语音引擎不可用")
             }
         }
     }
@@ -85,7 +91,7 @@ class SpeechController(
         when (val decision = SpeechChannelPolicy.decide(settings, apiKey)) {
             is SpeechChannelPolicy.Decision.SystemTts -> speakWithSystemTts(card)
             is SpeechChannelPolicy.Decision.Remote -> {
-                activeScope.launch { speakWithRemote(card, decision) }
+                remoteJob = activeScope.launch { speakWithRemote(card, decision) }
             }
             is SpeechChannelPolicy.Decision.Invalid -> {
                 lastError = decision.reason
@@ -119,8 +125,6 @@ class SpeechController(
         speak(start)
     }
 
-    fun toggleFavoriteNoop() = Unit
-
     // ---------- 通道实现 ----------
 
     private fun speakWithSystemTts(card: KnowledgeCard) {
@@ -133,29 +137,48 @@ class SpeechController(
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
             override fun onError(utteranceId: String?) {
-                mainHandler.post { onPlaybackFinished() }
+                mainHandler.post {
+                    if (utteranceId == card.id && speakingCardId == card.id) {
+                        failSystemTts("系统语音播放失败")
+                    }
+                }
             }
             override fun onDone(utteranceId: String?) {
-                mainHandler.post { onPlaybackFinished() }
+                mainHandler.post {
+                    if (utteranceId == card.id && speakingCardId == card.id) onPlaybackFinished()
+                }
             }
         })
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, card.id)
+        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, card.id)
+        if (result == TextToSpeech.ERROR) failSystemTts("系统语音播放失败")
     }
 
     private suspend fun speakWithRemote(card: KnowledgeCard, decision: SpeechChannelPolicy.Decision.Remote) {
         try {
             val bytes = remoteClient.synthesize(settings, apiKey, buildSpokenText(card), decision)
-            val file = File(context.cacheDir, "knowflick_speech.mp3")
-            file.writeBytes(bytes)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            // 每个卡片用独立文件名：磨耳朵连续朗读时固定文件名会被下一张覆盖，
+            // 而 MediaPlayer 可能仍在读上一个文件。
+            val file = File(context.cacheDir, "knowflick_speech_${card.id.hashCode()}.mp3")
+            withContext(Dispatchers.IO) { file.writeBytes(bytes) }
+            // 清掉同一卡片的旧临时文件，避免缓存目录堆积
+            runCatching {
+                context.cacheDir.listFiles { f -> f.name.startsWith("knowflick_speech_") && f != file }
+                    ?.filter { it.lastModified() < System.currentTimeMillis() - 60 * 60 * 1000L }
+                    ?.forEach { it.delete() }
+            }
             mainHandler.post {
+                if (!isSpeaking || speakingCardId != card.id) return@post
                 runCatching {
                     mediaPlayer?.release()
                     mediaPlayer = MediaPlayer().apply {
                         setDataSource(file.absolutePath)
                         setOnCompletionListener { onPlaybackFinished() }
-                        setOnErrorListener { _, _, _ ->
+                        setOnErrorListener { player, _, _ ->
+                            runCatching { player.release() }
+                            if (mediaPlayer === player) mediaPlayer = null
                             lastError = "音频播放失败，已回退系统语音"
-                            mainHandler.post { speakWithSystemTts(card) }
+                            if (isSpeaking && speakingCardId == card.id) speakWithSystemTts(card)
                             true
                         }
                         prepare()
@@ -163,16 +186,22 @@ class SpeechController(
                     }
                 }.onFailure {
                     lastError = "音频播放失败，已回退系统语音"
-                    speakWithSystemTts(card)
+                    if (isSpeaking && speakingCardId == card.id) speakWithSystemTts(card)
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: SpeechError) {
             lastError = e.message
-            mainHandler.post { speakWithSystemTts(card) }   // 远程失败回退系统
+            mainHandler.post {
+                if (isSpeaking && speakingCardId == card.id) speakWithSystemTts(card)
+            }   // 远程失败回退系统
         } catch (e: Exception) {
             // 明文策略拦截 / DNS / 超时等底层异常同样回退系统语音
             lastError = "语音服务不可用：${e.message}，已回退系统语音"
-            mainHandler.post { speakWithSystemTts(card) }
+            mainHandler.post {
+                if (isSpeaking && speakingCardId == card.id) speakWithSystemTts(card)
+            }
         }
     }
 
@@ -207,6 +236,9 @@ class SpeechController(
 
     private fun stopPlayback(keepAmbient: Boolean) {
         if (!keepAmbient) ambientJob?.cancel()
+        remoteJob?.cancel()
+        remoteJob = null
+        pendingCard = null
         runCatching { tts?.stop() }
         runCatching {
             mediaPlayer?.let {
@@ -229,5 +261,14 @@ class SpeechController(
         runCatching { tts?.shutdown() }
         tts = null
         ttsReady = false
+        scope.cancel()
+    }
+
+    private fun failSystemTts(message: String) {
+        lastError = message
+        pendingCard = null
+        stopAmbientInternal()
+        speakingCardId = null
+        isSpeaking = false
     }
 }

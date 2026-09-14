@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "KnowFlick"
 include(":app")
+include(":baselineprofile")

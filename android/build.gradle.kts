@@ -4,4 +4,6 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.0.21" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false
     id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21" apply false
+    // baseline profile 生成（供 :baselineprofile 模块使用）
+    id("androidx.baselineprofile") version "1.4.1" apply false
 }

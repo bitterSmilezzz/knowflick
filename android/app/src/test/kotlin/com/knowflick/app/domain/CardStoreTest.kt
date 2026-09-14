@@ -160,4 +160,88 @@ class CardStoreTest {
         assertEquals(2, updated.reviewCount)
         assertEquals(2, updated.masteryLevel)
     }
+
+    @Test
+    fun restoreArchiveMergesByHeadlineAndPreservesProgress() {
+        val store = CardStore(seedCards = emptyList())
+        val localSeed = card("跨设备恢复")
+        store.replaceAll(listOf(localSeed))
+        val archived = localSeed.copy(
+            id = "OTHER-DEVICE-ID",
+            source = CardSource.AI,
+            seenAt = 1_700_000_000_000L,
+            swiped = SwipeDirection.RIGHT,
+            isFavorite = true,
+            favoritedAt = 1_700_000_001_000L,
+            reviewCount = 5,
+            masteryLevel = 2,
+            lastReviewedAt = 1_700_000_002_000L,
+        )
+
+        val result = store.restoreArchive(listOf(archived))
+
+        assertEquals(0, result.added)
+        assertEquals(1, result.restored)
+        val restored = store.cards.single()
+        assertEquals(localSeed.id, restored.id, "匹配本机卡时保留本机稳定 id")
+        assertEquals(CardSource.AI, restored.source)
+        assertEquals(archived.seenAt, restored.seenAt)
+        assertEquals(archived.swiped, restored.swiped)
+        assertTrue(restored.isFavorite)
+        assertEquals(5, restored.reviewCount)
+        assertEquals(2, restored.masteryLevel)
+        assertEquals(archived.lastReviewedAt, restored.lastReviewedAt)
+    }
+
+    @Test
+    fun restoreArchiveKeepsLocalStudyStateWhenArchiveOmitsIt() {
+        val store = CardStore(seedCards = emptyList())
+        val local = card("本机已收藏已浏览").copy(
+            seenAt = 1_700_000_000_000L,
+            swiped = SwipeDirection.RIGHT,
+            isFavorite = true,
+            favoritedAt = 1_700_000_001_000L,
+            reviewCount = 3,
+            masteryLevel = 2,
+        )
+        store.replaceAll(listOf(local))
+        // 旧版导出的归档：同一张卡，但缺少收藏与学习状态字段
+        val archived = local.copy(
+            id = "OTHER-DEVICE-ID",
+            seenAt = null,
+            swiped = null,
+            isFavorite = false,
+            favoritedAt = null,
+            reviewCount = 0,
+            masteryLevel = 0,
+            lastReviewedAt = null,
+        )
+
+        val result = store.restoreArchive(listOf(archived))
+
+        assertEquals(1, result.restored)
+        val merged = store.cards.single()
+        assertTrue(merged.isFavorite, "归档缺 isFavorite 时不应清空本机收藏")
+        assertEquals(1_700_000_000_000L, merged.seenAt, "归档缺 seenAt 时不应把已浏览卡放回卡堆")
+        assertEquals(3, merged.reviewCount, "复习次数应保留较大值")
+        assertEquals(2, merged.masteryLevel, "熟练度应保留较大值")
+        assertEquals(0, store.deck.size, "已浏览卡不应因导入而回到卡堆")
+        assertEquals(1, store.favorites.size, "收藏应继续留在收藏阁")
+    }
+
+    @Test
+    fun restoreArchiveKeepsNewCardIdentityAndRejectsBlankHeadline() {
+        val store = CardStore(seedCards = emptyList())
+        store.replaceAll(listOf(card("已有卡")))
+        val archived = KnowledgeCard.create("AI", "归档新卡", "摘要", "正文", source = CardSource.AI)
+            .copy(id = "ARCHIVE-STABLE-ID")
+        val blank = archived.copy(id = "BLANK-ID", headline = "  ")
+
+        val result = store.restoreArchive(listOf(archived, blank))
+
+        assertEquals(1, result.added)
+        assertEquals(0, result.restored)
+        assertEquals(1, result.ignored)
+        assertEquals("ARCHIVE-STABLE-ID", store.cards.first().id)
+    }
 }

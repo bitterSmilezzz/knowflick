@@ -52,6 +52,12 @@ class SpeechChannelTest {
             apiKey = "",
         )
         assertTrue(nonLoopback is SpeechChannelPolicy.Decision.Invalid, "本地通道限定回环地址")
+
+        val lookalike = SpeechChannelPolicy.decide(
+            SpeechSettings(channel = "LOCAL", baseURL = "https://localhost.attacker.example/v1", model = "kokoro"),
+            apiKey = "",
+        )
+        assertTrue(lookalike is SpeechChannelPolicy.Decision.Invalid, "主机名只含 localhost 字样不能冒充回环地址")
     }
 
     @Test
@@ -82,8 +88,8 @@ class SpeechChannelTest {
             model = "kokoro",
             voice = "zf_xiaobei",
         )
-        val decision = SpeechChannelPolicy.decide(settings, "") as SpeechChannelPolicy.Decision.Remote
-        val bytes = client.synthesize(settings, "", "你好，世界", decision)
+        val decision = SpeechChannelPolicy.decide(settings, "stale-cloud-secret") as SpeechChannelPolicy.Decision.Remote
+        val bytes = client.synthesize(settings, "stale-cloud-secret", "你好，世界", decision)
         assertEquals(2048, bytes.size)
         val recorded = server.takeRequest()
         assertEquals("/v1/audio/speech", recorded.path)
@@ -91,6 +97,7 @@ class SpeechChannelTest {
         assertTrue(body.contains("\"model\":\"kokoro\""))
         assertTrue(body.contains("\"voice\":\"zf_xiaobei\""))
         assertTrue(body.contains("\"input\":\"你好，世界\""))
+        assertEquals(null, recorded.getHeader("Authorization"), "本地语音网关不得收到旧云端密钥")
         server.shutdown()
     }
 

@@ -1,22 +1,82 @@
-> 📌 状态（android-v0.1.0 / M1）：可编译的 Kotlin + Compose 工程已落地——领域核心（卡片模型/JSON 线格式对齐/分类注册表/统计/学习计划/卡堆防重排布/状态机/文件存储）+ 38 项 JVM 测试全绿，Debug APK 可装配。构建：`cd android && ./gradlew :app:assembleDebug`（需 JDK 17 与 Android SDK 35）。M2 已接入 Compose 刷卡主界面（卡堆拖拽/详情/统计）；android-v0.2.1 补齐四层测试（`./gradlew :app:connectedDebugAndroidTest` 需先启动 `knowflick-test` AVD）；android-v0.4.0 接入 AI 生成 + 设置页 + 16 服务商预设（OkHttp SSE 流式 + MockWebServer 测试）；android-v0.5.0 落地知识库（收藏阁 + 历史足迹）、JSON/Markdown/Anki 导入导出（与 macOS 同格式）；android-v0.6.0 完成语音三通道（系统 TTS / 云端 /audio/speech / 本地回环网关）与磨耳朵连续播报——第一阶段边界全部交付；android-v0.7.0 起补强：Keystore 凭据持久化与知识测验（主动回忆三档自评）。本地网关联调：`adb reverse tcp:8899 tcp:8899` 后把语音 Base URL 指向 `http://127.0.0.1:8899`（回环地址已放行明文，其余强制 HTTPS）。
-
 # KnowFlick Android
 
-Android 端将复用 macOS 的卡片领域模型和服务协议，采用 Kotlin + Jetpack Compose 实现。
+原生 Kotlin + Jetpack Compose 应用。当前版本 **0.8.4**（versionCode 12），最低 Android 8.0 / API 26，target/compile SDK 35。
 
-## 第一阶段边界
+已实现刷卡、详情、收藏与历史、学习统计、知识测验、AI 流式生成与服务商配置、卡片 JSON 导入，以及 JSON/Markdown/Anki 文本导出。语音支持系统 TTS、云端 OpenAI 兼容接口与本地回环网关。背景图使用 WebP，发布包内置 baseline profile。
 
-- 卡堆、左右滑动、详情、历史、收藏和学习统计
-- 多套 AI 配置与来源过滤
-- 语音引擎选择：Android 系统 TTS、云端 `/audio/speech`、本地 OpenAI 兼容 TTS 服务
-- 与 macOS 相同的卡片 JSON 导入导出格式
+## 构建与测试
 
-## 语音配置约定
+需要 JDK 17、Android SDK Platform 35、Build Tools 35.0.0。将 SDK 路径写入本机 `android/local.properties`：
 
-语音配置与聊天模型分开。一个配置包含 `baseURL`、`model`、`voice` 和 Keychain/Android Keystore 中的密钥；一次启用一个配置，失败时回退系统 TTS。
+```properties
+sdk.dir=/absolute/path/to/Android/sdk
+```
 
-- 云端：HTTPS `/v1/audio/speech`，例如 CosyVoice / MOSS-TTSD。
-- 本地：用户自行运行 Kokoro-FastAPI、CosyVoice 网关或其他兼容服务，应用只连接 `http://127.0.0.1:<port>/v1/audio/speech`。
-- 模型文件不打进 APK。这样可以避免 APK 体积、设备内存和模型许可证限制，也让桌面端与 Android 端共用配置结构。
+在 `android` 目录运行：
 
-当前机器没有 Android SDK、Gradle 或 Android Studio，因此这里只建立 Android 端契约和实施边界；安装 Android 工具链后再生成可编译的 Compose 工程。
+```sh
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+# 先启动安卓模拟器或连接允许 USB 调试的测试手机
+./gradlew :app:connectedDebugAndroidTest
+```
+
+设备测试安装的是 Debug 签名包，建议使用独立测试 AVD；已安装 Release 的设备无法直接覆盖安装 Debug。
+
+若 macOS Homebrew JDK 未被系统发现：
+
+```sh
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+```
+
+### baseline profile
+
+`:baselineprofile` 模块用真实设备采集冷启动与刷卡路径，规则提交在 `app/src/release/generated/baselineProfiles/`，构建 Release 时自动合并进 APK。仅在需要重新采集时运行（需要已连接设备，耗时约 3 分钟）：
+
+```sh
+./gradlew :app:generateReleaseBaselineProfile
+```
+
+界面或启动路径有较大改动后应重新采集一次，否则 profile 会逐渐偏离实际热点。
+
+## 可安装发布 APK
+
+Release 开启 R8 与资源压缩，使用独立发布证书。`signing.properties`、密钥文件和构建输出均不入 Git；没有配置签名时，直接调用 Gradle 只产生未签名 Release，交付脚本会提前报错。
+
+本机发布密钥及配置备份位于 `~/.local/share/knowflick/signing/`，目录权限 700、文件权限 600。**后续 APK 更新必须继续使用这份密钥；请将该目录另行安全备份。** 本机 `android/signing.properties` 引用其中的密钥。
+
+其他机器需要先安全取得同一份密钥，再建立以下配置（填入实际路径和密码）：
+
+```properties
+storeFile=/absolute/path/to/release.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=knowflick
+keyPassword=YOUR_KEY_PASSWORD
+```
+
+仓库根目录执行：
+
+```sh
+./tools/build_android.sh --connected
+# 不连接设备时仅运行 JVM 测试、Lint 与签名构建
+./tools/build_android.sh
+```
+
+产物位于 `dist/android/`：APK、SHA-256 校验文件、R8 mapping。脚本会校验 APK 签名及 ZIP 对齐。mapping 用于还原压缩版崩溃堆栈，应随版本归档。发布准备参考 [Android 官方发布指南](https://developer.android.com/studio/publish/preparing) 和 [应用签名指南](https://developer.android.com/studio/publish/app-signing)。
+
+把 APK 传到手机后打开安装，按系统提示允许该文件来源安装应用；也可执行：
+
+```sh
+adb install -r dist/android/KnowFlick-0.8.3.apk
+```
+
+如果手机已安装相同包名的 Debug 版，因签名不同无法覆盖。先从知识库导出需要保留的卡片，再由用户自行卸载旧版后安装；卸载会清除本地学习记录和配置。后续同签名 Release 可直接覆盖更新。
+
+## 语音配置
+
+语音与聊天模型分别配置。API 密钥通过 Android Keystore 支撑的加密偏好存储；Keystore 异常时当前实现会回退本地普通偏好存储。
+
+- 云端使用 HTTPS `/v1/audio/speech`。
+- 本地服务只放行 `http://127.0.0.1:<port>` 回环明文连接，不将模型文件打入 APK。
+- USB/模拟器访问开发机器本地网关：`adb reverse tcp:8899 tcp:8899`，Base URL 填 `http://127.0.0.1:8899`。
+
+本轮交付是可安装 APK，未上传应用商店。测试范围与实际结果见 `docs/ANDROID_RELEASE_0.8.3.md`（仓库根目录下）。

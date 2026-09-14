@@ -13,15 +13,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,8 +38,7 @@ fun CardFace(
     modifier: Modifier = Modifier,
     isTop: Boolean = true,
 ) {
-    val context = LocalContext.current
-    val bg: ImageBitmap? = remember(card.id) { BackgroundImageCache.image(context, ThemeKey.forCard(card)) }
+    val bg = rememberBackgroundImage(ThemeKey.forCard(card))
 
     Box(modifier = modifier.clip(RoundedCornerShape(18.dp))) {
         if (bg != null) {

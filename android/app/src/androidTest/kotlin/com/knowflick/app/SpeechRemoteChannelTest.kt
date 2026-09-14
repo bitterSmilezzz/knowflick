@@ -115,4 +115,41 @@ class SpeechRemoteChannelTest {
         }
         server.shutdown()
     }
+
+    @Test
+    fun stoppingBeforeRemoteResponsePreventsLateAudioPlayback() {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setBody(okio.Buffer().write(sineWav(seconds = 2.0)))
+                .setBodyDelay(1_200, TimeUnit.MILLISECONDS),
+        )
+        server.start()
+        val vm = viewModel()
+        vm.saveSpeechSettings(
+            SpeechSettings(
+                channel = SpeechChannel.LOCAL.name,
+                baseURL = "http://127.0.0.1:${server.port}",
+                model = "kokoro",
+                voice = "zf_xiaobei",
+            ),
+            apiKey = "",
+        )
+
+        try {
+            val card = vm.model.store.topCard!!
+            rule.runOnUiThread { vm.speech.speak(card) }
+            assertTrue(server.takeRequest(5, TimeUnit.SECONDS) != null)
+            rule.runOnUiThread { vm.speech.stop() }
+
+            Thread.sleep(1_700)
+
+            val field = vm.speech.javaClass.getDeclaredField("mediaPlayer").apply { isAccessible = true }
+            assertTrue("停止后迟到的远程响应不得启动 MediaPlayer", field.get(vm.speech) == null)
+            assertTrue(!vm.speech.isSpeaking)
+        } finally {
+            rule.runOnUiThread { vm.speech.stop() }
+            server.shutdown()
+        }
+    }
 }

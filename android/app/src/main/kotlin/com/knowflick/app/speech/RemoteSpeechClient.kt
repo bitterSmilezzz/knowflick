@@ -1,8 +1,7 @@
 package com.knowflick.app.speech
 
+import com.knowflick.app.net.executeCancellable
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -18,7 +17,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class RemoteSpeechClient(
     private val client: OkHttpClient = defaultClient(),
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
     private val jsonMedia = "application/json; charset=utf-8".toMediaTypeOrNull()!!
 
     /** 合成音频：返回原始音频字节（mp3/wav 由服务端决定，MediaPlayer 自适应） */
@@ -39,18 +37,16 @@ class RemoteSpeechClient(
             .url(decision.url)
             .post(body.toString().toRequestBody(jsonMedia))
             .header("Content-Type", "application/json")
-            .apply { if (apiKey.isNotBlank()) header("Authorization", "Bearer $apiKey") }
+            .apply { if (decision.needsKey && apiKey.isNotBlank()) header("Authorization", "Bearer $apiKey") }
             .build()
-        return withContext(Dispatchers.IO) {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    val detail = response.body?.string().orEmpty()
-                    throw SpeechError.HttpStatus(response.code, extractMessage(detail))
-                }
-                val bytes = response.body?.bytes() ?: throw SpeechError.Network("无响应体")
-                if (bytes.isEmpty()) throw SpeechError.Network("服务端返回空音频")
-                bytes
+        return client.executeCancellable(request) { response ->
+            if (!response.isSuccessful) {
+                val detail = response.body?.string().orEmpty()
+                throw SpeechError.HttpStatus(response.code, extractMessage(detail))
             }
+            val bytes = response.body?.bytes() ?: throw SpeechError.Network("无响应体")
+            if (bytes.isEmpty()) throw SpeechError.Network("服务端返回空音频")
+            bytes
         }
     }
 
@@ -66,6 +62,8 @@ class RemoteSpeechClient(
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
+            // 整体呼叫上限：持续吐字节的响应不会触发 readTimeout，需要总时长兜底。
+            .callTimeout(180, TimeUnit.SECONDS)
             .build()
     }
 }

@@ -88,7 +88,7 @@ object AiProviderPresets {
     /** 空白/默认兜底：与 macOS 一致返回 DeepSeek 预设 */
     fun fallback(): AiProviderPreset = presets.first { it.id == "deepseek" }
 
-    /** 表驱动域名匹配（顺序敏感：先具体域名，后本地端口；回环主机兜底 Ollama） */
+    /** 表驱动域名匹配；只检查解析后的主机名，路径和查询参数不参与服务商识别。 */
     private val matchRules: List<Pair<String, String>> = listOf(
         "api.deepseek.com" to "deepseek",
         "opencode.ai" to "opencode",
@@ -99,7 +99,6 @@ object AiProviderPresets {
         "antdigital.com" to "antdigital",
         "nvidia.com" to "nvidia_nim",
         "amd.com.cn" to "amd_factory",
-        ":31415" to "local_freellm",
         "siliconflow.cn" to "siliconflow",
         "moonshot.cn" to "kimi",
         "bigmodel.cn" to "zhipu",
@@ -110,15 +109,22 @@ object AiProviderPresets {
     fun match(baseURL: String): AiProviderPreset {
         val trimmed = baseURL.trim().lowercase()
         if (trimmed.isEmpty()) return fallback()
-        matchRules.firstOrNull { trimmed.contains(it.first) }?.let { rule ->
+        val uri = runCatching { java.net.URI(trimmed) }.getOrNull()
+            ?: return presets.first { it.id == "custom" }
+        val host = uri.host?.lowercase()?.trim('[', ']')
+            ?: return presets.first { it.id == "custom" }
+        matchRules.firstOrNull { (domain, _) -> host == domain || host.endsWith(".$domain") }?.let { rule ->
             return presets.first { it.id == rule.second }
         }
-        val isLoopback = trimmed.contains("localhost") || trimmed.contains("127.0.0.1") ||
-            trimmed.contains("::1") || trimmed.contains(":11434")
-        return if (isLoopback) presets.first { it.id == "ollama" } else presets.first { it.id == "custom" }
+        val isLoopback = host == "localhost" || host == "127.0.0.1" || host == "::1"
+        return when {
+            isLoopback && uri.port == 31415 -> presets.first { it.id == "local_freellm" }
+            isLoopback -> presets.first { it.id == "ollama" }
+            else -> presets.first { it.id == "custom" }
+        }
     }
 
-    private val KEYLESS_IDS = setOf("ollama", "local_freellm", "custom")
+    private val KEYLESS_IDS = setOf("ollama", "local_freellm")
 
     /** 免密预设集合（供一致性测试与设置页提示复用） */
     val keylessIds: Set<String> = KEYLESS_IDS

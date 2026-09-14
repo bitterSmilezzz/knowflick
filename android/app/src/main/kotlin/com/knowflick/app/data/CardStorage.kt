@@ -2,6 +2,10 @@ package com.knowflick.app.data
 
 import com.knowflick.app.domain.KnowledgeCard
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /** 保存结果（与 macOS 端 CardSaveResult 对齐） */
 sealed class CardSaveResult {
@@ -35,7 +39,7 @@ class CardStorage(private val baseDir: File) {
         } catch (e: Exception) {
             return CardSaveResult.Failed("卡片编码失败: ${e.message}")
         }
-        val previous = if (cardsFile.exists()) cardsFile.readBytes() else null
+        val previous = readFileSafe(cardsFile)
         val backupData: ByteArray = when {
             previous == null -> data
             corruptionFlag -> {
@@ -45,18 +49,14 @@ class CardStorage(private val baseDir: File) {
             }
             else -> previous
         }
-        var backupError: String? = null
-        try {
-            backupFile.writeBytes(backupData)
-        } catch (e: Exception) {
-            backupError = e.message
-        }
-        return try {
-            cardsFile.writeBytes(data)
-            corruptionFlag = false   // 主文件已是本进程写出的健康内容
-            if (backupError != null) CardSaveResult.SavedWithoutBackup(backupError!!) else CardSaveResult.Saved
-        } catch (e: Exception) {
-            CardSaveResult.Failed(e.message ?: "未知写入失败")
+        val backupError = atomicWrite(backupFile, backupData)
+        return atomicWrite(cardsFile, data).let { mainError ->
+            if (mainError == null) {
+                corruptionFlag = false   // 主文件已是本进程写出的健康内容
+                if (backupError != null) CardSaveResult.SavedWithoutBackup(backupError) else CardSaveResult.Saved
+            } else {
+                CardSaveResult.Failed(mainError)
+            }
         }
     }
 
@@ -85,22 +85,42 @@ class CardStorage(private val baseDir: File) {
     fun loadSettingsJson(): String? =
         readFileSafe(File(baseDir, "settings.json"))?.decodeToString()
 
-    fun saveSettingsJson(json: String): Boolean = try {
-        File(baseDir, "settings.json").writeText(json)
-        true
-    } catch (_: Exception) {
-        false
-    }
+    fun saveSettingsJson(json: String): Boolean =
+        atomicWrite(File(baseDir, "settings.json"), json.toByteArray(Charsets.UTF_8)) == null
 
     /** 语音配置单独落盘（settings.json 之外，密钥仍走 CredentialStore） */
     fun loadSpeechJson(): String? =
         readFileSafe(File(baseDir, "speech.json"))?.decodeToString()
 
-    fun saveSpeechJson(json: String): Boolean = try {
-        File(baseDir, "speech.json").writeText(json)
-        true
-    } catch (_: Exception) {
-        false
+    fun saveSpeechJson(json: String): Boolean =
+        atomicWrite(File(baseDir, "speech.json"), json.toByteArray(Charsets.UTF_8)) == null
+
+    /** 同目录临时文件 + fsync + 原子替换；不支持 ATOMIC_MOVE 的文件系统退回安全替换。 */
+    private fun atomicWrite(target: File, data: ByteArray): String? {
+        if (!baseDir.exists() && !baseDir.mkdirs()) return "无法创建存储目录"
+        val temp = File(baseDir, ".${target.name}.${java.util.UUID.randomUUID()}.tmp")
+        return try {
+            FileOutputStream(temp).use { stream ->
+                stream.write(data)
+                stream.flush()
+                stream.fd.sync()
+            }
+            try {
+                Files.move(
+                    temp.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+            null
+        } catch (e: Exception) {
+            e.message ?: "未知写入失败"
+        } finally {
+            if (temp.exists()) temp.delete()
+        }
     }
 
     private fun readFileSafe(file: File): ByteArray? = try {

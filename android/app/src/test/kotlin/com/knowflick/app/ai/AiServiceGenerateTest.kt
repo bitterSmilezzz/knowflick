@@ -76,4 +76,21 @@ class AiServiceGenerateTest {
         assertEquals(false, AiService.requiresKey("http://127.0.0.1:31415/v1"))
         assertEquals(true, AiService.requiresKey("https://api.deepseek.com"))
     }
+
+    @Test
+    fun localLoopbackNeverReceivesStaleCloudCredential() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(sseBody("本地密钥隔离")))
+        server.start()
+        try {
+            val service = AiService(client = okhttp3.OkHttpClient(), retryBaseDelayMs = 1)
+            val settings = AiSettings(baseURL = server.url("/v1").toString(), model = "test-model")
+
+            service.generateCards(settings, apiKey = "stale-cloud-secret", count = 1, excludeHeadlines = emptyList())
+
+            assertEquals(null, server.takeRequest().getHeader("Authorization"))
+        } finally {
+            server.shutdown()
+        }
+    }
 }

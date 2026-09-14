@@ -3,12 +3,10 @@ package com.knowflick.app.ai
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.ScienceLink
+import com.knowflick.app.net.executeCancellable
 import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -28,13 +26,14 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class AiService(
     private val client: OkHttpClient = defaultClient(),
     private val retryBaseDelayMs: Long = 1_000L,
+    private val versionName: String = "development",
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
     private val jsonMedia = "application/json; charset=utf-8".toMediaTypeOrNull()!!
 
     suspend fun ping(settings: AiSettings, apiKey: String) {
         val key = apiKey.trim()
-        if (requiresKey(settings.baseURL) && key.isEmpty()) throw AiError.MissingKey()
+        val needsKey = requiresKey(settings.baseURL)
+        if (needsKey && key.isEmpty()) throw AiError.MissingKey()
         val body = buildJsonObject {
             put("model", settings.model.ifBlank { "gpt-4o-mini" })
             put("messages", buildJsonArray {
@@ -48,13 +47,11 @@ class AiService(
             .post(body.toString().toRequestBody(jsonMedia))
             .header("Content-Type", "application/json")
             .header("User-Agent", userAgent())
-            .apply { if (key.isNotEmpty()) header("Authorization", "Bearer $key") }
+            .apply { if (needsKey && key.isNotEmpty()) header("Authorization", "Bearer $key") }
             .build()
-        withContext(Dispatchers.IO) {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw AiError.HttpStatus(response.code, errorMessage(response.body?.string().orEmpty()))
-                }
+        client.executeCancellable(request) { response ->
+            if (!response.isSuccessful) {
+                throw AiError.HttpStatus(response.code, errorMessage(response.body?.string().orEmpty()))
             }
         }
     }
@@ -70,7 +67,8 @@ class AiService(
         onDelta: ((String) -> Unit)? = null,
     ): List<KnowledgeCard> {
         val key = apiKey.trim()
-        if (requiresKey(settings.baseURL) && key.isEmpty()) throw AiError.MissingKey()
+        val needsKey = requiresKey(settings.baseURL)
+        if (needsKey && key.isEmpty()) throw AiError.MissingKey()
         if (settings.baseURL.isBlank()) throw AiError.BadRequest("baseURL 为空")
         if (count !in 1..20) throw AiError.BadRequest("生成数量须为 1–20")
 
@@ -83,7 +81,7 @@ class AiService(
         var remaining = count
         while (remaining > 0) {
             val batch = minOf(remaining, MAX_CARDS_PER_REQUEST)
-            val payloads = requestBatch(settings, key, batch, topic, excludeList.take(100), onDelta)
+            val payloads = requestBatch(settings, key, needsKey, batch, topic, excludeList.take(100), onDelta)
             for (payload in payloads) {
                 if (payload.details.length < 80) continue
                 val headlineKey = AiTextUtils.normalizeHeadline(payload.headline)
@@ -117,6 +115,7 @@ class AiService(
     private suspend fun requestBatch(
         settings: AiSettings,
         apiKey: String,
+        needsKey: Boolean,
         batchCount: Int,
         topic: String?,
         excludeList: List<String>,
@@ -146,13 +145,12 @@ class AiService(
             .post(body.toString().toRequestBody(jsonMedia))
             .header("Content-Type", "application/json")
             .header("User-Agent", userAgent())
-            .apply { if (apiKey.isNotEmpty()) header("Authorization", "Bearer $apiKey") }
+            .apply { if (needsKey && apiKey.isNotEmpty()) header("Authorization", "Bearer $apiKey") }
             .build()
 
-        return withContext(Dispatchers.IO) {
-            for (attempt in 0 until 3) {
-                try {
-                    client.newCall(request).execute().use { response ->
+        for (attempt in 0 until 3) {
+            try {
+                return client.executeCancellable(request) { response ->
                         if (!response.isSuccessful) throw AiError.HttpStatus(response.code, errorMessage(response.body?.string().orEmpty()))
                         val source = response.body?.source() ?: throw AiError.Network("无响应体")
                         val scanner = AiObjectScanner()
@@ -167,26 +165,21 @@ class AiService(
                         }
                         val found = AiPayloadParser.parseObjects(scanner.objects.joinToString("") { it.toString() })
                         if (found.isEmpty()) throw AiError.Parse("AI 未返回可用回复，请重试")
-                        return@withContext found
-                    }
-                } catch (e: AiError.HttpStatus) {
-                    if ((e.code == 429 || e.code in 500..599) && attempt < 2) {
-                        kotlinx.coroutines.delay(retryBaseDelayMs * (1L shl attempt))
-                        continue
-                    }
-                    throw e
+                        found
                 }
+            } catch (e: AiError.HttpStatus) {
+                if ((e.code == 429 || e.code in 500..599) && attempt < 2) {
+                    kotlinx.coroutines.delay(retryBaseDelayMs * (1L shl attempt))
+                    continue
+                }
+                throw e
             }
-            throw AiError.Network("重试耗尽")
         }
+        throw AiError.Network("重试耗尽")
     }
 
     companion object {
-        private val jsonMedia = "application/json; charset=utf-8".toMediaTypeOrNull()
         private const val MAX_CARDS_PER_REQUEST = 6
-        const val ANDROID_VERSION_NAME = "0.3.0"
-
-        fun userAgent(): String = "KnowFlick-Android/$ANDROID_VERSION_NAME"
 
         /** 保留服务商自定义 API 前缀，只有裸域名才补 /v1（与 macOS 口径一致） */
         fun completionURL(baseURL: String): URL {
@@ -234,9 +227,14 @@ class AiService(
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(180, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            // 整体呼叫上限：流式响应只要持续吐字节就不会触发 readTimeout，
+            // 没有 callTimeout 时卡住的流会让 isGenerating 永远为真。
+            .callTimeout(300, TimeUnit.SECONDS)
             .build()
 
     }
+
+    private fun userAgent(): String = "KnowFlick-Android/$versionName"
 }
 
 private fun newId(): String = java.util.UUID.randomUUID().toString().uppercase()
@@ -246,4 +244,3 @@ private fun kotlinx.serialization.json.JsonElement.jsonObjectSafe(): kotlinx.ser
 
 private fun kotlinx.serialization.json.JsonElement.primitiveContent(): String? =
     (this as? kotlinx.serialization.json.JsonPrimitive)?.content
-
