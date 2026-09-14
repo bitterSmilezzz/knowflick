@@ -41,8 +41,15 @@ if [[ "$DEVELOPER_ROOT" == */CommandLineTools && -d "$TEST_FRAMEWORKS/Testing.fr
     fi
 fi
 
-# SwiftUI 宏插件只在完整 Xcode 中提供；缺失时执行文件目标无法编译
-SWIFTUI_MACROS="$DEVELOPER_ROOT/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib"
+# SwiftUI 宏插件（@State 等）只在完整 Xcode 中提供，CommandLineTools 不含，执行文件目标
+# 因此构建不了。这里只在「开发者目录就是 CLT 且确实没有该插件」时才判定为缺失——不猜
+# Xcode 内部的插件路径，避免误判把可用环境挡掉（曾按 $DEVELOPER_ROOT/usr/lib/... 判断，
+# 在 Xcode 26.3 上误报，CI 抓到）。
+MISSING_SWIFTUI_MACROS=0
+if [[ "$DEVELOPER_ROOT" == */CommandLineTools && ! -e "$DEVELOPER_ROOT/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib" ]]; then
+    MISSING_SWIFTUI_MACROS=1
+fi
+
 CORE_ONLY=0
 PASSTHROUGH=()
 for arg in "$@"; do
@@ -54,7 +61,7 @@ for arg in "$@"; do
 done
 
 if [[ $CORE_ONLY -eq 1 ]]; then
-    if [[ ! -e "$SWIFTUI_MACROS" ]]; then
+    if [[ $MISSING_SWIFTUI_MACROS -eq 1 ]]; then
         echo "提示: 当前开发者目录缺少 SwiftUI 宏插件，只构建测试目标（KnowFlickCoreTests）。"
     fi
     # 先只构建测试目标，再用 --skip-build 运行，避免连带构建依赖 SwiftUI 宏的执行文件
@@ -64,8 +71,8 @@ if [[ $CORE_ONLY -eq 1 ]]; then
     exit $?
 fi
 
-if [[ ! -e "$SWIFTUI_MACROS" ]]; then
-    # 直接失败并给出指引：继续跑下去会抛数百行宏展开错误，掩盖真正的原因
+if [[ $MISSING_SWIFTUI_MACROS -eq 1 ]]; then
+    # 直接失败并给出指引：继续跑下去会抛数百行宏展开错误（实测 487 行），掩盖真正的原因
     # 变量名一律用 ${} 界定：紧跟全角标点时，bash 会把该字符首字节并进变量名
     echo "错误: 当前开发者目录（${DEVELOPER_ROOT}）缺少 SwiftUI 宏插件，KnowFlick 执行文件无法构建。" >&2
     echo "      Core 测试：./tools/test.sh --core-only" >&2
