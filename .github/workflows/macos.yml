@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 40
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # runner 默认的 Xcode 是 16.x（Swift 6.1），而本项目实际用 Xcode 26 构建
       # （SwiftUI 宏与 Swift 6 严格并发的诊断在两代工具链间有差异）。
@@ -127,7 +127,7 @@ jobs:
             | tee "dist/KnowFlick-${VERSION}.app.zip.sha256"
           ls -la dist/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: KnowFlick-${{ env.VERSION }}
           path: |
