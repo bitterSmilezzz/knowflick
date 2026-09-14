@@ -35,7 +35,7 @@ KnowFlick/
 
 | 端 | 引用方式 | 说明 |
 | --- | --- | --- |
-| mac | `apps/mac/Sources/KnowFlickCore/Resources/` 下的符号链接 | SwiftPM 会跟随符号链接，把内容打进 resource bundle |
+| mac | `tools/sync_shared_assets.sh` 把 `shared/assets` 同步进 `apps/mac/Sources/KnowFlickCore/Resources/` | 该目录不入 Git（仅留 `.gitkeep`）。不用符号链接：跨 target 的软链在 SwiftPM 下不可靠 |
 | android | `app/build.gradle.kts` 的 `sourceSets["main"].assets.srcDirs("../../../shared/assets")` | Gradle 直接读取该目录 |
 
 **不要**在 `apps/*/` 下留副本——迁移前 mac 与 android 各存一份 42 张底图（6.35 MB ×2）和 seed_cards.json，靠人工同步保持一致，一旦漂移会导致两端内容不一致且难以察觉。
