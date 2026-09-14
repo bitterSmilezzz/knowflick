@@ -227,13 +227,13 @@ KnowFlick/
 │   │   │       ├── Services/            # AI 服务、钥匙串存取
 │   │   │       ├── Stores/              # AppStore 应用状态、卡片持久化
 │   │   │       ├── Stats/               # 纯函数统计与趋势计算
-│   │   │       └── Resources/           # 指向 shared/assets 的符号链接
+│   │   │       └── Resources/           # 由 tools/sync_shared_assets.sh 从 shared/assets 同步（不入 Git）
 │   │   └── Tests/               # Swift Testing 用例
 │   └── android/             # Android 端（Gradle + Compose）
 ├── shared/assets/           # 跨端共享资产（唯一事实来源）
 │   ├── seed_cards.json      # 种子卡数据
 │   └── bg/*.webp            # 分类底图
-├── tools/                   # 跨端脚本：test.sh / build_android.sh / build_icon / verify_icon / import_lessons.py
+├── tools/                   # 跨端脚本：test.sh / build_android.sh / sync_shared_assets.sh / build_icon / verify_icon / import_lessons.py
 ├── docs/                    # 多端协作规范、各端发布记录与评审报告
 ├── assets/                  # README 截图等展示资源
 ├── CHANGELOG.md             # 完整版本更新日志
@@ -249,5 +249,5 @@ KnowFlick/
 
 - 纯 SwiftPM 工程，无 Xcode 工程文件；`swift build -c release` 即可编译
 - 双 target 结构：`KnowFlickCore`（模型/服务/存储/统计，可测试）+ `KnowFlick`（App 入口与视图）+ `KnowFlickCoreTests`
-- 使用 `Bundle.module` 加载内置资源（seed_cards.json），背景图经 ImageIO 降采样解码缓存
+- 共享资源（seed_cards.json + 分类底图）经 `tools/sync_shared_assets.sh` 从 `shared/assets` 同步进资源目录，两端共用同一份文件；背景图由 `CoreResources.bundle` 定位、经 ImageIO 降采样解码后缓存
 - 目标平台：macOS 14.0+（Apple Silicon / Intel 均可）

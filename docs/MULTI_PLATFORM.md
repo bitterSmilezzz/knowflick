@@ -143,4 +143,15 @@ gh release create android-v0.8.5 --title "..." --notes-file <正文> \
 | android | JDK 17、Android SDK（Platform 35 + Build Tools 35.0.0） | ✅ 可用 |
 | mac | **完整 Xcode**（SwiftUI 宏需要 Xcode 的工具链插件） | ⚠️ 本机只有 CommandLineTools，`Sources/KnowFlick/**` 无法编译，`KnowFlickCore` 可构建 |
 
-mac 端 UI 层编译失败的报错形如 `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`——这是缺完整 Xcode，不是代码问题。需要构建完整 `.app` 时先安装 Xcode 并 `sudo xcode-select -s /Applications/Xcode.app`。
+#### 只有 CommandLineTools 时如何验证 mac 端
+
+```sh
+./tools/test.sh --core-only    # 175 项 KnowFlickCoreTests，无需完整 Xcode
+./tools/test.sh                # 全量测试，需要完整 Xcode
+```
+
+`--core-only` 只构建测试目标再 `--skip-build` 运行，绕开执行文件对 SwiftUI 宏的依赖。
+UI 层（`Sources/KnowFlick/**`）的编译验证仍需完整 Xcode，本地无法覆盖——这部分交给
+[macOS workflow](.github/workflows/macos.yml)，它跑在自带 Xcode 的 `macos-15` runner 上。
+
+mac 端 UI 层编译失败的报错形如 `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`——这是缺完整 Xcode，不是代码问题。需要本地构建完整 `.app` 时先安装 Xcode 并 `sudo xcode-select -s /Applications/Xcode.app`。
