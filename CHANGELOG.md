@@ -4,7 +4,7 @@
 
 格式规范参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [v4.2.0] - 2026-09-14
 
 ### 仓库结构：多端布局
 
@@ -55,6 +55,26 @@ Android 里程碑（M1–M7），对应的 tag 是 `android-v0.1.0`–`v0.7.0`�
 
 mac 端版本号自 **4.2.0** 起继续（`AppVersion.swift`），与 Android 端互不相干。
 两端的版本规则见 [多端协作规范](docs/MULTI_PLATFORM.md)。
+
+### 两端云端构建
+
+新增 [Android workflow](.github/workflows/android.yml)：在 Linux runner 上跑 77 项 JVM 单测与
+Lint，产出 debug APK 并校验包内资源来自 `shared/assets`（种子卡 + 42 张底图）。
+正式发布用的 release 签名包需 keystore 与 `signing.properties`，属敏感凭据，待通过
+GitHub Secrets 注入后再启用，避免把 debug 包误当发布产物。
+
+两个 workflow 的 action 一并升级到 Node.js 24 版本（checkout v7、setup-java v6、
+cache v6、upload-artifact v7、setup-android v4），消除 runner 的弃用警告。
+
+### 测试与工具
+
+- 新增底图解码回归测试：逐个解码全部 42 张 WebP 并要求取到真实像素，另确认缩略解码
+  确实按最大边长下采样，防止「不全量解压原图」的优化悄悄失效。mac 端测试增至 175 项。
+- `tools/test.sh` 新增 `--core-only`：本机只有 CommandLineTools 时也能跑全部 175 项
+  Core 测试（执行文件依赖 SwiftUI 宏，只有完整 Xcode 才有）。同时修掉两个缺陷：
+  Swift Testing 宏插件路径缺失导致的间歇性构建失败、缺宏插件时抛 487 行错误的现象。
+- 新增 `tools/lint_shell_vars.sh`：`$VAR` 紧跟全角标点时 bash 会把该字符首字节并入变量名，
+  只在 UTF-8 locale 的 bash 下触发，本地极易漏过。已接入两个 workflow。
 
 ## [android-v0.8.4] - 2026-09-14
 
