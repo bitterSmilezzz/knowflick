@@ -65,8 +65,12 @@ if [[ $CORE_ONLY -eq 1 ]]; then
 fi
 
 if [[ ! -e "$SWIFTUI_MACROS" ]]; then
-    echo "警告: 当前开发者目录（$DEVELOPER_ROOT）缺少 SwiftUI 宏插件，执行文件目标无法编译。" >&2
-    echo "      Core 测试可用 './tools/test.sh --core-only' 运行；全部测试需要完整 Xcode。" >&2
+    # 直接失败并给出指引：继续跑下去会抛数百行宏展开错误，掩盖真正的原因
+    # 变量名一律用 ${} 界定：紧跟全角标点时，bash 会把该字符首字节并进变量名
+    echo "错误: 当前开发者目录（${DEVELOPER_ROOT}）缺少 SwiftUI 宏插件，KnowFlick 执行文件无法构建。" >&2
+    echo "      Core 测试：./tools/test.sh --core-only" >&2
+    echo "      全部测试：安装完整 Xcode 后 sudo xcode-select -s /Applications/Xcode.app" >&2
+    exit 1
 fi
 
 swift test "${TEST_ARGS[@]}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
