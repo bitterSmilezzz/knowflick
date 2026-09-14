@@ -123,8 +123,14 @@ if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
 fi
 
 if [[ -d "$RESOURCE_BUNDLE_SRC" ]]; then
-    echo "    复制资源 bundle ($RESOURCE_BUNDLE_NAME)"
-    cp -R "$RESOURCE_BUNDLE_SRC" "$RESOURCES_DIR/"
+    # 资源 bundle 必须放在 .app 根目录，不能放 Contents/Resources/。
+    # SwiftPM 生成的 resource_bundle_accessor 在各工具链下候选路径不同：
+    #   CLT 27       → Bundle.main.resourceURL(Contents/Resources) → bundleURL(.app)
+    #   Xcode 26.3   → Bundle.main.bundleURL(.app) → 编译期 .build 路径
+    # 只有 .app 根目录是两者都覆盖的位置；此前放 Contents/Resources 会让
+    # Xcode 构建的产物启动即崩（Fatal error: could not load resource bundle）。
+    echo "    复制资源 bundle 到 .app 根目录（$RESOURCE_BUNDLE_NAME）"
+    cp -R "$RESOURCE_BUNDLE_SRC" "$APP_DIR/"
 else
     echo "警告: 未找到资源 bundle $RESOURCE_BUNDLE_SRC, 跳过资源复制" >&2
 fi
@@ -134,5 +140,26 @@ sed -i '' "s/__APP_VERSION__/$APP_VERSION/g" "$CONTENTS_DIR/Info.plist"
 plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
 codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
+
+# 启动自检：确认 Bundle.module 真的能找到资源。
+# 这条检查是必需的——资源 bundle 位置放错时，编译、签名、复制都会通过，
+# 只有真正启动才暴露 "could not load resource bundle" 崩溃（此前长期漏检）。
+# 判定只看是否出现该致命错误：无 GUI 会话的环境下进程可能正常退出，不应误报。
+echo "==> 启动自检"
+SMOKE_LOG="$(mktemp)"
+"$APP_DIR/Contents/MacOS/$(basename "$BINARY_SRC")" >"$SMOKE_LOG" 2>&1 &
+SMOKE_PID=$!
+sleep 3
+kill "$SMOKE_PID" 2>/dev/null
+wait "$SMOKE_PID" 2>/dev/null
+if grep -q "could not load resource bundle" "$SMOKE_LOG"; then
+    echo "错误: 资源 bundle 无法加载，产物启动即崩" >&2
+    sed -n '1,5p' "$SMOKE_LOG" >&2
+    rm -f "$SMOKE_LOG"
+    exit 1
+fi
+echo "    启动自检通过"
+rm -f "$SMOKE_LOG"
+
 touch "$APP_DIR"
 echo "完成: $APP_DIR"

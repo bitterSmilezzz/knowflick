@@ -69,10 +69,16 @@ jobs:
           APP=dist/KnowFlick.app
           test -x "$APP/Contents/MacOS/KnowFlick" || { echo "缺少可执行文件"; exit 1; }
           codesign --verify --deep --strict "$APP"
-          BUNDLE="$APP/Contents/Resources/KnowFlick_KnowFlickCore.bundle"
-          test -d "$BUNDLE" || { echo "缺少资源 bundle"; exit 1; }
-          # SwiftPM 的资源 bundle 有两种布局：扁平（早期工具链）与 Contents/Resources（新版）。
-          # 不能写死其一，否则换工具链就误报。直接按文件名查找。
+
+          # 资源 bundle 必须在 .app 根目录：SwiftPM 的 resource_bundle_accessor 在
+          # Xcode 26.x 下的候选路径是 bundleURL(.app) 与编译期路径，不含 Contents/Resources，
+          # 放错位置会导致启动即崩。这里同时校验位置与内容。
+          BUNDLE="$APP/KnowFlick_KnowFlickCore.bundle"
+          if [[ ! -d "$BUNDLE" ]]; then
+            echo "资源 bundle 不在 .app 根目录；实际布局："
+            find "$APP" -maxdepth 3 -name "*.bundle" | head
+            exit 1
+          fi
           SEED="$(find "$BUNDLE" -name seed_cards.json -type f | head -1)"
           if [[ -z "$SEED" ]]; then
             echo "缺少种子卡，bundle 内容："
@@ -82,9 +88,28 @@ jobs:
           RES_DIR="$(dirname "$SEED")"
           COUNT=$(python3 -c "import json;print(len(json.load(open('$SEED'))))")
           IMAGES=$(find "$RES_DIR" -maxdepth 1 -name '*.webp' | wc -l | tr -d ' ')
-          echo "种子卡 $COUNT 张；底图 $IMAGES 张（资源目录 ${RES_DIR}）"
+          echo "种子卡 $COUNT 张；底图 $IMAGES 张"
           test "$COUNT" -ge 200 || { echo "种子卡数量异常"; exit 1; }
           test "$IMAGES" -eq 42 || { echo "底图数量异常（应为 42）"; exit 1; }
+
+          # 启动自检：直接跑二进制，出现 "could not load resource bundle" 即判失败。
+          # 只匹配这一条致命错误，避免把无 GUI 会话下的正常退出误判为失败。
+          echo "==> 启动自检"
+          SMOKE_LOG="$(mktemp)"
+          set +e
+          "$APP/Contents/MacOS/KnowFlick" >"$SMOKE_LOG" 2>&1 &
+          SMOKE_PID=$!
+          sleep 5
+          kill "$SMOKE_PID" 2>/dev/null
+          wait "$SMOKE_PID" 2>/dev/null
+          set -e
+          if grep -q "could not load resource bundle" "$SMOKE_LOG"; then
+            echo "::error::资源 bundle 无法加载，产物启动即崩"
+            sed -n '1,5p' "$SMOKE_LOG"
+            exit 1
+          fi
+          echo "启动自检通过"
+
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
           echo "版本 $VERSION"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
