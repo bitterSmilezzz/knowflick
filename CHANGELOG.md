@@ -12,7 +12,7 @@
 
 - mac 端移入 `apps/mac`，android 端移入 `apps/android`；构建产物统一收敛到根 `dist/`。
 - 种子卡与 42 张分类底图提取到 `shared/assets` 作为唯一事实来源。迁移前两端各存一份副本，逐字节比对确认完全一致后删除重复项。
-- mac 侧用符号链接引用共享资产（SwiftPM 会跟随并打进 resource bundle），android 侧用 `assets.srcDirs` 指向共享目录。
+- mac 侧由 `tools/sync_shared_assets.sh` 把共享资产同步进 SwiftPM 资源目录（不用符号链接：跨 target 的软链在 SwiftPM 下不可靠），android 侧用 `assets.srcDirs` 指向共享目录。
 - 底图统一为 WebP：mac 端 `NSImage` 与 ImageIO 缩略解码两条路径均已实测可解，android 端包体因此减少约一半。
 - 新增 [多端协作规范](docs/MULTI_PLATFORM.md)：分支模型（短特性分支 + main 汇总）、按端前缀的 tag 约定与发版检查清单。
 
@@ -21,7 +21,10 @@
 ### macOS：修复打包产物启动即崩（长期缺陷）
 
 `build_app.sh` 打出的 `KnowFlick.app` 双击启动即崩溃，报
-`Fatal error: could not load resource bundle`。仓库里 9-11 打包的 v3.2.0 产物同样受影响。
+`Fatal error: could not load resource bundle`。**已发布的 v3.2.0 同样受影响**——
+Release 上的 `KnowFlick.app.zip` 与本地 9-11 产物字节相同（sha256
+`b9dab505…`），下载后启动即崩，崩溃栈落在
+`AppStore.loadSeedCards() → NSBundle.module`。
 
 根因是 SwiftPM 生成的 `resource_bundle_accessor` 在不同工具链下候选路径不同：
 
