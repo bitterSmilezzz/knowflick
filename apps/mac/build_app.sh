@@ -52,8 +52,10 @@ if [[ -z "$APP_VERSION" ]]; then
 fi
 
 # ---------- 1. 构建 ----------
-echo "==> [1/3] 图标校验 + swift build -c release"
+echo "==> [1/3] 同步共享资源 + 图标校验 + swift build -c release"
 swift "$ROOT_DIR/tools/verify_icon.swift" Resources/AppIcon.icns Resources/AppIcon.png
+# 种子卡与底图来自仓库根 shared/assets，需先落到本 target 的资源目录
+"$ROOT_DIR/tools/sync_shared_assets.sh"
 swift build -c release "$@"
 
 if [[ ! -x "$BINARY_SRC" ]]; then

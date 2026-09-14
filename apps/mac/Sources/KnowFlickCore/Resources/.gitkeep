@@ -1,0 +1,1 @@
+此目录的种子卡与底图由 tools/sync_shared_assets.sh 从 shared/assets 生成，不入 Git。

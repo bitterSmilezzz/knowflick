@@ -25,6 +25,10 @@ __pycache__/
 apps/mac/Resources/AppIcon-artwork.png
 apps/mac/Resources/AppIcon.iconset/
 
+# mac 端资源由 tools/sync_shared_assets.sh 从 shared/assets 生成，不入 Git
+/apps/mac/Sources/KnowFlickCore/Resources/*
+!/apps/mac/Sources/KnowFlickCore/Resources/.gitkeep
+
 # Linter caches
 .brooks-lint-history.json
 
