@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+### 仓库结构：多端布局
+
+为 Windows 与浏览器插件端的加入做准备，仓库从「mac 占根目录」调整为「apps/ 各端 + shared/ 共享」。
+
+- mac 端移入 `apps/mac`，android 端移入 `apps/android`；构建产物统一收敛到根 `dist/`。
+- 种子卡与 42 张分类底图提取到 `shared/assets` 作为唯一事实来源。迁移前两端各存一份副本，逐字节比对确认完全一致后删除重复项。
+- mac 侧用符号链接引用共享资产（SwiftPM 会跟随并打进 resource bundle），android 侧用 `assets.srcDirs` 指向共享目录。
+- 底图统一为 WebP：mac 端 `NSImage` 与 ImageIO 缩略解码两条路径均已实测可解，android 端包体因此减少约一半。
+- 新增 [多端协作规范](docs/MULTI_PLATFORM.md)：分支模型（短特性分支 + main 汇总）、按端前缀的 tag 约定与发版检查清单。
+
+此变更不涉及各端功能，android 的 77 项 JVM 单测、28 项仪器测试与 Lint 均通过，release 产物内资源确认来自 `shared/`；mac 的 `KnowFlickCore` 构建通过且 resource bundle 内 214 张种子卡与 42 张底图完整。
+
 ## [android-v0.8.4] - 2026-09-14
 
 ### Android 失效链修复与包体优化
