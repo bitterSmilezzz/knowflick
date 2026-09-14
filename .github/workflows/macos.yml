@@ -71,11 +71,18 @@ jobs:
           codesign --verify --deep --strict "$APP"
           BUNDLE="$APP/Contents/Resources/KnowFlick_KnowFlickCore.bundle"
           test -d "$BUNDLE" || { echo "缺少资源 bundle"; exit 1; }
-          SEED="$BUNDLE/Contents/Resources/seed_cards.json"
-          test -f "$SEED" || { echo "缺少种子卡"; exit 1; }
+          # SwiftPM 的资源 bundle 有两种布局：扁平（早期工具链）与 Contents/Resources（新版）。
+          # 不能写死其一，否则换工具链就误报。直接按文件名查找。
+          SEED="$(find "$BUNDLE" -name seed_cards.json -type f | head -1)"
+          if [[ -z "$SEED" ]]; then
+            echo "缺少种子卡，bundle 内容："
+            find "$BUNDLE" -maxdepth 3 | head -20
+            exit 1
+          fi
+          RES_DIR="$(dirname "$SEED")"
           COUNT=$(python3 -c "import json;print(len(json.load(open('$SEED'))))")
-          IMAGES=$(ls "$BUNDLE/Contents/Resources/"*.webp 2>/dev/null | wc -l | tr -d ' ')
-          echo "种子卡 $COUNT 张；底图 $IMAGES 张"
+          IMAGES=$(find "$RES_DIR" -maxdepth 1 -name '*.webp' | wc -l | tr -d ' ')
+          echo "种子卡 $COUNT 张；底图 $IMAGES 张（资源目录 $RES_DIR）"
           test "$COUNT" -ge 200 || { echo "种子卡数量异常"; exit 1; }
           test "$IMAGES" -eq 42 || { echo "底图数量异常（应为 42）"; exit 1; }
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")

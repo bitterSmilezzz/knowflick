@@ -64,8 +64,10 @@ if [[ ! -x "$BINARY_SRC" ]]; then
 fi
 
 # 构建资源是必需项：缺失时不能生成表面成功但无卡片的应用。
-if [[ ! -f "$RESOURCE_BUNDLE_SRC/seed_cards.json" ]]; then
-    echo "错误: 缺少种子资源 $RESOURCE_BUNDLE_SRC/seed_cards.json" >&2
+# SwiftPM 的资源 bundle 有扁平与 Contents/Resources 两种布局，按文件名查找以兼容两者。
+if ! find "$RESOURCE_BUNDLE_SRC" -name seed_cards.json -type f -print -quit | grep -q .; then
+    echo "错误: 资源 bundle 内缺少 seed_cards.json（$RESOURCE_BUNDLE_SRC）" >&2
+    find "$RESOURCE_BUNDLE_SRC" -maxdepth 3 | head -20 >&2
     exit 1
 fi
 
