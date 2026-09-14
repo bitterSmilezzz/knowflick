@@ -32,12 +32,30 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # runner 默认的 Xcode 是 16.x（Swift 6.1），而本项目实际用 Xcode 26 构建
+      # （SwiftUI 宏与 Swift 6 严格并发的诊断在两代工具链间有差异）。
+      # 选取镜像上最新的 Xcode 26，保证云端与本地一致；找不到就明确失败。
+      - name: 选择 Xcode 26
+        run: |
+          set -euo pipefail
+          PICKED=""
+          for v in 26.9 26.8 26.7 26.6 26.5 26.4 26.3 26.2 26.1 26.0; do
+            if [[ -d "/Applications/Xcode_${v}.app" ]]; then PICKED="/Applications/Xcode_${v}.app"; break; fi
+          done
+          if [[ -z "$PICKED" ]]; then
+            echo "::error::镜像上未找到 Xcode 26；可用版本："
+            ls -d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          echo "使用 $PICKED"
+          sudo xcode-select -s "$PICKED"
+          xcodebuild -version
+
       - name: 显示工具链版本
         run: |
           xcodebuild -version
           swift --version
-          echo "---"
-          ls /Applications | grep -i xcode || true
+          xcrun --show-sdk-path
 
       - name: 运行 Swift 测试
         run: ./tools/test.sh

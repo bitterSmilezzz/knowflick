@@ -452,7 +452,7 @@ struct CardDeckView: View {
         .offset(swipingOffset)
         .rotationEffect(.degrees(clampedDegrees))
         .overlay(flyingSwipeBadge)
-        .opacity(max(0, 1.0 - (abs(swipingOffset.width) - 180) / 450))
+        .opacity(max(0.0, 1.0 - (Double(abs(swipingOffset.width)) - 180.0) / 450.0))
         .zIndex(999)
         .allowsHitTesting(false)
     }
@@ -594,7 +594,7 @@ struct CardDeckView: View {
                     Spacer()
                 }
                 .padding(24)
-                .opacity(min(1, abs(dragOffset.width) / 85))   // 徽章平滑浮现
+                .opacity(min(1.0, Double(abs(dragOffset.width)) / 85.0))   // 徽章平滑浮现
             }
         }
     }
@@ -615,7 +615,7 @@ struct CardDeckView: View {
                     Spacer()
                 }
                 .padding(24)
-                .opacity(min(1, abs(swipingOffset.width) / 85))
+                .opacity(min(1.0, Double(abs(swipingOffset.width)) / 85.0))
             }
         }
     }
