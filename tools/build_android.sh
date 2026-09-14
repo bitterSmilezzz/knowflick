@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT/android"
+cd "$ROOT/apps/android"
 if [[ -z "${JAVA_HOME:-}" ]]; then
   if [[ -d /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ]]; then
     export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
@@ -11,7 +11,7 @@ if [[ -z "${JAVA_HOME:-}" ]]; then
   fi
 fi
 if [[ ! -f signing.properties ]]; then
-  echo "Missing android/signing.properties. See android/README.md for release signing setup." >&2
+  echo "Missing apps/android/signing.properties. See apps/android/README.md for release signing setup." >&2
   exit 1
 fi
 if [[ $# -gt 0 && "${1:-}" != "--connected" ]]; then

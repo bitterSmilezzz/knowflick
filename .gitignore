@@ -22,8 +22,8 @@ __pycache__/
 *.pyc
 
 # Generated icon artwork
-Resources/AppIcon-artwork.png
-Resources/AppIcon.iconset/
+apps/mac/Resources/AppIcon-artwork.png
+apps/mac/Resources/AppIcon.iconset/
 
 # Linter caches
 .brooks-lint-history.json

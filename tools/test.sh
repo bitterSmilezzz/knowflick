@@ -1,7 +1,14 @@
 #!/bin/bash
 # Run Swift Testing with either Xcode or the Command Line Tools framework layout.
+# macOS 端的 SwiftPM 工程位于 apps/mac/，这里切换过去再执行。
 set -euo pipefail
-cd "$(dirname "$0")/.."
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+MAC_DIR="$ROOT_DIR/apps/mac"
+if [[ ! -f "$MAC_DIR/Package.swift" ]]; then
+    echo "错误: 未找到 $MAC_DIR/Package.swift" >&2
+    exit 1
+fi
+cd "$MAC_DIR"
 TASK_BUILD_ROOT="${TMPDIR:-/tmp}/knowflick-swift"
 mkdir -p "$TASK_BUILD_ROOT"
 export CLANG_MODULE_CACHE_PATH="$TASK_BUILD_ROOT/clang"

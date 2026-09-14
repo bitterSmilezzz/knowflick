@@ -14,7 +14,7 @@
     python3 tools/import_lessons.py \
         --sources ../ai-learning-site/kj-content.json ../ai-learning-site/ai-content.json \
                   ../ai-learning-site/code-content.json ../ai-learning-site/en-content.json \
-        --output Sources/KnowFlickCore/Resources/seed_cards.json
+        --output shared/assets/seed_cards.json
 """
 
 import argparse
@@ -180,7 +180,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--output",
-        default=REPO_ROOT / "Sources" / "KnowFlickCore" / "Resources" / "seed_cards.json",
+        default=REPO_ROOT / "shared" / "assets" / "seed_cards.json",
         help="输出 seed_cards.json 路径",
     )
     args = ap.parse_args()

@@ -114,7 +114,7 @@ KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 ma
 
 ```bash
 # 图标构建链路（build_icon 自动调用 iconutil 打包 ICNS，随后逐像素校验）
-swift tools/build_icon.swift Resources/AppIcon-artwork.png /tmp/icon-check
+swift tools/build_icon.swift apps/mac/Resources/AppIcon-artwork.png /tmp/icon-check
 swift tools/verify_icon.swift /tmp/icon-check/AppIcon.icns /tmp/icon-check/AppIcon.png
 
 # 课程导入脚本单元测试
@@ -131,23 +131,23 @@ python3 tools/test_import_lessons.py
 
 ### Android 端
 
-Android 端的实施边界和语音协议见 [android/README.md](android/README.md)。
+Android 端的实施边界和语音协议见 [apps/android/README.md](apps/android/README.md)，发布记录见 [docs/](docs/)。
 
 ### 直接运行（开发）
 
 ```bash
-cd KnowFlick
+cd apps/mac
 swift run
 ```
 
 ### 打包成 .app
 
 ```bash
-cd KnowFlick
+cd apps/mac
 ./build_app.sh
 ```
 
-脚本会执行 `swift build -c release`，并把可执行文件、`Info.plist` 和资源 bundle 手工组装为 `dist/KnowFlick.app`（无需 Xcode 工程）。
+脚本会执行 `swift build -c release`，并把可执行文件、`Info.plist` 和资源 bundle 手工组装为 `dist/KnowFlick.app`（无需 Xcode 工程）。需要完整 Xcode（SwiftUI 宏依赖其工具链插件）。
 
 ### 安装使用
 
@@ -209,28 +209,36 @@ cd KnowFlick
 
 ## 项目结构
 
+多端仓库：各端应用位于 `apps/`，跨端共享内容位于 `shared/`。分支模型、版本号与发版流程见 [多端协作规范](docs/MULTI_PLATFORM.md)。
+
 ```
 KnowFlick/
-├── Package.swift            # SwiftPM 清单（macOS 14+）
-├── build_app.sh             # 打包脚本 → dist/KnowFlick.app
+├── apps/                    # 各端应用（独立构建，互不依赖）
+│   ├── mac/                 # macOS 端
+│   │   ├── Package.swift        # SwiftPM 清单（macOS 14+）
+│   │   ├── build_app.sh         # 打包脚本 → dist/KnowFlick.app
+│   │   ├── Resources/           # 原生应用图标（AppIcon.icns / AppIcon.png）
+│   │   ├── Sources/
+│   │   │   ├── KnowFlick/           # 应用层
+│   │   │   │   ├── KnowFlickApp.swift   # 应用生命周期入口
+│   │   │   │   └── Views/               # 刷卡、详情、历史、设置、设计系统 Token、触觉辅助
+│   │   │   └── KnowFlickCore/       # 核心业务逻辑（独立跨平台/可测）
+│   │   │       ├── Models/              # 卡片 / 分类 / AI 设置模型
+│   │   │       ├── Services/            # AI 服务、钥匙串存取
+│   │   │       ├── Stores/              # AppStore 应用状态、卡片持久化
+│   │   │       ├── Stats/               # 纯函数统计与趋势计算
+│   │   │       └── Resources/           # 指向 shared/assets 的符号链接
+│   │   └── Tests/               # Swift Testing 用例
+│   └── android/             # Android 端（Gradle + Compose）
+├── shared/assets/           # 跨端共享资产（唯一事实来源）
+│   ├── seed_cards.json      # 种子卡数据
+│   └── bg/*.webp            # 分类底图
+├── tools/                   # 跨端脚本：test.sh / build_android.sh / build_icon / verify_icon / import_lessons.py
+├── docs/                    # 多端协作规范、各端发布记录与评审报告
+├── assets/                  # README 截图等展示资源
 ├── CHANGELOG.md             # 完整版本更新日志
 ├── CONTEXT.md               # 领域词汇表（架构评审与实现的统一语言）
-├── Resources/               # 原生应用图标（AppIcon.icns / AppIcon.png）
-├── tools/                   # test.sh 测试脚本、build_icon / verify_icon 图标工具、import_lessons.py 课程导入
-├── docs/                    # 历史评审与优化报告快照
-├── android/                 # 跨端实施边界契约文档（暂无可编译工程）
-├── assets/                  # README 截图等展示资源
-├── Sources/
-│   ├── KnowFlick/           # 应用层
-│   │   ├── KnowFlickApp.swift   # 应用生命周期入口
-│   │   └── Views/               # 刷卡、详情、历史、设置、设计系统 Token、触觉辅助
-│   └── KnowFlickCore/       # 核心业务逻辑（独立跨平台/可测）
-│       ├── Models/              # 卡片 / 分类 / AI 设置模型
-│       ├── Services/            # AI 服务、钥匙串存取
-│       ├── Stores/              # AppStore 应用状态、卡片持久化
-│       ├── Stats/               # 纯函数统计与趋势计算
-│       └── Resources/           # seed_cards.json（种子卡数据）与分类底图
-└── dist/KnowFlick.app       # 打包产物（由 build_app.sh 生成）
+└── dist/                    # 构建产物（不入 Git）
 ```
 
 ## 更新日志
