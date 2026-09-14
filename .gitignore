@@ -16,11 +16,6 @@ xcuserdata/
 __pycache__/
 *.pyc
 
-
-# Python tools
-__pycache__/
-*.pyc
-
 # Generated icon artwork
 apps/mac/Resources/AppIcon-artwork.png
 apps/mac/Resources/AppIcon.iconset/
