@@ -1,0 +1,111 @@
+name: Android
+
+# android 端在 Linux runner 上构建：不需要 Xcode，比 macOS runner 更快。
+#
+# 触发方式：
+#   1. 推送到 main 且改动涉及 android 端 / 共享资产 / 工具 → 单测 + Lint + debug APK；
+#   2. 手动触发。
+#
+# 关于发布包：这里只产出 debug APK（用 SDK 自带调试证书，无需密钥），供验证与内测安装。
+# 正式发布用的 release 签名包需要 signing.properties 与 keystore，属敏感凭据，
+# 需另行通过 GitHub Secrets 注入；在配好之前不在此流程中产出，避免把 debug 包
+# 误当作发布产物。
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/android/**'
+      - 'shared/**'
+      - 'tools/**'
+      - '.github/workflows/android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 配置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 缓存 Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('apps/android/**/*.gradle.kts', 'apps/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: 显示工具链版本
+        run: |
+          java -version
+          cd apps/android && ./gradlew --version
+
+      - name: 检查 shell 脚本陷阱
+        run: ./tools/lint_shell_vars.sh
+
+      - name: 单元测试与 Lint
+        run: |
+          cd apps/android
+          ./gradlew --console=plain :app:testDebugUnitTest :app:lintDebug
+
+      - name: 汇总测试结果
+        if: always()
+        run: |
+          cd apps/android
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          total = failed = skipped = 0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root = ET.parse(path).getroot()
+              total += int(root.get('tests', 0))
+              failed += int(root.get('failures', 0)) + int(root.get('errors', 0))
+              skipped += int(root.get('skipped', 0))
+          print(f'JVM 测试：{total} 项，失败 {failed}，跳过 {skipped}')
+          sys.exit(1 if failed else 0)
+          PY
+
+      - name: 构建 debug APK
+        run: |
+          cd apps/android
+          ./gradlew --console=plain :app:assembleDebug
+
+      - name: 校验 APK 内容
+        run: |
+          set -euo pipefail
+          APK=apps/android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK" || { echo "::error::缺少 debug APK"; exit 1; }
+          # 共享资源应来自仓库根 shared/assets（android 侧由 assets.srcDirs 指向）
+          SEEDS=$(unzip -l "$APK" | grep -c 'assets/seed_cards.json' || true)
+          IMAGES=$(unzip -l "$APK" | grep -c 'assets/bg/.*\.webp' || true)
+          echo "种子卡 $SEEDS 份；底图 $IMAGES 张"
+          test "$SEEDS" -ge 1 || { echo "::error::APK 内缺少种子卡"; exit 1; }
+          test "$IMAGES" -eq 42 || { echo "::error::底图数量异常（应为 42）"; exit 1; }
+
+          META=apps/android/app/build/outputs/apk/debug/output-metadata.json
+          VERSION=$(python3 -c "import json;print(json.load(open('$META'))['elements'][0]['versionName'])")
+          VERSION_CODE=$(python3 -c "import json;print(json.load(open('$META'))['elements'][0]['versionCode'])")
+          SIZE=$(stat -c %s "$APK")
+          # 变量名一律用 ${} 界定：紧跟全角标点时，bash 会把其首字节并进变量名
+          echo "版本 ${VERSION}（versionCode ${VERSION_CODE}），${SIZE} 字节"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KnowFlick-android-${{ env.VERSION }}-debug
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

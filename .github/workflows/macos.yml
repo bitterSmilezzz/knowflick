@@ -57,6 +57,9 @@ jobs:
           swift --version
           xcrun --show-sdk-path
 
+      - name: 检查 shell 脚本陷阱
+        run: ./tools/lint_shell_vars.sh
+
       - name: 运行 Swift 测试
         run: ./tools/test.sh
 
