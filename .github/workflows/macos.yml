@@ -3,12 +3,21 @@ name: macOS
 # mac 端在云端构建：本地只有 CommandLineTools 时，SwiftUI 宏无法展开，
 # 而 GitHub 的 macOS runner 自带完整 Xcode。公开仓库的 macOS runner 免费。
 #
-# 用法：
-#   1. 手动触发（Actions → macOS → Run workflow）做一次验证构建，产物留在 Artifacts；
-#   2. 推送 v* tag（如 v4.2.0）时自动构建并把 zip 附到对应的 Release。
+# 触发方式：
+#   1. 推送到 main 且改动涉及 mac 端 / 共享资产 / 工具 → 验证构建，产物留在 Artifacts；
+#   2. 推送 v* tag（如 v4.2.0）→ 构建并把 zip 与校验和附到对应 Release；
+#   3. 手动触发（Actions → macOS → Run workflow）。
+# 说明：默认 token 可能没有 workflow 触发权限，main 分支触发是不依赖该权限的验证路径。
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+    paths:
+      - 'apps/mac/**'
+      - 'shared/**'
+      - 'tools/**'
+      - '.github/workflows/macos.yml'
     tags:
       - 'v*'
 
