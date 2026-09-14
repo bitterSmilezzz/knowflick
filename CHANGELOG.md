@@ -18,6 +18,31 @@
 
 此变更不涉及各端功能，android 的 77 项 JVM 单测、28 项仪器测试与 Lint 均通过，release 产物内资源确认来自 `shared/`；mac 的 `KnowFlickCore` 构建通过且 resource bundle 内 214 张种子卡与 42 张底图完整。
 
+### macOS：修复打包产物启动即崩（长期缺陷）
+
+`build_app.sh` 打出的 `KnowFlick.app` 双击启动即崩溃，报
+`Fatal error: could not load resource bundle`。仓库里 9-11 打包的 v3.2.0 产物同样受影响。
+
+根因是 SwiftPM 生成的 `resource_bundle_accessor` 在不同工具链下候选路径不同：
+
+| 工具链 | 候选路径 | `Contents/Resources` 布局 |
+| --- | --- | --- |
+| CommandLineTools 27 | `Bundle.main.resourceURL` → `bundleURL` | 能找到 |
+| Xcode 26.3 | `Bundle.main.bundleURL` → 编译期 `.build` 路径 | **找不到，直接 fatalError** |
+
+资源 bundle 的位置不能改：放到 `.app` 根目录虽能被 Xcode 产物找到，却会破坏代码签名
+（实测 `unsealed contents present in the bundle root`，`codesign --verify` 失败）。
+因此改为在 `CoreResources` 里自行按候选列表查找，两个工具链的产物都能命中。
+
+同时补上启动自检：`build_app.sh` 与 CI 都会实跑一次二进制，出现该致命错误即判失败——
+这个缺陷此前能长期潜伏，正是因为编译、签名、资源复制全部通过，只有真正启动才暴露。
+
+新增 macOS 云端构建 [workflow](.github/workflows/macos.yml)：公开仓库的 macOS runner 免费且自带
+完整 Xcode，可绕开本机缺 Xcode 的限制；推 `v*` tag 时自动构建并把 zip 与校验和附到 Release。
+
+首个通过的云端构建：[run 34826959715](https://github.com/bitterSmilezzz/knowflick/actions/runs/34826959715)
+——173 项测试通过、产物签名有效、资源完整（214 张种子卡 + 42 张底图）、实际启动并持续运行。
+
 ## [android-v0.8.4] - 2026-09-14
 
 ### Android 失效链修复与包体优化
