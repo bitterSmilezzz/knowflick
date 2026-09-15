@@ -1,6 +1,7 @@
 package com.knowflick.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -117,15 +118,28 @@ fun LibraryScreen(
             }
         }
 
-        // 双 Tab
+        // 双 Tab：一体化分段胶囊设计
         Row(
-            Modifier.padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            TabChip("收藏阁 ${favorites.size}", tab == LibraryTab.FAVORITES) { tab = LibraryTab.FAVORITES }
-            TabChip("历史足迹 ${history.size}", tab == LibraryTab.HISTORY) { tab = LibraryTab.HISTORY }
+            SegmentedTab(
+                label = "收藏阁 ${favorites.size}",
+                selected = tab == LibraryTab.FAVORITES,
+                modifier = Modifier.weight(1f),
+            ) { tab = LibraryTab.FAVORITES }
+            SegmentedTab(
+                label = "历史足迹 ${history.size}",
+                selected = tab == LibraryTab.HISTORY,
+                modifier = Modifier.weight(1f),
+            ) { tab = LibraryTab.HISTORY }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
 
         when (tab) {
             LibraryTab.FAVORITES -> {
@@ -150,6 +164,7 @@ fun LibraryScreen(
                     HistoryFilterChip("感兴趣", historyFilter == SwipeDirection.RIGHT) { historyFilter = SwipeDirection.RIGHT }
                     HistoryFilterChip("不喜欢", historyFilter == SwipeDirection.LEFT) { historyFilter = SwipeDirection.LEFT }
                 }
+                Spacer(Modifier.height(6.dp))
                 if (history.isEmpty()) {
                     LibraryEmpty("还没有刷过的卡片")
                 } else {
@@ -169,15 +184,31 @@ fun LibraryScreen(
 private enum class LibraryTab { FAVORITES, HISTORY }
 
 @Composable
-private fun TabChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun SegmentedTab(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     Box(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) EditorialColor.aiAmber.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
-            .clickable { selected.let { onClick() } }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (selected) MaterialTheme.colorScheme.surface else Color.Transparent)
+            .border(
+                if (selected) 0.8.dp else 0.dp,
+                if (selected) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f) else Color.Transparent,
+                RoundedCornerShape(9.dp),
+            )
+            .clickable { onClick() }
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = if (selected) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(
+            label,
+            color = if (selected) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.70f),
+            fontSize = 12.5.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+        )
     }
 }
 
@@ -187,44 +218,89 @@ private fun HistoryFilterChip(label: String, selected: Boolean, onSelect: () -> 
         Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) EditorialColor.aiAmber.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface)
+            .border(
+                0.8.dp,
+                if (selected) EditorialColor.aiAmber.copy(alpha = 0.40f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
+                RoundedCornerShape(8.dp),
+            )
             .clickable { onSelect() }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        Text(label, color = if (selected) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), fontSize = 11.sp)
+        Text(
+            label,
+            color = if (selected) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
+            fontSize = 11.5.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        )
     }
 }
 
 @Composable
 private fun LibraryRow(card: KnowledgeCard, label: String, onClick: () -> Unit) {
+    val categoryColor = CategoryStampColor.forCategory(card.category)
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface)
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f),
+                RoundedCornerShape(14.dp),
+            )
             .clickable { onClick() }
             .padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .background(CategoryStampColor.forCategory(card.category).copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                    .background(categoryColor.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                    .border(0.6.dp, categoryColor.copy(alpha = 0.30f), RoundedCornerShape(6.dp))
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
-                Text(card.category.ifBlank { "未分类" }, color = CategoryStampColor.forCategory(card.category), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text(card.category.ifBlank { "未分类" }, color = categoryColor, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.weight(1f))
-            Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f), fontSize = 10.sp)
+            Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f), fontSize = 10.5.sp)
         }
-        Spacer(Modifier.height(8.dp))
-        Text(card.headline, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp)
+        Spacer(Modifier.height(10.dp))
+        Text(card.headline, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, lineHeight = 23.sp)
     }
 }
 
 @Composable
 private fun LibraryEmpty(message: String) {
-    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Text(message, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f), fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    AppIcons.Bookmarks,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.25f),
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                message,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
+                fontSize = 13.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                lineHeight = 20.sp,
+            )
+        }
     }
 }
 

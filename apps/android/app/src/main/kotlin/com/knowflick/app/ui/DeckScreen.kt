@@ -4,11 +4,15 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -120,7 +125,7 @@ fun DeckScreen(
             try {
                 returnAnim.animateTo(
                     Offset.Zero,
-                    spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.82f),
+                    spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = 0.78f),
                 )
             } finally {
                 isReturning = false
@@ -198,12 +203,23 @@ fun DeckScreen(
                         )
                     }
                 }
-                IconButton(onClick = onToggleAmbient) {
-                    Icon(
-                        AppIcons.Headphones,
-                        contentDescription = if (isAmbientMode) "退出磨耳朵" else "磨耳朵连续朗读",
-                        tint = if (isAmbientMode) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground,
-                    )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isAmbientMode) EditorialColor.aiAmber.copy(alpha = 0.16f) else androidx.compose.ui.graphics.Color.Transparent)
+                        .border(
+                            1.dp,
+                            if (isAmbientMode) EditorialColor.aiAmber.copy(alpha = 0.40f) else androidx.compose.ui.graphics.Color.Transparent,
+                            RoundedCornerShape(12.dp),
+                        ),
+                ) {
+                    IconButton(onClick = onToggleAmbient) {
+                        Icon(
+                            AppIcons.Headphones,
+                            contentDescription = if (isAmbientMode) "退出磨耳朵" else "磨耳朵连续朗读",
+                            tint = if (isAmbientMode) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
                 }
                 IconButton(onClick = {
                     topCard?.let { card ->
@@ -309,11 +325,19 @@ fun DeckScreen(
                                 PreloadBackgroundImage(ThemeKey.forCard(card))
                                 Box(
                                     cardModifier
-                                        .clip(RoundedCornerShape(18.dp))
+                                        .clip(RoundedCornerShape(20.dp))
                                         .background(MaterialTheme.colorScheme.surface),
                                 )
                             } else {
-                                CardFace(card = card, showAIMark = showAIMark, modifier = cardModifier, isTop = isTop)
+                                val currentDragX = if (isReturning) returnAnim.value.x else rawDrag.x
+                                val swipeProgress = if (isTop && flyingCard == null) (currentDragX / 220f).coerceIn(-1f, 1f) else 0f
+                                CardFace(
+                                    card = card,
+                                    showAIMark = showAIMark,
+                                    modifier = cardModifier,
+                                    isTop = isTop,
+                                    swipeProgress = swipeProgress,
+                                )
                             }
                         }
                     }
@@ -360,7 +384,7 @@ fun DeckScreen(
                                     alpha = (1f - travel / (total * 0.55f)).coerceIn(0f, 1f)
                                 },
                         ) {
-                            CardFace(card = card, showAIMark = showAIMark, Modifier.fillMaxSize(), isTop = true)
+                            CardFace(card = card, showAIMark = showAIMark, Modifier.fillMaxSize(), isTop = true, swipeProgress = 0f)
                         }
                     }
                 }
@@ -378,11 +402,16 @@ fun DeckScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 44.dp, vertical = 14.dp),
+                    .padding(horizontal = 40.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IntentButton(icon = Icons.Filled.Close, tint = EditorialColor.dislikeRed, label = "不喜欢") {
+                IntentButton(
+                    icon = Icons.Filled.Close,
+                    tint = EditorialColor.dislikeRed,
+                    size = 50,
+                    label = "不喜欢",
+                ) {
                     topCard?.let { card ->
                         flyingCard = card
                         flyingDirection = SwipeDirection.LEFT
@@ -393,12 +422,18 @@ fun DeckScreen(
                 IntentButton(
                     icon = if (topCard?.isFavorite == true) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     tint = EditorialColor.likeGreen,
-                    size = 54,
+                    size = 58,
                     label = "收藏",
+                    pulseTrigger = topCard?.isFavorite == true,
                 ) {
                     topCard?.let { card -> onMutate { store.toggleFavorite(card) } }
                 }
-                IntentButton(icon = Icons.AutoMirrored.Filled.ArrowForward, tint = MaterialTheme.colorScheme.onBackground, label = "详情") {
+                IntentButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowForward,
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    size = 50,
+                    label = "详情",
+                ) {
                     topCard?.let(onOpenDetail)
                 }
             }
@@ -410,21 +445,62 @@ fun DeckScreen(
 private fun IntentButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     tint: androidx.compose.ui.graphics.Color,
-    size: Int = 48,
+    size: Int = 50,
     label: String,
+    pulseTrigger: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1.0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.65f),
+        label = "btnScale",
+    )
+    val pulseScale = remember { Animatable(1f) }
+    LaunchedEffect(pulseTrigger) {
+        if (pulseTrigger) {
+            pulseScale.snapTo(1f)
+            pulseScale.animateTo(
+                1.26f,
+                spring(stiffness = Spring.StiffnessHigh, dampingRatio = 0.5f),
+            )
+            pulseScale.animateTo(
+                1.0f,
+                spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.7f),
+            )
+        }
+    }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(
-            onClick = onClick,
+        Box(
             modifier = Modifier
                 .size(size.dp)
-                .background(MaterialTheme.colorScheme.surface, CircleShape),
+                .scale(scale * pulseScale.value)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f), CircleShape)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = androidx.compose.material3.ripple(bounded = true),
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = label, tint = tint)
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = tint,
+                modifier = Modifier.size((size * 0.48f).dp),
+            )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f), fontSize = 10.sp)
+        Spacer(Modifier.height(5.dp))
+        Text(
+            label,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.60f),
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
