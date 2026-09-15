@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AddCircle
@@ -44,6 +45,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -56,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.knowflick.app.data.ThemeKey
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.SwipeDirection
 import kotlin.math.abs
@@ -301,7 +304,17 @@ fun DeckScreen(
                                         }
                                     }
                             }
-                            CardFace(card = card, showAIMark = showAIMark, modifier = cardModifier, isTop = isTop)
+                            if (depth >= 2) {
+                                // 最深卡只露出边缘：预解码下一张图，但不绘制整张大图、渐变和文字。
+                                PreloadBackgroundImage(ThemeKey.forCard(card))
+                                Box(
+                                    cardModifier
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(MaterialTheme.colorScheme.surface),
+                                )
+                            } else {
+                                CardFace(card = card, showAIMark = showAIMark, modifier = cardModifier, isTop = isTop)
+                            }
                         }
                     }
 
@@ -320,7 +333,7 @@ fun DeckScreen(
                             val targetY = if (direction == SwipeDirection.SKIP) start.y else start.y + 90f
                             fly.animateTo(
                                 Offset(targetX, targetY),
-                                tween(durationMillis = 220, easing = FastOutLinearInEasing),
+                                tween(durationMillis = 180, easing = FastOutLinearInEasing),
                             )
                             if (flyingCard?.id == card.id) {
                                 flyingCard = null
@@ -342,7 +355,9 @@ fun DeckScreen(
                                             SwipeDirection.SKIP, null -> deckWidthPx.coerceAtLeast(900) * 0.85f
                                         } - start.x,
                                     ).coerceAtLeast(1f)
-                                    alpha = (1f - travel / total).coerceIn(0f, 1f)
+                                    // 旧卡在退场前半程淡出，避免 GPU 忙时它长时间盖住新顶卡，
+                                    // 造成“切换后又闪回上一张”的观感。
+                                    alpha = (1f - travel / (total * 0.55f)).coerceIn(0f, 1f)
                                 },
                         ) {
                             CardFace(card = card, showAIMark = showAIMark, Modifier.fillMaxSize(), isTop = true)

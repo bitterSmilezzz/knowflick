@@ -76,6 +76,16 @@ cache v6、upload-artifact v7、setup-android v4），消除 runner 的弃用警
 - 新增 `tools/lint_shell_vars.sh`：`$VAR` 紧跟全角标点时 bash 会把该字符首字节并入变量名，
   只在 UTF-8 locale 的 bash 下触发，本地极易漏过。已接入两个 workflow。
 
+## [android-v0.8.5] - 2026-09-15
+
+### Android 滑卡渲染与性能路径修复
+
+- 卡堆最深层只绘制露出的轻量背板，并在后台预解码即将出现的图片，减少每次滑动同时绘制三张全屏图片、渐变和文字的 GPU 压力；当前卡与下一张卡仍保持完整内容，切换时直接命中图片缓存。旧卡退场由 220ms 缩到 180ms，并在前半程完成淡出，避免切换后上一张长时间盖住新内容。
+- 修复 baseline profile 采集器错误使用带包名前缀的 Compose 资源 ID、把图标说明当文本查找且允许静默跳过的问题；采集现在强制覆盖启动、连续滑卡和收藏阁，找不到节点会直接失败。
+- 新 profile 的应用规则由 528 条增至 750 条，明确包含 `CardStore.swipe`、118 条 `DeckScreen` 规则及此前为 0 的 73 条 `LibraryScreen` 规则。
+- 收藏 Markdown 与 JSON 归档的序列化移到 IO 线程，大卡库导出不再占用主线程。
+- 完整回归通过 77 项 JVM 测试、28 项 Android 15 ARM64 模拟器测试和 0 错误 Lint；0.8.4 覆盖升级验证保留收藏与历史。详见 [发布记录](docs/ANDROID_RELEASE_0.8.5.md)。
+
 ## [android-v0.8.4] - 2026-09-14
 
 ### Android 失效链修复与包体优化

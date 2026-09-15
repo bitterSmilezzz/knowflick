@@ -1,6 +1,6 @@
 # KnowFlick Android
 
-原生 Kotlin + Jetpack Compose 应用。当前版本 **0.8.4**（versionCode 12），最低 Android 8.0 / API 26，target/compile SDK 35。
+原生 Kotlin + Jetpack Compose 应用。当前版本 **0.8.5**（versionCode 13），最低 Android 8.0 / API 26，target/compile SDK 35。
 
 已实现刷卡、详情、收藏与历史、学习统计、知识测验、AI 流式生成与服务商配置、卡片 JSON 导入，以及 JSON/Markdown/Anki 文本导出。语音支持系统 TTS、云端 OpenAI 兼容接口与本地回环网关。背景图使用 WebP，发布包内置 baseline profile。
 
@@ -66,7 +66,7 @@ keyPassword=YOUR_KEY_PASSWORD
 把 APK 传到手机后打开安装，按系统提示允许该文件来源安装应用；也可执行：
 
 ```sh
-adb install -r dist/android/KnowFlick-0.8.3.apk
+adb install -r dist/android/KnowFlick-0.8.5.apk
 ```
 
 如果手机已安装相同包名的 Debug 版，因签名不同无法覆盖。先从知识库导出需要保留的卡片，再由用户自行卸载旧版后安装；卸载会清除本地学习记录和配置。后续同签名 Release 可直接覆盖更新。
@@ -79,4 +79,4 @@ adb install -r dist/android/KnowFlick-0.8.3.apk
 - 本地服务只放行 `http://127.0.0.1:<port>` 回环明文连接，不将模型文件打入 APK。
 - USB/模拟器访问开发机器本地网关：`adb reverse tcp:8899 tcp:8899`，Base URL 填 `http://127.0.0.1:8899`。
 
-本轮交付是可安装 APK，未上传应用商店。测试范围与实际结果见 `docs/ANDROID_RELEASE_0.8.3.md`（仓库根目录下）。
+本轮交付是可安装 APK，未上传应用商店。测试范围与实际结果见 `docs/ANDROID_RELEASE_0.8.5.md`（仓库根目录下）。

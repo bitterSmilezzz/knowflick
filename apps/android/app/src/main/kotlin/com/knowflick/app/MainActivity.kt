@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** 应用入口：卡堆 / 详情 / 统计 / 知识库 / 设置；语音朗读挂接全局控制器 */
+@OptIn(ExperimentalComposeUiApi::class)
 class MainActivity : ComponentActivity() {
 
     private enum class Screen { DECK, DETAIL, STATS, SETTINGS, LIBRARY, QUIZ }
@@ -57,7 +61,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             KnowFlickTheme {
                 val libraryState = rememberSaveableStateHolder()
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .safeDrawingPadding()
+                        // 让 UIAutomator 能用稳定资源 ID 驱动 baseline profile 与性能回归。
+                        .semantics { testTagsAsResourceId = true },
+                ) {
                     when (screen) {
                         Screen.DECK -> {
                             // 显式读取 version 建立响应性，再把卡堆快照作为参数传给 DeckScreen：
@@ -155,7 +166,19 @@ class MainActivity : ComponentActivity() {
                                     screen = Screen.DETAIL
                                 },
                                 onBack = { screen = Screen.DECK },
-                                onShareText = { text, title -> shareText(text, title) },
+                                onShareFavorites = { favorites ->
+                                    shareFile("KnowFlick 收藏笔记.md") {
+                                        com.knowflick.app.data.CardExportEngine.exportMarkdownSingleFile(
+                                            favorites,
+                                            "KnowFlick 知识收藏阁",
+                                        )
+                                    }
+                                },
+                                onShareArchive = { cards ->
+                                    shareFile("knowflick_cards.json") {
+                                        com.knowflick.app.data.CardExportEngine.exportJSONArchive(cards)
+                                    }
+                                },
                                 onPickImportFile = { importFilePicker.launch(arrayOf("application/json", "text/*")) },
                             )
                         }
@@ -165,10 +188,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun shareText(text: String, title: String) {
+    /** 文本生成与文件写入都在 IO 线程执行，大卡库导出不会阻塞知识库界面。 */
+    private fun shareFile(title: String, createText: () -> String) {
         lifecycleScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
+                    val text = createText()
                     com.knowflick.app.data.ShareFileWriter.create(this@MainActivity, text, title)
                 }
             }.onSuccess { shared ->

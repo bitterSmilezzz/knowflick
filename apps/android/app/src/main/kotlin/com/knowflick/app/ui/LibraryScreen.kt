@@ -61,7 +61,8 @@ fun LibraryScreen(
     version: Int,
     onOpenDetail: (KnowledgeCard) -> Unit,
     onBack: () -> Unit,
-    onShareText: (String, String) -> Unit,
+    onShareFavorites: (List<KnowledgeCard>) -> Unit,
+    onShareArchive: (List<KnowledgeCard>) -> Unit,
     onPickImportFile: () -> Unit,
 ) {
     androidx.activity.compose.BackHandler { onBack() }
@@ -103,17 +104,11 @@ fun LibraryScreen(
             )
             Spacer(Modifier.weight(1f))
             // 收藏阁导出：分享当前收藏
-            IconButton(onClick = {
-                val markdown = com.knowflick.app.data.CardExportEngine.exportMarkdownSingleFile(favorites, "KnowFlick 知识收藏阁")
-                onShareText(markdown, "KnowFlick 收藏笔记.md")
-            }) {
+            IconButton(onClick = { onShareFavorites(favorites.toList()) }) {
                 Icon(Icons.Filled.Share, contentDescription = "分享收藏笔记", tint = MaterialTheme.colorScheme.onBackground)
             }
             // JSON 归档分享
-            IconButton(onClick = {
-                val json = com.knowflick.app.data.CardExportEngine.exportJSONArchive(cards)
-                onShareText(json, "knowflick_cards.json")
-            }) {
+            IconButton(onClick = { onShareArchive(cards.toList()) }) {
                 Icon(Icons.Filled.AddCircle, contentDescription = "导出 JSON 归档", tint = MaterialTheme.colorScheme.onBackground)
             }
             // 导入

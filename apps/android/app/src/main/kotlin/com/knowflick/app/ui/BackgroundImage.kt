@@ -76,3 +76,15 @@ fun rememberBackgroundImage(key: String): ImageBitmap? {
     }
     return image.value
 }
+
+/**
+ * 只把即将出现的底图解码进内存，不创建 Image 节点或上传纹理。
+ * 卡片升层后 [rememberBackgroundImage] 会立即命中缓存，减少滑动过程中的解码等待。
+ */
+@Composable
+fun PreloadBackgroundImage(key: String) {
+    val context = LocalContext.current.applicationContext
+    LaunchedEffect(key, context) {
+        withContext(Dispatchers.IO) { BackgroundImageCache.image(context, key) }
+    }
+}

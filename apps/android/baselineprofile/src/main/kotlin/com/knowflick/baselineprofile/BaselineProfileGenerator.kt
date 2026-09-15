@@ -36,17 +36,26 @@ class BaselineProfileGenerator {
 
             // 划走几张，覆盖手势、飞出动画与落盘路径
             repeat(3) {
-                val card = device.findObject(By.res(packageName, "deck_top_card"))
-                if (card != null) {
-                    val cx = card.visibleCenter.x
-                    val cy = card.visibleCenter.y
-                    device.swipe(cx, cy, cx + 320, cy, 12)
-                    device.waitForIdle()
+                // Compose 会把 testTag 原样导出为 resource-id，不会补 Android 包名前缀。
+                // 图片异步载入会重建语义节点，因此只校验节点存在，再用屏幕坐标执行手势；
+                // 持有 UiObject2 后读取 visibleCenter 会偶发 StaleObjectException。
+                check(device.wait(Until.hasObject(By.res("deck_top_card")), 5_000)) {
+                    "找不到 deck_top_card，baseline profile 未覆盖刷卡路径"
                 }
+                val cy = device.displayHeight / 2
+                device.swipe(device.displayWidth / 2, cy, device.displayWidth * 4 / 5, cy, 12)
+                device.waitForIdle()
             }
 
             // 收藏阁（列表组合与时间格式化）
-            device.findObject(By.text("收藏阁"))?.click()
+            val libraryButton = device.wait(
+                Until.findObject(By.desc("收藏阁")),
+                5_000,
+            ) ?: error("找不到收藏阁按钮，baseline profile 未覆盖知识库路径")
+            libraryButton.click()
+            check(device.wait(Until.hasObject(By.text("知识库")), 5_000)) {
+                "收藏阁点击后没有进入知识库"
+            }
             device.waitForIdle()
             device.pressBack()
             device.waitForIdle()
