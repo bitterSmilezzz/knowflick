@@ -9,7 +9,6 @@ public struct CardPosterExportSheet: View {
 
     @State private var selectedStyle: CardPosterStyle = .editorial
     @State private var toast = ToastCenter()
-    @State private var isExporting: Bool = false
 
     public init(card: KnowledgeCard, onClose: @escaping () -> Void) {
         self.card = card
@@ -194,7 +193,9 @@ public struct CardPosterExportSheet: View {
             .keyboardShortcut("s", modifiers: .command)
 
             // 系统分享菜单
-            NativeShareButton(card: card, style: selectedStyle)
+            NativeShareButton(card: card, style: selectedStyle) { message in
+                toast.show(message, style: .failure)
+            }
         }
     }
 
@@ -245,6 +246,8 @@ public struct CardPosterExportSheet: View {
 private struct NativeShareButton: View {
     let card: KnowledgeCard
     let style: CardPosterStyle
+    /// 渲染失败 / 无可用窗口时的失败反馈（宿主负责展示 toast）
+    let onFailure: (String) -> Void
 
     var body: some View {
         Button(action: triggerShare) {
@@ -263,9 +266,16 @@ private struct NativeShareButton: View {
     }
 
     private func triggerShare() {
-        guard let image = PosterExportManager.shared.renderImage(for: card, style: style, scale: 2.0) else { return }
-        if let keyWindow = NSApp.keyWindow, let contentView = keyWindow.contentView {
-            PosterExportManager.shared.shareImage(image: image, relativeTo: .zero, of: contentView)
+        // 与复制 / 保存两处对齐：渲染失败不再静默吞掉
+        guard let image = PosterExportManager.shared.renderImage(for: card, style: style, scale: 2.0) else {
+            onFailure("生成海报图片失败")
+            return
         }
+        // 无 keyWindow 时回退 mainWindow（与 PosterExportManager / PanelPresenter 同款回退逻辑）
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow, let contentView = window.contentView else {
+            onFailure("当前没有可用窗口，无法唤起系统分享面板")
+            return
+        }
+        PosterExportManager.shared.shareImage(image: image, relativeTo: .zero, of: contentView)
     }
 }

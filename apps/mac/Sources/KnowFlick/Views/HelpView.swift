@@ -19,8 +19,11 @@ struct HelpView: View {
         .init(keys: "⌘ K", action: "开启沉浸式知识测验"),
         .init(keys: "⌘ G", action: "探索全景知识星图与引力链"),
         .init(keys: "⌘ B", action: "打开知识收藏阁（沉淀笔记）"),
+        .init(keys: "⇧⌘ I", action: "导入笔记为卡片…"),
+        .init(keys: "⇧⌘ E", action: "导出知识卡片…"),
         .init(keys: "⌘ S", action: "生成并导出分享海报"),
         .init(keys: "⌘ N", action: "AI 生成 3 张新知识"),
+        .init(keys: "⌘ R", action: "换一批新知识（当前卡堆记为已跳过）"),
         .init(keys: "⌘ ?", action: "打开此快捷键面板"),
         .init(keys: "⌘ ,", action: "打开偏好设置")
     ]

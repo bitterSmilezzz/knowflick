@@ -166,7 +166,7 @@ struct FavoritesView: View {
                 .shadow(color: EditorialColor.aiAmber.opacity(0.32), radius: 6, y: 2)
             }
             .buttonStyle(PressableButtonStyle())
-            .help(selectedCategory != nil ? "针对 \(selectedCategory!) 分类开启记忆测验" : "针对已收藏知识开启记忆测验")
+            .help(selectedCategory != nil ? "针对 \(selectedCategory!) 分类抽题（收藏优先）" : "优先从收藏阁抽题，不足时并入历史与全库")
 
             // 导出 Markdown 笔记菜单
             Menu {
@@ -227,7 +227,9 @@ struct FavoritesView: View {
                 .overlay(Capsule().strokeBorder(EditorialColor.glassBorderHover, lineWidth: 1))
             }
             .menuStyle(.borderlessButton)
-            .help("导出至 Obsidian / Notion 等笔记工具 (⌘⇧C / ⌘⇧S)")
+            // 收藏阁为空时菜单内四个动作全部静默返回（无 toast、无面板）：直接禁用入口，避免空点击
+            .disabled(store.favorites.isEmpty)
+            .help(store.favorites.isEmpty ? "收藏阁暂无内容，无可导出的笔记" : "导出至 Obsidian / Notion 等笔记工具 (⇧⌘E / ⇧⌘C / ⇧⌘S)")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
@@ -420,10 +422,13 @@ struct FavoritesView: View {
 
                 Spacer()
 
-                if let seen = card.seenAt {
-                    Text(seen.formatted(date: .abbreviated, time: .omitted))
+                // 收藏时间（不是浏览时间）：列表排序用的是 favoritedAt，显示口径必须同源；
+                // 此前取 seenAt 导致「收藏但未读过」的卡片完全没有日期，且显示的是浏览时间。
+                if let favoritedAt = card.favoritedAt ?? card.seenAt {
+                    Text("收藏于 \(favoritedAt.formatted(date: .abbreviated, time: .omitted))")
                         .font(EditorialFont.captionSmall)
                         .foregroundStyle(EditorialColor.textMuted)
+                        .help("收藏时间")
                 }
 
                 // 取消收藏快捷心形

@@ -34,8 +34,6 @@ final class ToastCenter {
 
     private(set) var message: String?
     private(set) var style: Style = .success
-    /// 每次展示自增，供调用方区分「同文案的两次展示」
-    private(set) var generation = 0
     private var dismissTask: Task<Void, Never>?
 
     /// 展示一条提示：取消旧倒计时，到 `duration` 后自动消失。
@@ -43,7 +41,6 @@ final class ToastCenter {
         dismissTask?.cancel()
         self.message = message
         self.style = style
-        generation += 1
         dismissTask = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
             try? await Task.sleep(for: duration)

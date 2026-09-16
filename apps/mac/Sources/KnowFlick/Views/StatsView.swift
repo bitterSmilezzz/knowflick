@@ -176,18 +176,23 @@ struct StatsView: View {
 
     private func dayLabel(_ day: Date) -> String {
         if Calendar.current.isDateInToday(day) { return "今天" }
+        return Self.weekdayFormatter.string(from: day)
+    }
+
+    /// 静态格式化器：此前每次调用各建一个 DateFormatter（近 7 天柱条 = 每次渲染 7 个）
+    private static let weekdayFormatter: DateFormatter = {
         let fmt = DateFormatter()
         fmt.locale = Locale(identifier: "zh_CN")
         fmt.dateFormat = "E"
-        return fmt.string(from: day)
-    }
+        return fmt
+    }()
 
     // MARK: - 分类统计
 
     private var categorySection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("分类知识掌握度")
+                Text("分类浏览与感兴趣分布")
                     .font(EditorialFont.sectionTitle)
                     .foregroundStyle(EditorialColor.textPrimary)
                 Spacer()

@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import KnowFlickCore
 
 /// 设置页：AI 服务配置
@@ -20,6 +21,8 @@ struct SettingsView: View {
     @State private var speech = SpeechSettings()
     @State private var speechRate: Float = 1.0
     @State private var speechVoiceIdentifier: String = "auto"
+    /// 系统音色列表：枚举 + 排序是重活，若写在 body 里会在任意输入框每次击键时重算，故 onAppear 取一次
+    @State private var voiceOptions: [AVSpeechSynthesisVoice] = []
     @State private var ambientGapSeconds: Double = 1.5
     @State private var autoSpeakOnDetailOpen: Bool = false
     @State private var newCategoryName = ""
@@ -103,6 +106,7 @@ struct SettingsView: View {
             speechVoiceIdentifier = store.settings.speechVoiceIdentifier
             ambientGapSeconds = store.settings.ambientGapSeconds
             autoSpeakOnDetailOpen = store.settings.autoSpeakOnDetailOpen
+            voiceOptions = SpeechSynthesizerService.availableVoices()
         }
         .overlay(alignment: .bottom) {
             EditorialToast(center: toast)
@@ -652,7 +656,7 @@ struct SettingsView: View {
             fieldRow(label: "系统音色（系统模式与离线兜底使用）") {
                 Picker("", selection: $speechVoiceIdentifier) {
                     Text("自动选择已下载的高质量音色（推荐）").tag("auto")
-                    ForEach(SpeechSynthesizerService.availableVoices(), id: \.identifier) { voice in
+                    ForEach(voiceOptions, id: \.identifier) { voice in
                         Text("\(voice.name) · \(voice.language)\(voice.quality == .default ? " · 标准" : " · 高质量")").tag(voice.identifier)
                     }
                 }
@@ -689,7 +693,9 @@ struct SettingsView: View {
                     .font(EditorialFont.caption)
             }
             if store.speechService.state != .idle {
-                Button("停止播放") { store.speechService.stopAmbientMode() }
+                // 文案承诺「停止播放」：必须同时停常规朗读与磨耳朵连续播报（stopSpeech 内部两者都停），
+                // 此前只调 stopAmbientMode，详情页朗读中点此按钮无任何反应。
+                Button("停止播放") { store.stopSpeech() }
             }
             if let error = store.speechService.lastError {
                 Text(error)

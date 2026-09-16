@@ -191,7 +191,7 @@ struct LearningWorkspaceView: View {
             HStack {
                 sectionHeading("你的知识版图", subtitle: "按主题进入，看看哪些已经掌握")
                 Spacer()
-                Button("查看全部 →") { section = .library }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(EditorialColor.aiAmber)
+                Button("查看全部 →") { category = "全部主题"; filter = .all; query = ""; section = .library }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(EditorialColor.aiAmber)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
                 ForEach(Array(categories.prefix(8)), id: \.self) { name in

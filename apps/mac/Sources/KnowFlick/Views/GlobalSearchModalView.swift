@@ -23,7 +23,11 @@ struct GlobalSearchModalView: View {
     @State private var searchGeneration = 0
     @State private var searchDebounceTask: Task<Void, Never>?
 
-    private let searchEngine = KnowledgeSearchEngine()
+    /// 共享 AppStore 的搜索引擎实例：拼音缓存（PhoneticCache，容量 2048）随之复用，
+    /// 此前每次开窗新建实例，首轮搜索要为库内标题/分类/摘要重算全部拼音。
+    private var searchEngine: KnowledgeSearchEngine {
+        store.searchEngine
+    }
 
     private var allCategories: [String] {
         var set = Set<String>()

@@ -102,6 +102,7 @@ struct AmbientAudioPlayerBar: View {
                         .shadow(color: EditorialColor.likeGreen.opacity(0.4), radius: 6, y: 1)
                 }
                 .buttonStyle(PressableButtonStyle())
+                .disabled(currentCard == nil)
                 .help(isPlaying ? "暂停朗读 (⌘P)" : "继续朗读 (⌘P)")
                 .accessibilityLabel(isPlaying ? "暂停朗读" : "继续朗读")
 

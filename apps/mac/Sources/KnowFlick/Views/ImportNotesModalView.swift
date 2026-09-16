@@ -407,6 +407,8 @@ struct ImportNotesModalView: View {
                         .foregroundStyle(EditorialColor.textSecondary)
                 }
                 .buttonStyle(PressableButtonStyle())
+                // 解析中禁止重复触发：否则会反复 cancel/restart 解析任务
+                .disabled(isProcessing)
 
                 Button {
                     commitImport()
@@ -425,7 +427,8 @@ struct ImportNotesModalView: View {
                 }
                 .buttonStyle(PressableButtonStyle())
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(selectedCardIds.isEmpty)
+                // 解析中禁用：此时 parsedCards 仍是上一轮结果，允许点击会导入过期数据
+                .disabled(selectedCardIds.isEmpty || isProcessing)
             }
         }
         .padding(.horizontal, 22)

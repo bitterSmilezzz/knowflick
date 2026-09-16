@@ -607,9 +607,14 @@ struct CardDeckView: View {
                         if dir == .left {
                             badge("不喜欢", color: EditorialColor.dislikeRed, icon: "xmark")
                             Spacer()
-                        } else {
+                        } else if dir == .right {
                             Spacer()
                             badge("感兴趣", color: EditorialColor.likeGreen, icon: "heart.fill")
+                        } else {
+                            // .skip 是系统跳过（磨耳朵「下一张」等系统批量操作），按领域契约不表达喜好：
+                            // 此前落进 else 分支飞出绿色「感兴趣」章，与统计口径（skip 不计喜欢）自相矛盾。
+                            Spacer()
+                            badge("已跳过", color: EditorialColor.skipGray, icon: "forward.fill")
                         }
                     }
                     Spacer()
@@ -747,6 +752,7 @@ struct CardDeckView: View {
                         Button("换一批新知识", systemImage: "arrow.clockwise") {
                             Task { await store.refreshDeck() }
                         }
+                        .disabled(store.isGenerating)
                         Button("重新探索全部卡片", systemImage: "arrow.counterclockwise") {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                 store.clearHistory()
@@ -824,6 +830,7 @@ struct CardDeckView: View {
                 }
             }
             .keyboardShortcut("n", modifiers: .command)
+            .disabled(store.isGenerating)
 
             Button("") {
                 if let top = store.topCard {
@@ -944,6 +951,7 @@ struct CardDeckView: View {
                             .padding(.vertical, 10)
                     }
                     .buttonStyle(PressableButtonStyle())
+                    .disabled(store.isGenerating)
                     .background(EditorialColor.aiAmber.opacity(0.25), in: Capsule())
                     .overlay(Capsule().strokeBorder(EditorialColor.aiAmber.opacity(0.7), lineWidth: 1.3))
                     .foregroundStyle(EditorialColor.textPrimary)

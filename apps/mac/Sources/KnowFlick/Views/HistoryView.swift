@@ -195,7 +195,9 @@ struct HistoryView: View {
                             }
                         } else {
                             dot
-                            Text("精选")
+                            // 三态来源：AI / 导入 / 预置精选。此前把导入笔记也标成「精选」，
+                            // 与 DetailView、CardView 的「导入笔记」标注不一致。
+                            Text(card.source == .imported ? "导入笔记" : "精选")
                                 .font(EditorialFont.captionSmall)
                                 .foregroundStyle(EditorialColor.textMuted)
                         }

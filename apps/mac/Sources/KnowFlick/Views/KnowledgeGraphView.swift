@@ -31,13 +31,18 @@ struct KnowledgeGraphView: View {
         Array(Set(graphData.nodes.map(\.category))).sorted()
     }
 
-    private var filteredNodes: [GraphNode] {
-        graphData.nodes.filter { node in
-            let matchCat = selectedCategory == nil || node.category == selectedCategory
-            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let matchSearch = query.isEmpty || node.headline.lowercased().contains(query) || node.category.lowercased().contains(query)
-            return matchCat && matchSearch
-        }
+    /// 归一化检索词：剔除两端空白并小写，供渲染侧与热区层共用
+    private var normalizedQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// 节点「可见判据」的唯一来源：学科筛选命中 **且** 检索词命中（标题或学科）。
+    /// Canvas 渲染（dimOpacity）与热区层都调用这里，保证「视觉上被压暗的星宿」同时不可点、不可 hover。
+    private func isNodeVisible(_ node: GraphNode) -> Bool {
+        guard selectedCategory == nil || node.category == selectedCategory else { return false }
+        let query = normalizedQuery
+        guard !query.isEmpty else { return true }
+        return node.headline.lowercased().contains(query) || node.category.lowercased().contains(query)
     }
 
     private var connectedNodeIdsForSelectedOrHovered: Set<UUID> {
@@ -57,7 +62,7 @@ struct KnowledgeGraphView: View {
                 .ignoresSafeArea()
 
             // 星图主体交互画布
-            GeometryReader { geo in
+            GeometryReader { _ in
                 ZStack {
                     Canvas { context, size in
                         drawGraph(context: context, size: size)
@@ -248,6 +253,8 @@ struct KnowledgeGraphView: View {
                         .font(.system(size: 11, weight: .bold))
                 }
                 .buttonStyle(controlButtonStyle)
+                .help("缩小星图")
+                .accessibilityLabel("缩小星图")
 
                 Text("\(Int(zoomScale * 100))%")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -263,6 +270,8 @@ struct KnowledgeGraphView: View {
                         .font(.system(size: 11, weight: .bold))
                 }
                 .buttonStyle(controlButtonStyle)
+                .help("放大星图")
+                .accessibilityLabel("放大星图")
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -346,11 +355,13 @@ struct KnowledgeGraphView: View {
         for node in graphData.nodes {
             let isNodeActive = (node.cardId == activeNode?.cardId)
             let isConnected = connectedSet.contains(node.cardId)
-            let isCategoryMatched = (selectedCategory == nil || node.category == selectedCategory)
-            let matchesSearch = searchText.isEmpty || node.headline.localizedCaseInsensitiveContains(searchText)
-
-            let isHighlighted = isNodeActive || isConnected || (activeNode == nil && isCategoryMatched && matchesSearch)
-            let dimOpacity = activeNode == nil ? (isCategoryMatched ? 1.0 : 0.18) : (isHighlighted ? 1.0 : 0.12)
+            // 可见判据与热区层同源（isNodeVisible）：学科筛选与检索词任一生效时，
+            // 未命中的星宿一并降为 0.18，且热区层不再为它们建立点击/悬停区域。
+            let isVisible = isNodeVisible(node)
+            // 第三个析取项（activeNode == nil 时的命中高亮）此前恒为 false：isHighlighted 只在
+            // activeNode != nil 分支被消费，而该分支下 activeNode == nil 恒不成立，故移除。
+            let isHighlighted = isNodeActive || isConnected
+            let dimOpacity = activeNode == nil ? (isVisible ? 1.0 : 0.18) : (isHighlighted ? 1.0 : 0.12)
 
             let baseColor = nodeColor(for: node.category)
             let center = CGPoint(x: node.x, y: node.y)
@@ -393,7 +404,9 @@ struct KnowledgeGraphView: View {
 
     private var nodeHitTestingLayer: some View {
         ZStack {
-            ForEach(graphData.nodes) { node in
+            // 只用「可见判据」命中的节点建热区：被筛选/检索压暗的星宿不再可 hover、可点击，
+            // 避免出现「灰掉的节点仍能点开名片」的自相矛盾。
+            ForEach(graphData.nodes.filter { isNodeVisible($0) }) { node in
                 Circle()
                     .fill(Color.white.opacity(0.001))
                     .frame(width: max(28, node.radius * 3.0), height: max(28, node.radius * 3.0))
@@ -485,7 +498,7 @@ struct KnowledgeGraphView: View {
 
                         Spacer()
 
-                        Text("点击画布任意处关闭")
+                        Text("点击 ✕ 或再次点击该星宿关闭")
                             .font(EditorialFont.captionSmall)
                             .foregroundStyle(Color.white.opacity(0.4))
                     }
