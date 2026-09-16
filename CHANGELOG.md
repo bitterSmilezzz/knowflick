@@ -6,7 +6,7 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
-## [Unreleased]
+## [v4.2.1] - 2026-09-16
 
 ### macOS：Core 层缺陷修复、星图性能优化与 AppStore 拆分
 
