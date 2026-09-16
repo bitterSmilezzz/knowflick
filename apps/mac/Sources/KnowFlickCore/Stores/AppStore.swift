@@ -23,7 +23,9 @@ public final class AppStore {
     }
     public var isGenerating = false
     public var lastError: String?
-    public private(set) var persistenceWarning: String?
+    /// 落盘告警（顶栏横幅）：由 `PersistenceCoordinator` 持有，这里转发。
+    /// 转发属性同样能被观察（`@Observable` 的读取会穿透到协调器），视图零改动。
+    public var persistenceWarning: String? { persistence.persistenceWarning }
 
     // MARK: - 运行期状态
 
@@ -44,20 +46,34 @@ public final class AppStore {
 
     public var topCard: KnowledgeCard? { deck.first }
 
-    /// 智能追问当前激活卡片与会话
-    public var activeChatCard: KnowledgeCard? = nil
-    public var currentChatSession: CardChatSession? = nil
-    public var isChatStreaming: Bool = false
-    public var chatErrorMessage: String? = nil
-    private var chatStreamTask: Task<Void, Never>? = nil
+    /// 智能追问当前激活卡片与会话：状态由 `ChatSessionStore` 持有，这里转发（视图与测试零改动）
+    public var activeChatCard: KnowledgeCard? {
+        get { chat.activeChatCard }
+        set { chat.activeChatCard = newValue }
+    }
+    public var currentChatSession: CardChatSession? {
+        get { chat.currentChatSession }
+        set { chat.currentChatSession = newValue }
+    }
+    public var isChatStreaming: Bool {
+        get { chat.isChatStreaming }
+        set { chat.isChatStreaming = newValue }
+    }
+    public var chatErrorMessage: String? {
+        get { chat.chatErrorMessage }
+        set { chat.chatErrorMessage = newValue }
+    }
 
     private let aiService: AIService
     private let storage: Storage
     private let credentials: any CredentialStore
+    /// 串行持久化队列：卡片、设置、聊天会话共用同一条，保证「先后顺序」在跨文件写之间也成立
+    private let persistenceQueue: DispatchQueue
+    private let persistence: PersistenceCoordinator
+    private let chat: ChatSessionStore
+    private let settingsStore: SettingsStore
     private var lastSwipedCardId: UUID?
     private var lastSwipedKey: String?
-    private var settingsPersistTask: Task<Void, Never>?
-    private var settingsPersistRevision = 0
 
     public init(
         storage: Storage = Storage(),
@@ -65,10 +81,18 @@ public final class AppStore {
         speechService: SpeechSynthesizerService? = nil,
         aiService: AIService? = nil
     ) {
+        let queue = DispatchQueue(label: "com.knowflick.persistence", qos: .utility)
+        let resolvedAIService = aiService ?? AIService()
+        let resolvedCredentials = credentials ?? SystemCredentialStore()
         self.storage = storage
-        self.credentials = credentials ?? SystemCredentialStore()
+        self.persistenceQueue = queue
+        self.persistence = PersistenceCoordinator(storage: storage, queue: queue)
+        self.credentials = resolvedCredentials
         self.speechService = speechService ?? SpeechSynthesizerService()
-        self.aiService = aiService ?? AIService()
+        self.aiService = resolvedAIService
+        // 追问会话与卡片写入共用同一条串行队列：清除/保存/读盘的先后顺序因此天然成立
+        self.chat = ChatSessionStore(storage: storage, aiService: resolvedAIService, persistenceQueue: queue)
+        self.settingsStore = SettingsStore(storage: storage, credentials: resolvedCredentials, aiService: resolvedAIService)
         recomputeDeckAndHistory()
 
         self.speechService.speedMultiplier = settings.speechRate
@@ -84,54 +108,21 @@ public final class AppStore {
         }
     }
 
+    /// 卡片池 → 卡堆/历史/收藏 的派生统一走 `DeckDeriver`（纯函数，可穷举单测）。
+    /// 这里只做「取值 → 派生 → 一次性赋值」，避免逐项变更触发观察风暴。
     private func recomputeDeckAndHistory() {
-        let hist = cards.filter { $0.seenAt != nil }.sorted { ($0.seenAt ?? .distantPast) > ($1.seenAt ?? .distantPast) }
-        self.history = hist
-        self.favorites = cards.filter(\.isFavorite)
-            .sorted { ($0.favoritedAt ?? .distantPast) > ($1.favoritedAt ?? .distantPast) }
-        CardThemeResolver.pruneKeyCache(keeping: Set(cards.map(\.id)))
-
-        var unseen = cards.filter { $0.seenAt == nil }
-        // 来源开关：只开其一则只看该来源；全关则队列为空（含外部导入卡片，口径见 CONTEXT.md）
-        if !settings.enableSeed || !settings.enableAI {
-            unseen = unseen.filter {
-                switch $0.source {
-                case .seed: return settings.enableSeed
-                case .ai: return settings.enableAI
-                case .imported: return false
-                }
-            }
-        }
-        let prefs = settings.preferredCategories
-        let filtered: [KnowledgeCard]
-        if prefs.isEmpty {
-            filtered = unseen
-        } else {
-            let preferred = unseen.filter { prefs.contains($0.category) }
-            filtered = preferred.isEmpty ? unseen : preferred
-        }
-
-        let existingDeckIds = Set(deck.map(\.id))
-        let currentCards = Dictionary(filtered.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
-        let remainingInDeck = deck.compactMap { currentCards[$0.id] }
-        let newCards = filtered.filter { !existingDeckIds.contains($0.id) }
-
-        if !remainingInDeck.isEmpty && newCards.isEmpty {
-            // 绝大多数日常划卡出队场景：直接移除划走卡片，100% 保留排好的无碰撞队列顺序，杜绝重排抖动
-            self.deck = remainingInDeck
-        } else if !remainingInDeck.isEmpty && newCards.count == 1 && newCards.first?.id == lastSwipedCardId {
-            // 撤销上一张场景：将卡片精准插回顶部
-            self.deck = [newCards[0]] + remainingInDeck
-        } else if !remainingInDeck.isEmpty && !newCards.isEmpty && newCards.count <= 10 {
-            // 后台 AI 异步生成新卡（3~6 张）：对新卡安排 minDistance 排布后追加至末尾，绝不打散前部正在浏览的卡堆
-            let lastKey = remainingInDeck.last.map { CardThemeResolver.resolveKey(for: $0) }
-            let arrangedNew = CardThemeResolver.arrangeWithMinDistance(newCards, minDistance: 5, avoidingTopKey: lastKey)
-            self.deck = remainingInDeck + arrangedNew
-        } else {
-            // 全新初始化、切换分类过滤、清空历史等场景：全量重新排布无碰撞队列
-            let lastKey = hist.first.map { CardThemeResolver.resolveKey(for: $0) } ?? lastSwipedKey
-            self.deck = CardThemeResolver.arrangeWithMinDistance(filtered, minDistance: 5, avoidingTopKey: lastKey)
-        }
+        let derived = DeckDeriver.derive(
+            cards: cards,
+            currentDeck: deck,
+            enableSeed: settings.enableSeed,
+            enableAI: settings.enableAI,
+            preferredCategories: settings.preferredCategories,
+            lastSwipedCardId: lastSwipedCardId,
+            lastSwipedKey: lastSwipedKey
+        )
+        history = derived.history
+        favorites = derived.favorites
+        deck = derived.deck
     }
 
     // MARK: - 生命周期
@@ -146,6 +137,9 @@ public final class AppStore {
         }
         let loaded = await io.value
 
+        // 卡片库状态已经确定（无论空与否），从这里开始落盘就是安全的：先解除守卫再写盘。
+        // 反过来（先写盘再解除）会让 bootstrap 期间的落盘被守卫吞掉，种子增量合并就永远存不下来。
+        isLoadingSeed = false
         if !loaded.loaded.isEmpty {
             var merged = loaded.loaded
             // 自动同步增量种子卡：若内置 seed 库有新扩充卡片，增量合并到用户卡库。
@@ -155,7 +149,12 @@ public final class AppStore {
             merged.append(contentsOf: newSeeds)
             cards = merged
             if !newSeeds.isEmpty { persist() }
+        } else if storage.libraryWasUsable {
+            // 卡片文件解出来就是**合法的空数组**（用户清空过卡片库）：如实保持空库。
+            // 旧实现会把它判成损坏并在这里灌入预置库——用户看到「自己的卡片没了，还多出一堆预置卡」。
+            cards = []
         } else {
+            // 首次启动，或主文件与备份都不可恢复：这才允许用预置库重新播种
             cards = loaded.seeds
             persist()
         }
@@ -177,7 +176,6 @@ public final class AppStore {
             migratedSettings.speech.profiles[i].apiKey = credentials.read(account: "tts." + migratedSettings.speech.profiles[i].id) ?? ""
         }
         settings = migratedSettings
-        isLoadingSeed = false
         // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）
         if deck.count < 5 && settings.autoGenerate && settings.isAIConfigured && settings.enableAI {
             await generateNewCards()
@@ -186,12 +184,14 @@ public final class AppStore {
 
     // MARK: - 持久化
 
-    private var persistTask: Task<Void, Never>?
-    private var persistenceRevision: UInt64 = 0
+    /// 落盘编排（节流 / revision 门 / 告警文案）已抽到 `PersistenceCoordinator`；
+    /// AppStore 保留同名 API 作为对外转发，视图与测试零改动。
+    /// 卡片快照此刻是否可信：bootstrap 未完成（`isLoadingSeed`）时内存里的 `cards` 还是默认值 `[]`，
+    /// 落盘等于把「空库」写成用户数据（实测「启动未完成即退出」会让 cards.json 变成 `[]`，
+    /// 下次启动被判损坏并重播种）。判据取「仍在加载中 **且** 没有任何卡片」：加载中却有卡片 =
+    /// 调用方已经明确放进来的内容，照常落盘；两者同时成立才说明这份快照不可信。
+    private var cardSnapshotIsUntrusted: Bool { isLoadingSeed && cards.isEmpty }
 
-    private let persistenceQueue = DispatchQueue(label: "com.knowflick.persistence", qos: .utility)
-
-    /// 合并连续变更，再通过串行队列写盘，防止旧快照覆盖新快照。
     /// 非密钥类设置的轻量变更（外观循环、磨耳朵语速等高频开关）：
     /// 内存即时生效，JSON 落盘经后台节流队列异步执行，不触碰钥匙串。
     /// 密钥类变更请走 `saveSettings`（同步抛错 + 钥匙串回滚语义）。
@@ -199,100 +199,22 @@ public final class AppStore {
         var updated = settings
         mutate(&updated)
         settings = updated
-
-        settingsPersistTask?.cancel()
-        settingsPersistRevision &+= 1
-        let revision = settingsPersistRevision
-        settingsPersistTask = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(0.35)) }
-            catch { return }
-            guard let self, !Task.isCancelled else { return }
-            let snapshot = self.settings
-            let storage = self.storage
-            self.persistenceQueue.async { [weak self] in
-                do {
-                    try storage.saveSettingsThrowing(snapshot)
-                    Task { @MainActor [weak self] in
-                        guard let self, self.settingsPersistRevision == revision else { return }
-                        // 仅清理本通道产生的告警，不掩盖卡片保存告警
-                        if self.persistenceWarning?.hasPrefix("设置保存失败") == true {
-                            self.persistenceWarning = nil
-                        }
-                    }
-                } catch {
-                    Task { @MainActor [weak self] in
-                        guard let self, self.settingsPersistRevision == revision else { return }
-                        self.persistenceWarning = "设置保存失败：\(error.localizedDescription)"
-                    }
-                }
-            }
-        }
+        persistence.scheduleSettingsPersist(settings)
     }
 
     private func persist() {
-        persistTask?.cancel()
-        persistenceRevision &+= 1
-        let revision = persistenceRevision
-        persistTask = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(0.35)) }
-            catch { return }
-            guard let self, !Task.isCancelled else { return }
-            let snapshot = self.cards
-            let storage = self.storage
-            self.persistenceQueue.async { [weak self] in
-                let result = storage.saveCards(snapshot)
-                Task { @MainActor [weak self] in
-                    guard let self, self.persistenceRevision == revision else { return }
-                    self.receiveSaveResult(result)
-                }
-            }
-        }
+        persistence.persist(cards: cards, skipCards: cardSnapshotIsUntrusted)
     }
 
     /// 切后台等场景的即时保存：取消节流并立即在后台队列落盘，不阻塞主线程。
     /// 真正退出（willTerminate）请用 `shutdown()`，其同步等待写入完成。
     public func persistImmediately() {
-        persistTask?.cancel()
-        persistTask = nil
-        settingsPersistTask?.cancel()
-        settingsPersistTask = nil
-        persistenceRevision &+= 1
-        let revision = persistenceRevision
-        let cardsSnapshot = cards
-        let settingsSnapshot = settings
-        let storage = self.storage
-        persistenceQueue.async { [weak self] in
-            let result = storage.saveCards(cardsSnapshot)
-            do {
-                try storage.saveSettingsThrowing(settingsSnapshot)
-            } catch {
-                Task { @MainActor [weak self] in
-                    guard let self, self.persistenceRevision == revision else { return }
-                    self.persistenceWarning = "设置保存失败：\(error.localizedDescription)"
-                }
-            }
-            Task { @MainActor [weak self] in
-                guard let self, self.persistenceRevision == revision else { return }
-                self.receiveSaveResult(result)
-            }
-        }
+        persistence.persistImmediately(cards: cards, settings: settings, skipCards: cardSnapshotIsUntrusted)
     }
 
     /// 应用退出前同步保存最后状态，并等待已提交的写入完成。
     public func flushPersistence() {
-        persistTask?.cancel()
-        persistTask = nil
-        settingsPersistTask?.cancel()
-        settingsPersistTask = nil
-        persistenceRevision &+= 1
-        let snapshot = cards
-        let settingsSnapshot = settings
-        let result = persistenceQueue.sync {
-            let cardResult = storage.saveCards(snapshot)
-            try? storage.saveSettingsThrowing(settingsSnapshot)
-            return cardResult
-        }
-        receiveSaveResult(result)
+        persistence.flushPersistence(cards: cards, settings: settings, skipCards: cardSnapshotIsUntrusted)
     }
 
     public func retryPersistence() { persist() }
@@ -302,20 +224,8 @@ public final class AppStore {
         closeChat()
         speechService.stopAmbientMode()
         speechService.onAmbientAdvanceRequest = nil
-        persistTask?.cancel()
-        persistTask = nil
+        persistence.cancelPendingThrottles()
         flushPersistence()
-    }
-
-    private func receiveSaveResult(_ result: CardSaveResult) {
-        switch result {
-        case .saved:
-            persistenceWarning = nil
-        case .failed(let message):
-            persistenceWarning = "最新卡片更改尚未保存，请保留应用并重试。\n\(message)"
-        case .savedWithoutBackup(let message):
-            persistenceWarning = "卡片已保存，但备份未能更新。\n\(message)"
-        }
     }
 
     // MARK: - 刷卡动作
@@ -397,13 +307,12 @@ public final class AppStore {
         persist()
     }
 
-    /// 将指定卡片置顶到待刷卡堆顶部（例如通过全局搜索快速定位并准备浏览）
+    /// 将指定卡片置顶到待刷卡堆顶部（例如通过全局搜索快速定位并准备浏览）。
+    /// 走 `DeckDeriver` 的统一插回入口：置顶语义不变，但插入前做防重校验（P2-3）。
     public func promoteToDeckTop(_ card: KnowledgeCard) {
         guard let target = cards.first(where: { $0.id == card.id }) else { return }
         if deck.first?.id == target.id { return }
-        var updatedDeck = deck.filter { $0.id != target.id }
-        updatedDeck.insert(target, at: 0)
-        self.deck = updatedDeck
+        self.deck = DeckDeriver.insertRespectingMinDistance(target, into: deck)
     }
 
     // MARK: - 收藏管理与笔记导出
@@ -443,12 +352,18 @@ public final class AppStore {
 
         let processed = toAdd
         if insertAtTop {
-            // didSet 已同步触发 recomputeDeckAndHistory，无需再显式重算一遍
+            // didSet 已同步触发 recomputeDeckAndHistory，无需再显式重算一遍。
+            // 只有**真正进入卡堆**的导入卡才置顶（已读卡、被来源开关过滤掉的卡不在卡堆里，口径与原先一致）；
+            // 逐张从底部反插到队首，让每张都过一次防重校验，保证「导入块 ↔ 原队首」的新接缝也不撞图（P2-3）。
+            // 无冲突时结果与原先的 `promoted + otherDeck` 完全一致（导入块内部相对顺序不变）。
             cards = processed + cards
             let processedIds = Set(processed.map(\.id))
             let promoted = deck.filter { processedIds.contains($0.id) }
-            let otherDeck = deck.filter { !processedIds.contains($0.id) }
-            self.deck = promoted + otherDeck
+            var updatedDeck = deck.filter { !processedIds.contains($0.id) }
+            for card in promoted.reversed() {
+                updatedDeck = DeckDeriver.insertRespectingMinDistance(card, into: updatedDeck)
+            }
+            self.deck = updatedDeck
         } else {
             cards.append(contentsOf: processed)
             recomputeDeckAndHistory()
@@ -591,17 +506,17 @@ public final class AppStore {
         }
     }
 
-    /// 手动触发：换一批新知识（系统跳过，不表达喜好）
+    /// 手动触发：换一批新知识——只跳过**当前顶卡**，再按设置条件生成新卡。
+    ///
+    /// 为什么不是「跳过整个卡堆」：`deck` 是全部未读卡（实测用户库 216 张），整堆写 `seenAt`/`skip`
+    /// 会让待刷池一次归零、历史 +216、`skipCount` +216，直接污染今日目标与连续天数，
+    /// 用户只能靠「重新探索全部卡片」回退（同时丢掉真实浏览进度）。
+    /// 口径对齐 Android 端「换一批」只跳顶卡（`DeckScreen.kt:224`），也复用意图化方法 `swipe`，
+    /// 保证 `skip` 语义（仅计已刷、不表达喜好、按 CONTEXT.md 不动收藏）与其它入口一致。
     public func refreshDeck() async {
-        // 把当前卡堆标记为「跳过」再生成新的——跳过 ≠ 不喜欢，不污染统计
-        var updated = cards
-        for card in deck {
-            guard let idx = updated.firstIndex(where: { $0.id == card.id }) else { continue }
-            updated[idx].seenAt = Date()
-            updated[idx].swiped = .skip
+        if let top = deck.first {
+            swipe(top, direction: .skip)
         }
-        cards = updated
-        persist()
         if settings.autoGenerate && settings.isAIConfigured && settings.enableAI {
             await generateNewCards(count: 6)
         }
@@ -610,72 +525,14 @@ public final class AppStore {
     // MARK: - 设置
 
     /// 保存设置：key 单独进 Keychain，其余进 JSON；失败抛错。
-    /// 提交顺序：钥匙串写入 → JSON 落盘 → 内存提交；任一步失败内存保持旧值，
-    /// 钥匙串尽力回滚，避免「新密钥配旧配置」跨启动错位。
+    /// 事务细节（提交顺序、钥匙串回滚）已抽到 `SettingsStore`，这里只做「提交成功才写内存」。
     public func saveSettings(_ newSettings: AISettings) throws {
-        let trimmedKey = newSettings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        var persisted = newSettings
-        persisted.apiKey = trimmedKey
-        for index in persisted.speech.profiles.indices {
-            let key = persisted.speech.profiles[index].apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            persisted.speech.profiles[index].apiKey = key
-        }
-
-        // 快照旧凭据用于失败回滚（read 返回 nil 表示该账户本无密钥）
-        let previousAPIKey = credentials.read(account: "apiKey")
-        let previousProfileKeys = settings.speech.profiles.map {
-            (account: "tts." + $0.id, key: credentials.read(account: "tts." + $0.id))
-        }
-
-        do {
-            // key 非空写钥匙串、为空则删除，与语音配置分支对称：清空后重启不会「复活」旧密钥。
-            if trimmedKey.isEmpty {
-                try credentials.delete(account: "apiKey")
-            } else {
-                try credentials.save(trimmedKey, account: "apiKey")
-            }
-            for profile in persisted.speech.profiles {
-                let account = "tts." + profile.id
-                if profile.apiKey.isEmpty { try credentials.delete(account: account) }
-                else { try credentials.save(profile.apiKey, account: account) }
-            }
-            let retainedIDs = Set(persisted.speech.profiles.map(\.id))
-            for profile in settings.speech.profiles where !retainedIDs.contains(profile.id) {
-                try credentials.delete(account: "tts." + profile.id)
-            }
-            try storage.saveSettingsThrowing(persisted)
-        } catch {
-            rollbackCredentials(previousAPIKey: previousAPIKey, previousProfileKeys: previousProfileKeys)
-            throw error
-        }
-
-        settings = persisted
-    }
-
-    /// JSON 落盘或钥匙串写入失败后，尽力恢复到保存前的凭据状态
-    private func rollbackCredentials(previousAPIKey: String?, previousProfileKeys: [(account: String, key: String?)]) {
-        if let previousAPIKey {
-            try? credentials.save(previousAPIKey, account: "apiKey")
-        } else {
-            try? credentials.delete(account: "apiKey")
-        }
-        for entry in previousProfileKeys {
-            if let key = entry.key {
-                try? credentials.save(key, account: entry.account)
-            } else {
-                try? credentials.delete(account: entry.account)
-            }
-        }
+        settings = try settingsStore.commit(newSettings, replacing: settings)
     }
 
     /// 连通性测试：轻量 ping 请求，不消耗额度
     public func testConnection(settings testSettings: AISettings) async -> String {
-        do {
-            try await aiService.ping(settings: testSettings)
-            return "连接成功，AI 服务可用"
-        } catch {
-            return error.localizedDescription
-        }
+        await settingsStore.testConnection(testSettings)
     }
 
     // MARK: - 语音与发音朗读接口
@@ -699,152 +556,34 @@ public final class AppStore {
 
     // MARK: - 卡片追问对话 (Card Follow-up Chat)
 
-    /// 打开某张卡片的 AI 追问面板
+    // 会话状态与编排已抽到 `ChatSessionStore`（拆分方案 B Step 3）：状态属性在上方转发，
+    // 方法在这里转发，对外 API 与成员名保持不变（视图层零 diff）。
+
+    /// 打开某张卡片的 AI 追问面板。
+    /// 读盘不再发生在主线程（旧实现在 MainActor 上全量读 + 解码 chat_sessions.json），
+    /// 而是先给内存快照、再由 ChatSessionStore 排到串行队列异步校正。
     public func openChat(for card: KnowledgeCard) {
-        cancelChatStreaming()
-        self.activeChatCard = card
-        self.chatErrorMessage = nil
-        // 加载历史会话或新建。
-        // 清除走后台 FIFO，openChat 是同步读盘：刚清除的卡以内存墓碑为准，防止旧会话复活
-        if clearedChatCardIds.contains(card.id) {
-            self.currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
-        } else if let existing = storage.loadChatSession(for: card.id) {
-            self.currentChatSession = existing
-        } else {
-            self.currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
-        }
-    }
-
-    /// 刚被清除（清除尚在后台队列执行）的会话卡 ID：openChat 同步读盘时以此为准
-    private var clearedChatCardIds: Set<UUID> = []
-
-    /// 聊天会话写入移出主线程：经串行持久化队列与卡片写入排队，与清除操作保持先后顺序
-    private func persistChatSession(_ session: CardChatSession) {
-        // 仅非空会话构成对清除的超越；空会话（如重开时的初始化落盘）不得摘除墓碑
-        if !session.messages.isEmpty {
-            clearedChatCardIds.remove(session.cardId)
-        }
-        let storage = self.storage
-        persistenceQueue.async { [weak self] in
-            do { try storage.saveChatSessionThrowing(session) }
-            catch {
-                Task { @MainActor [weak self] in
-                    self?.chatErrorMessage = "聊天记录保存失败：\(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    /// 清除会话同样走后台队列，保证与保存操作的先后顺序
-    private func clearChatSessionOnDisk(for cardId: UUID) {
-        clearedChatCardIds.insert(cardId)
-        let storage = self.storage
-        persistenceQueue.async { [weak self] in
-            do { try storage.clearChatSessionThrowing(for: cardId) }
-            catch {
-                Task { @MainActor [weak self] in
-                    self?.chatErrorMessage = "聊天记录清除失败：\(error.localizedDescription)"
-                }
-            }
-        }
+        chat.openChat(for: card)
     }
 
     /// 关闭追问面板
     public func closeChat() {
-        cancelChatStreaming()
-        self.activeChatCard = nil
+        chat.closeChat()
     }
 
     /// 发送追问消息
     public func sendChatMessage(prompt: String) {
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !isChatStreaming, !trimmed.isEmpty, let card = activeChatCard else { return }
-
-        if currentChatSession == nil {
-            currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
-        }
-
-        // 添加用户消息
-        let userMsg = CardChatMessage(sender: .user, content: trimmed)
-        currentChatSession?.messages.append(userMsg)
-        currentChatSession?.updatedAt = Date()
-
-        // 准备助手消息占位
-        let assistantMsgId = UUID()
-        let assistantMsg = CardChatMessage(id: assistantMsgId, sender: .assistant, content: "", isStreaming: true)
-        currentChatSession?.messages.append(assistantMsg)
-
-        isChatStreaming = true
-        chatErrorMessage = nil
-
-        let historySnapshot = currentChatSession?.messages.dropLast(2) ?? []
-        let settingsSnapshot = self.settings
-
-        chatStreamTask?.cancel()
-        chatStreamTask = Task { @MainActor in
-            guard !Task.isCancelled else { return }
-            do {
-                let stream = self.aiService.streamCardChat(
-                    card: card,
-                    history: Array(historySnapshot),
-                    userPrompt: trimmed,
-                    settings: settingsSnapshot
-                )
-
-                for try await delta in stream {
-                    guard !Task.isCancelled else { break }
-                    if let index = self.currentChatSession?.messages.firstIndex(where: { $0.id == assistantMsgId }) {
-                        self.currentChatSession?.messages[index].content += delta
-                    }
-                }
-
-                guard !Task.isCancelled else { return }
-                if let index = self.currentChatSession?.messages.firstIndex(where: { $0.id == assistantMsgId }) {
-                    self.currentChatSession?.messages[index].isStreaming = false
-                }
-                self.isChatStreaming = false
-                if let session = self.currentChatSession {
-                    self.persistChatSession(session)
-                }
-            } catch {
-                if !Task.isCancelled {
-                    self.isChatStreaming = false
-                    self.chatErrorMessage = error.localizedDescription
-                    if let index = self.currentChatSession?.messages.firstIndex(where: { $0.id == assistantMsgId }) {
-                        if self.currentChatSession?.messages[index].content.isEmpty == true {
-                            self.currentChatSession?.messages.remove(at: index)
-                        } else {
-                            self.currentChatSession?.messages[index].isStreaming = false
-                        }
-                    }
-                    if let session = self.currentChatSession {
-                        self.persistChatSession(session)
-                    }
-                }
-            }
-        }
+        chat.sendChatMessage(prompt: prompt, settings: settings)
     }
 
     /// 终止当前流式生成
     public func cancelChatStreaming() {
-        chatStreamTask?.cancel()
-        chatStreamTask = nil
-        isChatStreaming = false
-        if var session = currentChatSession {
-            session.messages.removeAll { $0.isStreaming && $0.content.isEmpty }
-            for i in session.messages.indices { session.messages[i].isStreaming = false }
-            session.updatedAt = Date()
-            currentChatSession = session
-            persistChatSession(session)
-        }
+        chat.cancelStreaming()
     }
 
     /// 清空当前卡片的追问历史
     public func clearCurrentChatSession() {
-        cancelChatStreaming()
-        guard let card = activeChatCard else { return }
-        clearChatSessionOnDisk(for: card.id)
-        currentChatSession = CardChatSession(cardId: card.id, cardHeadline: card.headline)
+        chat.clearCurrentSession()
     }
 
     // MARK: - 预置库

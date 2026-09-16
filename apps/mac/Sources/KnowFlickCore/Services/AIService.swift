@@ -369,7 +369,25 @@ public struct AIService: Sendable {
         private func scan() {
             while position < buffer.count {
                 let byte = buffer[position]
-                if escape {
+                // 「不在对象内」（depth == 0）是权威状态：此处只认对象起点，其余字节一律不迁移状态。
+                //
+                // 为什么必须这样：模型常在 JSON 之外输出散文/示例/Markdown，其中的**游离花括号与引号**
+                // 会让字节状态机与文档结构失同步。原实现在 depth == 0 时也照常 `depth -= 1`，
+                // 游离的 `}` 直接把 depth 带成负数；此后真正的 `{` 不再被记为起点
+                // （`if depth == 0 { start = position }` 不成立），而对象内部的嵌套 `{` 反被当成顶层起点，
+                // 于是合法卡片**一张都扫不出来**（实测 `scanObjects(prose-with-brace) -> 0`），
+                // 用户看到的是「AI 返回格式无法解析」而模型其实给了可用内容。
+                // 游离的 `"` 同理会把 inString 永久卡在 true，让后续花括号全被当成字符串内容。
+                // 修复：把状态机约束在对象内部——对象外的花括号不再改变 depth，引号不再切换 inString。
+                // 已知残留（对称缺陷，本轮未修）：正文里**未配对**的 `{` 仍会把 depth 顶高一格，
+                // 后续合法卡片会被当成嵌套对象而漏扫。彻底修需要把「起点」从单值改成候选栈
+                // （每次 `}` 弹栈并尝试解码），风险高于本轮的收益，留待后续。
+                if depth == 0 {
+                    if byte == UInt8(ascii: "{") {
+                        start = position
+                        depth = 1
+                    }
+                } else if escape {
                     escape = false
                 } else if byte == UInt8(ascii: "\\") && inString {
                     escape = true
@@ -377,11 +395,13 @@ public struct AIService: Sendable {
                     inString.toggle()
                 } else if !inString {
                     if byte == UInt8(ascii: "{") {
-                        if depth == 0 { start = position }
                         depth += 1
                     } else if byte == UInt8(ascii: "}") {
                         depth -= 1
                         if depth == 0 {
+                            // 一个顶层对象闭合：复位字符串/转义状态，保证下一个对象从干净状态开始
+                            inString = false
+                            escape = false
                             let objData = Data(buffer[start...position])
                             if let obj = try? decoder.decode(AICardPayload.self, from: objData) {
                                 found.append(obj)

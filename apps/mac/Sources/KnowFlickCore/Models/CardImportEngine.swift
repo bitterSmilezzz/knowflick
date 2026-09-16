@@ -38,7 +38,9 @@ public enum CardImportEngine {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "日期字段类型无效")
         }
 
-        if let list = try? decoder.decode([KnowledgeCard].self, from: data), !list.isEmpty {
+        if let list = try? decoder.decode([KnowledgeCard].self, from: data) {
+            // 空数组是「合法但内容为空」，不是解析失败（与卡片库本身的口径一致，见 Storage.loadCards）：
+            // 旧实现在这里静默跳过空数组，最后抛「无法解析 JSON 文件」，把「没有卡片」误报成格式错误。
             return list
         }
         if let single = try? decoder.decode(KnowledgeCard.self, from: data) {

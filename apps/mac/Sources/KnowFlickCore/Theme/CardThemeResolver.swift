@@ -316,13 +316,22 @@ public enum CardThemeResolver {
             lastSeenPos[avoid] = -1
         }
 
+        // 预先把每张卡的图 key 算好：`resolveKey(for:)` 每次都会抢一次锁（keyCache 的 NSLock），
+        // 而下面的贪心循环会对候选反复调用它（O(n²) 次加锁）。实测 216 张全量重排 0.13s、1080 张 0.69s，
+        // 这条路还跑在 MainActor 上；先算一遍把加锁次数从 O(n²) 降到 O(n)，结果完全不变。
+        var keyByCardId: [UUID: String] = [:]
+        keyByCardId.reserveCapacity(remaining.count)
+        for card in remaining {
+            keyByCardId[card.id] = CardThemeResolver.resolveKey(for: card)
+        }
+
         var currentIndex = 0
         while !remaining.isEmpty {
             var bestCandidateIdx = 0
             var maxDist = -Int.max
 
             for (i, card) in remaining.enumerated() {
-                let key = resolveKey(for: card)
+                let key = keyByCardId[card.id] ?? CardThemeResolver.resolveKey(for: card)
                 let lastPos = lastSeenPos[key] ?? -999999
                 let dist = currentIndex - lastPos
                 if dist >= minDistance {
@@ -339,7 +348,7 @@ public enum CardThemeResolver {
             // 扫描顺序扰动不影响正确性：候选判定只依赖 lastSeenPos 距离，与扫描顺序无关。
             remaining.swapAt(bestCandidateIdx, remaining.count - 1)
             let chosen = remaining.removeLast()
-            let chosenKey = resolveKey(for: chosen)
+            let chosenKey = keyByCardId[chosen.id] ?? CardThemeResolver.resolveKey(for: chosen)
             result.append(chosen)
             lastSeenPos[chosenKey] = currentIndex
             currentIndex += 1

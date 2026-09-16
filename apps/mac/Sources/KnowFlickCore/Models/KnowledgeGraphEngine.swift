@@ -198,7 +198,7 @@ public enum KnowledgeGraphEngine {
         return true
     }
 
-    /// 计算两张卡片的关联相似度与关联性质
+    /// 计算两张卡片的关联相似度与关联性质（含用户可见的关联文案）
     public static func evaluateRelation(cardA: KnowledgeCard, cardB: KnowledgeCard) -> (kind: RelationKind, score: Double, reason: String)? {
         evaluateRelation(cardA: cardA, cardB: cardB,
                          kwA: extractKeywords(from: cardA), kwB: extractKeywords(from: cardB))
@@ -213,29 +213,53 @@ public enum KnowledgeGraphEngine {
         let union = kwA.union(kwB)
         let jaccard = union.isEmpty ? 0.0 : Double(intersection.count) / Double(union.count)
 
-        let isSameCategory = (cardA.category == cardB.category) && !cardA.category.isEmpty
-        let affinitySet = disciplineAffinity[cardA.category] ?? []
-        let hasDisciplineAffinity = affinitySet.contains(cardB.category)
-            || (disciplineAffinity[cardB.category]?.contains(cardA.category) ?? false)
+        guard let classified = classify(cardA: cardA, cardB: cardB, jaccard: jaccard) else { return nil }
 
         let commonWordsSample = Array(intersection.sorted().prefix(2)).joined(separator: "、")
         let sharedTopicReason = commonWordsSample.isEmpty ? "" : "围绕「\(commonWordsSample)」概念"
+        return (classified.kind, classified.score, reason(for: classified.kind, cardA: cardA, cardB: cardB, sharedTopicReason: sharedTopicReason))
+    }
 
+    /// 关系判定内核：**只看 jaccard 与分类亲和**，不含文案。
+    ///
+    /// 为什么和文案分开：星图构图需要判定全部 n(n−1)/2 对关系，但**不需要**文案；
+    /// 文案依赖「实际重合了哪些词」（`intersection.sorted()`），把两部分拆开后，
+    /// 构图侧就能用倒排索引算出的重合**计数**直接得到 jaccard，省掉每对一次的 Set 交集/并集分配。
+    private static func classify(
+        cardA: KnowledgeCard, cardB: KnowledgeCard, jaccard: Double
+    ) -> (kind: RelationKind, score: Double)? {
+        let isSameCategory = (cardA.category == cardB.category) && !cardA.category.isEmpty
         if isSameCategory {
-            let score = 0.35 + jaccard * 1.5
-            let reason = sharedTopicReason.isEmpty ? "同属 \(cardA.category) 知识脉络" : "\(cardA.category) 深度拓展：\(sharedTopicReason)"
-            return (.disciplineDeepen, score, reason)
-        } else if hasDisciplineAffinity {
-            let score = 0.25 + jaccard * 1.8
-            let reason = sharedTopicReason.isEmpty ? "跨学科启发：\(cardA.category) ↔ \(cardB.category)" : "跨界碰撞：\(cardA.category) 与 \(cardB.category) \(sharedTopicReason)"
-            return (.crossDiscipline, score, reason)
-        } else if jaccard >= 0.04 {
-            let score = 0.20 + jaccard * 2.0
-            let reason = "概念共鸣：跨越学科 \(sharedTopicReason)"
-            return (.conceptBridge, score, reason)
-        } else {
-            // 偶然灵感连线
-            return nil
+            return (.disciplineDeepen, 0.35 + jaccard * 1.5)
+        }
+        let affinitySet = disciplineAffinity[cardA.category] ?? []
+        let hasDisciplineAffinity = affinitySet.contains(cardB.category)
+            || (disciplineAffinity[cardB.category]?.contains(cardA.category) ?? false)
+        if hasDisciplineAffinity {
+            return (.crossDiscipline, 0.25 + jaccard * 1.8)
+        }
+        if jaccard >= 0.04 {
+            return (.conceptBridge, 0.20 + jaccard * 2.0)
+        }
+        // 偶然灵感连线：不成立
+        return nil
+    }
+
+    /// 关联文案（与 `classify` 的四种性质一一对应）
+    private static func reason(
+        for kind: RelationKind, cardA: KnowledgeCard, cardB: KnowledgeCard, sharedTopicReason: String
+    ) -> String {
+        switch kind {
+        case .disciplineDeepen:
+            return sharedTopicReason.isEmpty ? "同属 \(cardA.category) 知识脉络" : "\(cardA.category) 深度拓展：\(sharedTopicReason)"
+        case .crossDiscipline:
+            return sharedTopicReason.isEmpty
+                ? "跨学科启发：\(cardA.category) ↔ \(cardB.category)"
+                : "跨界碰撞：\(cardA.category) 与 \(cardB.category) \(sharedTopicReason)"
+        case .conceptBridge:
+            return "概念共鸣：跨越学科 \(sharedTopicReason)"
+        case .serendipity:
+            return "灵感偶遇：从 \(cardB.category) 探索新视角"
         }
     }
 
@@ -291,6 +315,18 @@ public enum KnowledgeGraphEngine {
             return KnowledgeGraphData(nodes: [], edges: [])
         }
 
+        // 结果缓存：构图只依赖「拓扑相关字段」（分类/标题/摘要/正文/复习次数/掌握度 + 画布尺寸），
+        // 而视图侧以**整个卡片数组**为 task id——划卡、收藏、复习都会换出新数组并重启构图。
+        // 命中缓存后这些与拓扑无关的变化不再重算 n² 关系（实测 216 张冷启动 3.4~4.2s）。
+        let signature = graphSignature(cards: cards, width: width, height: height)
+        if let cached = graphCache.graph(for: signature) {
+            recordDiagnostics(BuildDiagnostics(
+                didHitCache: true, sharedKeywordPairs: 0,
+                pairsEvaluated: cards.count * (cards.count - 1) / 2
+            ))
+            return cached
+        }
+
         let centerX = width / 2.0
         let centerY = height / 2.0
 
@@ -336,49 +372,146 @@ public enum KnowledgeGraphEngine {
         var connectionTally: [UUID: Int] = [:]
 
         let keywords = cards.map { extractKeywords(from: $0) }
+        // 关键词倒排索引：一次建立，之后每张卡只需遍历自己的关键词就能得到与所有后续卡的**重合计数**。
+        // 这是本轮优化的核心——原实现对每一对卡片都要做 Set 的 intersection + union
+        // （关键词集平均 473 元、并集近千元），216 张即 23 220 次集合分配，实测 3.4~4.2s 纯 CPU。
+        // 改为计数后：jaccard = 重合数 / (|A| + |B| − 重合数)，与原来的逐位判定完全等价（有等价性测试）。
+        var postings: [String: [Int]] = [:]
+        postings.reserveCapacity(keywords.reduce(0) { $0 + $1.count } / 2)
+        for (index, kw) in keywords.enumerated() {
+            for word in kw {
+                postings[word, default: []].append(index)
+            }
+        }
+
+        let pairsEvaluated = cards.count * (cards.count - 1) / 2
+        var sharedKeywordPairs = 0
+
         for i in 0..<cards.count {
             if Task.isCancelled {
-                // 取消时不丢弃已完成的工作：返回已建节点与当前累计边（连接度/半径口径一致），而非空图
-                for idx in nodes.indices {
-                    let count = connectionTally[nodes[idx].cardId, default: 0]
-                    nodes[idx].connectionsCount = count
-                    nodes[idx].radius = max(6.5, min(14.0, 7.0 + CGFloat(count) * 1.5))
-                }
+                // 取消时不丢弃已完成的工作：返回已建节点与当前累计边（连接度/半径口径一致），而非空图。
+                // 取消得到的是半成品，因此**不写缓存**。
+                finalizeNodeDegrees(&nodes, tally: connectionTally)
+                recordDiagnostics(BuildDiagnostics(didHitCache: false, sharedKeywordPairs: sharedKeywordPairs, pairsEvaluated: pairsEvaluated))
                 return KnowledgeGraphData(nodes: nodes, edges: edges)
             }
             let cardA = cards[i]
+
+            var sharedCounts: [Int: Int] = [:]
+            for word in keywords[i] {
+                guard let posting = postings[word] else { continue }
+                for j in posting where j > i {
+                    sharedCounts[j, default: 0] += 1
+                }
+            }
+            sharedKeywordPairs += sharedCounts.count
+
+            let keyCountA = keywords[i].count
             // 寻找最强的 1~2 个连线
-            var bestMatches: [(other: KnowledgeCard, kind: RelationKind, score: Double)] = []
+            var bestMatches: [(index: Int, kind: RelationKind, score: Double)] = []
 
             for j in (i + 1)..<cards.count {
-                let cardB = cards[j]
-                if let rel = evaluateRelation(cardA: cardA, cardB: cardB, kwA: keywords[i], kwB: keywords[j]) {
-                    bestMatches.append((cardB, rel.kind, rel.score))
+                let shared = sharedCounts[j] ?? 0
+                let unionCount = keyCountA + keywords[j].count - shared
+                let jaccard = unionCount == 0 ? 0.0 : Double(shared) / Double(unionCount)
+                if let relation = classify(cardA: cardA, cardB: cards[j], jaccard: jaccard) {
+                    bestMatches.append((j, relation.kind, relation.score))
                 }
             }
 
-            bestMatches.sort { $0.score > $1.score }
+            // 平局按下标升序：Swift 的 sort 不稳定，显式规则保证「同一份数据两次构图结果一致」
+            bestMatches.sort { $0.score != $1.score ? $0.score > $1.score : $0.index < $1.index }
             for match in bestMatches.prefix(2) {
                 let edge = GraphEdge(
                     sourceId: cardA.id,
-                    targetId: match.other.id,
+                    targetId: cards[match.index].id,
                     weight: match.score,
                     kind: match.kind
                 )
                 edges.append(edge)
                 connectionTally[cardA.id, default: 0] += 1
-                connectionTally[match.other.id, default: 0] += 1
+                connectionTally[cards[match.index].id, default: 0] += 1
             }
         }
 
-        // 更新各节点的连接度
+        finalizeNodeDegrees(&nodes, tally: connectionTally)
+        let graph = KnowledgeGraphData(nodes: nodes, edges: edges)
+        graphCache.store(graph, for: signature)
+        recordDiagnostics(BuildDiagnostics(didHitCache: false, sharedKeywordPairs: sharedKeywordPairs, pairsEvaluated: pairsEvaluated))
+        return graph
+    }
+
+    /// 连接度与半径按累计连线数回填（取消路径与正常路径共用，口径一致）
+    private static func finalizeNodeDegrees(_ nodes: inout [GraphNode], tally: [UUID: Int]) {
         for i in 0..<nodes.count {
-            let cid = nodes[i].cardId
-            let count = connectionTally[cid, default: 0]
+            let count = tally[nodes[i].cardId, default: 0]
             nodes[i].connectionsCount = count
             nodes[i].radius = max(6.5, min(14.0, 7.0 + CGFloat(count) * 1.5))
         }
+    }
 
-        return KnowledgeGraphData(nodes: nodes, edges: edges)
+    // MARK: - 构图内容签名与结果缓存
+
+    /// 构图内容签名：只取**影响拓扑**的字段。划卡/收藏/来源等状态变化不换图，因此能命中缓存
+    /// （视图侧以整个卡片数组为 task id，这些变化都会重启构图）。
+    static func graphSignature(cards: [KnowledgeCard], width: CGFloat, height: CGFloat) -> UInt64 {
+        var signature = CardThemeResolver.deterministicHash("\(Int(width.rounded()))x\(Int(height.rounded()))")
+        for card in cards {
+            let part = "\(card.id.uuidString)|\(card.category)|\(card.headline)|\(card.summary)|\(card.details)|\(card.reviewCount)|\(card.masteryLevel)"
+            signature = signature &* 1_099_511_628_211 &+ CardThemeResolver.deterministicHash(part)
+        }
+        return signature
+    }
+
+    /// 最近一次构图的诊断快照（测试与性能观测用；不含用户数据）
+    struct BuildDiagnostics: Sendable, Equatable {
+        public let didHitCache: Bool
+        /// 有多少对卡片存在**非零**关键词重合：优化前的实现对全部对都做集合运算，这一项是索引命中规模
+        public let sharedKeywordPairs: Int
+        /// 本轮评估的两两对数 = n(n−1)/2
+        public let pairsEvaluated: Int
+    }
+
+    private static let diagnosticsBox = DiagnosticsBox()
+    private static let graphCache = GraphCacheBox()
+
+    static var lastBuildDiagnostics: BuildDiagnostics? { diagnosticsBox.value }
+
+    private static func recordDiagnostics(_ diagnostics: BuildDiagnostics) {
+        diagnosticsBox.set(diagnostics)
+    }
+
+    private final class DiagnosticsBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: BuildDiagnostics?
+        var value: BuildDiagnostics? {
+            lock.lock(); defer { lock.unlock() }
+            return stored
+        }
+        func set(_ newValue: BuildDiagnostics) {
+            lock.lock(); stored = newValue; lock.unlock()
+        }
+    }
+
+    /// 图结果缓存（容量 2）：同一份卡片重复构图直接复用。
+    /// 锁纪律：仅经 lock 读写（Swift 6 下以 @unchecked Sendable 显式豁免静态可变状态检查）。
+    private final class GraphCacheBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var entries: [(signature: UInt64, graph: KnowledgeGraphData)] = []
+
+        func graph(for signature: UInt64) -> KnowledgeGraphData? {
+            lock.lock(); defer { lock.unlock() }
+            guard let index = entries.firstIndex(where: { $0.signature == signature }) else { return nil }
+            let hit = entries.remove(at: index)
+            entries.append(hit)   // 最近命中者后移，实现 LRU
+            return hit.graph
+        }
+
+        func store(_ graph: KnowledgeGraphData, for signature: UInt64) {
+            lock.lock(); defer { lock.unlock() }
+            entries.removeAll { $0.signature == signature }
+            entries.append((signature, graph))
+            if entries.count > 2 { entries.removeFirst(entries.count - 2) }
+        }
     }
 }

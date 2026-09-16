@@ -25,7 +25,8 @@ public struct Storage: Sendable {
     private var fileManager: FileManager { .default }
     // 加载期检测到损坏后置位：下次轮转备份前先解码校验旧主文件，避免坏字节污染备份。
     // 常态跳过全量解码（每次落盘省一整轮 JSON decode）；保存成功后复位。
-    private let corruptionFlag = CorruptionFlagBox()
+    // 另记录「最近一次 loadCards 是否拿到了可用卡片库」，供 AppStore 区分「合法空库」与「无库」（见 loadCards）。
+    private let state = StorageStateBox()
 
     /// 默认存储目录（Application Support/KnowFlick）
     public init() {
@@ -43,50 +44,89 @@ public struct Storage: Sendable {
         baseDir.appendingPathComponent(name)
     }
 
-    /// 线程安全损坏标记（Storage 为值类型，用引用盒跨副本共享）
-    private final class CorruptionFlagBox: @unchecked Sendable {
+    /// 最近一次 `loadCards()` 是否拿到了**可用**的卡片库：非空恢复，或一个合法的空数组。
+    /// `false` 只代表「主文件与备份都不可用」（首次启动 / 真损坏），此时才允许用预置库重新播种。
+    var libraryWasUsable: Bool { state.libraryUsable }
+
+    /// 线程安全状态盒（Storage 为值类型，用引用盒跨副本共享）
+    private final class StorageStateBox: @unchecked Sendable {
         private let lock = NSLock()
-        private var value = false
-        var get: Bool {
+        private var corruption = false
+        private var usable = false
+
+        var corruptionFlag: Bool {
             lock.lock(); defer { lock.unlock() }
-            return value
+            return corruption
         }
-        func set(_ newValue: Bool) {
-            lock.lock(); value = newValue; lock.unlock()
+
+        func setCorruptionFlag(_ newValue: Bool) {
+            lock.lock(); corruption = newValue; lock.unlock()
+        }
+
+        var libraryUsable: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return usable
+        }
+
+        func setLibraryUsable(_ newValue: Bool) {
+            lock.lock(); usable = newValue; lock.unlock()
         }
     }
 
     // MARK: - 卡片库
 
-    /// 加载卡片：主文件 → 备份 → 重播种三级回退
+    /// 加载卡片：主文件 → 备份 → 重播种三级回退。
+    ///
+    /// 判据是「**解码成功即视为有效**」，合法的空数组 `[]` 是用户状态（用户清空过卡片库），不是损坏：
+    /// 旧实现用 `!cards.isEmpty` 守卫把两者混为一谈，一个合法空库会被隔离，随后 `bootstrap` 用预置库覆盖，
+    /// 用户看到的是「卡片全没了，还多出一堆预置卡」。
+    /// 空数组仍会先尝试备份——旧版本曾在 bootstrap 未完成时把 `[]` 写进主文件，真正的卡片只留在备份里；
+    /// 只有备份也不可用时才承认这是一次合法的空库加载，此时**不隔离任何文件**。
     public func loadCards() -> [KnowledgeCard] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
         let url = fileURL("cards.json")
+        let backup = fileURL("cards.backup.json")
+
         if let data = try? Data(contentsOf: url),
            let cards = try? decoder.decode([KnowledgeCard].self, from: data),
            !cards.isEmpty {
+            state.setLibraryUsable(true)
             return cards
         }
-        // 主文件缺失/损坏 → 尝试备份
-        let backup = fileURL("cards.backup.json")
-        if let bdata = try? Data(contentsOf: backup),
-           let cards = try? decoder.decode([KnowledgeCard].self, from: bdata),
-           !cards.isEmpty {
-            NSLog("KnowFlick: cards.json 损坏，已从备份恢复 %d 张卡片", cards.count)
-            corruptionFlag.set(true)
-            saveCards(cards)
-            return cards
+        // 主文件缺失/损坏，或是一个空的合法数组 → 尝试备份
+        if let restored = restoredFromBackup(decoder: decoder, backup: backup) {
+            return restored
         }
-        // 备份也没有 → 保留损坏文件副本后再重新播种，避免静默抹掉用户最后的恢复线索。
+        if let data = try? Data(contentsOf: url), (try? decoder.decode([KnowledgeCard].self, from: data)) != nil {
+            // 主文件是合法的空数组，且备份里也没有可挽救的内容 → 这是一次合法的空卡片库：
+            // 不隔离、不重播种，如实返回空库（落盘守卫已保证这种内容只在用户真正清空时才出现）
+            state.setLibraryUsable(true)
+            NSLog("KnowFlick: cards.json 是合法的空卡片库，按空库加载")
+            return []
+        }
+        // 主文件与备份都不可用 → 保留损坏文件副本后再重新播种，避免静默抹掉用户最后的恢复线索。
         if (try? Data(contentsOf: url)) != nil || (try? Data(contentsOf: backup)) != nil {
             NSLog("KnowFlick: 卡片数据不可恢复，将重新初始化")
         }
-        corruptionFlag.set(true)
+        state.setLibraryUsable(false)
+        state.setCorruptionFlag(true)
         quarantineIfPresent(url)
         quarantineIfPresent(backup)
         return []
+    }
+
+    /// 从备份恢复非空卡片库（并重建主文件）；备份不可用或为空时返回 nil。
+    private func restoredFromBackup(decoder: JSONDecoder, backup: URL) -> [KnowledgeCard]? {
+        guard let data = try? Data(contentsOf: backup),
+              let cards = try? decoder.decode([KnowledgeCard].self, from: data),
+              !cards.isEmpty else { return nil }
+        NSLog("KnowFlick: cards.json 不可用，已从备份恢复 %d 张卡片", cards.count)
+        state.setCorruptionFlag(true)
+        state.setLibraryUsable(true)
+        saveCards(cards)
+        return cards
     }
 
     private func quarantineIfPresent(_ url: URL) {
@@ -116,7 +156,7 @@ public struct Storage: Sendable {
         let previous = try? Data(contentsOf: url)
         let backupData: Data
         if let previous {
-            if corruptionFlag.get {
+            if state.corruptionFlag {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let previousCards = try? decoder.decode([KnowledgeCard].self, from: previous)
@@ -136,7 +176,8 @@ public struct Storage: Sendable {
         }
         do {
             try data.write(to: url, options: .atomic)
-            corruptionFlag.set(false)   // 主文件已是本进程写出的健康内容
+            state.setCorruptionFlag(false)   // 主文件已是本进程写出的健康内容
+            state.setLibraryUsable(true)     // 本进程此后写出的都是可信的卡片库（含合法空数组）
         } catch {
             NSLog("KnowFlick: 卡片落盘失败: %@", error.localizedDescription)
             return .failed(error.localizedDescription)

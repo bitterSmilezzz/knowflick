@@ -97,6 +97,71 @@ final class AIServiceTests {
         #expect(found.map(\.headline) == ["一"])
     }
 
+    /// P2-1 回归：正文里出现**游离的 `}`** 后，后续合法卡片必须仍能扫出来。
+    /// 修复前实现在 depth == 0 时也照常 `depth -= 1`，depth 变负后真正的 `{` 不再被记为起点，
+    /// 对象内部的嵌套 `{` 反被当作顶层起点 → `scanObjects` 返回 0（用户侧「AI 返回格式无法解析」）。
+    @Test func testScanObjectsRecoversAfterStrayClosingBraceInProse() {
+        let text = """
+        这是说明文字，例如 } 这样的花括号，忽略它。
+        [
+          {"category":"物理","headline":"一","summary":"s","details":"d","searchKeywords":["a"]},
+          {"category":"生物","headline":"二","summary":"s","details":"d","searchKeywords":["b"]}
+        ]
+        """
+        #expect(AIService.scanObjects(in: text).map(\.headline) == ["一", "二"])
+    }
+
+    /// 游离 `}` 出现在卡片之间、以及一段文本里连续多个游离 `}`，都不得影响后续扫描。
+    @Test func testScanObjectsToleratesMultipleStrayBracesAroundCards() {
+        let text = """
+        }}
+        {"category":"物理","headline":"一","summary":"s","details":"d","searchKeywords":["a"]}
+        中间还有 } 与 } 这样的噪声
+        {"category":"生物","headline":"二","summary":"s","details":"d","searchKeywords":["b"]}
+        }]
+        """
+        #expect(AIService.scanObjects(in: text).map(\.headline) == ["一", "二"])
+    }
+
+    /// 游离引号（未配对的 `"`）同样会把 inString 卡在 true，让后面所有花括号都被当成字符串内容。
+    @Test func testScanObjectsRecoversAfterUnpairedQuoteInProse() {
+        let text = """
+        注意 " 这样的引号只是说明。
+        {"category":"物理","headline":"一","summary":"s","details":"d","searchKeywords":["a"]}
+        """
+        #expect(AIService.scanObjects(in: text).map(\.headline) == ["一"])
+    }
+
+    /// 增量（逐 delta 送入）与整段扫描必须给出相同结果——SSE 流式路径走的是增量入口。
+    /// 噪声里混入：成对的 `{...}` 示例（会被当对象但解不出卡片，静默跳过）与游离的 `}`。
+    @Test func testIncrementalScannerToleratesStrayBraceAcrossSplits() {
+        let text = """
+        说明：例如 } 与 {"a":1} 这样的花括号示例，然后是正文。
+        [{"category":"物理","headline":"一","summary":"s","details":"d","searchKeywords":["a"]},
+        {"category":"生物","headline":"二","summary":"s","details":"dd","searchKeywords":["b"]}]
+        """
+        let whole = AIService.scanObjects(in: text)
+        #expect(whole.map(\.headline) == ["一", "二"])
+
+        let scanner = AIService.IncrementalObjectScanner()
+        var index = text.startIndex
+        while index < text.endIndex {
+            let end = text.index(index, offsetBy: 3, limitedBy: text.endIndex) ?? text.endIndex
+            scanner.append(String(text[index..<end]))
+            index = end
+        }
+        #expect(scanner.objects.map(\.headline) == whole.map(\.headline))
+    }
+
+    /// 转义引号与嵌套对象（历史行为）在修复后必须保持不变。
+    @Test func testScanObjectsStillHandlesEscapedQuotesAndNestedObjects() {
+        let text = """
+        [{"category":"物理","headline":"带 \\" 引号的标题","summary":"s","details":"d \\" 转义","searchKeywords":["a"]},
+         {"category":"生物","headline":"含嵌套字段","summary":"s","details":"d","searchKeywords":["b"],"meta":{"x":1}}]
+        """
+        #expect(AIService.scanObjects(in: text).map(\.headline) == ["带 \" 引号的标题", "含嵌套字段"])
+    }
+
     // MARK: - SSE 行解析
 
     @Test func testSSEContentDeltaStreaming() {
