@@ -53,8 +53,16 @@ jobs:
       # v4 起默认 cmdline-tools 由 16.0 升到 20.0（旧默认「取最新版本号下载」已因
       # Google 要求先接受条款而 404）。若将来遇到 sdkmanager 相关解析问题，
       # 可加 with: cmdline-tools-version: 12266719 回退。
+      #
+      # 2026-09-16：v4 的默认 packages（`tools platform-tools`）中 `tools` 已从
+      # Google SDK 仓库下架，sdkmanager 20.0 报 `Failed to find package 'tools'`
+      # 且 exit 1（runner 镜像与 SDK 仓库更新的组合问题，与项目代码无关）。
+      # 显式只装真实存在的 platform-tools；platforms/build-tools 由 Gradle
+      # 在构建时按需下载（licenses 已在 action 内接受）。
       - name: 配置 Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: 缓存 Gradle
         uses: actions/cache@v6
