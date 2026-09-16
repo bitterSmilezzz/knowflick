@@ -56,6 +56,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -63,12 +65,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.knowflick.app.data.ThemeKey
+import com.knowflick.app.domain.CardThemeResolver
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.SwipeDirection
 import kotlin.math.abs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+
+/** 划出判定阈值（dp）：约屏宽 20%，跨密度设备手感一致 */
+private const val SWIPE_THRESHOLD_DP = 80f
+
+/** 阈值回滞比例：回拖到阈值的 82% 以下才复位「已越过」标记，避免临界抖动 */
+private const val THRESHOLD_HYSTERESIS_RATIO = 0.82f
+
+/** 拖动位移 → 旋转角的除数（dp）：位移约 10dp 转 1° */
+private const val ROTATION_DIVISOR_DP = 10f
 
 /**
  * 沉浸刷卡界面：3 张可见卡堆 + 拖拽划走 + 磁吸回弹 + 底部意图按钮。
@@ -99,8 +110,20 @@ fun DeckScreen(
     notice: String? = null,
     isAmbientMode: Boolean = false,
     onToggleAmbient: () -> Unit = {},
+    /** 是否可撤销上一次刷卡（历史快照存在时为 true） */
+    canUndo: Boolean = false,
+    onUndo: () -> Unit = {},
 ) {
     val haptics = LocalHapticFeedback.current
+
+    // 跨设备一致的手势标尺：全部由 dp 推导，与设备像素密度无关
+    // （此前硬编码 220px/180px/28px：3.5x 密度机上阈值仅约 63dp，2x 机上却要划 110dp）
+    val density = LocalDensity.current
+    val swipeThresholdPx = with(density) { SWIPE_THRESHOLD_DP.dp.toPx() }
+    val hysteresisPx = swipeThresholdPx * THRESHOLD_HYSTERESIS_RATIO
+    val rotationDivisorPx = with(density) { ROTATION_DIVISOR_DP.dp.toPx() }
+    // 飞出层宽度兜底：deckWidthPx 尚未测量时（防御分支）用屏宽，而非硬编码 900px
+    val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
 
     var rawDrag by remember { mutableStateOf(Offset.Zero) }
     var thresholdCrossed by remember { mutableStateOf(false) }
@@ -190,6 +213,11 @@ fun DeckScreen(
                     }
                     androidx.compose.material3.DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
                         androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("撤销上一张", fontSize = 13.sp) },
+                            enabled = canUndo,
+                            onClick = { showMore = false; onUndo() },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
                             text = { Text("知识测验", fontSize = 13.sp) },
                             onClick = { showMore = false; onOpenQuiz() },
                         )
@@ -259,11 +287,11 @@ fun DeckScreen(
                                         val drag = if (isReturning) returnAnim.value else rawDrag
                                         translationX = drag.x
                                         translationY = drag.y
-                                        rotationZ = (drag.x / 28f).coerceIn(-14f, 14f)
+                                        rotationZ = (drag.x / rotationDivisorPx).coerceIn(-14f, 14f)
                                     } else {
                                         // 手指接近划走阈值时，下一张同步升到顶层，释放瞬间不会跳变。
                                         val reveal = if (!isReturning && flyingCard == null) {
-                                            (abs(rawDrag.x) / 220f).coerceIn(0f, 1f)
+                                            (abs(rawDrag.x) / swipeThresholdPx).coerceIn(0f, 1f)
                                         } else {
                                             0f
                                         }
@@ -289,7 +317,7 @@ fun DeckScreen(
                                                 rawDrag = current
                                             },
                                             onDragEnd = {
-                                                if (abs(rawDrag.x) > 220f) {
+                                                if (abs(rawDrag.x) > swipeThresholdPx) {
                                                     val direction = if (rawDrag.x > 0) SwipeDirection.RIGHT else SwipeDirection.LEFT
                                                     returnJob?.cancel()
                                                     isReturning = false
@@ -310,11 +338,11 @@ fun DeckScreen(
                                         ) { change, drag ->
                                             change.consume()
                                             rawDrag += drag
-                                            val crossed = abs(rawDrag.x) > 220f && !thresholdCrossed
+                                            val crossed = abs(rawDrag.x) > swipeThresholdPx && !thresholdCrossed
                                             if (crossed) {
                                                 thresholdCrossed = true
                                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            } else if (abs(rawDrag.x) < 180f) {
+                                            } else if (abs(rawDrag.x) < hysteresisPx) {
                                                 thresholdCrossed = false
                                             }
                                         }
@@ -322,7 +350,7 @@ fun DeckScreen(
                             }
                             if (depth >= 2) {
                                 // 最深卡只露出边缘：预解码下一张图，但不绘制整张大图、渐变和文字。
-                                PreloadBackgroundImage(ThemeKey.forCard(card))
+                                PreloadBackgroundImage(CardThemeResolver.forCard(card))
                                 Box(
                                     cardModifier
                                         .clip(RoundedCornerShape(20.dp))
@@ -330,7 +358,7 @@ fun DeckScreen(
                                 )
                             } else {
                                 val currentDragX = if (isReturning) returnAnim.value.x else rawDrag.x
-                                val swipeProgress = if (isTop && flyingCard == null) (currentDragX / 220f).coerceIn(-1f, 1f) else 0f
+                                val swipeProgress = if (isTop && flyingCard == null) (currentDragX / swipeThresholdPx).coerceIn(-1f, 1f) else 0f
                                 CardFace(
                                     card = card,
                                     showAIMark = showAIMark,
@@ -345,10 +373,12 @@ fun DeckScreen(
                     // 飞出层：从划走时刻的位移出发，独立飞离淡出
                     flyingCard?.let { card ->
                         val start = flyingStart
+                        // 卡片宽度已测量则用实测值；未测量时（防御分支）退回屏宽，不再硬编码 900px
+                        val renderWidthPx = if (deckWidthPx > 0) deckWidthPx.toFloat() else screenWidthPx
                         val fly = remember(card.id) { Animatable(start, Offset.VectorConverter) }
                         LaunchedEffect(card.id) {
                             val direction = flyingDirection
-                            val width = deckWidthPx.coerceAtLeast(900).toFloat()
+                            val width = renderWidthPx
                             val targetX = when (direction) {
                                 SwipeDirection.LEFT -> -width * 1.15f
                                 SwipeDirection.RIGHT -> width * 1.15f
@@ -370,13 +400,13 @@ fun DeckScreen(
                                 .graphicsLayer {
                                     translationX = fly.value.x
                                     translationY = fly.value.y
-                                    rotationZ = (fly.value.x / 28f).coerceIn(-18f, 18f)
+                                    rotationZ = (fly.value.x / rotationDivisorPx).coerceIn(-18f, 18f)
                                     val travel = abs(fly.value.x - start.x)
                                     val total = abs(
                                         when (flyingDirection) {
-                                            SwipeDirection.LEFT -> -deckWidthPx.coerceAtLeast(900) * 1.15f
-                                            SwipeDirection.RIGHT -> deckWidthPx.coerceAtLeast(900) * 1.15f
-                                            SwipeDirection.SKIP, null -> deckWidthPx.coerceAtLeast(900) * 0.85f
+                                            SwipeDirection.LEFT -> -renderWidthPx * 1.15f
+                                            SwipeDirection.RIGHT -> renderWidthPx * 1.15f
+                                            SwipeDirection.SKIP, null -> renderWidthPx * 0.85f
                                         } - start.x,
                                     ).coerceAtLeast(1f)
                                     // 旧卡在退场前半程淡出，避免 GPU 忙时它长时间盖住新顶卡，

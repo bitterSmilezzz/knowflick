@@ -12,6 +12,9 @@ object EditorialColor {
     val likeGreen = androidx.compose.ui.graphics.Color(0xFF3D8361)
     val dislikeRed = androidx.compose.ui.graphics.Color(0xFF8C3A3A)
     val aiAmber = androidx.compose.ui.graphics.Color(0xFFC79A4B)
+
+    /** 降级/风险提示橙：与品牌强调色 aiAmber 区分，专用于「功能可用但已降级」的知情提示 */
+    val warningOrange = androidx.compose.ui.graphics.Color(0xFFD9743A)
 }
 
 private val DarkColors = darkColorScheme(

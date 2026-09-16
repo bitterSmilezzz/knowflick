@@ -100,6 +100,8 @@ class MainActivity : ComponentActivity() {
                                     viewModel.speech.toggleAmbient(viewModel.model.store.topCard)
                                     viewModel.bump()
                                 },
+                                canUndo = viewModel.canUndoLastSwipe,
+                                onUndo = { viewModel.undoLastSwipe() },
                             )
                         }
                         Screen.DETAIL -> {
@@ -139,6 +141,7 @@ class MainActivity : ComponentActivity() {
                             onTestConnection = { temp, key -> viewModel.testConnection(temp, key) },
                             onSave = { updated, key -> viewModel.saveSettings(updated, key) },
                             onSaveSpeech = { speech, key -> viewModel.saveSpeechSettings(speech, key) },
+                            credentialsEncrypted = viewModel.credentialsEncrypted,
                         )
                         Screen.QUIZ -> {
                             val session = viewModel.quizSession

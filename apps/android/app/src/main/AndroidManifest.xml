@@ -8,7 +8,16 @@
         android:icon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:theme="@style/Theme.KnowFlick">
+        android:theme="@style/Theme.KnowFlick"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules">
+        <!--
+          备份策略：保留 Auto Backup（卡片库 cards.json 含收藏/历史/复习进度，换机不该丢），
+          但把凭据文件排除在云备份与换机直传之外 —— EncryptedSharedPreferences 的主密钥
+          随设备存活，恢复后无法解密，只会让 API Key 静默消失。见 res/xml/ 下两个规则文件
+          与 apps/android/README.md 的取舍说明。
+        -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

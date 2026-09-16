@@ -65,6 +65,8 @@ fun SettingsScreen(
     onTestConnection: suspend (AiSettings, String) -> String,
     onSave: (AiSettings, String) -> Boolean,
     onSaveSpeech: (com.knowflick.app.speech.SpeechSettings, String) -> Boolean,
+    /** 凭据是否运行在 Keystore 加密存储上；false 表示已降级为明文存储，必须让用户知情 */
+    credentialsEncrypted: Boolean = true,
 ) {
     androidx.activity.compose.BackHandler { onBack() }
 
@@ -135,6 +137,26 @@ fun SettingsScreen(
         }
 
         Column(Modifier.padding(horizontal = 20.dp)) {
+            // 凭据存储降级提示：Keystore 不可用时 SystemCredentialStore 会静默回退到普通
+            // SharedPreferences，密钥将以明文落盘。这是「功能可用但安全姿态降级」，
+            // 必须显式告知用户（与本仓库 SavedWithoutBackup 的显式上报取向一致）。
+            if (!credentialsEncrypted) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EditorialColor.warningOrange.copy(alpha = 0.16f))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Text(
+                        "本机加密存储不可用，API Key 与语音密钥将以未加密方式保存在本机",
+                        color = EditorialColor.warningOrange,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
             // 分组与预设
             for (group in listOf(AiProviderPresets.GROUP_ONLINE, AiProviderPresets.GROUP_LOCAL, AiProviderPresets.GROUP_CUSTOM)) {
                 Text(

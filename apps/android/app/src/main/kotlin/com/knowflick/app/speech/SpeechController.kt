@@ -65,15 +65,24 @@ class SpeechController(
     fun ensureTts() {
         if (tts != null) return
         tts = TextToSpeech(context.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.CHINA
-                ttsReady = true
-                pendingCard?.let { card ->
-                    pendingCard = null
-                    if (isSpeaking && speakingCardId == card.id) speak(card)
-                }
-            } else {
+            if (status != TextToSpeech.SUCCESS) {
                 failSystemTts("系统语音引擎不可用")
+            } else {
+                // 语言设置必须检查返回码：缺中文引擎时 setLanguage 返回
+                // LANG_MISSING_DATA / LANG_NOT_SUPPORTED，此时若仍置 ttsReady = true，
+                // 后续 speak() 会静默失败（无回调、无错误），用户只看到「点了没反应」。
+                val languageResult = tts?.setLanguage(Locale.CHINA)
+                if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
+                    languageResult == TextToSpeech.LANG_NOT_SUPPORTED
+                ) {
+                    failSystemTts("系统语音缺少中文引擎")
+                } else {
+                    ttsReady = true
+                    pendingCard?.let { card ->
+                        pendingCard = null
+                        if (isSpeaking && speakingCardId == card.id) speak(card)
+                    }
+                }
             }
         }
     }
@@ -159,7 +168,9 @@ class SpeechController(
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             // 每个卡片用独立文件名：磨耳朵连续朗读时固定文件名会被下一张覆盖，
             // 而 MediaPlayer 可能仍在读上一个文件。
-            val file = File(context.cacheDir, "knowflick_speech_${card.id.hashCode()}.mp3")
+            // 直接用完整 card.id（UUID 字符串）而非 hashCode()：理论上不同卡片的哈希会碰撞，
+            // 一旦碰撞就会在播放中覆盖正被读取的文件。
+            val file = File(context.cacheDir, "knowflick_speech_${card.id}.mp3")
             withContext(Dispatchers.IO) { file.writeBytes(bytes) }
             // 清掉同一卡片的旧临时文件，避免缓存目录堆积
             runCatching {
@@ -181,8 +192,11 @@ class SpeechController(
                             if (isSpeaking && speakingCardId == card.id) speakWithSystemTts(card)
                             true
                         }
-                        prepare()
-                        start()
+                        // 异步准备：prepare() 会同步解析容器/缓冲首帧，在主线程上执行会造成
+                        // 可感知卡顿（磨耳朵连续朗读时每张卡触发一次）；错误路径仍由
+                        // setOnErrorListener / onFailure 兜底回退系统语音。
+                        setOnPreparedListener { player -> player.start() }
+                        prepareAsync()
                     }
                 }.onFailure {
                     lastError = "音频播放失败，已回退系统语音"

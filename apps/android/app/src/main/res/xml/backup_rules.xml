@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup 排除清单（API 30 及以下，对应 android:fullBackupContent）。
+  与 data_extraction_rules.xml 同口径：凭据不可跨设备恢复，故排除；
+  卡片库（files/store/cards.json）保持可备份。
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="knowflick_credentials.xml" />
+    <exclude domain="sharedpref" path="knowflick_credentials_plain.xml" />
+</full-backup-content>

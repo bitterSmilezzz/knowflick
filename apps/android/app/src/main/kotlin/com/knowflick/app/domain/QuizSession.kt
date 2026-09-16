@@ -49,12 +49,13 @@ class QuizSession(
     fun ratedIds(): Set<String> = ratings.keys.toSet()
 
     companion object {
-        /** 依赖注入的卡片查询：供 UI 层在评分后回写卡片池；纯逻辑测试可不提供 */
-        var onRecord: ((cardId: String, masteryLevel: Int) -> Unit)? = null
-
         /**
          * 构建一轮测验：到期复习优先，其后收藏、历史，最后补齐其余卡片；限制数量并打乱。
          * random 可注入以便测试确定性。
+         *
+         * 性能：全部按 `id` 做集合运算。此前把 `favorites` / `historyRead`（List）当集合做
+         * `it !in ...` 成员判断，退化成 O(n²)，且 `KnowledgeCard` 是 14 字段 data class
+         * （等值比较含最长数百字的 `details`）；导入大归档后点「知识测验」会阻塞主线程数秒。
          */
         fun build(
             cards: List<KnowledgeCard>,
@@ -65,13 +66,20 @@ class QuizSession(
         ): QuizSession {
             if (limit <= 0) return QuizSession(emptyList())
             val pool = if (category.isNullOrBlank()) cards else cards.filter { it.category == category }
-            val due = LearningPlan(pool, today).due.toSet()
+            // 到期队列只算一次（此前重复构造 LearningPlan 并算两遍）
             val dueOrdered = LearningPlan(pool, today).due
-            val favorites = pool.filter { it.isFavorite && it !in due }
+            val dueIds = dueOrdered.mapTo(HashSet(dueOrdered.size)) { it.id }
+            val favoriteIds = HashSet<String>()
+            val favorites = pool
+                .filter { it.isFavorite && it.id !in dueIds }
                 .sortedByDescending { it.favoritedAt ?: 0L }
-            val historyRead = pool.filter { it.seenAt != null && it !in due && it !in favorites }
+                .onEach { favoriteIds += it.id }
+            val historyIds = HashSet<String>()
+            val historyRead = pool
+                .filter { it.seenAt != null && it.id !in dueIds && it.id !in favoriteIds }
                 .sortedByDescending { it.seenAt ?: 0L }
-            val rest = pool.filter { it !in due && it !in favorites && it !in historyRead }
+                .onEach { historyIds += it.id }
+            val rest = pool.filter { it.id !in dueIds && it.id !in favoriteIds && it.id !in historyIds }
 
             val ordered = dueOrdered + favorites.shuffled(random) + historyRead.shuffled(random) + rest.shuffled(random)
             val selected = ordered.take(limit)

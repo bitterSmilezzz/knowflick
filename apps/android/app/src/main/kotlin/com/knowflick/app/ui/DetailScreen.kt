@@ -39,7 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.knowflick.app.data.ThemeKey
+import com.knowflick.app.domain.CardThemeResolver
 import com.knowflick.app.domain.KnowledgeCard
 
 /** 详情页：整页摄影底图 + 遮罩 + 正文段落 + 延伸阅读 + 收藏切换 */
@@ -54,7 +54,7 @@ fun DetailScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val bg = rememberBackgroundImage(ThemeKey.forCard(card))
+    val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
 
     // 系统返回键与屏内返回语义一致（否则返回键会直接退出应用）
     androidx.activity.compose.BackHandler { onBack() }

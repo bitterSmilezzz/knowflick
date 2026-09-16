@@ -29,7 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.knowflick.app.data.ThemeKey
+import com.knowflick.app.domain.CardThemeResolver
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.KnowledgeCard
 
@@ -45,7 +45,7 @@ fun CardFace(
     isTop: Boolean = true,
     swipeProgress: Float = 0f,
 ) {
-    val bg = rememberBackgroundImage(ThemeKey.forCard(card))
+    val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
     val cardShape = RoundedCornerShape(20.dp)
 
     Box(

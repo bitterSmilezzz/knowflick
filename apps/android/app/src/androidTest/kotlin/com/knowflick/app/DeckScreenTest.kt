@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.knowflick.app.data.AppModel
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -45,6 +46,26 @@ class DeckScreenTest {
         rule.onNodeWithContentDescription("更多").performClick()
         rule.onNodeWithText("学习统计").assertIsDisplayed()
         rule.onNodeWithText("AI 服务设置").assertIsDisplayed()
+        rule.onNodeWithText("撤销上一张").assertIsDisplayed()
+    }
+
+    /** 撤销入口的完整 UI 链路：划走 → 菜单可撤销 → 卡片回顶且收藏保留。 */
+    @Test
+    fun undoFromMoreMenuReturnsCardToDeckTop() {
+        val model: AppModel = viewModel().model
+        val beforeId = model.store.topCard!!.id
+
+        rule.onNodeWithTag("deck_top_card").performTouchInput { swipeRight() }
+        rule.waitUntil(timeoutMillis = 5_000) { model.store.topCard?.id != beforeId }
+
+        rule.onNodeWithContentDescription("更多").performClick()
+        rule.onNodeWithText("撤销上一张").performClick()
+
+        rule.waitUntil(timeoutMillis = 5_000) { model.store.topCard?.id == beforeId }
+        val restored = model.store.cards.first { it.id == beforeId }
+        assertNull("撤销后卡片应为未读", restored.seenAt)
+        assertTrue("撤销只还原浏览意图，不还原收藏", restored.isFavorite)
+        assertTrue("撤销栈已消费，不能重复撤销", !model.store.canUndoLastSwipe)
     }
 
     @Test

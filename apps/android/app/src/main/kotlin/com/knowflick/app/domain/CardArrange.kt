@@ -5,7 +5,9 @@ package com.knowflick.app.domain
  * 1. 按确定性盐值哈希全局打散；2. 贪心选卡保证同 key 间隔 ≥ minDistance；
  * 3. 无可达候选时取「距上次出现最远」者；4. avoidingTopKey 避免首张撞上一次顶卡。
  *
- * keyBy 由调用方注入（Android 端先以确定性哈希映射 42 图池，语义关键词映射在主题里程碑对齐）。
+ * keyFor 默认取 [CardThemeResolver.forCard]——排布与渲染必须共用同一 key 空间，
+ * 否则 minDistance 约束对用户实际看到的底图无约束力（历史缺陷：排布用 `bg0..bg41`、
+ * 渲染用语义名，两套值域不相交）。
  */
 object CardArrange {
     private const val SALT = "_knowflick_salt_v4"
@@ -20,17 +22,12 @@ object CardArrange {
         return hash
     }
 
-    /** Android 端默认 key：分类 + 标题哈希 → 42 图池（后续里程碑替换为语义关键词映射） */
-    fun defaultKeyFor(card: KnowledgeCard): String {
-        val index = ((deterministicHash(card.category + "|" + card.headline) % 42) + 42) % 42
-        return "bg$index"
-    }
-
+    /** 默认 key：与渲染侧共用同一解析器（[CardThemeResolver.forCard]） */
     fun arrange(
         cards: List<KnowledgeCard>,
         minDistance: Int = 5,
         avoidingTopKey: String? = null,
-        keyFor: (KnowledgeCard) -> String = ::defaultKeyFor,
+        keyFor: (KnowledgeCard) -> String = CardThemeResolver::forCard,
     ): List<KnowledgeCard> {
         if (cards.size <= 1) return cards
 

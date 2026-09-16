@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  云备份排除清单（API 31+，对应 android:dataExtractionRules）。
+
+  凭据（EncryptedSharedPreferences）**不可跨设备恢复**：解密所依赖的 Keystore 主密钥
+  随设备存活，恢复备份后 EncryptedSharedPreferences.create() 会抛异常，被
+  SystemCredentialStore 的 catch 吞掉并回退到另一个文件名的明文库 —— 用户表现为
+  「API Key 静默消失且无任何提示」。因此把凭据文件排除在备份与换机直传之外。
+
+  卡片库（files/store/cards.json：卡片正文、收藏、历史、复习进度）不在排除清单里，
+  仍会正常备份/迁移，不因本策略丢失用户数据。取舍说明见 apps/android/README.md。
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="knowflick_credentials.xml" />
+        <exclude domain="sharedpref" path="knowflick_credentials_plain.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="knowflick_credentials.xml" />
+        <exclude domain="sharedpref" path="knowflick_credentials_plain.xml" />
+    </device-transfer>
+</data-extraction-rules>

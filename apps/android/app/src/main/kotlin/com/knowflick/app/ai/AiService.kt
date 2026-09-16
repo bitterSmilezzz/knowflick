@@ -35,7 +35,10 @@ class AiService(
         val needsKey = requiresKey(settings.baseURL)
         if (needsKey && key.isEmpty()) throw AiError.MissingKey()
         val body = buildJsonObject {
-            put("model", settings.model.ifBlank { "gpt-4o-mini" })
+            // 连通性探测专用的兜底模型：设置页允许只填 Base URL + Key 就测连接，
+            // 此时发一个最小请求（max_tokens=1）即可判定端点可用。
+            // 生成路径不使用兜底（见 generateCards 的 model 校验），避免静默改用户所选模型。
+            put("model", settings.model.ifBlank { PROBE_MODEL })
             put("messages", buildJsonArray {
                 add(buildJsonObject { put("role", "user"); put("content", "ping") })
             })
@@ -56,7 +59,13 @@ class AiService(
         }
     }
 
-    /** 生成知识卡片。onDelta 提供增量文本（生成中展示用）。上限 20；单请求 ≤6 张自动分批。 */
+    /**
+     * 生成知识卡片。
+     *
+     * @param onDelta 增量文本回调，**在 OkHttp 回调线程（非主线程）执行**，UI 侧若直接写
+     *   Compose 状态必须先切回主线程；另注意 429/5xx 重试会重放整段流，回调可能收到重复增量。
+     * 上限 20；单请求 ≤6 张自动分批。
+     */
     suspend fun generateCards(
         settings: AiSettings,
         apiKey: String,
@@ -70,18 +79,27 @@ class AiService(
         val needsKey = requiresKey(settings.baseURL)
         if (needsKey && key.isEmpty()) throw AiError.MissingKey()
         if (settings.baseURL.isBlank()) throw AiError.BadRequest("baseURL 为空")
+        // 与 ping 的探测兜底口径统一：生成路径**不接受**空模型。此前这里会原样发出
+        // `"model": ""`（服务商侧 400），而 ping 却兜底 gpt-4o-mini，两处行为不一致。
+        // UI 侧由 AiSettings.isConfigured 前置拦截，这里失败快速并给出可读原因。
+        if (settings.model.isBlank()) throw AiError.BadRequest("模型为空，请先在设置里选择或填写模型")
         if (count !in 1..20) throw AiError.BadRequest("生成数量须为 1–20")
 
         val seenHeadlines = excludeHeadlines.map { AiTextUtils.normalizeHeadline(it) }.toMutableSet()
         val excludedBigrams = excludeHeadlines.map { AiTextUtils.bigramSet(it) }.toMutableList()
-        val excludeList = excludeHeadlines.take(100).toMutableList()
+        // 分批时保留「最近 100 条」而非「前 100 条」：服务端排除名单是聊天补全的上下文，
+        // 用 take(100) 会让第 2..4 批看不到前一批新排除的标题，把「预防重复」降级成「事后过滤」。
+        val excludeList = excludeHeadlines.takeLast(EXCLUDE_HEADLINE_LIMIT).toMutableList()
         val allCards = ArrayList<KnowledgeCard>(count)
         val now = System.currentTimeMillis()
 
         var remaining = count
         while (remaining > 0) {
             val batch = minOf(remaining, MAX_CARDS_PER_REQUEST)
-            val payloads = requestBatch(settings, key, needsKey, batch, topic, excludeList.take(100), onDelta)
+            val payloads = requestBatch(
+                settings, key, needsKey, batch, topic,
+                excludeList.takeLast(EXCLUDE_HEADLINE_LIMIT), onDelta,
+            )
             for (payload in payloads) {
                 if (payload.details.length < 80) continue
                 val headlineKey = AiTextUtils.normalizeHeadline(payload.headline)
@@ -180,6 +198,12 @@ class AiService(
 
     companion object {
         private const val MAX_CARDS_PER_REQUEST = 6
+
+        /** 排除标题随请求发送的条数上限（服务端上下文，单点决定） */
+        private const val EXCLUDE_HEADLINE_LIMIT = 100
+
+        /** 仅用于连通性探测的兜底模型（生成路径不使用） */
+        private const val PROBE_MODEL = "gpt-4o-mini"
 
         /** 保留服务商自定义 API 前缀，只有裸域名才补 /v1（与 macOS 口径一致） */
         fun completionURL(baseURL: String): URL {

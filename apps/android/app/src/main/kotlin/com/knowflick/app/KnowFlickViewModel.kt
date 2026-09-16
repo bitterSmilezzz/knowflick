@@ -36,6 +36,13 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     )
 
     private val credentials: CredentialStore = com.knowflick.app.data.SystemCredentialStore(application)
+
+    /**
+     * 凭据存储是否加密（Keystore 可用）。设置页据此显示降级提示条——
+     * 降级为明文是安全姿态变化，不能静默发生。
+     */
+    val credentialsEncrypted: Boolean
+        get() = (credentials as? com.knowflick.app.data.SystemCredentialStore)?.isEncrypted ?: true
     private val aiService = AiService(
         versionName = runCatching {
             application.packageManager.getPackageInfo(application.packageName, 0).versionName
@@ -277,6 +284,15 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         action()
         version++
         schedulePersist()
+    }
+
+    /** 是否可撤销上一次刷卡（与 macOS ⌘Z 同一语义：只还原浏览意图，不动收藏） */
+    val canUndoLastSwipe: Boolean get() = model.store.canUndoLastSwipe
+
+    /** 撤销上一张：卡片回卡堆顶部，收藏状态原样保留 */
+    fun undoLastSwipe() {
+        if (!model.store.canUndoLastSwipe) return
+        mutate { model.store.undoLastSwipe() }
     }
 
     /** 仅触发重组（用于播放状态等非持久化状态变化） */

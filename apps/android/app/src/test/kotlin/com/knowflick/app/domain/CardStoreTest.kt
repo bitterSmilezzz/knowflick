@@ -3,6 +3,7 @@ package com.knowflick.app.domain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -243,5 +244,104 @@ class CardStoreTest {
         assertEquals(0, result.restored)
         assertEquals(1, result.ignored)
         assertEquals("ARCHIVE-STABLE-ID", store.cards.first().id)
+    }
+
+    // ---------- 撤销上一张（P1-1） ----------
+
+    @Test
+    fun undoAvailabilityTracksSwipeAndReset() {
+        val store = CardStore(seedCards = emptyList())
+        store.replaceAll(listOf(card("甲"), card("乙")))
+        assertFalse(store.canUndoLastSwipe, "未刷卡时不可撤销")
+
+        // 划走真实的顶卡（store 内的副本）
+        val top = store.deck.first()
+        store.swipe(top, SwipeDirection.SKIP)
+        assertTrue(store.canUndoLastSwipe, "刷卡后可撤销")
+
+        store.undoLastSwipe()
+        assertFalse(store.canUndoLastSwipe, "撤销只能做一次")
+        store.undoLastSwipe()   // 二次撤销必须是安全的 no-op
+        assertFalse(store.canUndoLastSwipe)
+    }
+
+    @Test
+    fun undoReturnsCardToDeckTopAndRemovesItFromHistory() {
+        val store = CardStore(seedCards = emptyList())
+        val subject = card("撤销回顶")
+        store.replaceAll(listOf(subject, card("其他")))
+        val topId = store.topCard!!.id
+        val top = store.cards.first { it.id == topId }
+
+        store.swipe(top, SwipeDirection.LEFT)
+        assertNull(store.deck.firstOrNull { it.id == topId }, "划走后不再在卡堆")
+        assertEquals(1, store.history.size, "划走后进入历史")
+
+        store.undoLastSwipe()
+
+        assertEquals(topId, store.topCard?.id, "撤销后卡片回到卡堆顶部")
+        assertEquals(0, store.history.size, "撤销后卡片离开历史（历史 -1）")
+        val restored = store.cards.first { it.id == topId }
+        assertNull(restored.seenAt, "seenAt 还原为刷卡前（未读）")
+        assertNull(restored.swiped, "swiped 还原为刷卡前（未表达喜好）")
+    }
+
+    @Test
+    fun undoKeepsFavoriteBecauseFavoriteIsDecoupledFromPreference() {
+        val store = CardStore(seedCards = emptyList())
+        val subject = card("撤销不清收藏")
+        store.replaceAll(listOf(subject, card("其他")))
+        val topId = store.topCard!!.id
+
+        // ① 先用 ♥ 显式收藏（不写 seenAt）
+        val beforeFavorite = store.cards.first { it.id == topId }
+        store.toggleFavorite(beforeFavorite)
+        assertTrue(store.cards.first { it.id == topId }.isFavorite)
+
+        // ② 右划（收藏态不变且写入喜好）
+        store.swipe(store.cards.first { it.id == topId }, SwipeDirection.RIGHT)
+        assertEquals(SwipeDirection.RIGHT, store.cards.first { it.id == topId }.swiped)
+
+        // ③ 撤销：浏览意图被还原，但显式收藏绝不能被顺手取消
+        store.undoLastSwipe()
+        val restored = store.cards.first { it.id == topId }
+        assertTrue(restored.isFavorite, "撤销不得取消用户的显式收藏（收藏与喜好解耦）")
+        assertTrue(restored.favoritedAt != null, "favoritedAt 应随收藏一并保留")
+        assertNull(restored.swiped)
+        assertEquals(1, store.favorites.size, "收藏阁内容不因撤销而丢失")
+    }
+
+    @Test
+    fun undoAfterLeftSwipeKeepsFavoriteAddedByEarlierRightSwipe() {
+        val store = CardStore(seedCards = emptyList())
+        store.replaceAll(listOf(card("甲"), card("乙")))
+        val topId = store.topCard!!.id
+
+        // 右划加入收藏；再左划（收藏被移除）；撤销左划 → 收藏保持「左划后」的状态
+        store.swipe(store.cards.first { it.id == topId }, SwipeDirection.RIGHT)
+        assertTrue(store.cards.first { it.id == topId }.isFavorite)
+        store.swipe(store.cards.first { it.id == topId }, SwipeDirection.LEFT)
+        assertFalse(store.cards.first { it.id == topId }.isFavorite)
+
+        store.undoLastSwipe()
+        val restored = store.cards.first { it.id == topId }
+        assertFalse(restored.isFavorite, "撤销只还原浏览意图，不还原收藏状态（与 macOS 口径一致）")
+        assertEquals(SwipeDirection.RIGHT, restored.swiped, "swiped 还原为上一次刷卡（RIGHT）")
+        // 该卡此前已有 seenAt（右划时写入），快照还原后仍是「已读」，不应回到卡堆
+        assertNotNull(restored.seenAt, "已读卡的 seenAt 由快照还原，不被硬编码 null 抹掉")
+    }
+
+    @Test
+    fun undoRestoresPreviousSeenAtForCardTaggedFromHistory() {
+        val store = CardStore(seedCards = emptyList())
+        val seen = card("历史页打标签").copy(seenAt = 1_000L, swiped = SwipeDirection.RIGHT)
+        store.replaceAll(listOf(seen, card("其他")))
+
+        store.swipe(seen, SwipeDirection.LEFT)
+        store.undoLastSwipe()
+
+        val restored = store.cards.first { it.id == seen.id }
+        assertEquals(1_000L, restored.seenAt, "已读卡再划后撤销，必须还原原 seenAt 而非置 null")
+        assertEquals(SwipeDirection.RIGHT, restored.swiped, "swiped 还原为刷卡前的值")
     }
 }

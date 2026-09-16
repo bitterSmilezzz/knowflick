@@ -24,10 +24,13 @@ object BackgroundImageCache {
     private const val TARGET_LONGEST_PX = 1450
 
     /**
-     * 缓存上限。单张 1000×1450 的 RGB_565 约 2.9 MiB，
-     * 12 MiB 只放得下 4 张，换几张就会重复解码；32 MiB 可容纳约 11 张。
+     * 缓存上限：取「32 MiB」与「堆上限的 1/8」中较小者（Android 官方推荐口径）。
+     * 单张 1000×1450 的 RGB_565 约 2.9 MiB，32 MiB 可容纳约 11 张；
+     * 低内存设备（largeHeap 未声明，堆可能仅 96–192 MiB）上固定 32 MiB 占堆比例过高，
+     * 高档机则偏保守，故随堆缩放。
      */
-    private const val CACHE_BYTES = 32 * 1024 * 1024
+    private val CACHE_BYTES: Int =
+        minOf(32 * 1024 * 1024, (Runtime.getRuntime().maxMemory() / 8).toInt().coerceAtLeast(4 * 1024 * 1024))
 
     private val cache = object : LruCache<String, Bitmap>(CACHE_BYTES) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
@@ -36,10 +39,19 @@ object BackgroundImageCache {
     /** 资源名：背景图统一为 WebP（同画质下体积约为 JPEG 的三分之一）。 */
     private fun assetPath(key: String): String = "bg/$key.webp"
 
-    @Synchronized
+    /**
+     * 缓存查询：`LruCache` 自身线程安全，**不加锁**。
+     * 此前与 [image] 共用 `@Synchronized`，导致 IO 线程解码一张图期间主线程的查缓存被阻塞
+     * （正好发生在划卡切换/预热的帧里，是「划卡偶发掉帧」的候选原因）。
+     * `asImageBitmap()` 是无状态包装，无需互斥。
+     */
     fun cached(key: String): ImageBitmap? = cache.get(key)?.asImageBitmap()
 
-    @Synchronized
+    /**
+     * 解码并缓存（可在任意后台线程调用）。
+     * 不加全局锁：`LruCache` 已同步；最坏情况是并发解码同一 key 时重复解码一次，
+     * 代价（一次多余解码）远小于「解码期间阻塞主线程查缓存」。
+     */
     fun image(context: Context, key: String): ImageBitmap? {
         cache.get(key)?.let { return it.asImageBitmap() }
         return runCatching {

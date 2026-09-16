@@ -95,7 +95,15 @@ class CardStorage(private val baseDir: File) {
     fun saveSpeechJson(json: String): Boolean =
         atomicWrite(File(baseDir, "speech.json"), json.toByteArray(Charsets.UTF_8)) == null
 
-    /** 同目录临时文件 + fsync + 原子替换；不支持 ATOMIC_MOVE 的文件系统退回安全替换。 */
+    /**
+     * 同目录临时文件 + fsync + 原子替换；不支持 ATOMIC_MOVE 的文件系统退回安全替换。
+     *
+     * 已知取舍（P2-6）：rename 之后**未**对父目录做 fsync。极端掉电场景下 rename 的元数据
+     * 可能未落盘，出现「主文件回退到上一版」。之所以接受该风险：① Java 层对目录取 fd 做
+     * `fsync` 在 Android 上没有可移植写法（`FileOutputStream(dir)` 会抛
+     * FileNotFoundException）；② 已有 `cards.backup.json` 轮转兜底，最坏结果是损失最近一次
+     * 增量而非整库。若日后要严谨化，可考虑以 FileChannel + Os.fsync 走 JNI/NDK 路径。
+     */
     private fun atomicWrite(target: File, data: ByteArray): String? {
         if (!baseDir.exists() && !baseDir.mkdirs()) return "无法创建存储目录"
         val temp = File(baseDir, ".${target.name}.${java.util.UUID.randomUUID()}.tmp")

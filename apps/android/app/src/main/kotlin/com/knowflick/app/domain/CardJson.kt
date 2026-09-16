@@ -78,9 +78,13 @@ object CardJson {
             headline = obj.str("headline") ?: "",
             summary = obj.str("summary") ?: "",
             details = obj.str("details") ?: "",
-            links = (obj["links"] as? JsonArray)?.map { link ->
-                val linkObj = link.jsonObject
-                ScienceLink(title = linkObj.str("title") ?: "", url = linkObj.str("url") ?: "")
+            // 逐链接挽救：某个 links 元素不是对象（或标题/URL 类型异常）时只丢该条链接，
+            // 不能让整个 fromJsonElement 抛异常——那会在「逐卡挽救」模式下把**整张卡**丢掉。
+            links = (obj["links"] as? JsonArray)?.mapNotNull { link ->
+                runCatching {
+                    val linkObj = link.jsonObject
+                    ScienceLink(title = linkObj.str("title") ?: "", url = linkObj.str("url") ?: "")
+                }.getOrNull()
             } ?: emptyList(),
             source = CardSource.fromRaw(obj.str("source")),
             createdAt = obj.longField("createdAt") ?: System.currentTimeMillis(),

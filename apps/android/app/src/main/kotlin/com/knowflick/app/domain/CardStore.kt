@@ -8,7 +8,8 @@ package com.knowflick.app.domain
 class CardStore(
     /** 预置卡（来自 assets 的种子库）；由调用方在启动时注入 */
     var seedCards: List<KnowledgeCard> = emptyList(),
-    private val keyFor: (KnowledgeCard) -> String = CardArrange::defaultKeyFor,
+    /** 底图 key 解析器：排布与渲染必须共用同一 key 空间 */
+    private val keyFor: (KnowledgeCard) -> String = CardThemeResolver::forCard,
 ) {
 
     data class ArchiveRestoreResult(
@@ -42,9 +43,15 @@ class CardStore(
 
     val topCard: KnowledgeCard? get() = deck.firstOrNull()
 
-    // ---------- 变更记录（供持久化层观察） ----------
-    /** 撤销栈：undoLastSwipe 恢复最近一次刷卡 */
-    private var lastSwipedCardId: String? = null
+    // ---------- 变更记录 ----------
+    /**
+     * 撤销栈：最近一次刷卡前的整卡快照（含 seenAt/swiped）。
+     * recompute 依据它把被撤销的卡片精准插回队首；撤销只能做一次，还原后即清空。
+     */
+    private var lastSwipeSnapshot: KnowledgeCard? = null
+
+    /** 是否可撤销（UI 据此决定「撤销上一张」是否可点） */
+    val canUndoLastSwipe: Boolean get() = lastSwipeSnapshot != null
 
     init {
         recompute()
@@ -84,7 +91,7 @@ class CardStore(
                 // 日常划卡出队：直接移除划走卡片，100% 保留排好的无碰撞队列顺序
                 remainingInDeck
             }
-            remainingInDeck.isNotEmpty() && newCards.size == 1 && newCards.first().id == lastSwipedCardId -> {
+            remainingInDeck.isNotEmpty() && newCards.size == 1 && newCards.first().id == lastSwipeSnapshot?.id -> {
                 // 撤销上一张场景：卡片精准插回顶部
                 listOf(newCards.first()) + remainingInDeck
             }
@@ -129,25 +136,33 @@ class CardStore(
             SwipeDirection.SKIP -> Unit
         }
         cards = cards.toMutableList().apply { set(index, updated) }
-        lastSwipedCardId = old.id
+        lastSwipeSnapshot = old
         recompute()
     }
 
-    /** 撤销最近一次刷卡：恢复 seenAt/swiped 原值并插回队首 */
+    /**
+     * 撤销最近一次刷卡：把 `seenAt` / `swiped` 还原为刷卡前的快照值，卡片随即插回队首。
+     *
+     * **收藏（isFavorite / favoritedAt）不参与还原**，与 macOS `AppStore.undoLastSwipe`
+     * （只重置 seenAt/swiped）口径对齐：撤销的是「浏览意图」，右划顺带产生的收藏属于用户的
+     * 显式沉淀，不因撤销被连带抹掉；反之，若该卡此前已被 ♥ 收藏，撤销也绝不能把它取消收藏
+     * —— 这正是历史实现（无条件 `isFavorite = false`）违反 CONTEXT.md「收藏与喜好解耦」的地方。
+     *
+     * 用快照而非硬编码 null 还原 `seenAt`：对「已读卡在历史页再划」的场景，硬编码 null 会
+     * 抹掉其浏览时间并把卡片错误地推回卡堆。
+     */
     fun undoLastSwipe() {
-        val id = lastSwipedCardId ?: return
-        val index = cards.indexOfFirst { it.id == id }
-        if (index < 0) return
-        val old = cards[index]
-        val restored = old.copy(
-            seenAt = null,
-            swiped = null,
-            favoritedAt = null,
-            isFavorite = false,
-        )
+        val snapshot = lastSwipeSnapshot ?: return
+        val index = cards.indexOfFirst { it.id == snapshot.id }
+        if (index < 0) {
+            lastSwipeSnapshot = null
+            return
+        }
+        val restored = cards[index].copy(seenAt = snapshot.seenAt, swiped = snapshot.swiped)
         cards = cards.toMutableList().apply { set(index, restored) }
-        lastSwipedCardId = null
+        // recompute 需要 snapshot.id 来把卡片插回队首，故在重算之后再清空撤销栈
         recompute()
+        lastSwipeSnapshot = null
     }
 
     /** 切换收藏：只翻转 isFavorite，不触碰 swiped / seenAt（收藏未读卡不算已浏览） */
@@ -280,10 +295,10 @@ class CardStore(
         recompute()
     }
 
-    /** 主题缓存修剪挂点（Android 端在 M2 引入背景图缓存后启用） */
+    /** 主题键缓存裁剪：卡库变更后清掉已删除卡片的条目 */
     internal object CardThemeCache {
         fun prune(keeping: List<String>) {
-            // 占位：主题缓存迁移在 M2 落地
+            CardThemeResolver.pruneKeyCache(keeping.toSet())
         }
     }
 }
