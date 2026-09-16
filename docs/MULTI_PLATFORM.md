@@ -116,7 +116,7 @@ mac 端历史上一直用无前缀的 `v*`（已有 40 余个 Release），保�
 1. 在 `CHANGELOG.md` 顶部对应端的分节写清本版内容。
 2. 在 `docs/` 写发布记录（`ANDROID_RELEASE_<版本>.md` / `MAC_RELEASE_<版本>.md`）。
 3. 合回 `main` 并推送。
-4. 打 tag 并推送。
+4. 打 tag 并推送；打之前核对 tag 名与 `apps/android/app/build.gradle.kts` 里的 `versionCode` / `versionName` 一致。
 5. 用 `gh release create` 发 Release，**把构建产物作为附件上传**：`dist/` 不入 Git，不传附件则用户无法下载安装包。
 
 ### 发版检查清单
@@ -127,14 +127,23 @@ mac 端历史上一直用无前缀的 `v*`（已有 40 余个 Release），保�
 ./tools/test.sh                   # mac：Swift Testing
 cd apps/mac && ./build_app.sh     # mac：打包 .app
 
-# 2. 提交、推送、打 tag
-git push origin main
-git tag android-v0.8.5 && git push origin android-v0.8.5
+# 2. 核对版本号与 tag 一致
+grep -E 'versionCode|versionName' apps/android/app/build.gradle.kts
+# mac 侧版本号来自 apps/mac/Sources/KnowFlickCore/Support/AppVersion.swift
 
-# 3. 发 Release（附产物）
+# 3. 提交、推送、打 tag（注解 tag，与 mac 的 v4.2.0 风格一致）
+git push origin main
+git tag -a android-v0.8.5 -m "KnowFlick Android v0.8.5（versionCode 13）"
+git push origin android-v0.8.5
+
+# 4. 发 Release（附产物）
 gh release create android-v0.8.5 --title "..." --notes-file <正文> \
   dist/android/KnowFlick-0.8.5.apk dist/android/KnowFlick-0.8.5.apk.sha256
 ```
+
+tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是轻量 tag，自 `android-v0.8.5` 起统一为注解 tag（与 mac 的 `v4.2.0` 一致），以便把发布说明随 tag 保存；`git describe` 默认也只认注解 tag。
+
+**android tag 不产生云端产物。** `android.yml` 没有 tag 触发，`macos.yml` 只认 `v*`，因此推送 `android-v0.8.5` 不会触发任何 workflow：上面的签名 APK 必须由本地 `./tools/build_android.sh` 产出，Release 附件也依赖本地上传。mac 端相反——推 `v*` 会触发 macOS workflow（`.github/workflows/macos.yml`）自动构建并附到 Release，两条路径的差异见 [多端现状报告](STATUS_2026-09-14.md) 第二节。
 
 ## 环境要求
 

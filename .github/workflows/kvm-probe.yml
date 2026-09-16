@@ -1,0 +1,80 @@
+name: KVM probe
+
+# 用途：探测标准 ubuntu-latest runner 是否提供可用的 /dev/kvm。
+#
+# 为什么需要它：Android 仪器测试（28 项）要搬进 CI，而 Gradle Managed Devices 与
+# android-emulator-runner 都依赖硬件加速（KVM）。GitHub 明确支持硬件加速的是 larger
+# runner，标准 runner 上到底有没有可用的 /dev/kvm 目前没有权威结论——这是仪器测试
+# CI 化唯一的硬前提，所以先用探针取事实，再动主管线。
+#
+# 因此这里只做事实采集，刻意不接入推送 / PR 主管线，也不让任何人的构建变红；拿到结论
+# 后再决定是否在 android.yml 里落地 GMD（ATD 镜像）。
+#
+# 用法：Actions → KVM probe → Run workflow，看日志末尾的结论与 Job summary。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 探测 /dev/kvm
+        run: |
+          # 探针只采集事实，不判定成败：某一项失败恰恰是要采集的信息，
+          # 所以显式关掉 -e（GitHub 的默认 shell 自带 bash -e），最后用 notice 呈现结论。
+          set +e
+          set -uo pipefail
+          BEFORE=no
+          AFTER=no
+
+          echo "==> 1. 设备节点（未做任何处理前）"
+          ls -l /dev/kvm || echo "没有 /dev/kvm 设备节点"
+          test -w /dev/kvm && BEFORE=yes
+          echo "处理前当前用户可写 /dev/kvm：$BEFORE"
+
+          echo "==> 2. CPU 虚拟化标志数（vmx 或 svm，0 表示宿主没暴露虚拟化）"
+          grep -c -E '(vmx|svm)' /proc/cpuinfo || true
+
+          echo "==> 3. kvm 内核模块"
+          lsmod | grep '^kvm' || echo "kvm 模块未加载"
+
+          echo "==> 4. 应用官方 udev 规则（GMD 与 android-emulator-runner 的文档都要求先做这步）"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm || echo "应用 udev 规则后仍没有 /dev/kvm"
+          test -w /dev/kvm && AFTER=yes
+          echo "处理后当前用户可写 /dev/kvm：$AFTER"
+
+          echo "==> 5. kvm-ok（cpu-checker）"
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq cpu-checker >/dev/null 2>&1 || true
+          sudo kvm-ok || true
+
+          echo "==> 结论"
+          if [[ "$AFTER" == yes && "$BEFORE" == yes ]]; then
+            VERDICT="可用：/dev/kvm 本就存在且可写，Gradle Managed Devices（ATD 镜像）可以直接落地"
+          elif [[ "$AFTER" == yes ]]; then
+            VERDICT="可用：需先应用官方 udev 规则（上面第 4 步），之后可写；GMD 可落地，但 workflow 里必须保留这一步"
+          elif [[ "$BEFORE" == no && -e /dev/kvm ]]; then
+            VERDICT="不可用：/dev/kvm 存在但当前用户不可写，且 udev 规则未解决——仪器测试 CI 化需改用 larger runner 或 Firebase Test Lab"
+          else
+            VERDICT="不可用：没有 /dev/kvm，runner 未暴露硬件加速——仪器测试 CI 化需改用 larger runner 或 Firebase Test Lab"
+          fi
+          echo "$VERDICT"
+          echo "::notice title=KVM 探针结论::$VERDICT"
+
+          {
+            echo "## KVM 探针结论"
+            echo ""
+            echo "- runner：\`${{ runner.os }}\` / \`${{ runner.arch }}\`"
+            echo "- 处理前 / 处理后当前用户可写 /dev/kvm：$BEFORE / $AFTER"
+            echo "- 结论：$VERDICT"
+            echo ""
+            echo "下一步：可用则在 android.yml 里落地 GMD（ATD 镜像）为独立 job；不可用则评估 larger runner 或 Firebase Test Lab。"
+          } >> "$GITHUB_STEP_SUMMARY"

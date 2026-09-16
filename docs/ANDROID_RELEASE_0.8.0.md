@@ -36,7 +36,7 @@ APK SHA-256：
 新增 `ReleaseReadinessTest`，修复前执行：
 
 ```sh
-cd android
+cd apps/android
 ./gradlew :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.knowflick.app.ReleaseReadinessTest
 ```

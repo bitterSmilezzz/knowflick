@@ -5,8 +5,9 @@ name: macOS
 #
 # 触发方式：
 #   1. 推送到 main 且改动涉及 mac 端 / 共享资产 / 工具 → 验证构建，产物留在 Artifacts；
-#   2. 推送 v* tag（如 v4.2.0）→ 构建并把 zip 与校验和附到对应 Release；
-#   3. 手动触发（Actions → macOS → Run workflow）。
+#   2. 对 main 的 pull request（同样的路径过滤）→ 合并前就能看到结果；
+#   3. 推送 v* tag（如 v4.2.0）→ 构建并把 zip 与校验和附到对应 Release；
+#   4. 手动触发（Actions → macOS → Run workflow）。
 # 说明：默认 token 可能没有 workflow 触发权限，main 分支触发是不依赖该权限的验证路径。
 on:
   workflow_dispatch:
@@ -20,6 +21,18 @@ on:
       - '.github/workflows/macos.yml'
     tags:
       - 'v*'
+  pull_request:
+    paths:
+      - 'apps/mac/**'
+      - 'shared/**'
+      - 'tools/**'
+      - '.github/workflows/macos.yml'
+
+# 同一分支上只保留最新一次运行：连续推送时取消上一次未完成的构建。
+# tag 事件不取消——它要产出 Release 资产，中途取消只会留下半截上传。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: write   # tag 构建时需要上传 Release 资产
@@ -34,14 +47,12 @@ jobs:
 
       # runner 默认的 Xcode 是 16.x（Swift 6.1），而本项目实际用 Xcode 26 构建
       # （SwiftUI 宏与 Swift 6 严格并发的诊断在两代工具链间有差异）。
-      # 选取镜像上最新的 Xcode 26，保证云端与本地一致；找不到就明确失败。
+      # 镜像上会同时装多个小版本（Xcode_26.3.app、Xcode_26.4.app…），所以不写死版本列表：
+      # 在 Xcode_26* 里取版本号最大的一个；镜像上没有 26.x 就明确失败，不静默退回旧工具链。
       - name: 选择 Xcode 26
         run: |
           set -euo pipefail
-          PICKED=""
-          for v in 26.9 26.8 26.7 26.6 26.5 26.4 26.3 26.2 26.1 26.0; do
-            if [[ -d "/Applications/Xcode_${v}.app" ]]; then PICKED="/Applications/Xcode_${v}.app"; break; fi
-          done
+          PICKED="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)"
           if [[ -z "$PICKED" ]]; then
             echo "::error::镜像上未找到 Xcode 26；可用版本："
             ls -d /Applications/Xcode*.app || true
@@ -91,18 +102,31 @@ jobs:
           RES_DIR="$(dirname "$SEED")"
           COUNT=$(python3 -c "import json;print(len(json.load(open('$SEED'))))")
           IMAGES=$(find "$RES_DIR" -maxdepth 1 -name '*.webp' | wc -l | tr -d ' ')
-          echo "种子卡 $COUNT 张；底图 $IMAGES 张"
-          test "$COUNT" -ge 200 || { echo "种子卡数量异常"; exit 1; }
-          test "$IMAGES" -eq 42 || { echo "底图数量异常（应为 42）"; exit 1; }
+          # 期望值从共享资产源头现算，不写死数量：底图或种子卡一增删，mac 与 android
+          # 两条 workflow 会同时变红，而失败信息看起来像「产物坏了」，会误导排查方向。
+          EXPECT_COUNT=$(python3 -c "import json;print(len(json.load(open('shared/assets/seed_cards.json'))))" 2>/dev/null || echo 0)
+          EXPECT_IMAGES=$(ls shared/assets/bg/*.webp 2>/dev/null | wc -l | tr -d ' ' || true)
+          echo "种子卡 $COUNT 张（源头 $EXPECT_COUNT 张）；底图 $IMAGES 张（源头 $EXPECT_IMAGES 张）"
+          test "$EXPECT_COUNT" -gt 0 || { echo "::error::shared/assets/seed_cards.json 为空"; exit 1; }
+          test "$EXPECT_IMAGES" -gt 0 || { echo "::error::shared/assets 下没有底图"; exit 1; }
+          test "$COUNT" -eq "$EXPECT_COUNT" || { echo "::error::种子卡 $COUNT 张，与 shared/assets 的 $EXPECT_COUNT 张不一致"; exit 1; }
+          test "$IMAGES" -eq "$EXPECT_IMAGES" || { echo "::error::底图 $IMAGES 张，与 shared/assets 的 $EXPECT_IMAGES 张不一致"; exit 1; }
 
           # 启动自检：直接跑二进制，出现 "could not load resource bundle" 即判失败。
           # 只匹配这一条致命错误，避免把无 GUI 会话下的正常退出误判为失败。
+          # 该错误出在启动最早的资源加载路径（AppStore.loadSeedCards），因此「进程存活
+          # 数秒且日志里没有这条串」已经足够；这里用轮询而不是固定 sleep 5——致命串一旦
+          # 出现（或进程自行退出）就立刻结束等待，不必每次白等满。
           echo "==> 启动自检"
-          SMOKE_LOG="$(mktemp)"
+          SMOKE_LOG="dist/KnowFlick-smoke.log"
           set +e
           "$APP/Contents/MacOS/KnowFlick" >"$SMOKE_LOG" 2>&1 &
           SMOKE_PID=$!
-          sleep 5
+          for _ in $(seq 1 5); do
+            sleep 1
+            grep -q "could not load resource bundle" "$SMOKE_LOG" && break
+            kill -0 "$SMOKE_PID" 2>/dev/null || break
+          done
           kill "$SMOKE_PID" 2>/dev/null
           wait "$SMOKE_PID" 2>/dev/null
           set -e
@@ -127,13 +151,30 @@ jobs:
             | tee "dist/KnowFlick-${VERSION}.app.zip.sha256"
           ls -la dist/
 
+      # 失败时也要留下现场：测试或校验失败时，最需要的正是当时的产物与日志。
+      # 这不是发布物——Release 附件由下面的步骤上传，而那个步骤没有 if: always()，
+      # 所以失败运行的半成品不会进 Release；artifact 名带 -failed 后缀以免混淆。
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: KnowFlick-${{ env.VERSION }}
+          name: KnowFlick-${{ env.VERSION || 'unknown' }}${{ job.status != 'success' && '-failed' || '' }}
           path: |
             dist/KnowFlick-*.app.zip
             dist/KnowFlick-*.app.zip.sha256
+            dist/KnowFlick-smoke.log
           retention-days: 30
+
+      - name: 校验 tag 与产物版本一致
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          # 防止把 v4.3.0 的包附到 v4.2.0 的 Release（或反之）：版本号与 tag 不符时，
+          # 下载者拿到的是名不副实的安装包，而且事后极难察觉。
+          if [[ "$GITHUB_REF_NAME" != "v${VERSION}" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME 与产物版本 $VERSION 不一致"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME 与产物版本一致"
 
       - name: 附到 Release
         if: startsWith(github.ref, 'refs/tags/')

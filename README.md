@@ -20,6 +20,8 @@ KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 ma
 
 工作台的具体操作、复习规则与数据口径见 [学习工作台说明](docs/LEARNING_WORKSPACE.md)。
 
+Android 端是同仓库内的独立原生应用（Kotlin + Jetpack Compose），构建、安装与发版见 [Android 端说明](apps/android/README.md)。
+
 ## 功能
 
 - **今日学习**：可调整每日目标、进度、下一篇阅读与主题掌握情况。
@@ -233,7 +235,7 @@ KnowFlick/
 ├── shared/assets/           # 跨端共享资产（唯一事实来源）
 │   ├── seed_cards.json      # 种子卡数据
 │   └── bg/*.webp            # 分类底图
-├── tools/                   # 跨端脚本：test.sh / build_android.sh / sync_shared_assets.sh / build_icon / verify_icon / import_lessons.py
+├── tools/                   # 跨端脚本：test.sh / build_android.sh / sync_shared_assets.sh / lint_shell_vars.sh / test_import_lessons.py / import_lessons.py / build_icon / verify_icon
 ├── docs/                    # 多端协作规范、各端发布记录与评审报告
 ├── assets/                  # README 截图等展示资源
 ├── CHANGELOG.md             # 完整版本更新日志

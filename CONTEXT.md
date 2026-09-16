@@ -1,6 +1,7 @@
 # KnowFlick 领域词汇
 
 > 单文件领域术语表（无 ADR）。架构评审与实现以此语言为准。
+> 覆盖范围：当前词条只描述 mac 端（`apps/mac`）的领域词汇；Android 端（`apps/android`）尚未收录，其语言以该端源码与发布记录为准。
 
 ## 卡片（Card）
 一条领域知识（不限冷知识）：`category` / `headline` / `summary` / `details` / `links`，来源 `source`（seed 预置 / ai 生成）。内容与浏览状态在同一结构上（`KnowledgeCard`），浏览状态字段见下。

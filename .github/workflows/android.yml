@@ -3,13 +3,14 @@ name: Android
 # android 端在 Linux runner 上构建：不需要 Xcode，比 macOS runner 更快。
 #
 # 触发方式：
-#   1. 推送到 main 且改动涉及 android 端 / 共享资产 / 工具 → 单测 + Lint + debug APK；
-#   2. 手动触发。
+#   1. 推送到 main 且改动涉及 android 端 / 共享资产 / 工具 → 单测 + Lint + APK 构建；
+#   2. 对 main 的 pull request（同样的路径过滤）→ 合并前就能看到结果；
+#   3. 手动触发。
 #
-# 关于发布包：这里只产出 debug APK（用 SDK 自带调试证书，无需密钥），供验证与内测安装。
-# 正式发布用的 release 签名包需要 signing.properties 与 keystore，属敏感凭据，
-# 需另行通过 GitHub Secrets 注入；在配好之前不在此流程中产出，避免把 debug 包
-# 误当作发布产物。
+# 关于发布包：这里产出两个包，都不是发布物。debug APK 用 SDK 自带调试证书；release APK
+# 在没有 signing.properties 时是未签名包——加它不需要任何密钥，但能覆盖只在 release 路径
+# 生效的 R8、资源压缩与 baseline profile 合并（0.8.0 那次 Tink 注解缺陷就只在 R8 阶段暴露）。
+# 正式发布用的签名包需要 keystore，属敏感凭据，需另行通过 GitHub Secrets 注入。
 on:
   workflow_dispatch:
   push:
@@ -20,6 +21,17 @@ on:
       - 'shared/**'
       - 'tools/**'
       - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'apps/android/**'
+      - 'shared/**'
+      - 'tools/**'
+      - '.github/workflows/android.yml'
+
+# 同一分支上只保留最新一次运行：连续推送时取消上一次未完成的构建。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -82,22 +94,41 @@ jobs:
           sys.exit(1 if failed else 0)
           PY
 
-      - name: 构建 debug APK
+      - name: 构建 debug 与 release APK
         run: |
           cd apps/android
-          ./gradlew --console=plain :app:assembleDebug
+          # release 路径才有 R8、资源压缩与 baseline profile 合并，debug 构建永远看不到
+          # 那一类缺陷；没有 signing.properties 时产出未签名包，无需任何密钥。
+          ./gradlew --console=plain :app:assembleDebug :app:assembleRelease
 
       - name: 校验 APK 内容
         run: |
           set -euo pipefail
           APK=apps/android/app/build/outputs/apk/debug/app-debug.apk
-          test -f "$APK" || { echo "::error::缺少 debug APK"; exit 1; }
-          # 共享资源应来自仓库根 shared/assets（android 侧由 assets.srcDirs 指向）
-          SEEDS=$(unzip -l "$APK" | grep -c 'assets/seed_cards.json' || true)
-          IMAGES=$(unzip -l "$APK" | grep -c 'assets/bg/.*\.webp' || true)
-          echo "种子卡 $SEEDS 份；底图 $IMAGES 张"
-          test "$SEEDS" -ge 1 || { echo "::error::APK 内缺少种子卡"; exit 1; }
-          test "$IMAGES" -eq 42 || { echo "::error::底图数量异常（应为 42）"; exit 1; }
+          # 期望值从共享资产源头现算，不写死 42/214：底图或种子卡一增删，mac 与 android
+          # 两条 workflow 会同时变红，而失败信息看起来像「产物坏了」，会误导排查方向。
+          EXPECT_IMAGES=$(ls shared/assets/bg/*.webp 2>/dev/null | wc -l | tr -d ' ' || true)
+          EXPECT_SEEDS=$(python3 -c "import json;print(len(json.load(open('shared/assets/seed_cards.json'))))" 2>/dev/null || echo 0)
+          SRC_SEED_SHA=$(shasum -a 256 shared/assets/seed_cards.json | cut -d' ' -f1)
+          test "$EXPECT_IMAGES" -gt 0 || { echo "::error::shared/assets 下没有底图"; exit 1; }
+          test "$EXPECT_SEEDS" -gt 0 || { echo "::error::shared/assets/seed_cards.json 为空"; exit 1; }
+
+          # 共享资源应来自仓库根 shared/assets（android 侧由 assets.srcDirs 指向）。
+          # release 包走 R8 与资源压缩，资源有被误删的可能，因此两个包都要验。
+          check_apk() {
+            local apk="$1" label="$2" seeds images sha
+            test -f "$apk" || { echo "::error::缺少 ${label}：$apk"; exit 1; }
+            seeds=$(unzip -l "$apk" | grep -c 'assets/seed_cards.json' || true)
+            images=$(unzip -l "$apk" | grep -c 'assets/bg/.*\.webp' || true)
+            echo "${label}：种子卡 $seeds 份；底图 $images 张（源头底图 $EXPECT_IMAGES 张、种子卡 $EXPECT_SEEDS 张）"
+            test "$seeds" -eq 1 || { echo "::error::${label} 内应有且仅有 1 份种子卡，实际 $seeds"; exit 1; }
+            test "$images" -eq "$EXPECT_IMAGES" || { echo "::error::${label} 内底图 $images 张，与 shared/assets 的 $EXPECT_IMAGES 张不一致"; exit 1; }
+            sha=$(unzip -p "$apk" assets/seed_cards.json | shasum -a 256 | cut -d' ' -f1)
+            test "$sha" = "$SRC_SEED_SHA" || { echo "::error::${label} 内种子卡与 shared/assets 源文件不一致"; exit 1; }
+          }
+          check_apk "$APK" "debug APK"
+          RELEASE_APK=$(ls apps/android/app/build/outputs/apk/release/app-release*.apk 2>/dev/null | head -1 || true)
+          check_apk "$RELEASE_APK" "release APK"
 
           META=apps/android/app/build/outputs/apk/debug/output-metadata.json
           VERSION=$(python3 -c "import json;print(json.load(open('$META'))['elements'][0]['versionName'])")
@@ -107,8 +138,24 @@ jobs:
           echo "版本 ${VERSION}（versionCode ${VERSION_CODE}），${SIZE} 字节"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
+      # 失败时也要留下现场。注意单测或 Lint 失败时 APK 根本不会产出，所以现场是测试
+      # 报告本身；这些都是诊断材料，不是发布物（正式发布包由本地 tools/build_android.sh
+      # 产出），artifact 名带 -failed 后缀以免把失败运行的半成品当成可发布的包。
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: KnowFlick-android-${{ env.VERSION }}-debug
-          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          name: KnowFlick-android-${{ env.VERSION || 'unknown' }}-test-reports${{ job.status != 'success' && '-failed' || '' }}
+          path: |
+            apps/android/app/build/reports/tests/**
+            apps/android/app/build/test-results/**
+            apps/android/app/build/reports/lint-results-*.html
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: KnowFlick-android-${{ env.VERSION || 'unknown' }}${{ job.status != 'success' && '-failed' || '' }}
+          path: |
+            apps/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/android/app/build/outputs/apk/release/app-release*.apk
           retention-days: 30
