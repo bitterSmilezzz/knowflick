@@ -13,6 +13,7 @@ import androidx.compose.ui.test.swipeRight
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.knowflick.app.data.AppModel
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -136,5 +137,33 @@ class DeckScreenTest {
         rule.onNodeWithContentDescription("收藏").performClick()
         val after = model.store.cards.first { it.id == cardId }.isFavorite
         assertNotEquals(before, after)
+    }
+
+    /** 纵向滑动防误触：纵向下拉释放后，卡片受阻尼回弹，不误划走卡片。 */
+    @Test
+    fun verticalSwipeDoesNotAdvanceCard() {
+        val model: AppModel = viewModel().model
+        val beforeId = model.store.topCard?.id
+        rule.onNodeWithTag("deck_top_card").performTouchInput {
+            down(center)
+            moveBy(Offset(0f, 250f))
+            up()
+        }
+        rule.waitForIdle()
+        assertEquals("纵向滑动释放后顶卡不应被划走", beforeId, model.store.topCard?.id)
+    }
+
+    /** 斜向滑动防误触：纵向占优的斜向手势应被主轴锁定过滤，释放后卡片吸附回弹。 */
+    @Test
+    fun diagonalSwipeDominantlyVerticalDoesNotAdvanceCard() {
+        val model: AppModel = viewModel().model
+        val beforeId = model.store.topCard?.id
+        rule.onNodeWithTag("deck_top_card").performTouchInput {
+            down(center)
+            moveBy(Offset(80f, 200f))
+            up()
+        }
+        rule.waitForIdle()
+        assertEquals("纵向占优的斜向滑动不应触发划卡", beforeId, model.store.topCard?.id)
     }
 }

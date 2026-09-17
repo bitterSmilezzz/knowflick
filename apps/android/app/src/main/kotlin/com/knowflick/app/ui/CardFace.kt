@@ -90,7 +90,8 @@ fun CardFace(
         if (isTop && swipeProgress != 0f) {
             val isRight = swipeProgress > 0f
             val progress = kotlin.math.abs(swipeProgress)
-            val stampAlpha = ((progress - 0.10f) / 0.40f).coerceIn(0f, 1f)
+            // 设定 0.28f 死区：微小拖动或轻微颤动不唤醒印章，在 [0.28f, 0.80f] 之间平滑渐变
+            val stampAlpha = ((progress - 0.28f) / 0.52f).coerceIn(0f, 1f)
             if (stampAlpha > 0f) {
                 val stampColor = if (isRight) EditorialColor.likeGreen else EditorialColor.dislikeRed
                 val stampText = if (isRight) "♥ 收藏" else "✕ 略过"

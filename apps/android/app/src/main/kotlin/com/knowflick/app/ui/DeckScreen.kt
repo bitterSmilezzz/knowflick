@@ -55,6 +55,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -80,6 +81,18 @@ private const val THRESHOLD_HYSTERESIS_RATIO = 0.82f
 
 /** 拖动位移 → 旋转角的除数（dp）：位移约 10dp 转 1° */
 private const val ROTATION_DIVISOR_DP = 10f
+
+/** 纵向拖拽位移阻尼比例：纵向只允许轻微物理位移，自然约束横向划卡手势 */
+private const val VERTICAL_DAMPING_RATIO = 0.35f
+
+/** 横向主轴锁定比例：横向位移须大于纵向位移的此倍数，才视为横向划卡意图（过滤斜向与上下滑动） */
+private const val HORIZONTAL_DOMINANCE_RATIO = 1.20f
+
+/** 甩动（Fling）判定的最小速度（dp/s）：快速轻划可直接触发划出 */
+private const val MIN_FLING_VELOCITY_DP = 600f
+
+/** 甩动判定的最小水平位移（dp）：防止微小点击误触甩动 */
+private const val MIN_FLING_DISTANCE_DP = 28f
 
 /**
  * 沉浸刷卡界面：3 张可见卡堆 + 拖拽划走 + 磁吸回弹 + 底部意图按钮。
@@ -122,6 +135,8 @@ fun DeckScreen(
     val swipeThresholdPx = with(density) { SWIPE_THRESHOLD_DP.dp.toPx() }
     val hysteresisPx = swipeThresholdPx * THRESHOLD_HYSTERESIS_RATIO
     val rotationDivisorPx = with(density) { ROTATION_DIVISOR_DP.dp.toPx() }
+    val minFlingVelocityPx = with(density) { MIN_FLING_VELOCITY_DP.dp.toPx() }
+    val minFlingDistancePx = with(density) { MIN_FLING_DISTANCE_DP.dp.toPx() }
     // 飞出层宽度兜底：deckWidthPx 尚未测量时（防御分支）用屏宽，而非硬编码 900px
     val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
 
@@ -286,11 +301,12 @@ fun DeckScreen(
                                     if (isTop) {
                                         val drag = if (isReturning) returnAnim.value else rawDrag
                                         translationX = drag.x
-                                        translationY = drag.y
+                                        translationY = drag.y * VERTICAL_DAMPING_RATIO
                                         rotationZ = (drag.x / rotationDivisorPx).coerceIn(-14f, 14f)
                                     } else {
-                                        // 手指接近划走阈值时，下一张同步升到顶层，释放瞬间不会跳变。
-                                        val reveal = if (!isReturning && flyingCard == null) {
+                                        // 手指接近划走阈值且横向位移主导时，下一张同步升到顶层，释放瞬间不会跳变。
+                                        val isHorizontalDominant = abs(rawDrag.x) > abs(rawDrag.y) * HORIZONTAL_DOMINANCE_RATIO
+                                        val reveal = if (!isReturning && flyingCard == null && isHorizontalDominant) {
                                             (abs(rawDrag.x) / swipeThresholdPx).coerceIn(0f, 1f)
                                         } else {
                                             0f
@@ -309,22 +325,34 @@ fun DeckScreen(
                                 cardModifier = cardModifier
                                     .clickable(onClickLabel = "查看详情") { onOpenDetail(card) }
                                     .pointerInput(card.id) {
+                                        val velocityTracker = VelocityTracker()
                                         detectDragGestures(
                                             onDragStart = {
+                                                velocityTracker.resetTracking()
                                                 val current = if (isReturning) returnAnim.value else rawDrag
                                                 returnJob?.cancel()
                                                 isReturning = false
                                                 rawDrag = current
                                             },
                                             onDragEnd = {
-                                                if (abs(rawDrag.x) > swipeThresholdPx) {
+                                                val velocity = velocityTracker.calculateVelocity()
+                                                val vx = velocity.x
+                                                val vy = velocity.y
+                                                val isHorizontalDominant = abs(rawDrag.x) > abs(rawDrag.y) * HORIZONTAL_DOMINANCE_RATIO
+                                                val isFling = abs(vx) > minFlingVelocityPx &&
+                                                    abs(vx) > abs(vy) * 1.35f &&
+                                                    abs(rawDrag.x) > minFlingDistancePx &&
+                                                    (vx * rawDrag.x > 0)
+                                                val isThresholdPassed = abs(rawDrag.x) > swipeThresholdPx && isHorizontalDominant
+
+                                                if (isThresholdPassed || isFling) {
                                                     val direction = if (rawDrag.x > 0) SwipeDirection.RIGHT else SwipeDirection.LEFT
                                                     returnJob?.cancel()
                                                     isReturning = false
                                                     // 旧卡从手指释放位置继续飞出；新顶卡立即在下方显示。
                                                     flyingCard = card
                                                     flyingDirection = direction
-                                                    flyingStart = rawDrag
+                                                    flyingStart = Offset(rawDrag.x, rawDrag.y * VERTICAL_DAMPING_RATIO)
                                                     onMutate { store.swipe(card, direction) }
                                                     rawDrag = Offset.Zero
                                                     thresholdCrossed = false
@@ -337,12 +365,14 @@ fun DeckScreen(
                                             },
                                         ) { change, drag ->
                                             change.consume()
+                                            velocityTracker.addPosition(change.uptimeMillis, change.position)
                                             rawDrag += drag
-                                            val crossed = abs(rawDrag.x) > swipeThresholdPx && !thresholdCrossed
+                                            val isHorizontalDominant = abs(rawDrag.x) > abs(rawDrag.y) * HORIZONTAL_DOMINANCE_RATIO
+                                            val crossed = abs(rawDrag.x) > swipeThresholdPx && isHorizontalDominant && !thresholdCrossed
                                             if (crossed) {
                                                 thresholdCrossed = true
                                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            } else if (abs(rawDrag.x) < hysteresisPx) {
+                                            } else if (abs(rawDrag.x) < hysteresisPx || !isHorizontalDominant) {
                                                 thresholdCrossed = false
                                             }
                                         }
@@ -357,8 +387,13 @@ fun DeckScreen(
                                         .background(MaterialTheme.colorScheme.surface),
                                 )
                             } else {
-                                val currentDragX = if (isReturning) returnAnim.value.x else rawDrag.x
-                                val swipeProgress = if (isTop && flyingCard == null) (currentDragX / swipeThresholdPx).coerceIn(-1f, 1f) else 0f
+                                val currentDrag = if (isReturning) returnAnim.value else rawDrag
+                                val isCurrentHorizontalDominant = abs(currentDrag.x) > abs(currentDrag.y) * HORIZONTAL_DOMINANCE_RATIO
+                                val swipeProgress = if (isTop && flyingCard == null && isCurrentHorizontalDominant) {
+                                    (currentDrag.x / swipeThresholdPx).coerceIn(-1f, 1f)
+                                } else {
+                                    0f
+                                }
                                 CardFace(
                                     card = card,
                                     showAIMark = showAIMark,
