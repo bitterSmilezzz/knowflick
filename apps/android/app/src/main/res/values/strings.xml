@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KnowFlick</string>
+    <string name="widget_daily_card_name">KnowFlick 每日卡片</string>
+    <string name="widget_daily_card_description">在桌面沉浸浏览精选知识卡片，支持快速换卡与一键收藏</string>
+    <string name="widget_next_card">下一张</string>
+    <string name="widget_favorite">收藏</string>
+    <string name="widget_unfavorite">取消收藏</string>
+    <string name="widget_open_app">查看卡片详情</string>
+</resources>

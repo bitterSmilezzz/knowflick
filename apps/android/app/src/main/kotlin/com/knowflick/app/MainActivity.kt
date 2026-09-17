@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
         screen = Screen.entries.firstOrNull { it.name == savedInstanceState?.getString("screen") } ?: Screen.DECK
         detailCardId = savedInstanceState?.getString("detailCardId")
         detailReturnScreen = if (savedInstanceState?.getString("detailReturnScreen") == Screen.LIBRARY.name) Screen.LIBRARY else Screen.DECK
+        handleIncomingIntent(intent)
         enableEdgeToEdge()
         setContent {
             KnowFlickTheme {
@@ -257,6 +258,21 @@ class MainActivity : ComponentActivity() {
             }.onFailure { error ->
                 viewModel.showNotice("导出失败：${error.message ?: "无法创建分享文件"}")
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        val targetCardId = intent?.getStringExtra("EXTRA_CARD_ID")
+        if (!targetCardId.isNullOrBlank()) {
+            detailCardId = targetCardId
+            detailReturnScreen = Screen.DECK
+            screen = Screen.DETAIL
         }
     }
 

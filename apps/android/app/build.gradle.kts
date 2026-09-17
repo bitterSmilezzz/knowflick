@@ -104,6 +104,10 @@ dependencies {
     // TODO(技术债)：凭据存储迁移到 DataStore + Tink 或原生 AndroidKeyStore（见 SystemCredentialStore.kt）。
     implementation("androidx.security:security-crypto:1.1.0")
 
+    // 桌面小部件：Jetpack Glance 官方微件框架（基于 Compose 编程模型生成 RemoteViews）
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.glance:glance-material3:1.1.1")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

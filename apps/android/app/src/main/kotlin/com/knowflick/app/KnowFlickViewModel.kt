@@ -530,6 +530,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             // 在主线程取不可变快照，串行 IO 保证旧快照不会覆盖新操作。
             val snapshot = model.store.cards.toList()
             persistenceQueue.enqueue(snapshot)
+            com.knowflick.app.widget.WidgetCardRepository.notifyWidgetUpdate(getApplication())
         }
     }
 

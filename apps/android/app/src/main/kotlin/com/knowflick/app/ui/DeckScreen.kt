@@ -128,6 +128,7 @@ fun DeckScreen(
     onUndo: () -> Unit = {},
 ) {
     val haptics = LocalHapticFeedback.current
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // 跨设备一致的手势标尺：全部由 dp 推导，与设备像素密度无关
     // （此前硬编码 220px/180px/28px：3.5x 密度机上阈值仅约 63dp，2x 机上却要划 110dp）
@@ -243,6 +244,19 @@ fun DeckScreen(
                             onClick = {
                                 showMore = false
                                 sharePosterCard = topCard
+                            },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("添加桌面微件…", fontSize = 13.sp) },
+                            onClick = {
+                                showMore = false
+                                val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
+                                val provider = android.content.ComponentName(context, com.knowflick.app.widget.DailyCardGlanceWidgetReceiver::class.java)
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && appWidgetManager.isRequestPinAppWidgetSupported) {
+                                    appWidgetManager.requestPinAppWidget(provider, null, null)
+                                } else {
+                                    android.widget.Toast.makeText(context, "可长按手机桌面空白处添加 KnowFlick 微件", android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             },
                         )
                         androidx.compose.material3.DropdownMenuItem(
