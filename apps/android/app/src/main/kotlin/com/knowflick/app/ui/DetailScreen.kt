@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,9 +73,10 @@ fun DetailScreen(
     val context = LocalContext.current
     val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
     var showChatSheet by remember { mutableStateOf(false) }
+    var showPosterSheet by remember { mutableStateOf(false) }
 
-    // 系统返回键与屏内返回语义一致（否则返回键会直接退出应用）
-    androidx.activity.compose.BackHandler(enabled = !showChatSheet) { onBack() }
+    // 系统返回键与屏内返回语义一致（弹窗展开时拦截返回键优先关闭弹窗）
+    androidx.activity.compose.BackHandler(enabled = !showChatSheet && !showPosterSheet) { onBack() }
 
     Box(Modifier.fillMaxSize().background(Color(0xFF101012))) {
         Box(Modifier.fillMaxSize()) {
@@ -246,6 +248,16 @@ fun DetailScreen(
                     )
                 }
                 IconButton(
+                    onClick = { showPosterSheet = true },
+                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                ) {
+                    Icon(
+                        Icons.Filled.Share,
+                        contentDescription = "导出分享海报",
+                        tint = Color.White,
+                    )
+                }
+                IconButton(
                     onClick = onToggleFavorite,
                     modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
                 ) {
@@ -272,6 +284,13 @@ fun DetailScreen(
                     showChatSheet = false
                     onCloseChat()
                 },
+            )
+        }
+
+        if (showPosterSheet) {
+            CardPosterExportSheet(
+                card = card,
+                onClose = { showPosterSheet = false },
             )
         }
     }

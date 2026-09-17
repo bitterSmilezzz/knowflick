@@ -143,6 +143,7 @@ fun DeckScreen(
     var rawDrag by remember { mutableStateOf(Offset.Zero) }
     var thresholdCrossed by remember { mutableStateOf(false) }
     var flyingCard by remember { mutableStateOf<KnowledgeCard?>(null) }
+    var sharePosterCard by remember { mutableStateOf<KnowledgeCard?>(null) }
     var flyingDirection by remember { mutableStateOf<SwipeDirection?>(null) }
     var flyingStart by remember { mutableStateOf(Offset.Zero) }
     var deckWidthPx by remember { mutableIntStateOf(0) }
@@ -235,6 +236,14 @@ fun DeckScreen(
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("知识测验", fontSize = 13.sp) },
                             onClick = { showMore = false; onOpenQuiz() },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("分享当前海报…", fontSize = 13.sp) },
+                            enabled = topCard != null,
+                            onClick = {
+                                showMore = false
+                                sharePosterCard = topCard
+                            },
                         )
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("学习统计", fontSize = 13.sp) },
@@ -502,6 +511,13 @@ fun DeckScreen(
                     topCard?.let(onOpenDetail)
                 }
             }
+        }
+
+        sharePosterCard?.let { card ->
+            CardPosterExportSheet(
+                card = card,
+                onClose = { sharePosterCard = null },
+            )
         }
     }
 }

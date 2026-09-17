@@ -237,6 +237,89 @@ object AppIcons {
         }
     }
 
+    /** 画报风海报图标 */
+    val Newspaper: ImageVector by lazy {
+        materialIcon("AppIcons.Newspaper") {
+            moveTo(20f, 4f)
+            horizontalLineTo(4f)
+            curveTo(2.9f, 4f, 2f, 4.9f, 2f, 6f)
+            verticalLineTo(18f)
+            curveTo(2f, 19.1f, 2.9f, 20f, 4f, 20f)
+            horizontalLineTo(20f)
+            curveTo(21.1f, 20f, 22f, 19.1f, 22f, 18f)
+            verticalLineTo(6f)
+            curveTo(22f, 4.9f, 21.1f, 4f, 20f, 4f)
+            close()
+            moveTo(5f, 8f)
+            horizontalLineTo(11f)
+            verticalLineTo(13f)
+            horizontalLineTo(5f)
+            close()
+            moveTo(19f, 16f)
+            horizontalLineTo(5f)
+            verticalLineTo(14.5f)
+            horizontalLineTo(19f)
+            close()
+            moveTo(19f, 13f)
+            horizontalLineTo(12.5f)
+            verticalLineTo(11.5f)
+            horizontalLineTo(19f)
+            close()
+            moveTo(19f, 10f)
+            horizontalLineTo(12.5f)
+            verticalLineTo(8.5f)
+            horizontalLineTo(19f)
+            close()
+        }
+    }
+
+    /** 拍立得相机图标 */
+    val Camera: ImageVector by lazy {
+        materialIcon("AppIcons.Camera") {
+            moveTo(9f, 2f)
+            lineTo(7.17f, 4f)
+            horizontalLineTo(4f)
+            curveTo(2.9f, 4f, 2f, 4.9f, 2f, 6f)
+            verticalLineTo(18f)
+            curveTo(2f, 19.1f, 2.9f, 20f, 4f, 20f)
+            horizontalLineTo(20f)
+            curveTo(21.1f, 20f, 22f, 19.1f, 22f, 18f)
+            verticalLineTo(6f)
+            curveTo(22f, 4.9f, 21.1f, 4f, 20f, 4f)
+            horizontalLineTo(16.83f)
+            lineTo(15f, 2f)
+            horizontalLineTo(9f)
+            close()
+            moveTo(12f, 17f)
+            curveTo(9.79f, 17f, 8f, 15.21f, 8f, 13f)
+            curveTo(8f, 10.79f, 9.79f, 9f, 12f, 9f)
+            curveTo(14.21f, 9f, 16f, 10.79f, 16f, 13f)
+            curveTo(16f, 15.21f, 14.21f, 17f, 12f, 17f)
+            close()
+        }
+    }
+
+    /** 保存图片下载图标 */
+    val Download: ImageVector by lazy {
+        materialIcon("AppIcons.Download") {
+            moveTo(19f, 9f)
+            horizontalLineTo(15f)
+            verticalLineTo(3f)
+            horizontalLineTo(9f)
+            verticalLineTo(9f)
+            horizontalLineTo(5f)
+            lineTo(12f, 16f)
+            lineTo(19f, 9f)
+            close()
+            moveTo(5f, 18f)
+            verticalLineTo(20f)
+            horizontalLineTo(19f)
+            verticalLineTo(18f)
+            horizontalLineTo(5f)
+            close()
+        }
+    }
+
     private fun materialIcon(
         name: String,
         pathBuilder: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit,

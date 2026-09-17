@@ -75,6 +75,21 @@ object BackgroundImageCache {
             image
         }.getOrNull()
     }
+
+    /** 获取原始清晰 Bitmap 供海报光栅化导出使用 */
+    fun rawBitmap(context: Context, key: String): Bitmap? {
+        cache.get(key)?.let { return it }
+        return runCatching {
+            val path = assetPath(key)
+            val options = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val bitmap = context.assets.open(path).use { BitmapFactory.decodeStream(it, null, options) }
+                ?: return null
+            cache.put(key, bitmap)
+            bitmap
+        }.getOrNull()
+    }
 }
 
 /** IO 线程解码，分类切换时按图片 key 更新。 */
