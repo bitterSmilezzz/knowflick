@@ -110,6 +110,32 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             schedulePersist()
             model.store.topCard
         }
+        speech.onAdvancePreviousRequest = {
+            if (model.store.history.isNotEmpty()) {
+                model.store.undoLastSwipe()
+                version++
+                schedulePersist()
+                model.store.topCard
+            } else {
+                null
+            }
+        }
+        speech.onSettingsChanged = { updated ->
+            speechSettings = updated
+            model.storage.saveSpeechJson(updated.toJson())
+        }
+    }
+
+    /** 语音控制台沉浸面板显示状态 */
+    var showAudioConsole by mutableStateOf(false)
+        private set
+
+    fun openAudioConsole() {
+        showAudioConsole = true
+    }
+
+    fun closeAudioConsole() {
+        showAudioConsole = false
     }
 
     private fun applySpeechConfig() {

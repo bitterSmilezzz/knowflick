@@ -320,6 +320,152 @@ object AppIcons {
         }
     }
 
+    /** 播放 */
+    val PlayArrow: ImageVector by lazy {
+        materialIcon("AppIcons.PlayArrow") {
+            moveTo(8f, 5f)
+            verticalLineTo(19f)
+            lineTo(19f, 12f)
+            close()
+        }
+    }
+
+    /** 暂停 */
+    val Pause: ImageVector by lazy {
+        materialIcon("AppIcons.Pause") {
+            moveTo(6f, 19f)
+            horizontalLineTo(10f)
+            verticalLineTo(5f)
+            horizontalLineTo(6f)
+            verticalLineTo(19f)
+            close()
+            moveTo(14f, 5f)
+            verticalLineTo(19f)
+            horizontalLineTo(18f)
+            verticalLineTo(5f)
+            horizontalLineTo(14f)
+            close()
+        }
+    }
+
+    /** 上一张 / 上一首 */
+    val SkipPrevious: ImageVector by lazy {
+        materialIcon("AppIcons.SkipPrevious") {
+            moveTo(6f, 6f)
+            horizontalLineTo(8f)
+            verticalLineTo(18f)
+            horizontalLineTo(6f)
+            close()
+            moveTo(9.5f, 12f)
+            lineTo(18f, 18f)
+            verticalLineTo(6f)
+            close()
+        }
+    }
+
+    /** 下一张 / 下一首 */
+    val SkipNext: ImageVector by lazy {
+        materialIcon("AppIcons.SkipNext") {
+            moveTo(6f, 18f)
+            lineTo(14.5f, 12f)
+            lineTo(6f, 6f)
+            verticalLineTo(18f)
+            close()
+            moveTo(16f, 6f)
+            verticalLineTo(18f)
+            horizontalLineTo(18f)
+            verticalLineTo(6f)
+            horizontalLineTo(16f)
+            close()
+        }
+    }
+
+    /** 快退 5 秒 */
+    val FastRewind: ImageVector by lazy {
+        materialIcon("AppIcons.FastRewind") {
+            moveTo(11f, 18f)
+            verticalLineTo(6f)
+            lineTo(1.5f, 12f)
+            lineTo(11f, 18f)
+            close()
+            moveTo(11.5f, 12f)
+            lineTo(21f, 18f)
+            verticalLineTo(6f)
+            lineTo(11.5f, 12f)
+            close()
+        }
+    }
+
+    /** 快进 5 秒 */
+    val FastForward: ImageVector by lazy {
+        materialIcon("AppIcons.FastForward") {
+            moveTo(4f, 18f)
+            lineTo(13.5f, 12f)
+            lineTo(4f, 6f)
+            verticalLineTo(18f)
+            close()
+            moveTo(13f, 6f)
+            verticalLineTo(18f)
+            lineTo(22.5f, 12f)
+            lineTo(13f, 6f)
+            close()
+        }
+    }
+
+    /** 调音台 / 控制台 */
+    val Tune: ImageVector by lazy {
+        materialIcon("AppIcons.Tune") {
+            moveTo(3f, 17f)
+            verticalLineTo(19f)
+            horizontalLineTo(9f)
+            verticalLineTo(17f)
+            horizontalLineTo(3f)
+            close()
+            moveTo(3f, 5f)
+            verticalLineTo(7f)
+            horizontalLineTo(13f)
+            verticalLineTo(5f)
+            horizontalLineTo(3f)
+            close()
+            moveTo(13f, 21f)
+            verticalLineTo(19f)
+            horizontalLineTo(21f)
+            verticalLineTo(17f)
+            horizontalLineTo(13f)
+            verticalLineTo(15f)
+            horizontalLineTo(11f)
+            verticalLineTo(21f)
+            horizontalLineTo(13f)
+            close()
+            moveTo(7f, 9f)
+            verticalLineTo(11f)
+            horizontalLineTo(3f)
+            verticalLineTo(13f)
+            horizontalLineTo(7f)
+            verticalLineTo(15f)
+            horizontalLineTo(9f)
+            verticalLineTo(9f)
+            horizontalLineTo(7f)
+            close()
+            moveTo(21f, 13f)
+            verticalLineTo(11f)
+            horizontalLineTo(11f)
+            verticalLineTo(13f)
+            horizontalLineTo(21f)
+            close()
+            moveTo(17f, 9f)
+            horizontalLineTo(19f)
+            verticalLineTo(7f)
+            horizontalLineTo(21f)
+            verticalLineTo(5f)
+            horizontalLineTo(19f)
+            verticalLineTo(3f)
+            horizontalLineTo(17f)
+            verticalLineTo(9f)
+            close()
+        }
+    }
+
     private fun materialIcon(
         name: String,
         pathBuilder: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit,

@@ -17,6 +17,8 @@ data class SpeechSettings(
     val model: String = "kokoro",
     val voice: String = "zf_xiaobei",
     val speed: Float = 1.0f,
+    val pitch: Float = 1.0f,
+    val ambientGapSeconds: Double = 1.5,
 ) {
     val channelEnum: SpeechChannel get() = runCatching { SpeechChannel.valueOf(channel) }.getOrDefault(SpeechChannel.SYSTEM)
 

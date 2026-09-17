@@ -23,6 +23,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import com.knowflick.app.ui.AmbientAudioPlayerBar
+import com.knowflick.app.ui.AudioConsoleSheet
 import com.knowflick.app.ui.DeckScreen
 import com.knowflick.app.ui.DetailScreen
 import com.knowflick.app.ui.KnowFlickTheme
@@ -207,6 +212,25 @@ class MainActivity : ComponentActivity() {
                                 onPickImportFile = { importFilePicker.launch(arrayOf("application/json", "text/*")) },
                             )
                         }
+                    }
+
+                    // 悬浮 Mini Player 播控条（当有播放任务且控制台未展开时常显）
+                    if (!viewModel.showAudioConsole) {
+                        AmbientAudioPlayerBar(
+                            controller = viewModel.speech,
+                            onOpenConsole = { viewModel.openAudioConsole() },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = if (screen == Screen.DECK) 96.dp else 20.dp),
+                        )
+                    }
+
+                    // 语音听书全功能控制台沉浸面板
+                    if (viewModel.showAudioConsole) {
+                        AudioConsoleSheet(
+                            controller = viewModel.speech,
+                            onClose = { viewModel.closeAudioConsole() },
+                        )
                     }
                 }
             }
