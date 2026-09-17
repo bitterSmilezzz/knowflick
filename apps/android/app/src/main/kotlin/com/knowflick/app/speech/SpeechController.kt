@@ -134,6 +134,18 @@ class SpeechController(
         speak(start)
     }
 
+    /** 朗读自定义纯文本（例如卡片 AI 伴学助手的回复） */
+    fun speakText(text: String) {
+        if (text.isBlank()) return
+        stopPlayback(keepAmbient = false)
+        lastError = null
+        speakingCardId = "text_${System.currentTimeMillis()}"
+        isSpeaking = true
+        ensureTts()
+        if (!ttsReady) return
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, speakingCardId)
+    }
+
     // ---------- 通道实现 ----------
 
     private fun speakWithSystemTts(card: KnowledgeCard) {

@@ -196,7 +196,127 @@ class AiService(
         throw AiError.Network("重试耗尽")
     }
 
+    /**
+     * 卡片深度追问流式对话（移植自 macOS AIService.streamCardChat）：
+     * - 导师人设 System Prompt（注入当前卡片领域、标题、摘要、深度解析段落与权威链接）
+     * - 截取历史记录最近 10 条（保上下文聚焦并省 token）
+     * - SSE 逐行读取 delta 并通过 onDelta 回调，支持协程取消
+     * - 429/5xx 指数退避重试（一旦产出过内容则不重放，避免用户看到拼接重复内容）
+     *
+     * @param onDelta 增量文本回调，在 OkHttp 回调线程执行
+     */
+    suspend fun streamCardChat(
+        card: KnowledgeCard,
+        history: List<CardChatMessage>,
+        userPrompt: String,
+        settings: AiSettings,
+        apiKey: String,
+        onDelta: (String) -> Unit,
+    ) {
+        val key = apiKey.trim()
+        val needsKey = requiresKey(settings.baseURL)
+        if (needsKey && key.isEmpty()) throw AiError.MissingKey()
+        if (settings.baseURL.isBlank()) throw AiError.BadRequest("baseURL 为空")
+        if (settings.model.isBlank()) throw AiError.BadRequest("模型为空，请先在设置里选择或填写模型")
+
+        val systemPrompt = buildCardChatSystemPrompt(card)
+
+        val messagesArray = buildJsonArray {
+            add(buildJsonObject {
+                put("role", "system")
+                put("content", systemPrompt)
+            })
+            val recent = history.takeLast(10)
+            for (msg in recent) {
+                when (msg.sender) {
+                    MessageSender.USER -> add(buildJsonObject {
+                        put("role", "user")
+                        put("content", msg.content)
+                    })
+                    MessageSender.ASSISTANT -> add(buildJsonObject {
+                        put("role", "assistant")
+                        put("content", msg.content)
+                    })
+                    MessageSender.SYSTEM -> {}
+                }
+            }
+            add(buildJsonObject {
+                put("role", "user")
+                put("content", userPrompt)
+            })
+        }
+
+        val body = buildJsonObject {
+            put("model", settings.model)
+            put("messages", messagesArray)
+            put("temperature", 0.7)
+            put("max_tokens", 2048)
+            put("stream", true)
+        }
+
+        val request = Request.Builder()
+            .url(completionURL(settings.baseURL))
+            .post(body.toString().toRequestBody(jsonMedia))
+            .header("Content-Type", "application/json")
+            .header("User-Agent", userAgent())
+            .apply { if (needsKey && key.isNotEmpty()) header("Authorization", "Bearer $key") }
+            .build()
+
+        var hasYielded = false
+        for (attempt in 0 until 3) {
+            try {
+                client.executeCancellable(request) { response ->
+                    if (!response.isSuccessful) {
+                        throw AiError.HttpStatus(response.code, errorMessage(response.body?.string().orEmpty()))
+                    }
+                    val source = response.body?.source() ?: throw AiError.Network("无响应体")
+                    while (true) {
+                        val line = source.readUtf8Line() ?: break
+                        if (line.trim() == "data: [DONE]") break
+                        val delta = sseContentDelta(line)
+                        if (!delta.isNullOrEmpty()) {
+                            hasYielded = true
+                            onDelta(delta)
+                        }
+                    }
+                }
+                if (!hasYielded) throw AiError.Parse("AI 未返回可用回复，请重试")
+                return
+            } catch (e: AiError.HttpStatus) {
+                if ((e.code == 429 || e.code in 500..599) && !hasYielded && attempt < 2) {
+                    kotlinx.coroutines.delay(retryBaseDelayMs * (1L shl attempt))
+                    continue
+                }
+                throw e
+            }
+        }
+        throw AiError.Network("重试耗尽")
+    }
+
     companion object {
+        fun buildCardChatSystemPrompt(card: KnowledgeCard): String {
+            val sourcesPart = if (card.links.isNotEmpty()) {
+                "\n- 权威来源偏好：" + card.links.joinToString("、") { it.title }
+            } else ""
+            return """
+                你是一位兼具渊博学识、通透洞察与亲和力的 AI 知识导师（AI Learning Companion）。
+                当前读者正在精读一张精选知识卡片，需要你针对该卡片提供更深层次的探究、机制拆解、现实案例比喻或关联启发。
+
+                【当前卡片上下文】
+                - 领域分类：${card.category}
+                - 核心观点：${card.headline}
+                - 内容摘要：${card.summary}
+                - 深度解析：
+                ${card.paragraphs.joinToString("\n")}$sourcesPart
+
+                【导师回复原则】
+                1. 针对性与准确性：紧密围绕卡片内容与用户的追问展开，不讲假大空的套话，用清晰生动的逻辑讲透“为什么”与底层机理。
+                2. 通俗与形象：善于使用生动的现实比喻、思想实验或工业界实战案例降低认知门槛，但保持学术严谨。
+                3. 排版美感：使用优美的 Markdown 排版（适度加粗重点、使用要点列表、代码块注明语言），段落舒缓呼吸。
+                4. 启发式延伸：在回答末尾，可简短抛出一个反直觉思考题或相关交叉学科延伸方向，引导读者继续探索。
+            """.trimIndent()
+        }
+
         private const val MAX_CARDS_PER_REQUEST = 6
 
         /** 排除标题随请求发送的条数上限（服务端上下文，单点决定） */

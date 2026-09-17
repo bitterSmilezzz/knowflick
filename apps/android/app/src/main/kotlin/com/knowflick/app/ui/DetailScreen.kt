@@ -4,7 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +32,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -52,12 +59,22 @@ fun DetailScreen(
     onToggleFavorite: () -> Unit,
     onToggleSpeech: () -> Unit,
     onBack: () -> Unit,
+    chatSession: com.knowflick.app.ai.CardChatSession? = null,
+    isChatStreaming: Boolean = false,
+    chatErrorMessage: String? = null,
+    onOpenChat: () -> Unit = {},
+    onCloseChat: () -> Unit = {},
+    onSendChatMessage: (String) -> Unit = {},
+    onCancelChatStreaming: () -> Unit = {},
+    onClearChatSession: () -> Unit = {},
+    onSpeakChatMessage: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
+    var showChatSheet by remember { mutableStateOf(false) }
 
     // 系统返回键与屏内返回语义一致（否则返回键会直接退出应用）
-    androidx.activity.compose.BackHandler { onBack() }
+    androidx.activity.compose.BackHandler(enabled = !showChatSheet) { onBack() }
 
     Box(Modifier.fillMaxSize().background(Color(0xFF101012))) {
         Box(Modifier.fillMaxSize()) {
@@ -153,9 +170,44 @@ fun DetailScreen(
                     )
                 }
             }
+            Spacer(Modifier.height(28.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(EditorialColor.aiAmber.copy(alpha = 0.12f))
+                    .border(1.dp, EditorialColor.aiAmber.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                    .clickable {
+                        showChatSheet = true
+                        onOpenChat()
+                    }
+                    .padding(16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = AppIcons.Sparkles,
+                        contentDescription = null,
+                        tint = EditorialColor.aiAmber,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("AI 伴学深度追问", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(2.dp))
+                        Text("探究底层机理、现实案例与跨学科碰撞", color = Color.White.copy(alpha = 0.65f), fontSize = 11.5.sp)
+                    }
+                    Icon(
+                        imageVector = AppIcons.ArrowUp,
+                        contentDescription = null,
+                        tint = EditorialColor.aiAmber,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(40.dp))
         }
 
-        // 顶栏浮动按钮：返回 / 朗读 / 收藏
+        // 顶栏浮动按钮：返回 / 朗读 / 收藏 / AI 伴学
         Row(
             Modifier
                 .fillMaxWidth()
@@ -170,6 +222,19 @@ fun DetailScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                IconButton(
+                    onClick = {
+                        showChatSheet = true
+                        onOpenChat()
+                    },
+                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                ) {
+                    Icon(
+                        AppIcons.Sparkles,
+                        contentDescription = "AI 伴学追问",
+                        tint = EditorialColor.aiAmber,
+                    )
+                }
                 IconButton(
                     onClick = { onToggleSpeech() },
                     modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
@@ -191,6 +256,23 @@ fun DetailScreen(
                     )
                 }
             }
+        }
+
+        if (showChatSheet) {
+            CardFollowUpChatSheet(
+                card = card,
+                session = chatSession,
+                isStreaming = isChatStreaming,
+                errorMessage = chatErrorMessage,
+                onSendMessage = onSendChatMessage,
+                onCancelStreaming = onCancelChatStreaming,
+                onClearSession = onClearChatSession,
+                onSpeakMessage = onSpeakChatMessage,
+                onClose = {
+                    showChatSheet = false
+                    onCloseChat()
+                },
+            )
         }
     }
 }

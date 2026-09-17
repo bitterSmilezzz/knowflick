@@ -121,6 +121,122 @@ object AppIcons {
         }
     }
 
+    /** AI 追问星光 */
+    val Sparkles: ImageVector by lazy {
+        materialIcon("AppIcons.Sparkles") {
+            moveTo(19f, 9f)
+            lineTo(20.25f, 6.25f)
+            lineTo(23f, 5f)
+            lineTo(20.25f, 3.75f)
+            lineTo(19f, 1f)
+            lineTo(17.75f, 3.75f)
+            lineTo(15f, 5f)
+            lineTo(17.75f, 6.25f)
+            close()
+            moveTo(19f, 15f)
+            lineTo(17.75f, 17.75f)
+            lineTo(15f, 19f)
+            lineTo(17.75f, 20.25f)
+            lineTo(19f, 23f)
+            lineTo(20.25f, 20.25f)
+            lineTo(23f, 19f)
+            lineTo(20.25f, 17.75f)
+            close()
+            moveTo(11.5f, 9.5f)
+            lineTo(9f, 4f)
+            lineTo(6.5f, 9.5f)
+            lineTo(1f, 12f)
+            lineTo(6.5f, 14.5f)
+            lineTo(9f, 20f)
+            lineTo(11.5f, 14.5f)
+            lineTo(17f, 12f)
+            close()
+        }
+    }
+
+    /** 清空历史删除垃圾桶 */
+    val Delete: ImageVector by lazy {
+        materialIcon("AppIcons.Delete") {
+            moveTo(6f, 19f)
+            curveTo(6f, 20.1f, 6.9f, 21f, 8f, 21f)
+            horizontalLineTo(16f)
+            curveTo(17.1f, 21f, 18f, 20.1f, 18f, 19f)
+            verticalLineTo(7f)
+            horizontalLineTo(6f)
+            verticalLineTo(19f)
+            close()
+            moveTo(19f, 4f)
+            horizontalLineTo(15.5f)
+            lineTo(14.5f, 3f)
+            horizontalLineTo(9.5f)
+            lineTo(8.5f, 4f)
+            horizontalLineTo(5f)
+            verticalLineTo(6f)
+            horizontalLineTo(19f)
+            verticalLineTo(4f)
+            close()
+        }
+    }
+
+    /** 追问发送按钮 */
+    val ArrowUp: ImageVector by lazy {
+        materialIcon("AppIcons.ArrowUp") {
+            moveTo(4f, 12f)
+            lineTo(5.41f, 13.41f)
+            lineTo(11f, 7.83f)
+            verticalLineTo(20f)
+            horizontalLineTo(13f)
+            verticalLineTo(7.83f)
+            lineTo(18.59f, 13.41f)
+            lineTo(20f, 12f)
+            lineTo(12f, 4f)
+            lineTo(4f, 12f)
+            close()
+        }
+    }
+
+    /** 停止流式生成 */
+    val Stop: ImageVector by lazy {
+        materialIcon("AppIcons.Stop") {
+            moveTo(6f, 6f)
+            horizontalLineTo(18f)
+            verticalLineTo(18f)
+            horizontalLineTo(6f)
+            close()
+        }
+    }
+
+    /** 复制内容 */
+    val ContentCopy: ImageVector by lazy {
+        materialIcon("AppIcons.ContentCopy") {
+            moveTo(16f, 1f)
+            horizontalLineTo(4f)
+            curveTo(2.9f, 1f, 2f, 1.9f, 2f, 3f)
+            verticalLineTo(17f)
+            horizontalLineTo(4f)
+            verticalLineTo(3f)
+            horizontalLineTo(16f)
+            verticalLineTo(1f)
+            close()
+            moveTo(19f, 5f)
+            horizontalLineTo(8f)
+            curveTo(6.9f, 5f, 6f, 5.9f, 6f, 7f)
+            verticalLineTo(21f)
+            curveTo(6f, 22.1f, 6.9f, 23f, 8f, 23f)
+            horizontalLineTo(19f)
+            curveTo(20.1f, 23f, 21f, 22.1f, 21f, 21f)
+            verticalLineTo(7f)
+            curveTo(21f, 5.9f, 20.1f, 5f, 19f, 5f)
+            close()
+            moveTo(19f, 21f)
+            horizontalLineTo(8f)
+            verticalLineTo(7f)
+            horizontalLineTo(19f)
+            verticalLineTo(21f)
+            close()
+        }
+    }
+
     private fun materialIcon(
         name: String,
         pathBuilder: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit,

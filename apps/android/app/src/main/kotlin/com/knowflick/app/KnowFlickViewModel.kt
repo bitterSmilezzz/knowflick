@@ -15,6 +15,11 @@ import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
 import com.knowflick.app.data.CardPersistenceQueue
 import com.knowflick.app.data.CardSaveResult
+import com.knowflick.app.ai.CardChatMessage
+import com.knowflick.app.ai.CardChatSession
+import com.knowflick.app.ai.MessageSender
+import com.knowflick.app.data.ChatSessionStorage
+import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.data.CredentialStore
 import com.knowflick.app.data.SeedLoader
 import java.io.File
@@ -74,6 +79,20 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     var quizSession: com.knowflick.app.domain.QuizSession? by mutableStateOf(null)
         private set
     private val quizCycleRatedIds = LinkedHashSet<String>()
+
+    /** 卡片追问会话存储与状态（与 macOS ChatSessionStore 对齐） */
+    val chatStorage: ChatSessionStorage = ChatSessionStorage(File(application.filesDir, "store"))
+    var activeChatCard: KnowledgeCard? by mutableStateOf(null)
+        private set
+    var currentChatSession: CardChatSession? by mutableStateOf(null)
+        private set
+    var isChatStreaming: Boolean by mutableStateOf(false)
+        private set
+    var chatErrorMessage: String? by mutableStateOf(null)
+        private set
+
+    private var chatStreamJob: Job? = null
+    private var chatLoadGeneration = 0
 
     private var persistJob: Job? = null
     private val persistenceQueue = CardPersistenceQueue(model.storage, ::handlePersistenceResult)
@@ -230,6 +249,151 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             } finally {
                 isGenerating = false
             }
+        }
+    }
+
+    // ---------- 卡片 AI 伴学与深度追问 ----------
+
+    /** 打开某张卡片的追问面板（对齐 macOS openChat 契约） */
+    fun openChat(card: KnowledgeCard) {
+        cancelChatStreaming()
+        activeChatCard = card
+        chatErrorMessage = null
+        chatLoadGeneration++
+        val gen = chatLoadGeneration
+
+        val cached = chatStorage.getCachedSession(card.id)
+        if (cached != null) {
+            currentChatSession = cached
+            return
+        }
+        currentChatSession = CardChatSession(cardId = card.id, cardHeadline = card.headline)
+        viewModelScope.launch(Dispatchers.IO) {
+            val loaded = chatStorage.loadSession(card.id)
+            withContext(Dispatchers.Main) {
+                if (chatLoadGeneration == gen && activeChatCard?.id == card.id) {
+                    if (currentChatSession?.messages.isNullOrEmpty() && loaded != null) {
+                        currentChatSession = loaded
+                    }
+                }
+            }
+        }
+    }
+
+    /** 关闭追问面板 */
+    fun closeChat() {
+        cancelChatStreaming()
+        activeChatCard = null
+    }
+
+    /** 发送追问消息并启动流式接收 */
+    fun sendChatMessage(prompt: String) {
+        val trimmed = prompt.trim()
+        val card = activeChatCard ?: return
+        if (isChatStreaming || trimmed.isEmpty()) return
+
+        var session = currentChatSession ?: CardChatSession(cardId = card.id, cardHeadline = card.headline)
+        val userMsg = CardChatMessage(sender = MessageSender.USER, content = trimmed)
+        val assistantMsgId = java.util.UUID.randomUUID().toString()
+        val assistantMsg = CardChatMessage(id = assistantMsgId, sender = MessageSender.ASSISTANT, content = "", isStreaming = true)
+
+        val updatedMessages = session.messages + userMsg + assistantMsg
+        session = session.copy(messages = updatedMessages, updatedAt = System.currentTimeMillis())
+        currentChatSession = session
+
+        isChatStreaming = true
+        chatErrorMessage = null
+
+        val historySnapshot = session.messages.dropLast(2)
+        val key = currentApiKey()
+
+        chatStreamJob?.cancel()
+        chatStreamJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                aiService.streamCardChat(
+                    card = card,
+                    history = historySnapshot,
+                    userPrompt = trimmed,
+                    settings = settings,
+                    apiKey = key,
+                    onDelta = { delta ->
+                        viewModelScope.launch(Dispatchers.Main) {
+                            val current = currentChatSession ?: return@launch
+                            val index = current.messages.indexOfFirst { it.id == assistantMsgId }
+                            if (index >= 0) {
+                                val msg = current.messages[index]
+                                val newMsg = msg.copy(content = msg.content + delta)
+                                val list = current.messages.toMutableList()
+                                list[index] = newMsg
+                                currentChatSession = current.copy(messages = list)
+                            }
+                        }
+                    },
+                )
+                withContext(Dispatchers.Main) {
+                    val current = currentChatSession ?: return@withContext
+                    val index = current.messages.indexOfFirst { it.id == assistantMsgId }
+                    if (index >= 0) {
+                        val msg = current.messages[index]
+                        val list = current.messages.toMutableList()
+                        list[index] = msg.copy(isStreaming = false)
+                        val finalSession = current.copy(messages = list, updatedAt = System.currentTimeMillis())
+                        currentChatSession = finalSession
+                        viewModelScope.launch(Dispatchers.IO) {
+                            chatStorage.saveSession(finalSession)
+                        }
+                    }
+                    isChatStreaming = false
+                }
+            } catch (_: CancellationException) {
+                // 协程取消正常终止，保留已产出片段
+            } catch (e: Throwable) {
+                withContext(Dispatchers.Main) {
+                    isChatStreaming = false
+                    chatErrorMessage = e.message ?: "AI 追问失败，请重试"
+                    val current = currentChatSession ?: return@withContext
+                    val index = current.messages.indexOfFirst { it.id == assistantMsgId }
+                    if (index >= 0) {
+                        val list = current.messages.toMutableList()
+                        if (list[index].content.isEmpty()) {
+                            list.removeAt(index)
+                        } else {
+                            list[index] = list[index].copy(isStreaming = false)
+                        }
+                        val finalSession = current.copy(messages = list, updatedAt = System.currentTimeMillis())
+                        currentChatSession = finalSession
+                        viewModelScope.launch(Dispatchers.IO) {
+                            chatStorage.saveSession(finalSession)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** 终止当前流式生成（保留已生成的部分回复） */
+    fun cancelChatStreaming() {
+        chatStreamJob?.cancel()
+        chatStreamJob = null
+        isChatStreaming = false
+        val current = currentChatSession ?: return
+        val cleaned = current.messages
+            .filterNot { it.isStreaming && it.content.isEmpty() }
+            .map { it.copy(isStreaming = false) }
+        val updated = current.copy(messages = cleaned, updatedAt = System.currentTimeMillis())
+        currentChatSession = updated
+        viewModelScope.launch(Dispatchers.IO) {
+            chatStorage.saveSession(updated)
+        }
+    }
+
+    /** 清空当前卡片的追问历史 */
+    fun clearCurrentChatSession() {
+        cancelChatStreaming()
+        val card = activeChatCard ?: return
+        currentChatSession = CardChatSession(cardId = card.id, cardHeadline = card.headline)
+        viewModelScope.launch(Dispatchers.IO) {
+            chatStorage.clearSession(card.id)
         }
     }
 

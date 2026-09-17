@@ -124,7 +124,19 @@ class MainActivity : ComponentActivity() {
                                         viewModel.speech.toggle(card)
                                         viewModel.bump()
                                     },
-                                    onBack = { screen = detailReturnScreen },
+                                    onBack = {
+                                        viewModel.closeChat()
+                                        screen = detailReturnScreen
+                                    },
+                                    chatSession = viewModel.currentChatSession,
+                                    isChatStreaming = viewModel.isChatStreaming,
+                                    chatErrorMessage = viewModel.chatErrorMessage,
+                                    onOpenChat = { viewModel.openChat(card) },
+                                    onCloseChat = { viewModel.closeChat() },
+                                    onSendChatMessage = { prompt -> viewModel.sendChatMessage(prompt) },
+                                    onCancelChatStreaming = { viewModel.cancelChatStreaming() },
+                                    onClearChatSession = { viewModel.clearCurrentChatSession() },
+                                    onSpeakChatMessage = { text -> viewModel.speech.speakText(text) },
                                 )
                             }
                         }
