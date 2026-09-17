@@ -101,4 +101,31 @@ class QuizSessionTest {
         assertEquals(0, session.total)
         assertFalse(session.rate(QuizRating.MASTERED))
     }
+
+    @Test
+    fun buildDueReviewOnlySelectsDueCards() {
+        val due1 = card("到期卡1", seenDaysAgo = 3)
+        val due2 = card("到期卡2", seenDaysAgo = 2)
+        val notDue = card("未到期", seenDaysAgo = 0)
+        val session = QuizSession.buildDueReview(listOf(due1, due2, notDue), today, limit = 10)
+        assertEquals(QuizType.DUE_REVIEW, session.type)
+        assertEquals(2, session.total)
+        assertEquals(setOf(due1.id, due2.id), session.cards.map { it.id }.toSet())
+    }
+
+    @Test
+    fun buildWeakCardsFiltersMasteredCardsOut() {
+        val masteredCard = card("已掌握卡")
+        val hesitantCard = card("犹豫卡")
+        val forgotCard = card("遗忘卡")
+        val ratings = mapOf(
+            masteredCard.id to QuizRating.MASTERED,
+            hesitantCard.id to QuizRating.HESITANT,
+            forgotCard.id to QuizRating.FORGOT,
+        )
+        val session = QuizSession.buildWeakCards(listOf(masteredCard, hesitantCard, forgotCard), ratings)
+        assertEquals(QuizType.WEAK_RETEST, session.type)
+        assertEquals(2, session.total)
+        assertEquals(setOf(hesitantCard.id, forgotCard.id), session.cards.map { it.id }.toSet())
+    }
 }

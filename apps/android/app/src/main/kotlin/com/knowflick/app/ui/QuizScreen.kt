@@ -2,7 +2,9 @@ package com.knowflick.app.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,11 +16,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -26,13 +33,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +56,7 @@ import com.knowflick.app.data.CategoryStampColor
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.QuizRating
 import com.knowflick.app.domain.QuizSession
+import com.knowflick.app.domain.QuizType
 
 /**
  * 知识测验（主动回忆）：正面主张 → 点击/空格翻面看解析 → 三档自评写回熟练度。
@@ -52,6 +67,7 @@ fun QuizScreen(
     session: QuizSession,
     onRate: (QuizRating) -> Unit,
     onNextRound: () -> Unit,
+    onRetestWeakCards: (Map<String, QuizRating>) -> Unit = {},
     onExit: () -> Unit,
 ) {
     androidx.activity.compose.BackHandler { onExit() }
@@ -59,12 +75,16 @@ fun QuizScreen(
     val card = session.current
     var flipped by rememberSaveable(card?.id) { mutableStateOf(false) }
 
+    val countMastered = session.allRatings.values.count { it == QuizRating.MASTERED }
+    val countHesitant = session.allRatings.values.count { it == QuizRating.HESITANT }
+    val countForgot = session.allRatings.values.count { it == QuizRating.FORGOT }
+
     Column(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        // 顶栏：退出 + 进度
+        // 顶栏：退出 + 题型标签 + 实时状态圆点 + 进度
         Row(
             Modifier
                 .fillMaxWidth()
@@ -72,23 +92,97 @@ fun QuizScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onExit) {
-                Icon(Icons.Filled.Close, contentDescription = "退出测验", tint = MaterialTheme.colorScheme.onBackground)
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "退出测验",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
             }
-            Text(
-                "知识测验",
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Serif,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    AppIcons.Sparkles,
+                    contentDescription = null,
+                    tint = EditorialColor.aiAmber,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    session.type.label,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Serif,
+                )
+                if (!session.isFinished && session.total > 0) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(EditorialColor.aiAmber.copy(alpha = 0.16f))
+                            .border(1.dp, EditorialColor.aiAmber.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            "${session.index + 1} / ${session.total}",
+                            color = EditorialColor.aiAmber,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.weight(1f))
-            Text(
-                if (session.isFinished) "完成" else "${session.index + 1} / ${session.total}",
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace,
-            )
+
+            // 实时掌握度微缩计数指示器（对齐 macOS）
+            if (!session.isFinished && session.allRatings.isNotEmpty()) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.06f))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(6.dp).background(EditorialColor.likeGreen, CircleShape))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "$countMastered",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(6.dp).background(EditorialColor.aiAmber, CircleShape))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "$countHesitant",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(6.dp).background(EditorialColor.dislikeRed, CircleShape))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "$countForgot",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
         }
+
         LinearProgressIndicator(
             progress = { if (session.total == 0) 1f else session.index.toFloat() / session.total },
             modifier = Modifier
@@ -97,7 +191,12 @@ fun QuizScreen(
         )
 
         if (card == null) {
-            QuizSummary(session = session, onNextRound = onNextRound, onExit = onExit)
+            QuizSummary(
+                session = session,
+                onNextRound = onNextRound,
+                onRetestWeakCards = onRetestWeakCards,
+                onExit = onExit,
+            )
         } else {
             Box(
                 Modifier
@@ -232,7 +331,7 @@ private fun StampRow(card: KnowledgeCard) {
 }
 
 @Composable
-private fun RowScope.RatingButton(label: String, tint: androidx.compose.ui.graphics.Color, enabled: Boolean, onClick: () -> Unit) {
+private fun RowScope.RatingButton(label: String, tint: Color, enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .weight(1f)
@@ -242,46 +341,246 @@ private fun RowScope.RatingButton(label: String, tint: androidx.compose.ui.graph
             .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = androidx.compose.ui.graphics.Color(0xFF121212), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Color(0xFF121212), fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
 
+/**
+ * 测验完成结算面板（对齐 macOS 视觉与行动流）
+ */
 @Composable
-private fun QuizSummary(session: QuizSession, onNextRound: () -> Unit, onExit: () -> Unit) {
+private fun QuizSummary(
+    session: QuizSession,
+    onNextRound: () -> Unit,
+    onRetestWeakCards: (Map<String, QuizRating>) -> Unit,
+    onExit: () -> Unit,
+) {
+    val countMastered = session.summary[QuizRating.MASTERED] ?: 0
+    val countHesitant = session.summary[QuizRating.HESITANT] ?: 0
+    val countForgot = session.summary[QuizRating.FORGOT] ?: 0
+    val total = session.total
+    val weakCount = countForgot + countHesitant
+
+    val retentionRate = if (total == 0) 0 else {
+        ((countMastered * 1.0 + countHesitant * 0.5) / total * 100).toInt().coerceIn(0, 100)
+    }
+
+    var animatedProgress by remember { mutableFloatStateOf(0f) }
+    val animatedProgressVal by animateFloatAsState(
+        targetValue = animatedProgress,
+        animationSpec = tween(durationMillis = 900),
+        label = "retentionRing",
+    )
+
+    LaunchedEffect(retentionRate) {
+        animatedProgress = retentionRate / 100f
+    }
+
     Column(
         Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
+        Spacer(Modifier.height(10.dp))
+
+        // 顶端图标与标题
+        Icon(
+            AppIcons.Sparkles,
+            contentDescription = null,
+            tint = EditorialColor.aiAmber,
+            modifier = Modifier.size(36.dp),
+        )
+        Spacer(Modifier.height(8.dp))
         Text(
-            "本轮完成",
+            "本轮记忆测验已完成",
             color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 22.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Serif,
         )
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(26.dp)) {
-            SummaryCell("掌握", session.summary[QuizRating.MASTERED] ?: 0, EditorialColor.likeGreen)
-            SummaryCell("犹豫", session.summary[QuizRating.HESITANT] ?: 0, EditorialColor.aiAmber)
-            SummaryCell("遗忘", session.summary[QuizRating.FORGOT] ?: 0, EditorialColor.dislikeRed)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "艾宾浩斯记忆模型表明，及时主动提取能显著提升神经突触的长期连接。",
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+            fontSize = 11.5.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+
+        Spacer(Modifier.height(24.dp))
+
+        // 记忆留存率环形进度展示
+        Box(
+            modifier = Modifier.size(130.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokeWidth = 10.dp.toPx()
+                // 底环
+                drawArc(
+                    color = Color.White.copy(alpha = 0.08f),
+                    startAngle = -90f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+                // 进度弧
+                if (animatedProgressVal > 0f) {
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            listOf(
+                                EditorialColor.aiAmber,
+                                EditorialColor.likeGreen,
+                                EditorialColor.aiAmber,
+                            ),
+                        ),
+                        startAngle = -90f,
+                        sweepAngle = animatedProgressVal * 360f,
+                        useCenter = false,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "$retentionRate%",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace,
+                )
+                Text(
+                    "记忆留存率",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                    fontSize = 10.5.sp,
+                )
+            }
         }
+
+        Spacer(Modifier.height(24.dp))
+
+        // 三分项指标卡片
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SummaryStatCard(
+                title = "熟练掌握",
+                count = countMastered,
+                total = total,
+                tint = EditorialColor.likeGreen,
+                modifier = Modifier.weight(1f),
+            )
+            SummaryStatCard(
+                title = "犹豫想起",
+                count = countHesitant,
+                total = total,
+                tint = EditorialColor.aiAmber,
+                modifier = Modifier.weight(1f),
+            )
+            SummaryStatCard(
+                title = "需要强化",
+                count = countForgot,
+                total = total,
+                tint = EditorialColor.dislikeRed,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
         Spacer(Modifier.height(28.dp))
-        TextButton(onClick = onNextRound) {
-            Text("再测一组 ↻", color = EditorialColor.aiAmber, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+
+        // 底部行动按键组
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // 针对性重测弱项（有弱项卡片时优先呈现）
+            if (weakCount > 0) {
+                Button(
+                    onClick = { onRetestWeakCards(session.allRatings) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = EditorialColor.aiAmber),
+                ) {
+                    Text(
+                        "针对性重测弱项 ($weakCount 题)",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+
+            Button(
+                onClick = onNextRound,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White.copy(alpha = 0.08f),
+                    contentColor = MaterialTheme.colorScheme.onBackground,
+                ),
+            ) {
+                Text(
+                    "再测一组 ↻",
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            TextButton(onClick = onExit) {
+                Text(
+                    "完成并返回卡堆",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                    fontSize = 13.sp,
+                )
+            }
         }
-        TextButton(onClick = onExit) {
-            Text("返回卡堆", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f), fontSize = 13.sp)
-        }
+
+        Spacer(Modifier.height(20.dp))
     }
 }
 
 @Composable
-private fun SummaryCell(label: String, value: Int, tint: androidx.compose.ui.graphics.Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value.toString(), color = tint, fontSize = 26.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
-        Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f), fontSize = 11.sp)
+private fun SummaryStatCard(
+    title: String,
+    count: Int,
+    total: Int,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    val pct = if (total > 0) count * 100 / total else 0
+    Box(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.04f))
+            .border(1.dp, tint.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "$count",
+                color = tint,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                title,
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                "$pct%",
+                color = Color.White.copy(alpha = 0.4f),
+                fontSize = 9.5.sp,
+            )
+        }
     }
 }
+

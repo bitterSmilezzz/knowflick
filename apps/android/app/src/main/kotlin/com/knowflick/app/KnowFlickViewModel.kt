@@ -411,6 +411,27 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         version++
     }
 
+    /** 开始纯到期复习：以到期队列为准，最多 10 张 */
+    fun startDueReview() {
+        quizCycleRatedIds.clear()
+        quizSession = com.knowflick.app.domain.QuizSession.buildDueReview(
+            cards = model.store.cards,
+            today = java.time.LocalDate.now(),
+            limit = 10,
+        )
+        version++
+    }
+
+    /** 针对性弱项重测：提取上一轮中评分不为熟练掌握（FORGOT/HESITANT）的卡片进行即时巩固 */
+    fun retestWeakCards(ratings: Map<String, com.knowflick.app.domain.QuizRating>) {
+        quizCycleRatedIds.clear()
+        quizSession = com.knowflick.app.domain.QuizSession.buildWeakCards(
+            cards = model.store.cards,
+            ratings = ratings,
+        )
+        version++
+    }
+
     /** 再测一组：剔除本轮已评卡，剩余不足则回到全部（与 macOS 到期队列刷新同精神） */
     fun nextQuizRound() {
         var pool = model.store.cards.filter { it.id !in quizCycleRatedIds }

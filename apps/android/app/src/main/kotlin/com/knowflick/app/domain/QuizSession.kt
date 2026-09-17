@@ -10,6 +10,14 @@ enum class QuizRating(val masteryLevel: Int) {
     MASTERED(2),
 }
 
+/** 测验类型：自由测验 / 到期复习 / 针对性弱项重测 / 专项测验 */
+enum class QuizType(val label: String) {
+    STANDARD("知识测验"),
+    DUE_REVIEW("到期复习"),
+    WEAK_RETEST("针对性弱项重测"),
+    CATEGORY("专项测验"),
+}
+
 /**
  * 测验轮次（纯逻辑，无视图依赖）：
  * - 选题优先级：到期复习（LearningPlan.due）→ 收藏 → 历史已读 → 其余补齐
@@ -19,6 +27,7 @@ enum class QuizRating(val masteryLevel: Int) {
 class QuizSession(
     val cards: List<KnowledgeCard>,
     private val ratings: LinkedHashMap<String, QuizRating> = LinkedHashMap(),
+    val type: QuizType = QuizType.STANDARD,
 ) {
     var index: Int = 0
         private set
@@ -52,10 +61,6 @@ class QuizSession(
         /**
          * 构建一轮测验：到期复习优先，其后收藏、历史，最后补齐其余卡片；限制数量并打乱。
          * random 可注入以便测试确定性。
-         *
-         * 性能：全部按 `id` 做集合运算。此前把 `favorites` / `historyRead`（List）当集合做
-         * `it !in ...` 成员判断，退化成 O(n²)，且 `KnowledgeCard` 是 14 字段 data class
-         * （等值比较含最长数百字的 `details`）；导入大归档后点「知识测验」会阻塞主线程数秒。
          */
         fun build(
             cards: List<KnowledgeCard>,
@@ -66,7 +71,6 @@ class QuizSession(
         ): QuizSession {
             if (limit <= 0) return QuizSession(emptyList())
             val pool = if (category.isNullOrBlank()) cards else cards.filter { it.category == category }
-            // 到期队列只算一次（此前重复构造 LearningPlan 并算两遍）
             val dueOrdered = LearningPlan(pool, today).due
             val dueIds = dueOrdered.mapTo(HashSet(dueOrdered.size)) { it.id }
             val favoriteIds = HashSet<String>()
@@ -83,7 +87,30 @@ class QuizSession(
 
             val ordered = dueOrdered + favorites.shuffled(random) + historyRead.shuffled(random) + rest.shuffled(random)
             val selected = ordered.take(limit)
-            return QuizSession(selected)
+            val type = if (category.isNullOrBlank()) QuizType.STANDARD else QuizType.CATEGORY
+            return QuizSession(selected, type = type)
+        }
+
+        /** 构建纯到期复习题库（严格以 LearningPlan.due 优先级排布） */
+        fun buildDueReview(
+            cards: List<KnowledgeCard>,
+            today: LocalDate,
+            limit: Int = 10,
+        ): QuizSession {
+            if (limit <= 0) return QuizSession(emptyList(), type = QuizType.DUE_REVIEW)
+            val due = LearningPlan(cards, today).due
+            val selected = due.take(limit)
+            return QuizSession(selected, type = QuizType.DUE_REVIEW)
+        }
+
+        /** 构建针对性弱项重测题组（提取前一轮中评价为遗忘或犹豫的卡片） */
+        fun buildWeakCards(
+            cards: List<KnowledgeCard>,
+            ratings: Map<String, QuizRating>,
+        ): QuizSession {
+            val weakCardIds = ratings.filter { it.value != QuizRating.MASTERED }.keys
+            val selected = cards.filter { it.id in weakCardIds }
+            return QuizSession(selected, type = QuizType.WEAK_RETEST)
         }
     }
 }

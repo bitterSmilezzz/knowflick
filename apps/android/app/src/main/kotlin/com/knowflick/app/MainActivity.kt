@@ -143,6 +143,15 @@ class MainActivity : ComponentActivity() {
                         Screen.STATS -> StatsScreen(
                             cards = viewModel.model.store.cards,
                             onBack = { screen = Screen.DECK },
+                            onStartDueReview = {
+                                viewModel.startDueReview()
+                                screen = Screen.QUIZ
+                            },
+                            onOpenCardDetail = { cardId ->
+                                detailCardId = cardId
+                                detailReturnScreen = Screen.STATS
+                                screen = Screen.DETAIL
+                            },
                         )
                         Screen.SETTINGS -> com.knowflick.app.ui.SettingsScreen(
                             initial = viewModel.settings,
@@ -164,6 +173,7 @@ class MainActivity : ComponentActivity() {
                                     session = session,
                                     onRate = { rating -> viewModel.rateQuiz(rating) },
                                     onNextRound = { viewModel.nextQuizRound() },
+                                    onRetestWeakCards = { ratings -> viewModel.retestWeakCards(ratings) },
                                     onExit = {
                                         viewModel.exitQuiz()
                                         screen = Screen.DECK

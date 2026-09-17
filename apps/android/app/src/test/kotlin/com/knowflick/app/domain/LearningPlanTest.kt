@@ -61,4 +61,49 @@ class LearningPlanTest {
         assertEquals(1, plan.completedToday)
         assertEquals(1, plan.mastered)
     }
+
+    @Test
+    fun masteryDistributionMetrics() {
+        val cards = listOf(
+            card("卡1", seenAt = seenNDaysAgo(3), reviewedAt = seenNDaysAgo(1), masteryLevel = 2).copy(reviewCount = 3),
+            card("卡2", seenAt = seenNDaysAgo(2), reviewedAt = seenNDaysAgo(1), masteryLevel = 1).copy(reviewCount = 2),
+            card("卡3", seenAt = seenNDaysAgo(1), reviewedAt = seenNDaysAgo(1), masteryLevel = 0).copy(reviewCount = 1),
+            card("未测卡", seenAt = seenNDaysAgo(1), masteryLevel = 0),
+        )
+        val plan = LearningPlan(cards, today)
+        val dist = plan.masteryDistribution
+
+        assertEquals(1, dist.masteredCount)
+        assertEquals(1, dist.hesitantCount)
+        assertEquals(2, dist.needsReviewCount)
+        assertEquals(4, dist.totalCards)
+        assertEquals(3, dist.testedCards) // 3 张有过测验评分
+        // retentionRate = (1 * 1.0 + 1 * 0.5) / 3 * 100 = 50%
+        assertEquals(50, dist.retentionRate)
+        assertEquals(6, dist.totalReviews) // 3 + 2 + 1 + 0 = 6
+    }
+
+    @Test
+    fun upcomingScheduleAndCards() {
+        // 卡1: 昨天评分 masteryLevel=0 -> 1天间隔 -> 今天到期 (offset 0)
+        val c1 = card("今日到期", reviewedAt = seenNDaysAgo(1), masteryLevel = 0)
+        // 卡2: 昨天评分 masteryLevel=1 -> 3天间隔 -> 2天后到期 (offset 2)
+        val c2 = card("后天到期", reviewedAt = seenNDaysAgo(1), masteryLevel = 1)
+        // 卡3: 今天评分 masteryLevel=0 -> 1天间隔 -> 明天到期 (offset 1)
+        val c3 = card("明天到期", reviewedAt = seenNDaysAgo(0), masteryLevel = 0)
+
+        val plan = LearningPlan(listOf(c1, c2, c3), today)
+        val schedule = plan.upcomingSchedule(7)
+
+        assertEquals(7, schedule.size)
+        assertEquals(1, schedule[0].count, "今日包含 c1")
+        assertEquals(1, schedule[1].count, "明天包含 c3")
+        assertEquals(1, schedule[2].count, "后天包含 c2")
+        assertEquals(0, schedule[3].count)
+
+        val upcoming = plan.upcomingCards(2)
+        assertEquals(2, upcoming.size)
+        assertEquals(c1.id, upcoming[0].first.id, "首张为今日到期")
+        assertEquals(c3.id, upcoming[1].first.id, "第二张为明天到期")
+    }
 }
