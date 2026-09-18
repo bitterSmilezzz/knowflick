@@ -126,6 +126,8 @@ fun DeckScreen(
     /** 是否可撤销上一次刷卡（历史快照存在时为 true） */
     canUndo: Boolean = false,
     onUndo: () -> Unit = {},
+    onOpenBackupExport: () -> Unit = {},
+    onPickImportFile: () -> Unit = {},
 ) {
     val haptics = LocalHapticFeedback.current
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -262,6 +264,20 @@ fun DeckScreen(
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("学习统计", fontSize = 13.sp) },
                             onClick = { showMore = false; onOpenStats() },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("数据备份与导出…", fontSize = 13.sp) },
+                            onClick = {
+                                showMore = false
+                                onOpenBackupExport()
+                            },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("导入归档数据…", fontSize = 13.sp) },
+                            onClick = {
+                                showMore = false
+                                onPickImportFile()
+                            },
                         )
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("AI 服务设置", fontSize = 13.sp) },

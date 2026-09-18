@@ -66,6 +66,7 @@ fun LibraryScreen(
     onShareFavorites: (List<KnowledgeCard>) -> Unit,
     onShareArchive: (List<KnowledgeCard>) -> Unit,
     onPickImportFile: () -> Unit,
+    onOpenBackupExport: () -> Unit = {},
 ) {
     androidx.activity.compose.BackHandler { onBack() }
 
@@ -109,17 +110,13 @@ fun LibraryScreen(
                 fontFamily = FontFamily.Serif,
             )
             Spacer(Modifier.weight(1f))
-            // 收藏阁导出：分享当前收藏
-            IconButton(onClick = { onShareFavorites(favorites.toList()) }) {
-                Icon(Icons.Filled.Share, contentDescription = "分享收藏笔记", tint = MaterialTheme.colorScheme.onBackground)
+            // 备份与全量多格式导出
+            IconButton(onClick = onOpenBackupExport) {
+                Icon(AppIcons.Archive, contentDescription = "数据备份与导出", tint = EditorialColor.aiAmber)
             }
-            // JSON 归档分享
-            IconButton(onClick = { onShareArchive(cards.toList()) }) {
-                Icon(Icons.Filled.AddCircle, contentDescription = "导出 JSON 归档", tint = MaterialTheme.colorScheme.onBackground)
-            }
-            // 导入
+            // 导入与恢复
             IconButton(onClick = onPickImportFile) {
-                Text("导入", color = EditorialColor.aiAmber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Icon(AppIcons.Upload, contentDescription = "导入归档恢复", tint = MaterialTheme.colorScheme.onBackground)
             }
         }
 

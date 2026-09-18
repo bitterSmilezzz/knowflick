@@ -203,30 +203,87 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** 备份与导出 Sheet 开关 */
+    var showBackupExportSheet by mutableStateOf(false)
+        private set
+
+    fun openBackupExport() {
+        showBackupExportSheet = true
+    }
+
+    fun closeBackupExport() {
+        showBackupExportSheet = false
+    }
+
+    /** 导入归档文件探测结果预览（null = 未在预览） */
+    var importPreview by mutableStateOf<com.knowflick.app.data.ArchivePreview?>(null)
+        private set
+
+    var isInspectingArchive by mutableStateOf(false)
+        private set
+
     /** 从 JSON 归档恢复卡片（逐卡挽救；保留收藏、历史、来源与复习进度） */
     fun importFromJson(text: String) {
         val imported = com.knowflick.app.data.CardFileIO.decodeListSalvaging(text)
         applyImportedCards(imported)
     }
 
-    /** 文件读取和 JSON 解析放到 IO 线程，避免大归档阻塞 Compose 主线程。 */
+    /** 文件读取和探测放到 IO 线程，智能识别 ZIP 备份包与 JSON 镜像并生成预览。 */
     fun importFromUri(uri: Uri) {
         viewModelScope.launch {
-            generateNotice = "正在导入归档…"
-            val imported = try {
-                withContext(Dispatchers.IO) {
-                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { input ->
-                        com.knowflick.app.data.CardFileIO.decodeStreamSalvaging(input)
-                    } ?: throw IllegalArgumentException("无法读取所选文件")
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                generateNotice = e.message ?: "无法读取所选文件"
-                return@launch
+            isInspectingArchive = true
+            generateNotice = "正在解析归档文件…"
+            val result = withContext(Dispatchers.IO) {
+                com.knowflick.app.data.ArchiveImportManager.inspectArchive(getApplication(), uri)
             }
-            applyImportedCards(imported)
+            isInspectingArchive = false
+            result.fold(
+                onSuccess = { preview ->
+                    generateNotice = null
+                    importPreview = preview
+                },
+                onFailure = { err ->
+                    generateNotice = "归档读取失败: ${err.message ?: "未知异常"}"
+                },
+            )
         }
+    }
+
+    /**
+     * 应用恢复策略将归档载入卡库并持久化保存
+     */
+    fun applyArchiveRestore(
+        preview: com.knowflick.app.data.ArchivePreview,
+        strategy: com.knowflick.app.data.RestoreStrategy,
+    ) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                com.knowflick.app.data.ArchiveImportManager.applyRestore(model.store, preview, strategy)
+            }
+            if (strategy == com.knowflick.app.data.RestoreStrategy.OVERWRITE && preview.settingsJson != null) {
+                val loadedSettings = AiSettings.fromJson(preview.settingsJson)
+                if (loadedSettings != null) {
+                    settings = loadedSettings
+                    applySettings(loadedSettings)
+                    model.storage.saveSettingsJson(loadedSettings.toJson())
+                }
+            }
+            generateNotice = when (strategy) {
+                com.knowflick.app.data.RestoreStrategy.MERGE -> {
+                    "已增量恢复：${result.accepted} 张（新增 ${result.added}，更新 ${result.restored}）✓"
+                }
+                com.knowflick.app.data.RestoreStrategy.OVERWRITE -> {
+                    "已全量覆盖恢复：${preview.totalCards} 张卡片 ✓"
+                }
+            }
+            version++
+            schedulePersist()
+            importPreview = null
+        }
+    }
+
+    fun dismissImportPreview() {
+        importPreview = null
     }
 
     private fun applyImportedCards(imported: List<com.knowflick.app.domain.KnowledgeCard>) {

@@ -466,6 +466,62 @@ object AppIcons {
         }
     }
 
+    /** 导入恢复/上传 */
+    val Upload: ImageVector by lazy {
+        materialIcon("AppIcons.Upload") {
+            moveTo(9f, 16f)
+            horizontalLineTo(15f)
+            verticalLineTo(10f)
+            horizontalLineTo(19f)
+            lineTo(12f, 3f)
+            lineTo(5f, 10f)
+            horizontalLineTo(9f)
+            verticalLineTo(16f)
+            close()
+            moveTo(5f, 18f)
+            verticalLineTo(20f)
+            horizontalLineTo(19f)
+            verticalLineTo(18f)
+            horizontalLineTo(5f)
+            close()
+        }
+    }
+
+    /** 归档与全量备份 */
+    val Archive: ImageVector by lazy {
+        materialIcon("AppIcons.Archive") {
+            moveTo(20.54f, 5.23f)
+            lineTo(19.15f, 3.55f)
+            curveTo(18.88f, 3.21f, 18.47f, 3f, 18f, 3f)
+            horizontalLineTo(6f)
+            curveTo(5.53f, 3f, 5.12f, 3.21f, 4.85f, 3.55f)
+            lineTo(3.46f, 5.23f)
+            curveTo(3.17f, 5.57f, 3f, 6.02f, 3f, 6.5f)
+            verticalLineTo(19f)
+            curveTo(3f, 20.1f, 3.9f, 21f, 5f, 21f)
+            horizontalLineTo(19f)
+            curveTo(20.1f, 21f, 21f, 20.1f, 21f, 19f)
+            verticalLineTo(6.5f)
+            curveTo(21f, 6.02f, 20.83f, 5.57f, 20.54f, 5.23f)
+            close()
+            moveTo(5.12f, 5f)
+            lineTo(5.95f, 4f)
+            horizontalLineTo(18.04f)
+            lineTo(18.87f, 5f)
+            horizontalLineTo(5.12f)
+            close()
+            moveTo(12f, 17.5f)
+            lineTo(6.5f, 12f)
+            horizontalLineTo(10f)
+            verticalLineTo(9f)
+            horizontalLineTo(14f)
+            verticalLineTo(12f)
+            horizontalLineTo(17.5f)
+            lineTo(12f, 17.5f)
+            close()
+        }
+    }
+
     private fun materialIcon(
         name: String,
         pathBuilder: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit,

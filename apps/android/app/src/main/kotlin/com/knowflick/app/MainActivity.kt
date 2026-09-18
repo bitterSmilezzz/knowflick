@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
     private var detailCardId by mutableStateOf<String?>(null)
     private var detailReturnScreen by mutableStateOf(Screen.DECK)
 
-    /** 知识库导入：选择 JSON/文本文件并逐卡挽救导入 */
+    /** 知识库导入：选择 ZIP 备份包 / JSON 镜像文件并执行智能探测与预览 */
     private val importFilePicker = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -108,6 +108,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 canUndo = viewModel.canUndoLastSwipe,
                                 onUndo = { viewModel.undoLastSwipe() },
+                                onOpenBackupExport = { viewModel.openBackupExport() },
+                                onPickImportFile = {
+                                    importFilePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/json", "text/*", "*/*"))
+                                },
                             )
                         }
                         Screen.DETAIL -> {
@@ -210,13 +214,16 @@ class MainActivity : ComponentActivity() {
                                         com.knowflick.app.data.CardExportEngine.exportJSONArchive(cards)
                                     }
                                 },
-                                onPickImportFile = { importFilePicker.launch(arrayOf("application/json", "text/*")) },
+                                onPickImportFile = {
+                                    importFilePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/json", "text/*", "*/*"))
+                                },
+                                onOpenBackupExport = { viewModel.openBackupExport() },
                             )
                         }
                     }
 
-                    // 悬浮 Mini Player 播控条（当有播放任务且控制台未展开时常显）
-                    if (!viewModel.showAudioConsole) {
+                    // 悬浮 Mini Player 播控条（当有播放任务且控制台与全屏导出面板未展开时常显）
+                    if (!viewModel.showAudioConsole && !viewModel.showBackupExportSheet) {
                         AmbientAudioPlayerBar(
                             controller = viewModel.speech,
                             onOpenConsole = { viewModel.openAudioConsole() },
@@ -231,6 +238,30 @@ class MainActivity : ComponentActivity() {
                         AudioConsoleSheet(
                             controller = viewModel.speech,
                             onClose = { viewModel.closeAudioConsole() },
+                        )
+                    }
+
+                    // 离线归档与全量备份导出浮层面板
+                    if (viewModel.showBackupExportSheet) {
+                        com.knowflick.app.ui.BackupExportSheet(
+                            allCards = viewModel.model.store.cards,
+                            favoriteCards = viewModel.model.store.favorites,
+                            historyCards = viewModel.model.store.history,
+                            settingsJson = viewModel.settings.toJson(),
+                            onClose = { viewModel.closeBackupExport() },
+                        )
+                    }
+
+                    // 归档导入预览与策略确认弹窗
+                    viewModel.importPreview?.let { preview ->
+                        com.knowflick.app.ui.ImportRestoreDialog(
+                            preview = preview,
+                            onConfirm = { strategy ->
+                                viewModel.applyArchiveRestore(preview, strategy)
+                            },
+                            onDismiss = {
+                                viewModel.dismissImportPreview()
+                            },
                         )
                     }
                 }
