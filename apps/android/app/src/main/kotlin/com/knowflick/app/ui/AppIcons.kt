@@ -522,6 +522,32 @@ object AppIcons {
         }
     }
 
+    /** 搜索与全文检索 */
+    val Search: ImageVector by lazy {
+        materialIcon("AppIcons.Search") {
+            moveTo(15.5f, 14f)
+            horizontalLineTo(14.71f)
+            lineTo(14.43f, 13.73f)
+            curveTo(15.41f, 12.59f, 16f, 11.11f, 16f, 9.5f)
+            curveTo(16f, 5.91f, 13.09f, 3f, 9.5f, 3f)
+            curveTo(5.91f, 3f, 3f, 5.91f, 3f, 9.5f)
+            curveTo(3f, 13.09f, 5.91f, 16f, 9.5f, 16f)
+            curveTo(11.11f, 16f, 12.59f, 15.41f, 13.73f, 14.43f)
+            lineTo(14f, 14.71f)
+            verticalLineTo(15.5f)
+            lineTo(19f, 20.49f)
+            lineTo(20.49f, 19f)
+            lineTo(15.5f, 14f)
+            close()
+            moveTo(9.5f, 14f)
+            curveTo(7.01f, 14f, 5f, 11.99f, 5f, 9.5f)
+            curveTo(5f, 7.01f, 7.01f, 5f, 9.5f, 5f)
+            curveTo(11.99f, 5f, 14f, 7.01f, 14f, 9.5f)
+            curveTo(14f, 11.99f, 11.99f, 14f, 9.5f, 14f)
+            close()
+        }
+    }
+
     private fun materialIcon(
         name: String,
         pathBuilder: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit,

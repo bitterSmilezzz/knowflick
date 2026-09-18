@@ -29,6 +29,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
+import com.knowflick.app.domain.search.KnowledgeSearchEngine
+import com.knowflick.app.domain.search.SearchResultItem
+import com.knowflick.app.domain.search.SearchSourceFilter
+import com.knowflick.app.domain.SwipeDirection
 
 /**
  * 应用级状态持有者：卡库持久化 + 卡堆状态机 + AI 服务。
@@ -201,6 +205,75 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         } catch (e: Exception) {
             "网络错误：${e.message}"
         }
+    }
+
+    // ---------- 全局搜索与多维筛选 ----------
+
+    private val searchEngine = KnowledgeSearchEngine()
+
+    var showSearchSheet by mutableStateOf(false)
+        private set
+
+    var searchQuery by mutableStateOf("")
+        private set
+
+    var searchCategory by mutableStateOf<String?>("全部")
+        private set
+
+    var searchSource by mutableStateOf(SearchSourceFilter.ALL)
+        private set
+
+    var searchIntent by mutableStateOf<SwipeDirection?>(null)
+        private set
+
+    fun openSearchSheet() {
+        showSearchSheet = true
+    }
+
+    fun closeSearchSheet() {
+        showSearchSheet = false
+    }
+
+    fun updateSearchQuery(query: String) {
+        searchQuery = query
+    }
+
+    fun updateSearchCategory(category: String?) {
+        searchCategory = category
+    }
+
+    fun updateSearchSource(source: SearchSourceFilter) {
+        searchSource = source
+    }
+
+    fun updateSearchIntent(intent: SwipeDirection?) {
+        searchIntent = intent
+    }
+
+    fun clearSearchFilters() {
+        searchQuery = ""
+        searchCategory = "全部"
+        searchSource = SearchSourceFilter.ALL
+        searchIntent = null
+    }
+
+    /** 响应式获取当前搜索结果列表 */
+    fun getSearchResults(): List<SearchResultItem> {
+        val q = searchQuery
+        return searchEngine.search(
+            query = q,
+            category = searchCategory,
+            source = searchSource,
+            intent = searchIntent,
+            cards = model.store.cards,
+        )
+    }
+
+    /** 搜索结果置顶到卡堆顶并即时持久化 */
+    fun promoteCardToDeck(card: KnowledgeCard) {
+        model.store.promoteToDeckTop(card)
+        version++
+        schedulePersist()
     }
 
     /** 备份与导出 Sheet 开关 */

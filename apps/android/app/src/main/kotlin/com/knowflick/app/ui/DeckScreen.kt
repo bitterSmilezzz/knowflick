@@ -128,6 +128,7 @@ fun DeckScreen(
     onUndo: () -> Unit = {},
     onOpenBackupExport: () -> Unit = {},
     onPickImportFile: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
 ) {
     val haptics = LocalHapticFeedback.current
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -222,6 +223,9 @@ fun DeckScreen(
                 }) {
                     Icon(Icons.Filled.AddCircle, contentDescription = "AI 生成新知识", tint = EditorialColor.aiAmber)
                 }
+                IconButton(onClick = onOpenSearch) {
+                    Icon(AppIcons.Search, contentDescription = "搜索与筛选", tint = MaterialTheme.colorScheme.onBackground)
+                }
                 IconButton(onClick = onOpenFavorites) {
                     Icon(AppIcons.Bookmarks, contentDescription = "收藏阁", tint = MaterialTheme.colorScheme.onBackground)
                 }
@@ -239,6 +243,10 @@ fun DeckScreen(
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("知识测验", fontSize = 13.sp) },
                             onClick = { showMore = false; onOpenQuiz() },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("搜索与筛选…", fontSize = 13.sp) },
+                            onClick = { showMore = false; onOpenSearch() },
                         )
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("分享当前海报…", fontSize = 13.sp) },

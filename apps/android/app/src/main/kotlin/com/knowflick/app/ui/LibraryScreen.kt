@@ -67,6 +67,7 @@ fun LibraryScreen(
     onShareArchive: (List<KnowledgeCard>) -> Unit,
     onPickImportFile: () -> Unit,
     onOpenBackupExport: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
 ) {
     androidx.activity.compose.BackHandler { onBack() }
 
@@ -110,6 +111,10 @@ fun LibraryScreen(
                 fontFamily = FontFamily.Serif,
             )
             Spacer(Modifier.weight(1f))
+            // 搜索与全局检索
+            IconButton(onClick = onOpenSearch) {
+                Icon(AppIcons.Search, contentDescription = "搜索与筛选", tint = MaterialTheme.colorScheme.onBackground)
+            }
             // 备份与全量多格式导出
             IconButton(onClick = onOpenBackupExport) {
                 Icon(AppIcons.Archive, contentDescription = "数据备份与导出", tint = EditorialColor.aiAmber)

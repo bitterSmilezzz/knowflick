@@ -112,6 +112,7 @@ class MainActivity : ComponentActivity() {
                                 onPickImportFile = {
                                     importFilePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/json", "text/*", "*/*"))
                                 },
+                                onOpenSearch = { viewModel.openSearchSheet() },
                             )
                         }
                         Screen.DETAIL -> {
@@ -218,12 +219,13 @@ class MainActivity : ComponentActivity() {
                                     importFilePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/json", "text/*", "*/*"))
                                 },
                                 onOpenBackupExport = { viewModel.openBackupExport() },
+                                onOpenSearch = { viewModel.openSearchSheet() },
                             )
                         }
                     }
 
-                    // 悬浮 Mini Player 播控条（当有播放任务且控制台与全屏导出面板未展开时常显）
-                    if (!viewModel.showAudioConsole && !viewModel.showBackupExportSheet) {
+                    // 悬浮 Mini Player 播控条（当有播放任务且控制台与全屏面板未展开时常显）
+                    if (!viewModel.showAudioConsole && !viewModel.showBackupExportSheet && !viewModel.showSearchSheet) {
                         AmbientAudioPlayerBar(
                             controller = viewModel.speech,
                             onOpenConsole = { viewModel.openAudioConsole() },
@@ -249,6 +251,46 @@ class MainActivity : ComponentActivity() {
                             historyCards = viewModel.model.store.history,
                             settingsJson = viewModel.settings.toJson(),
                             onClose = { viewModel.closeBackupExport() },
+                        )
+                    }
+
+                    // 全局全文检索与多维筛选浮层面板
+                    if (viewModel.showSearchSheet) {
+                        val searchResults = remember(
+                            viewModel.searchQuery,
+                            viewModel.searchCategory,
+                            viewModel.searchSource,
+                            viewModel.searchIntent,
+                            viewModel.model.store.cards,
+                            viewModel.version,
+                        ) {
+                            viewModel.getSearchResults()
+                        }
+                        com.knowflick.app.ui.SearchSheet(
+                            query = viewModel.searchQuery,
+                            onQueryChange = { viewModel.updateSearchQuery(it) },
+                            selectedCategory = viewModel.searchCategory,
+                            onCategoryChange = { viewModel.updateSearchCategory(it) },
+                            selectedSource = viewModel.searchSource,
+                            onSourceChange = { viewModel.updateSearchSource(it) },
+                            allCards = viewModel.model.store.cards,
+                            searchResults = searchResults,
+                            onOpenDetail = { card ->
+                                detailCardId = card.id
+                                detailReturnScreen = screen
+                                screen = Screen.DETAIL
+                                viewModel.closeSearchSheet()
+                            },
+                            onPromoteToDeck = { card ->
+                                viewModel.promoteCardToDeck(card)
+                                screen = Screen.DECK
+                                viewModel.closeSearchSheet()
+                            },
+                            onToggleFavorite = { card ->
+                                viewModel.mutate { viewModel.model.store.toggleFavorite(card) }
+                            },
+                            onResetFilters = { viewModel.clearSearchFilters() },
+                            onClose = { viewModel.closeSearchSheet() },
                         )
                     }
 
