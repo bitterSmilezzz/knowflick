@@ -36,9 +36,43 @@ data class SearchResultItem(
 }
 
 /**
- * 全文检索引擎：
- * 支持多字段加权打分、中英全文检索、拼音全拼与首字母模糊匹配、正文上下文智能摘要截取与多维复合过滤。
- * 架构与 macOS 端 KnowledgeSearchEngine 100% 同构对齐。
+ * 查询类型判别——根据查询内容决定匹配策略，大幅降低误检测率。
+ */
+enum class QueryType {
+    /** 含中文字符的查询 → 直接中文文本匹配，不走拼音 */
+    CHINESE,
+    /** 纯英文单词（含数字），如 "AI", "DNA" → 直接英文匹配，仅对标题/分类启用拼音 */
+    ENGLISH,
+    /** 纯小写辅音字母串（≥2），如 "zzx", "hdl" → 首字母匹配模式 */
+    INITIALS,
+    /** 纯小写字母且含元音（≥2），如 "zhongzi", "ren" → 全拼匹配模式 */
+    PINYIN_FULL;
+
+    companion object {
+        private val vowels = setOf('a', 'e', 'i', 'o', 'u', 'v')
+
+        fun classify(query: String): QueryType {
+            if (query.isEmpty()) return ENGLISH
+            // 含中文字符 → 中文模式
+            if (query.any { it in '\u4e00'..'\u9fff' }) return CHINESE
+            // 含大写字母 → 英文缩写/词汇模式
+            if (query.any { it in 'A'..'Z' }) return ENGLISH
+            // 纯小写字母 → 根据是否含元音判别拼音全拼 vs 首字母
+            val letters = query.filter { it in 'a'..'z' }
+            if (letters.length < 2) return ENGLISH
+            val hasVowel = letters.any { it in vowels }
+            return if (hasVowel) PINYIN_FULL else INITIALS
+        }
+    }
+}
+
+/**
+ * 全文检索引擎 v2：
+ * 1. 查询智能分类（中文/英文/拼音全拼/首字母），针对性匹配策略；
+ * 2. 短查询保护门限，避免 1-2 字符拼音查询泛匹配；
+ * 3. 首字母匹配锚定前缀/等长约束，杜绝子串碰撞误检；
+ * 4. 长文本（摘要/正文）不走拼音匹配，消除噪声；
+ * 5. 正文上下文智能摘要截取与多维复合过滤。
  */
 class KnowledgeSearchEngine {
 
@@ -55,6 +89,7 @@ class KnowledgeSearchEngine {
     ): List<SearchResultItem> {
         val trimmed = query.trim().lowercase()
         val pinyinQuery = trimmed.replace(" ", "")
+        val queryType = QueryType.classify(query.trim())
 
         // 1. 维度过滤（分类、来源、意图）
         val filtered = cards.filter { card ->
@@ -92,41 +127,37 @@ class KnowledgeSearchEngine {
             var matchedField: SearchMatchedField? = null
             var excerpt = card.headline
 
-            // 1. 标题匹配（最高优先级）
-            if (headlineLower == trimmed) {
-                totalScore += 120
+            // ====== 1. 标题匹配（最高优先级）======
+            val headlineTextScore = textMatch(headlineLower, trimmed)
+            if (headlineTextScore > 0) {
+                totalScore += headlineTextScore
                 matchedField = SearchMatchedField.HEADLINE
                 excerpt = card.headline
-            } else if (headlineLower.contains(trimmed)) {
-                totalScore += 80
-                matchedField = SearchMatchedField.HEADLINE
-                excerpt = card.headline
-            } else {
-                val phonetics = PinyinHelper.phonetics(card.headline)
-                if (pinyinQuery.isNotEmpty() && (phonetics.full.contains(pinyinQuery) || phonetics.initials.contains(pinyinQuery))) {
-                    totalScore += 65
+            } else if (queryType == QueryType.PINYIN_FULL || queryType == QueryType.INITIALS) {
+                val pinyinScore = pinyinMatchShortText(card.headline, pinyinQuery, queryType)
+                if (pinyinScore > 0) {
+                    totalScore += pinyinScore
                     matchedField = SearchMatchedField.HEADLINE
                     excerpt = card.headline
                 }
             }
 
-            // 2. 分类匹配
-            if (categoryLower == trimmed) {
-                totalScore += 70
+            // ====== 2. 分类匹配 ======
+            val catTextScore = textMatch(categoryLower, trimmed)
+            if (catTextScore > 0) {
+                val catScore = when {
+                    categoryLower == trimmed -> 70
+                    else -> 50
+                }
+                totalScore += catScore
                 if (matchedField == null) {
                     matchedField = SearchMatchedField.CATEGORY
                     excerpt = "学科分类：${card.category}"
                 }
-            } else if (categoryLower.contains(trimmed)) {
-                totalScore += 50
-                if (matchedField == null) {
-                    matchedField = SearchMatchedField.CATEGORY
-                    excerpt = "学科分类：${card.category}"
-                }
-            } else {
-                val phonetics = PinyinHelper.phonetics(card.category)
-                if (pinyinQuery.isNotEmpty() && (phonetics.full.contains(pinyinQuery) || phonetics.initials.contains(pinyinQuery))) {
-                    totalScore += 40
+            } else if (queryType == QueryType.PINYIN_FULL || queryType == QueryType.INITIALS) {
+                val pinyinScore = pinyinMatchShortText(card.category, pinyinQuery, queryType)
+                if (pinyinScore > 0) {
+                    totalScore += (pinyinScore * 0.6).toInt().coerceAtLeast(1)
                     if (matchedField == null) {
                         matchedField = SearchMatchedField.CATEGORY
                         excerpt = "学科分类：${card.category}"
@@ -134,25 +165,16 @@ class KnowledgeSearchEngine {
                 }
             }
 
-            // 3. 观点摘要匹配
+            // ====== 3. 观点摘要匹配（仅直接文本匹配，不走拼音以避免噪声）======
             if (summaryLower.contains(trimmed)) {
                 totalScore += 35
                 if (matchedField == null) {
                     matchedField = SearchMatchedField.SUMMARY
                     excerpt = card.summary
                 }
-            } else {
-                val phonetics = PinyinHelper.phonetics(card.summary)
-                if (pinyinQuery.isNotEmpty() && phonetics.full.contains(pinyinQuery)) {
-                    totalScore += 25
-                    if (matchedField == null) {
-                        matchedField = SearchMatchedField.SUMMARY
-                        excerpt = card.summary
-                    }
-                }
             }
 
-            // 4. 深度剖析正文匹配（在原字符串上匹配避免字符集变换索引错位）
+            // ====== 4. 深度剖析正文匹配（仅直接文本匹配，不走拼音以避免噪声）======
             val detailsIndex = card.details.indexOf(trimmed, ignoreCase = true)
             if (detailsIndex >= 0) {
                 totalScore += 20
@@ -160,18 +182,9 @@ class KnowledgeSearchEngine {
                     matchedField = SearchMatchedField.DETAILS
                     excerpt = extractSnippet(card.details, trimmed)
                 }
-            } else {
-                val phonetics = PinyinHelper.phonetics(card.details)
-                if (pinyinQuery.isNotEmpty() && phonetics.full.contains(pinyinQuery)) {
-                    totalScore += 12
-                    if (matchedField == null) {
-                        matchedField = SearchMatchedField.DETAILS
-                        excerpt = card.details.take(60) + if (card.details.length > 60) "…" else ""
-                    }
-                }
             }
 
-            // 5. 权威来源链接匹配
+            // ====== 5. 权威来源链接匹配 ======
             if (linksText.contains(trimmed)) {
                 totalScore += 10
                 if (matchedField == null) {
@@ -205,6 +218,59 @@ class KnowledgeSearchEngine {
         // 按打分降序；相同分数按创建时间降序
         results.sortWith(compareByDescending<SearchResultItem> { it.score }.thenByDescending { it.card.createdAt })
         return results
+    }
+
+    /**
+     * 纯文本匹配评分：精确匹配 120，包含匹配 80，否则 0
+     */
+    private fun textMatch(fieldLower: String, queryLower: String): Int = when {
+        fieldLower == queryLower -> 120
+        fieldLower.contains(queryLower) -> 80
+        else -> 0
+    }
+
+    /**
+     * 拼音匹配短文本（标题/分类等 ≤30 字的字段）：
+     * - 全拼模式：查询 ≥3 字符才启用，要求全拼串前缀匹配或包含匹配
+     * - 首字母模式：查询 ≥2 字符才启用，要求首字母串前缀匹配或等长精确匹配
+     * 返回匹配得分（0 = 不匹配）
+     */
+    private fun pinyinMatchShortText(text: String, pinyinQuery: String, queryType: QueryType): Int {
+        if (pinyinQuery.isEmpty()) return 0
+
+        val phonetics = PinyinHelper.phonetics(text)
+
+        return when (queryType) {
+            QueryType.PINYIN_FULL -> {
+                // 全拼至少 3 字符才有意义（如 "zho" 匹配 "zhong"）
+                if (pinyinQuery.length < 3) return 0
+                when {
+                    // 全拼完全匹配（如 "zhongzixing" == 标题全拼）
+                    phonetics.full == pinyinQuery -> 70
+                    // 全拼前缀匹配（如 "zhongzi" 是 "zhongzixing..." 的前缀）
+                    phonetics.full.startsWith(pinyinQuery) -> 60
+                    // 全拼包含匹配，要求查询 ≥ 4 字符（至少是一个双字词的全拼如 "zulin"）
+                    phonetics.full.contains(pinyinQuery)
+                            && pinyinQuery.length >= 4 -> 45
+                    else -> 0
+                }
+            }
+            QueryType.INITIALS -> {
+                // 首字母至少 2 字符（如 "zx" 匹配 "中子星"）
+                if (pinyinQuery.length < 2) return 0
+                when {
+                    // 首字母精确匹配（如 "zzx" == 标题首字母）
+                    phonetics.initials == pinyinQuery -> 65
+                    // 首字母前缀匹配（如 "zz" 是 "zzx" 的前缀）
+                    phonetics.initials.startsWith(pinyinQuery) -> 55
+                    // 首字母包含匹配，但要求占比 ≥ 50% 避免短查询碰撞
+                    phonetics.initials.contains(pinyinQuery)
+                            && pinyinQuery.length.toFloat() / phonetics.initials.length >= 0.5f -> 40
+                    else -> 0
+                }
+            }
+            else -> 0
+        }
     }
 
     /**

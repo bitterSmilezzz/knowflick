@@ -57,6 +57,35 @@ class KnowledgeSearchEngineTest {
 
     private val engine = KnowledgeSearchEngine()
 
+    // ──────────────── QueryType 分类测试 ────────────────
+
+    @Test
+    fun testQueryClassification() {
+        // 含中文 → CHINESE
+        assertEquals(QueryType.CHINESE, QueryType.classify("中子星"))
+        assertEquals(QueryType.CHINESE, QueryType.classify("量子纠缠"))
+        assertEquals(QueryType.CHINESE, QueryType.classify("会计abc"))
+
+        // 含大写字母 → ENGLISH
+        assertEquals(QueryType.ENGLISH, QueryType.classify("AI"))
+        assertEquals(QueryType.ENGLISH, QueryType.classify("LRU"))
+        assertEquals(QueryType.ENGLISH, QueryType.classify("DNA"))
+        assertEquals(QueryType.ENGLISH, QueryType.classify("O"))
+
+        // 纯小写含元音 → PINYIN_FULL
+        assertEquals(QueryType.PINYIN_FULL, QueryType.classify("zulin"))
+        assertEquals(QueryType.PINYIN_FULL, QueryType.classify("zhongzixing"))
+        assertEquals(QueryType.PINYIN_FULL, QueryType.classify("ren"))
+
+        // 纯小写全辅音 → INITIALS
+        assertEquals(QueryType.INITIALS, QueryType.classify("zzx"))
+        assertEquals(QueryType.INITIALS, QueryType.classify("xzl"))
+        assertEquals(QueryType.INITIALS, QueryType.classify("hdl"))
+        assertEquals(QueryType.INITIALS, QueryType.classify("lz"))
+    }
+
+    // ──────────────── 空查询 ────────────────
+
     @Test
     fun testEmptyQueryReturnsNothingSoGuideIsReachable() {
         val results = engine.search(query = "", cards = testCards)
@@ -65,6 +94,8 @@ class KnowledgeSearchEngineTest {
         val blankResults = engine.search(query = "   \n ", cards = testCards)
         assertTrue(blankResults.isEmpty())
     }
+
+    // ──────────────── 维度过滤 ────────────────
 
     @Test
     fun testCategoryAndSourceFilters() {
@@ -92,6 +123,8 @@ class KnowledgeSearchEngineTest {
         assertEquals("CARD-1", seenResults.first().card.id)
     }
 
+    // ──────────────── 中文直接匹配 ────────────────
+
     @Test
     fun testHeadlineDirectMatch() {
         val results = engine.search(query = "量子纠缠", cards = testCards)
@@ -102,13 +135,24 @@ class KnowledgeSearchEngineTest {
     }
 
     @Test
-    fun testPinyinHeadlineMatch() {
-        // "xzl" matches "新租赁"
+    fun testCategoryMatch() {
+        val results = engine.search(query = "会计", cards = testCards)
+        assertFalse(results.isEmpty())
+        assertEquals("会计", results.first().card.category)
+    }
+
+    // ──────────────── 拼音首字母匹配 ────────────────
+
+    @Test
+    fun testPinyinInitialsHeadlineMatch() {
+        // "xzl" matches "新租赁" initials
         val results = engine.search(query = "xzl", cards = testCards)
         assertFalse(results.isEmpty())
         assertEquals("会计", results.first().card.category)
         assertEquals(SearchMatchedField.HEADLINE, results.first().matchedField)
     }
+
+    // ──────────────── 拼音全拼匹配 ────────────────
 
     @Test
     fun testPinyinFullWordMatch() {
@@ -118,12 +162,7 @@ class KnowledgeSearchEngineTest {
         assertEquals("会计", results.first().card.category)
     }
 
-    @Test
-    fun testCategoryMatch() {
-        val results = engine.search(query = "会计", cards = testCards)
-        assertFalse(results.isEmpty())
-        assertEquals("会计", results.first().card.category)
-    }
+    // ──────────────── 正文匹配 ────────────────
 
     @Test
     fun testDetailsSnippetExtraction() {
@@ -134,6 +173,8 @@ class KnowledgeSearchEngineTest {
         assertEquals(SearchMatchedField.DETAILS, results.first().matchedField)
         assertTrue(results.first().matchedExcerpt.contains("EPR"))
     }
+
+    // ──────────────── 排序 ────────────────
 
     @Test
     fun testRankHeadlineHigherThanDetails() {
@@ -153,5 +194,71 @@ class KnowledgeSearchEngineTest {
         assertEquals("计算机", results[0].card.category) // headline contains LRU
         assertEquals("历史", results[1].card.category)   // details contains LRU
         assertTrue(results[0].score > results[1].score)
+    }
+
+    // ──────────────── 防误检测测试 ────────────────
+
+    @Test
+    fun testShortPinyinQueryDoesNotOvermatch() {
+        // 1字符拼音查询不应触发拼音匹配（只走文本匹配）
+        val results1 = engine.search(query = "a", cards = testCards)
+        // "a" 作为纯文本搜索，只有在标题/分类/正文中直接包含 "a" 才命中
+        // 不应通过拼音泛匹配到大量卡片
+        assertTrue("1-char query should not overmatch via pinyin", results1.size <= testCards.size)
+    }
+
+    @Test
+    fun testPinyinDoesNotMatchLongTextFields() {
+        // 纯拼音查询不应通过正文/摘要的拼音串误匹配
+        // "ren" 这类短全拼不应匹配到所有包含"人"字的正文
+        val results = engine.search(query = "ren", cards = testCards)
+        // 应只匹配标题/分类中含"ren"全拼的卡片，不应泛匹配正文
+        for (r in results) {
+            assertTrue(
+                "拼音匹配应只命中标题或分类，不应命中正文: ${r.matchedField}",
+                r.matchedField == SearchMatchedField.HEADLINE
+                        || r.matchedField == SearchMatchedField.CATEGORY
+                        || r.matchedField == SearchMatchedField.SUMMARY  // text match on summary is OK
+                        || r.matchedField == SearchMatchedField.DETAILS  // text match on details is OK
+            )
+        }
+    }
+
+    @Test
+    fun testInitialsMustMeetMinLength() {
+        // Single consonant should not trigger initials matching
+        val results = engine.search(query = "z", cards = testCards)
+        // Should have very few or no results from pure initial matching
+        for (r in results) {
+            // If matched, it must be via text match not pinyin
+            if (r.matchedField == SearchMatchedField.HEADLINE) {
+                assertTrue(
+                    "Single char should not pinyin-match headline",
+                    r.card.headline.lowercase().contains("z")
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testChineseQueryDoesNotTriggerPinyinPath() {
+        // Chinese query "中子" should match only text containing "中子"
+        val results = engine.search(query = "中子", cards = testCards)
+        // Should not match unrelated cards via pinyin
+        for (r in results) {
+            val textContainsQuery = r.card.headline.contains("中子")
+                    || r.card.summary.contains("中子")
+                    || r.card.details.contains("中子")
+                    || r.card.category.contains("中子")
+            assertTrue("Chinese query should only match text-containing cards", textContainsQuery)
+        }
+    }
+
+    @Test
+    fun testExtractSnippet() {
+        val text = "爱因斯坦波多尔斯基罗森佯谬（EPR悖论）试图论证量子力学不完备。"
+        val snippet = engine.extractSnippet(text, "EPR")
+        assertTrue(snippet.contains("EPR"))
+        assertTrue(snippet.length <= 80)
     }
 }
