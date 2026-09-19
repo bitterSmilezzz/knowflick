@@ -277,8 +277,8 @@ private fun SpacedRepetitionDueCard(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF18181C))
-            .border(1.dp, EditorialColor.aiAmber.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
             .padding(18.dp),
     ) {
         Column {
@@ -292,14 +292,15 @@ private fun SpacedRepetitionDueCard(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     "艾宾浩斯间隔复习",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Serif,
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
                     "间隔法则 1/3/7天",
-                    color = Color.White.copy(alpha = 0.45f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                     fontSize = 10.sp,
                 )
             }
@@ -308,7 +309,7 @@ private fun SpacedRepetitionDueCard(
 
             Text(
                 "科学抗遗忘：首次浏览次日复习；遗忘、犹豫、熟练分别间隔 1、3、7 天。",
-                color = Color.White.copy(alpha = 0.65f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
                 fontSize = 11.5.sp,
                 lineHeight = 17.sp,
             )
@@ -323,7 +324,8 @@ private fun SpacedRepetitionDueCard(
                     Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.05f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
                         .padding(12.dp),
                 ) {
                     Column {
@@ -336,7 +338,7 @@ private fun SpacedRepetitionDueCard(
                         )
                         Text(
                             "今日到期待复习",
-                            color = Color.White.copy(alpha = 0.5f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                             fontSize = 10.5.sp,
                         )
                     }
@@ -345,20 +347,21 @@ private fun SpacedRepetitionDueCard(
                     Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.05f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
                         .padding(12.dp),
                 ) {
                     Column {
                         Text(
                             "$completedCount",
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onBackground,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace,
                         )
                         Text(
                             "今日已学/已复习",
-                            color = Color.White.copy(alpha = 0.5f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                             fontSize = 10.5.sp,
                         )
                     }
@@ -376,7 +379,7 @@ private fun SpacedRepetitionDueCard(
                 ) {
                     Text(
                         "开始到期复习 · ${minOf(10, dueCount)} 张",
-                        color = Color.White,
+                        color = Color(0xFF1B1B1F),
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
                     )
@@ -386,7 +389,8 @@ private fun SpacedRepetitionDueCard(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(EditorialColor.likeGreen.copy(alpha = 0.15f))
+                        .background(EditorialColor.likeGreen.copy(alpha = 0.12f))
+                        .border(1.dp, EditorialColor.likeGreen.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
                         .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -416,17 +420,18 @@ private fun MasteryDistributionCard(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF18181C))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
             .padding(18.dp),
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "知识掌握度分布",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Serif,
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
@@ -445,9 +450,9 @@ private fun MasteryDistributionCard(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .height(12.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color.White.copy(alpha = 0.08f)),
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)),
                 ) {
                     if (distribution.masteredCount > 0) {
                         Box(
@@ -470,7 +475,7 @@ private fun MasteryDistributionCard(
                             Modifier
                                 .weight(distribution.needsReviewCount.toFloat())
                                 .fillMaxSize()
-                                .background(Color.White.copy(alpha = 0.18f)),
+                                .background(EditorialColor.dislikeRed.copy(alpha = 0.65f)),
                         )
                     }
                 }
@@ -504,7 +509,7 @@ private fun MasteryDistributionCard(
                     rule = "1 天间隔",
                     count = distribution.needsReviewCount,
                     percent = needsPct,
-                    tint = Color.White.copy(alpha = 0.45f),
+                    tint = EditorialColor.dislikeRed,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -517,12 +522,12 @@ private fun MasteryDistributionCard(
             ) {
                 Text(
                     "测验覆盖: ${distribution.testedCards}/$total 张",
-                    color = Color.White.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                     fontSize = 10.5.sp,
                 )
                 Text(
                     "累计测验: ${distribution.totalReviews} 卡次",
-                    color = Color.White.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                     fontSize = 10.5.sp,
                 )
             }
@@ -542,8 +547,8 @@ private fun MasteryTierPill(
     Box(
         modifier
             .clip(RoundedCornerShape(10.dp))
-            .background(Color.White.copy(alpha = 0.04f))
-            .border(1.dp, tint.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+            .background(tint.copy(alpha = 0.08f))
+            .border(1.dp, tint.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
             .padding(10.dp),
     ) {
         Column {
@@ -566,7 +571,7 @@ private fun MasteryTierPill(
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     "$count",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace,
@@ -574,13 +579,13 @@ private fun MasteryTierPill(
                 Spacer(Modifier.width(4.dp))
                 Text(
                     "$percent%",
-                    color = Color.White.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                     fontSize = 10.sp,
                 )
             }
             Text(
                 rule,
-                color = Color.White.copy(alpha = 0.35f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
                 fontSize = 9.sp,
             )
         }
@@ -597,21 +602,22 @@ private fun UpcomingScheduleCard(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF18181C))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
             .padding(18.dp),
     ) {
         Column {
             Text(
                 "未来 7 天待复习排程预测",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 14.5.sp,
                 fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 "基于已定复习日历推导，助你合理安排每日记忆负荷",
-                color = Color.White.copy(alpha = 0.45f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                 fontSize = 10.5.sp,
             )
 
@@ -633,7 +639,7 @@ private fun UpcomingScheduleCard(
                         if (day.count > 0) {
                             Text(
                                 "${day.count}",
-                                color = if (day.isToday) EditorialColor.aiAmber else Color.White.copy(alpha = 0.7f),
+                                color = if (day.isToday) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace,
                             )
@@ -646,8 +652,8 @@ private fun UpcomingScheduleCard(
                                 .clip(RoundedCornerShape(5.dp))
                                 .background(
                                     if (day.isToday) EditorialColor.aiAmber
-                                    else if (day.count > 0) EditorialColor.aiAmber.copy(alpha = 0.45f)
-                                    else Color.White.copy(alpha = 0.08f),
+                                    else if (day.count > 0) EditorialColor.aiAmber.copy(alpha = 0.40f)
+                                    else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
                                 ),
                         )
                     }
@@ -663,7 +669,7 @@ private fun UpcomingScheduleCard(
                 schedule.forEach { day ->
                     Text(
                         if (day.isToday) "今天" else "${day.date.monthValue}/${day.date.dayOfMonth}",
-                        color = if (day.isToday) EditorialColor.aiAmber else Color.White.copy(alpha = 0.4f),
+                        color = if (day.isToday) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                         fontSize = 9.sp,
                         fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal,
                         modifier = Modifier.weight(1f),
@@ -685,22 +691,23 @@ private fun UpcomingCardsList(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF18181C))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
             .padding(18.dp),
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "近期待复习卡片速览",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Serif,
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
                     "点击可查看详情",
-                    color = Color.White.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                     fontSize = 10.5.sp,
                 )
             }
@@ -708,7 +715,7 @@ private fun UpcomingCardsList(
             Spacer(Modifier.height(14.dp))
 
             upcomingCards.forEachIndexed { index, (card, date) ->
-                if (index > 0) Spacer(Modifier.height(10.dp))
+                if (index > 0) Spacer(Modifier.height(8.dp))
                 val isDueToday = !date.isAfter(today)
                 val dateLabel = if (isDueToday) "今天到期" else if (date == today.plusDays(1)) "明天" else "${date.monthValue}/${date.dayOfMonth}"
 
@@ -716,7 +723,8 @@ private fun UpcomingCardsList(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.04f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                         .clickable { onOpenCardDetail(card.id) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -726,14 +734,20 @@ private fun UpcomingCardsList(
                         Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(
-                                if (isDueToday) EditorialColor.aiAmber.copy(alpha = 0.2f)
-                                else Color.White.copy(alpha = 0.08f),
+                                if (isDueToday) EditorialColor.aiAmber.copy(alpha = 0.16f)
+                                else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
+                            )
+                            .border(
+                                1.dp,
+                                if (isDueToday) EditorialColor.aiAmber.copy(alpha = 0.35f)
+                                else Color.Transparent,
+                                RoundedCornerShape(6.dp),
                             )
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     ) {
                         Text(
                             dateLabel,
-                            color = if (isDueToday) EditorialColor.aiAmber else Color.White.copy(alpha = 0.6f),
+                            color = if (isDueToday) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -742,16 +756,19 @@ private fun UpcomingCardsList(
                     Spacer(Modifier.width(10.dp))
 
                     // 分类小胶囊
+                    val catColor = CategoryStampColor.forCategory(card.category)
                     Box(
                         Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(CategoryStampColor.forCategory(card.category).copy(alpha = 0.15f))
+                            .background(catColor.copy(alpha = 0.12f))
+                            .border(0.8.dp, catColor.copy(alpha = 0.25f), RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     ) {
                         Text(
                             card.category.ifBlank { "未分类" },
-                            color = CategoryStampColor.forCategory(card.category),
-                            fontSize = 9.sp,
+                            color = catColor,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Medium,
                         )
                     }
 
@@ -760,10 +777,11 @@ private fun UpcomingCardsList(
                     // 标题
                     Text(
                         card.headline,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onBackground,
                         fontSize = 12.5.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        fontFamily = FontFamily.Serif,
                         modifier = Modifier.weight(1f),
                     )
                 }
