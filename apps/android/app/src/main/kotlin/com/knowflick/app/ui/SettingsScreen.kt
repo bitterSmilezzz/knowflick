@@ -1,7 +1,9 @@
 package com.knowflick.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +88,7 @@ fun SettingsScreen(
     var speechModel by rememberSaveable { mutableStateOf(initialSpeech.model) }
     var speechVoice by rememberSaveable { mutableStateOf(initialSpeech.voice) }
     var speechKey by rememberSaveable { mutableStateOf(initialSpeechKey) }
+    val isDarkTheme = isSystemInDarkTheme()
     val scope = rememberCoroutineScope()
 
     val currentPreset = AiProviderPresets.presets.firstOrNull { it.id == providerId } ?: AiProviderPresets.fallback()
@@ -179,6 +183,12 @@ fun SettingsScreen(
                                     if (selected) EditorialColor.aiAmber.copy(alpha = 0.22f)
                                     else MaterialTheme.colorScheme.surface,
                                 )
+                                .border(
+                                    1.dp,
+                                    if (selected) EditorialColor.aiAmber.copy(alpha = 0.45f)
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                    RoundedCornerShape(8.dp),
+                                )
                                 .clickable { selectProvider(preset) }
                                 .padding(horizontal = 10.dp, vertical = 7.dp),
                         ) {
@@ -208,10 +218,11 @@ fun SettingsScreen(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
                     Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
                         .clickable(enabled = !isTesting) { runTestConnection() }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 9.dp),
                 ) {
                     if (isTesting) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -225,16 +236,22 @@ fun SettingsScreen(
                 }
                 Box(
                     Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(EditorialColor.likeGreen)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isDarkTheme) EditorialColor.likeGreenPastelDark else EditorialColor.likeGreenPastel)
+                        .border(1.dp, if (isDarkTheme) EditorialColor.likeGreenBorderDark else EditorialColor.likeGreenBorder, RoundedCornerShape(10.dp))
                         .clickable {
                             saveSucceeded = onSave(currentSettings(), apiKey.trim())
                             saveNotice = if (saveSucceeded) "已保存并生效 ✓" else "当前会话已生效，但写入设备失败，请重试"
                             testStatus = ""
                         }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 18.dp, vertical = 9.dp),
                 ) {
-                    Text("保存配置", color = androidx.compose.ui.graphics.Color(0xFF101210), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "保存配置",
+                        color = if (isDarkTheme) EditorialColor.likeGreen else Color(0xFF1E3A24),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
 
@@ -278,6 +295,12 @@ fun SettingsScreen(
                         Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (selected) EditorialColor.aiAmber.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
+                            .border(
+                                1.dp,
+                                if (selected) EditorialColor.aiAmber.copy(alpha = 0.45f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                RoundedCornerShape(8.dp),
+                            )
                             .clickable { speechChannel = channel.name }
                             .padding(horizontal = 10.dp, vertical = 7.dp),
                     ) {
@@ -295,8 +318,9 @@ fun SettingsScreen(
             Spacer(Modifier.height(10.dp))
             Box(
                 Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surface)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isDarkTheme) EditorialColor.likeGreenPastelDark else EditorialColor.likeGreenPastel)
+                    .border(1.dp, if (isDarkTheme) EditorialColor.likeGreenBorderDark else EditorialColor.likeGreenBorder, RoundedCornerShape(10.dp))
                     .clickable {
                         saveSucceeded = onSaveSpeech(
                             com.knowflick.app.speech.SpeechSettings(
@@ -310,9 +334,14 @@ fun SettingsScreen(
                         )
                         saveNotice = if (saveSucceeded) "语音配置已保存 ✓" else "当前会话已生效，但写入设备失败，请重试"
                     }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                    .padding(horizontal = 18.dp, vertical = 9.dp),
             ) {
-                Text("保存语音配置", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    "保存语音配置",
+                    color = if (isDarkTheme) EditorialColor.likeGreen else Color(0xFF1E3A24),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             }
             Spacer(Modifier.height(40.dp))
         }

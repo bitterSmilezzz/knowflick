@@ -99,8 +99,8 @@ fun CardFollowUpChatSheet(
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
-            title = { Text("清空对话记录", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = { Text("确定清空对《${card.headline}》的追问历史吗？清空后不可恢复。", color = Color.White.copy(alpha = 0.8f)) },
+            title = { Text("清空对话记录", color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold) },
+            text = { Text("确定清空对《${card.headline}》的追问历史吗？清空后不可恢复。", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f)) },
             confirmButton = {
                 TextButton(onClick = {
                     showClearDialog = false
@@ -111,17 +111,17 @@ fun CardFollowUpChatSheet(
             },
             dismissButton = {
                 TextButton(onClick = { showClearDialog = false }) {
-                    Text("取消", color = Color.White.copy(alpha = 0.7f))
+                    Text("取消", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f))
                 }
             },
-            containerColor = Color(0xFF1C1C20),
+            containerColor = MaterialTheme.colorScheme.surface,
         )
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF101012))
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
@@ -134,7 +134,7 @@ fun CardFollowUpChatSheet(
                 onClose = onClose,
             )
 
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
 
             // 主内容区：空态引导词 或 消息滚动列表
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -167,7 +167,8 @@ fun CardFollowUpChatSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF3B1818))
+                            .background(EditorialColor.dislikeRedPastel)
+                            .border(1.dp, EditorialColor.dislikeRedBorder)
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -180,14 +181,14 @@ fun CardFollowUpChatSheet(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = errorMessage,
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = EditorialColor.dislikeRed,
                             fontSize = 12.sp,
                         )
                     }
                 }
             }
 
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
 
             // 底部输入栏
             ChatInputBar(
@@ -232,9 +233,10 @@ private fun ChatHeaderBar(
             Spacer(Modifier.width(8.dp))
             Text(
                 "AI 伴学追问",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif,
             )
             Spacer(Modifier.width(10.dp))
             Box(
@@ -260,12 +262,13 @@ private fun ChatHeaderBar(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.08f)),
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
                 ) {
                     Icon(
                         imageVector = AppIcons.Delete,
                         contentDescription = "清空对话",
-                        tint = Color.White.copy(alpha = 0.6f),
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -274,14 +277,14 @@ private fun ChatHeaderBar(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(alpha = 0.10f))
-                    .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
                     .clickable(onClick = onClose)
                     .padding(horizontal = 14.dp, vertical = 6.dp),
             ) {
                 Text(
                     "完成",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                 )
@@ -335,7 +338,7 @@ private fun ChatStartersView(
         Spacer(Modifier.height(14.dp))
         Text(
             text = "探讨《$headline》",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Serif,
@@ -345,7 +348,7 @@ private fun ChatStartersView(
         Spacer(Modifier.height(8.dp))
         Text(
             text = "知识卡片篇幅有限，而好奇心无限。\n选择下方启发性切入点，或直接在底部输入你的独特思考。",
-            color = Color.White.copy(alpha = 0.65f),
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
             fontSize = 12.5.sp,
             lineHeight = 18.sp,
             modifier = Modifier.padding(horizontal = 16.dp),
@@ -358,7 +361,7 @@ private fun ChatStartersView(
         ) {
             Text(
                 "启发式追问 (Click to Ask)",
-                color = Color.White.copy(alpha = 0.45f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
             )
@@ -371,8 +374,8 @@ private fun ChatStartersView(
                     .fillMaxWidth()
                     .padding(vertical = 5.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.05f))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
                     .clickable { onStarterClick(text) }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
@@ -384,7 +387,7 @@ private fun ChatStartersView(
                     Spacer(Modifier.width(12.dp))
                     Text(
                         text = text,
-                        color = Color.White.copy(alpha = 0.9f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.88f),
                         fontSize = 13.sp,
                         fontFamily = FontFamily.Serif,
                         lineHeight = 19.sp,
@@ -475,7 +478,7 @@ private fun ChatMessageBubble(
         ) {
             Text(
                 text = if (isUser) "你" else "KnowFlick 伴学导师",
-                color = Color.White.copy(alpha = 0.40f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 4.dp, start = if (isUser) 0.dp else 4.dp, end = if (isUser) 4.dp else 0.dp),
@@ -492,11 +495,11 @@ private fun ChatMessageBubble(
                         ),
                     )
                     .background(
-                        if (isUser) EditorialColor.aiAmber.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.06f),
+                        if (isUser) EditorialColor.aiAmber.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
                     )
                     .border(
                         1.dp,
-                        if (isUser) EditorialColor.aiAmber.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f),
+                        if (isUser) EditorialColor.aiAmber.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline,
                         RoundedCornerShape(
                             topStart = 16.dp,
                             topEnd = 16.dp,
@@ -511,7 +514,7 @@ private fun ChatMessageBubble(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 "正在推演构思...",
-                                color = Color.White.copy(alpha = 0.7f),
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                                 fontSize = 12.5.sp,
                             )
                             Spacer(Modifier.width(8.dp))
@@ -524,7 +527,7 @@ private fun ChatMessageBubble(
                     } else {
                         Text(
                             text = message.content,
-                            color = Color.White.copy(alpha = 0.95f),
+                            color = MaterialTheme.colorScheme.onBackground,
                             fontSize = 14.sp,
                             lineHeight = 22.sp,
                             fontFamily = if (isUser) FontFamily.Default else FontFamily.Serif,
@@ -552,8 +555,8 @@ private fun ChatMessageBubble(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.08f))
-                            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                             .clickable(onClick = onSpeak)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     ) {
@@ -561,19 +564,19 @@ private fun ChatMessageBubble(
                             Icon(
                                 imageVector = AppIcons.VolumeUp,
                                 contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.75f),
+                                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
                                 modifier = Modifier.size(12.dp),
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("朗读此回答", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                            Text("朗读此回答", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f), fontSize = 11.sp)
                         }
                     }
 
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.08f))
-                            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                             .clickable(onClick = onCopy)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     ) {
@@ -581,11 +584,11 @@ private fun ChatMessageBubble(
                             Icon(
                                 imageVector = AppIcons.ContentCopy,
                                 contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.75f),
+                                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
                                 modifier = Modifier.size(12.dp),
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("复制", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                            Text("复制", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f), fontSize = 11.sp)
                         }
                     }
                 }
@@ -607,7 +610,8 @@ private fun ChatInputBar(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .background(Color(0xFF141418))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -616,15 +620,15 @@ private fun ChatInputBar(
                 .weight(1f)
                 .heightIn(min = 40.dp, max = 100.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = 0.08f))
-                .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (text.isEmpty()) {
                 Text(
                     text = "追问此知识点...",
-                    color = Color.White.copy(alpha = 0.35f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f),
                     fontSize = 13.5.sp,
                 )
             }
@@ -632,7 +636,7 @@ private fun ChatInputBar(
                 value = text,
                 onValueChange = onTextChanged,
                 textStyle = TextStyle(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 13.5.sp,
                     lineHeight = 20.sp,
                     fontFamily = FontFamily.Serif,
@@ -653,12 +657,13 @@ private fun ChatInputBar(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(EditorialColor.dislikeRed.copy(alpha = 0.85f)),
+                    .background(EditorialColor.dislikeRedPastel)
+                    .border(1.dp, EditorialColor.dislikeRedBorder, CircleShape),
             ) {
                 Icon(
                     imageVector = AppIcons.Stop,
                     contentDescription = "停止生成",
-                    tint = Color.White,
+                    tint = EditorialColor.dislikeRed,
                     modifier = Modifier.size(16.dp),
                 )
             }
@@ -672,13 +677,13 @@ private fun ChatInputBar(
                     .size(40.dp)
                     .clip(CircleShape)
                     .background(
-                        if (canSend) EditorialColor.aiAmber else Color.White.copy(alpha = 0.12f),
+                        if (canSend) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
                     ),
             ) {
                 Icon(
                     imageVector = AppIcons.ArrowUp,
                     contentDescription = "发送追问",
-                    tint = if (canSend) Color.White else Color.White.copy(alpha = 0.35f),
+                    tint = if (canSend) Color.White else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f),
                     modifier = Modifier.size(18.dp),
                 )
             }
