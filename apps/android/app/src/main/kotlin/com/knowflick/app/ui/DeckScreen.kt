@@ -667,7 +667,7 @@ fun DeckScreen(
                     ReviewGradeButton(
                         label = "重来",
                         subLabel = "${previews[SpacedRating.AGAIN] ?: 1}天",
-                        color = Color(0xFFEF5350),
+                        color = Color(0xFFE56363),
                     ) {
                         topCard?.let { card ->
                             flyingCard = card
@@ -679,7 +679,7 @@ fun DeckScreen(
                     ReviewGradeButton(
                         label = "较难",
                         subLabel = "${previews[SpacedRating.HARD] ?: 3}天",
-                        color = Color(0xFFFFB74D),
+                        color = Color(0xFFE59C38),
                     ) {
                         topCard?.let { card ->
                             flyingCard = card
@@ -691,7 +691,7 @@ fun DeckScreen(
                     ReviewGradeButton(
                         label = "良好",
                         subLabel = "${previews[SpacedRating.GOOD] ?: 6}天",
-                        color = Color(0xFF26A69A),
+                        color = Color(0xFF389E82),
                     ) {
                         topCard?.let { card ->
                             flyingCard = card
@@ -703,7 +703,7 @@ fun DeckScreen(
                     ReviewGradeButton(
                         label = "容易",
                         subLabel = "${previews[SpacedRating.EASY] ?: 12}天",
-                        color = Color(0xFF42A5F5),
+                        color = Color(0xFF4A88B8),
                     ) {
                         topCard?.let { card ->
                             flyingCard = card
@@ -714,7 +714,8 @@ fun DeckScreen(
                     }
                 }
             } else {
-                // 底部意图按钮
+                // 底部意图按钮：低饱和微彩平托盘，无沉重阴影，触觉反馈舒适
+                val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -725,6 +726,8 @@ fun DeckScreen(
                     IntentButton(
                         icon = Icons.Filled.Close,
                         tint = EditorialColor.dislikeRed,
+                        containerColor = if (isDarkTheme) EditorialColor.dislikeRedPastelDark else EditorialColor.dislikeRedPastel,
+                        borderColor = if (isDarkTheme) EditorialColor.dislikeRedBorderDark else EditorialColor.dislikeRedBorder,
                         size = 50,
                         label = "不喜欢",
                     ) {
@@ -738,6 +741,8 @@ fun DeckScreen(
                     IntentButton(
                         icon = if (topCard?.isFavorite == true) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         tint = EditorialColor.likeGreen,
+                        containerColor = if (isDarkTheme) EditorialColor.likeGreenPastelDark else EditorialColor.likeGreenPastel,
+                        borderColor = if (isDarkTheme) EditorialColor.likeGreenBorderDark else EditorialColor.likeGreenBorder,
                         size = 58,
                         label = "收藏",
                         pulseTrigger = topCard?.isFavorite == true,
@@ -746,7 +751,9 @@ fun DeckScreen(
                     }
                     IntentButton(
                         icon = Icons.AutoMirrored.Filled.ArrowForward,
-                        tint = MaterialTheme.colorScheme.onBackground,
+                        tint = if (isDarkTheme) Color(0xFF90B5D0) else EditorialColor.detailBlue,
+                        containerColor = if (isDarkTheme) EditorialColor.detailBluePastelDark else EditorialColor.detailBluePastel,
+                        borderColor = if (isDarkTheme) EditorialColor.detailBlueBorderDark else EditorialColor.detailBlueBorder,
                         size = 50,
                         label = "详情",
                     ) {
@@ -771,14 +778,16 @@ private fun IntentButton(
     tint: androidx.compose.ui.graphics.Color,
     size: Int = 50,
     label: String,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
     pulseTrigger: Boolean = false,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.88f else 1.0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.65f),
+        targetValue = if (isPressed) 0.90f else 1.0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.70f),
         label = "btnScale",
     )
     val pulseScale = remember { Animatable(1f) }
@@ -786,7 +795,7 @@ private fun IntentButton(
         if (pulseTrigger) {
             pulseScale.snapTo(1f)
             pulseScale.animateTo(
-                1.26f,
+                1.22f,
                 spring(stiffness = Spring.StiffnessHigh, dampingRatio = 0.5f),
             )
             pulseScale.animateTo(
@@ -802,8 +811,8 @@ private fun IntentButton(
                 .size(size.dp)
                 .scale(scale * pulseScale.value)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f), CircleShape)
+                .background(containerColor)
+                .border(1.dp, borderColor, CircleShape)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = androidx.compose.material3.ripple(bounded = true),
@@ -815,14 +824,14 @@ private fun IntentButton(
                 icon,
                 contentDescription = label,
                 tint = tint,
-                modifier = Modifier.size((size * 0.48f).dp),
+                modifier = Modifier.size((size * 0.46f).dp),
             )
         }
         Spacer(Modifier.height(5.dp))
         Text(
             label,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.60f),
-            fontSize = 10.5.sp,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
+            fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
         )
     }

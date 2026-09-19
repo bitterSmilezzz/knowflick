@@ -202,7 +202,7 @@ private fun SegmentedTab(
             .clip(RoundedCornerShape(9.dp))
             .background(if (selected) MaterialTheme.colorScheme.surface else Color.Transparent)
             .border(
-                if (selected) 0.8.dp else 0.dp,
+                if (selected) 1.dp else 0.dp,
                 if (selected) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f) else Color.Transparent,
                 RoundedCornerShape(9.dp),
             )
@@ -224,10 +224,10 @@ private fun HistoryFilterChip(label: String, selected: Boolean, onSelect: () -> 
     Box(
         Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) EditorialColor.aiAmber.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface)
+            .background(if (selected) EditorialColor.aiAmber.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface)
             .border(
-                0.8.dp,
-                if (selected) EditorialColor.aiAmber.copy(alpha = 0.40f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
+                1.dp,
+                if (selected) EditorialColor.aiAmber.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
                 RoundedCornerShape(8.dp),
             )
             .clickable { onSelect() }
@@ -248,22 +248,22 @@ private fun LibraryRow(card: KnowledgeCard, label: String, onClick: () -> Unit) 
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(vertical = 5.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(
                 1.dp,
-                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f),
+                MaterialTheme.colorScheme.outline,
                 RoundedCornerShape(14.dp),
             )
             .clickable { onClick() }
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .background(categoryColor.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                    .border(0.6.dp, categoryColor.copy(alpha = 0.30f), RoundedCornerShape(6.dp))
+                    .background(categoryColor.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
+                    .border(1.dp, categoryColor.copy(alpha = 0.28f), RoundedCornerShape(6.dp))
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
                 Text(card.category.ifBlank { "未分类" }, color = categoryColor, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
@@ -272,7 +272,14 @@ private fun LibraryRow(card: KnowledgeCard, label: String, onClick: () -> Unit) 
             Text(label, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f), fontSize = 10.5.sp)
         }
         Spacer(Modifier.height(10.dp))
-        Text(card.headline, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, lineHeight = 23.sp)
+        Text(
+            card.headline,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 15.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = FontFamily.Serif,
+            lineHeight = 22.sp,
+        )
     }
 }
 

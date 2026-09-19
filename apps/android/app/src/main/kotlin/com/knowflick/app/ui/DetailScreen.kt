@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -78,7 +79,7 @@ fun DetailScreen(
     // 系统返回键与屏内返回语义一致（弹窗展开时拦截返回键优先关闭弹窗）
     androidx.activity.compose.BackHandler(enabled = !showChatSheet && !showPosterSheet) { onBack() }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF101012))) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF121215))) {
         Box(Modifier.fillMaxSize()) {
             if (bg != null) {
                 Image(
@@ -92,9 +93,9 @@ fun DetailScreen(
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.55f),
-                                0.35f to Color(0xE6141416),
-                                1f to Color(0xFF101012),
+                                0f to Color.Black.copy(alpha = 0.50f),
+                                0.30f to Color(0xD9141416),
+                                1f to Color(0xFF121215),
                             ),
                         ),
                 )
@@ -105,61 +106,76 @@ fun DetailScreen(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 54.dp),
+                .padding(horizontal = 22.dp, vertical = 56.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     card.category.ifBlank { "未分类" },
                     color = EditorialColor.aiAmber,
-                    fontSize = 11.sp,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.8.sp,
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
                 if (showAIMark && card.source == com.knowflick.app.domain.CardSource.AI) {
-                    Text("AI 生成 · 请核实", color = Color(0xFFE4B45C), fontSize = 11.sp)
+                    Text(
+                        "AI 生成 · 请核实",
+                        color = Color(0xFFF0CA7D),
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
                 card.headline,
                 color = Color.White,
                 fontSize = 24.sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Serif,
                 lineHeight = 34.sp,
+                letterSpacing = (-0.3).sp,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
             Text(
                 card.summary,
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 16.sp,
+                color = Color.White.copy(alpha = 0.88f),
+                fontSize = 15.5.sp,
                 lineHeight = 24.sp,
                 fontFamily = FontFamily.Serif,
             )
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(28.dp))
             card.paragraphs.forEachIndexed { index, para ->
-                if (index > 0) Spacer(Modifier.height(16.dp))
+                if (index > 0) Spacer(Modifier.height(18.dp))
                 Text(
                     para,
-                    color = Color.White.copy(alpha = 0.78f),
-                    fontSize = 13.5.sp,
-                    lineHeight = 23.sp,
+                    color = Color.White.copy(alpha = 0.82f),
+                    fontSize = 14.sp,
+                    lineHeight = 24.sp,
+                    letterSpacing = 0.15.sp,
                 )
             }
             if (card.links.isNotEmpty()) {
-                Spacer(Modifier.height(30.dp))
-                Text("延伸阅读", color = EditorialColor.aiAmber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(10.dp))
-                card.links.forEach { link ->
+                Spacer(Modifier.height(32.dp))
+                Text(
+                    "延伸阅读",
+                    color = EditorialColor.aiAmber,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                card.links.forEachIndexed { linkIdx, link ->
+                    if (linkIdx > 0) Spacer(Modifier.height(8.dp))
                     val linkUri = runCatching { Uri.parse(link.url) }.getOrNull()
                         ?.takeIf { it.scheme == "https" || it.scheme == "http" }
-                    Text(
-                        "◦ ${link.title}",
-                        color = Color.White.copy(alpha = 0.65f),
-                        fontSize = 12.sp,
-                        lineHeight = 19.sp,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
                             .clickable(
                                 enabled = linkUri != null,
                                 onClickLabel = "打开延伸阅读",
@@ -168,17 +184,39 @@ fun DetailScreen(
                                     context.startActivity(Intent(Intent.ACTION_VIEW, linkUri))
                                 }
                             }
-                            .padding(vertical = 8.dp),
-                    )
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Share,
+                            contentDescription = null,
+                            tint = EditorialColor.aiAmber.copy(alpha = 0.85f),
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            link.title,
+                            color = Color.White.copy(alpha = 0.82f),
+                            fontSize = 12.5.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.35f),
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(28.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(EditorialColor.aiAmber.copy(alpha = 0.12f))
-                    .border(1.dp, EditorialColor.aiAmber.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(EditorialColor.aiAmber.copy(alpha = 0.10f))
+                    .border(1.dp, EditorialColor.aiAmber.copy(alpha = 0.32f), RoundedCornerShape(14.dp))
                     .clickable {
                         showChatSheet = true
                         onOpenChat()
@@ -209,7 +247,7 @@ fun DetailScreen(
             Spacer(Modifier.height(40.dp))
         }
 
-        // 顶栏浮动按钮：返回 / 朗读 / 收藏 / AI 伴学
+        // 顶栏浮动按钮：返回 / 朗读 / 收藏 / AI 伴学（微透圆钮 + 1px 细发丝边框）
         Row(
             Modifier
                 .fillMaxWidth()
@@ -219,17 +257,21 @@ fun DetailScreen(
         ) {
             IconButton(
                 onClick = onBack,
-                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                modifier = Modifier
+                    .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IconButton(
                     onClick = {
                         showChatSheet = true
                         onOpenChat()
                     },
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                    modifier = Modifier
+                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
                 ) {
                     Icon(
                         AppIcons.Sparkles,
@@ -239,7 +281,9 @@ fun DetailScreen(
                 }
                 IconButton(
                     onClick = { onToggleSpeech() },
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                    modifier = Modifier
+                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
                 ) {
                     Icon(
                         if (isSpeakingState) Icons.Filled.Close else AppIcons.VolumeUp,
@@ -249,7 +293,9 @@ fun DetailScreen(
                 }
                 IconButton(
                     onClick = { showPosterSheet = true },
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                    modifier = Modifier
+                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
                 ) {
                     Icon(
                         Icons.Filled.Share,
@@ -259,7 +305,9 @@ fun DetailScreen(
                 }
                 IconButton(
                     onClick = onToggleFavorite,
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                    modifier = Modifier
+                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
                 ) {
                     Icon(
                         if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,

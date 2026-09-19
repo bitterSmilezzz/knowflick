@@ -48,19 +48,14 @@ fun CardFace(
     isReviewMode: Boolean = false,
 ) {
     val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
-    val cardShape = RoundedCornerShape(20.dp)
+    val cardShape = RoundedCornerShape(22.dp)
 
     Box(
         modifier = modifier
             .clip(cardShape)
             .border(
                 1.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.25f),
-                        Color.White.copy(alpha = 0.08f),
-                    ),
-                ),
+                Color.White.copy(alpha = 0.15f),
                 cardShape,
             ),
     ) {
@@ -72,18 +67,18 @@ fun CardFace(
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            Box(Modifier.fillMaxSize().background(Color(0xFF232326)))
+            Box(Modifier.fillMaxSize().background(Color(0xFF161619)))
         }
-        // 动态遮罩：上部轻度暗化 + 底部重渐变，保证文字对比度
+        // 动态通透遮罩：顶部保留摄影通透光感，中下段提供舒适阅读微衬
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.22f),
-                        0.40f to Color.Black.copy(alpha = 0.40f),
-                        0.72f to Color.Black.copy(alpha = 0.76f),
-                        1f to Color.Black.copy(alpha = 0.92f),
+                        0f to Color.Black.copy(alpha = 0.14f),
+                        0.32f to Color.Black.copy(alpha = 0.28f),
+                        0.64f to Color.Black.copy(alpha = 0.58f),
+                        1f to Color.Black.copy(alpha = 0.82f),
                     ),
                 ),
         )
@@ -97,16 +92,16 @@ fun CardFace(
             if (stampAlpha > 0f) {
                 val stampColor = if (isRight) EditorialColor.likeGreen else EditorialColor.dislikeRed
                 val stampText = if (isRight) "♥ 收藏" else "✕ 略过"
-                val stampRotation = if (isRight) -12f else 12f
-                val stampScale = 0.85f + 0.15f * stampAlpha
+                val stampRotation = if (isRight) -10f else 10f
+                val stampScale = 0.88f + 0.12f * stampAlpha
 
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(
-                            start = if (!isRight) 48.dp else 0.dp,
-                            end = if (isRight) 48.dp else 0.dp,
-                            top = 100.dp,
+                            start = if (!isRight) 44.dp else 0.dp,
+                            end = if (isRight) 44.dp else 0.dp,
+                            top = 96.dp,
                         ),
                     contentAlignment = if (isRight) Alignment.TopEnd else Alignment.TopStart,
                 ) {
@@ -114,17 +109,17 @@ fun CardFace(
                         modifier = Modifier
                             .rotate(stampRotation)
                             .scale(stampScale)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(stampColor.copy(alpha = stampAlpha * 0.22f))
-                            .border(2.dp, stampColor.copy(alpha = stampAlpha * 0.90f), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(stampColor.copy(alpha = stampAlpha * 0.18f))
+                            .border(1.5.dp, stampColor.copy(alpha = stampAlpha * 0.85f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 14.dp, vertical = 5.dp),
                     ) {
                         Text(
                             text = stampText,
                             color = stampColor.copy(alpha = stampAlpha),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 2.sp,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp,
                         )
                     }
                 }
@@ -139,32 +134,32 @@ fun CardFace(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CategoryStamp(category = card.category)
                 if (showAIMark && card.source == CardSource.AI) {
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         "AI 生成",
-                        color = Color(0xFFE4B45C),
+                        color = Color(0xFFF0CA7D),
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .background(Color(0x33C79A4B), RoundedCornerShape(6.dp))
-                            .border(0.6.dp, Color(0x66C79A4B), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                            .background(Color(0x28C79A4B), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0x4DC79A4B), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.5.dp),
                     )
                 }
                 if (isReviewMode) {
                     val retrievability = remember(card.id, card.lastReviewedAt) {
                         com.knowflick.app.domain.spaced.SpacedRepetitionEngine.calculateRetrievability(card)
                     }
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         "🧠 留存 $retrievability% · ${card.intervalDays}天间隔",
-                        color = Color(0xFF80CBC4),
+                        color = Color(0xFF86D2C4),
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .background(Color(0x3326A69A), RoundedCornerShape(6.dp))
-                            .border(0.6.dp, Color(0x6626A69A), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                            .background(Color(0x2426A69A), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0x4426A69A), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.5.dp),
                     )
                 }
             }
@@ -172,40 +167,43 @@ fun CardFace(
             Text(
                 card.headline,
                 color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Black,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Serif,
-                lineHeight = 33.sp,
+                lineHeight = 32.sp,
+                letterSpacing = (-0.3).sp,
                 style = TextStyle(
                     shadow = Shadow(
-                        color = Color.Black.copy(alpha = 0.5f),
-                        offset = Offset(0f, 2f),
-                        blurRadius = 6f,
+                        color = Color.Black.copy(alpha = 0.35f),
+                        offset = Offset(0f, 1f),
+                        blurRadius = 2f,
                     ),
                 ),
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
                 card.summary,
-                color = Color.White.copy(alpha = 0.85f),
+                color = Color.White.copy(alpha = 0.88f),
                 fontSize = 13.5.sp,
-                lineHeight = 21.sp,
+                lineHeight = 22.sp,
+                letterSpacing = 0.1.sp,
                 maxLines = 4,
             )
             if (isTop) {
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(16.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-                        .border(0.6.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .background(Color.White.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
                 ) {
                     Text(
                         "点击卡片查看详情与来源 →",
-                        color = Color.White.copy(alpha = 0.85f),
+                        color = Color.White.copy(alpha = 0.82f),
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
+                        letterSpacing = 0.2.sp,
                     )
                 }
             }
@@ -217,17 +215,17 @@ fun CardFace(
 private fun CategoryStamp(category: String) {
     Box(
         Modifier
-            .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
-            .border(0.6.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .background(Color.White.copy(alpha = 0.14f), RoundedCornerShape(6.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 9.dp, vertical = 3.5.dp),
     ) {
         Text(
             category.ifBlank { "未分类" },
             color = Color.White.copy(alpha = 0.95f),
             fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             fontFamily = FontFamily.Serif,
-            letterSpacing = 0.6.sp,
+            letterSpacing = 0.8.sp,
         )
     }
 }

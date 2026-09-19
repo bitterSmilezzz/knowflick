@@ -203,8 +203,9 @@ fun QuizScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(18.dp))
                     .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
                     .clickable { flipped = !flipped },
             ) {
                 QuizCardFace(card = card, flipped = flipped)
@@ -335,13 +336,23 @@ private fun RowScope.RatingButton(label: String, tint: Color, enabled: Boolean, 
     Box(
         Modifier
             .weight(1f)
-            .clip(RoundedCornerShape(10.dp))
-            .background(tint.copy(alpha = if (enabled) 0.9f else 0.25f))
+            .clip(RoundedCornerShape(12.dp))
+            .background(tint.copy(alpha = if (enabled) 0.16f else 0.05f))
+            .border(
+                1.dp,
+                tint.copy(alpha = if (enabled) 0.45f else 0.15f),
+                RoundedCornerShape(12.dp),
+            )
             .clickable(enabled = enabled) { onClick() }
             .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Color(0xFF121212), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(
+            label,
+            color = if (enabled) tint else tint.copy(alpha = 0.35f),
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
