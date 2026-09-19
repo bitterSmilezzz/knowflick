@@ -103,12 +103,14 @@ data class LearningPlan(val cards: List<KnowledgeCard>, val today: LocalDate) {
         ).take(limit)
     }
 
-    /** 下次复习日期：浏览次日为首次；已评分按 masteryLevel 间隔 1/3/7 天 */
+    /** 下次复习日期：浏览次日为首次；优先采用 SM-2 算出的精确 intervalDays，回退兼容 masteryLevel (1/3/7天) */
     fun reviewDate(card: KnowledgeCard): LocalDate? {
         val last = card.lastReviewedAt ?: card.seenAt ?: return null
         val lastDay = Instant.ofEpochMilli(last).atZone(TIME_ZONE).toLocalDate()
         val days = if (card.lastReviewedAt == null) {
             1L
+        } else if (card.intervalDays > 1) {
+            card.intervalDays.toLong()
         } else {
             when {
                 card.masteryLevel >= 2 -> 7L

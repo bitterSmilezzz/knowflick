@@ -603,13 +603,69 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         version++
     }
 
-    /** 提交测验评分：store 记账（reviewCount + masteryLevel），到期队列随之刷新 */
+    // ---------- 智能间隔复习与专属复习卡堆模式 ----------
+
+    var isReviewDeckMode by mutableStateOf(false)
+        private set
+
+    var reviewQueue by mutableStateOf<List<KnowledgeCard>>(emptyList())
+        private set
+
+    var reviewSessionCount by mutableStateOf(0)
+        private set
+
+    var reviewInitialTotal by mutableStateOf(0)
+        private set
+
+    /** 今日待复习卡片总数（到期复习队列） */
+    val dueCardsCount: Int
+        get() = com.knowflick.app.domain.LearningPlan(model.store.cards, java.time.LocalDate.now()).due.size
+
+    /** 开启专属复习卡堆模式 */
+    fun enterReviewDeckMode() {
+        val due = com.knowflick.app.domain.LearningPlan(model.store.cards, java.time.LocalDate.now()).due
+        reviewQueue = due
+        reviewInitialTotal = due.size
+        reviewSessionCount = 0
+        isReviewDeckMode = true
+        version++
+    }
+
+    /** 退出专属复习卡堆模式 */
+    fun exitReviewDeckMode() {
+        isReviewDeckMode = false
+        reviewQueue = emptyList()
+        version++
+    }
+
+    /** 切换专属复习卡堆模式 */
+    fun toggleReviewDeckMode() {
+        if (isReviewDeckMode) {
+            exitReviewDeckMode()
+        } else {
+            enterReviewDeckMode()
+        }
+    }
+
+    /** 专属复习卡堆提交评分（驱动 SM-2 间隔演进、简易度更新与留存率计算） */
+    fun submitReviewRating(card: KnowledgeCard, rating: com.knowflick.app.domain.spaced.SpacedRating) {
+        val result = com.knowflick.app.domain.spaced.SpacedRepetitionEngine.calculate(card, rating)
+        model.store.recordReviewResult(card.id, result)
+        reviewQueue = reviewQueue.filter { it.id != card.id }
+        reviewSessionCount++
+        version++
+        schedulePersist()
+    }
+
+    /** 提交测验评分：驱动 SM-2 间隔演进并记账，到期队列随之刷新 */
     fun rateQuiz(rating: com.knowflick.app.domain.QuizRating) {
         val session = quizSession ?: return
         val card = session.current ?: return
         if (!session.rate(rating)) return
         quizCycleRatedIds += card.id
-        model.store.recordQuizResult(card.id, rating.masteryLevel)
+        val spacedRating = com.knowflick.app.domain.spaced.SpacedRating.fromQuizRating(rating)
+        val result = com.knowflick.app.domain.spaced.SpacedRepetitionEngine.calculate(card, spacedRating)
+        model.store.recordReviewResult(card.id, result)
         version++
         schedulePersist()
     }

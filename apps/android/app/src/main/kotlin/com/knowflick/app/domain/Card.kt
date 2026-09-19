@@ -61,6 +61,12 @@ data class KnowledgeCard(
     val masteryLevel: Int = 0,
     /** 上次复习时间戳 */
     val lastReviewedAt: Long? = null,
+    /** SM-2 连续成功复习次数 */
+    val repetition: Int = 0,
+    /** SM-2 下次复习间隔天数（初始 1 天） */
+    val intervalDays: Int = 1,
+    /** SM-2 简易度系数 EF（初始 2.5，范围 1.3 ~ 3.0） */
+    val easeFactor: Double = 2.5,
 ) {
     /** 解析正文为段落（macOS 端以双换行分段） */
     val paragraphs: List<String> get() = details.split("\n\n").filter { it.isNotBlank() }

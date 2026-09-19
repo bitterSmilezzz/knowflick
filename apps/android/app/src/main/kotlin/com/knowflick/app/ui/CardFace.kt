@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +45,7 @@ fun CardFace(
     modifier: Modifier = Modifier,
     isTop: Boolean = true,
     swipeProgress: Float = 0f,
+    isReviewMode: Boolean = false,
 ) {
     val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
     val cardShape = RoundedCornerShape(20.dp)
@@ -146,6 +148,22 @@ fun CardFace(
                         modifier = Modifier
                             .background(Color(0x33C79A4B), RoundedCornerShape(6.dp))
                             .border(0.6.dp, Color(0x66C79A4B), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+                if (isReviewMode) {
+                    val retrievability = remember(card.id, card.lastReviewedAt) {
+                        com.knowflick.app.domain.spaced.SpacedRepetitionEngine.calculateRetrievability(card)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "🧠 留存 $retrievability% · ${card.intervalDays}天间隔",
+                        color = Color(0xFF80CBC4),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .background(Color(0x3326A69A), RoundedCornerShape(6.dp))
+                            .border(0.6.dp, Color(0x6626A69A), RoundedCornerShape(6.dp))
                             .padding(horizontal = 8.dp, vertical = 3.dp),
                     )
                 }

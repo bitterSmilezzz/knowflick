@@ -7,6 +7,7 @@ import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -16,6 +17,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,9 +35,14 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -62,6 +70,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -69,6 +78,8 @@ import androidx.compose.ui.unit.sp
 import com.knowflick.app.domain.CardThemeResolver
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.SwipeDirection
+import com.knowflick.app.domain.spaced.SpacedRating
+import com.knowflick.app.domain.spaced.SpacedRepetitionEngine
 import kotlin.math.abs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -129,6 +140,11 @@ fun DeckScreen(
     onOpenBackupExport: () -> Unit = {},
     onPickImportFile: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
+    isReviewMode: Boolean = false,
+    dueReviewCount: Int = 0,
+    onToggleReviewMode: () -> Unit = {},
+    onSubmitReviewRating: (KnowledgeCard, SpacedRating) -> Unit = { _, _ -> },
+    reviewSessionCount: Int = 0,
 ) {
     val haptics = LocalHapticFeedback.current
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -197,129 +213,243 @@ fun DeckScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         Column(Modifier.fillMaxSize()) {
-            // 顶栏
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "KnowFlick",
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = EditorialColor.aiAmber,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Serif,
-                )
-                if (isGenerating) {
-                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                }
-                IconButton(onClick = {
-                    if (!isGenerating) onGenerateRequest()
-                }) {
-                    Icon(Icons.Filled.AddCircle, contentDescription = "AI 生成新知识", tint = EditorialColor.aiAmber)
-                }
-                IconButton(onClick = onOpenSearch) {
-                    Icon(AppIcons.Search, contentDescription = "搜索与筛选", tint = MaterialTheme.colorScheme.onBackground)
-                }
-                IconButton(onClick = onOpenFavorites) {
-                    Icon(AppIcons.Bookmarks, contentDescription = "收藏阁", tint = MaterialTheme.colorScheme.onBackground)
-                }
-                var showMore by remember { mutableStateOf(false) }
-                Box {
-                    IconButton(onClick = { showMore = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onBackground)
+                if (isReviewMode) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = EditorialColor.aiAmber.copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, EditorialColor.aiAmber.copy(alpha = 0.45f)),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = null,
+                                tint = EditorialColor.aiAmber,
+                                modifier = Modifier.size(15.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "专属复习卡堆 (${deck.size})",
+                                color = EditorialColor.aiAmber,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
-                    androidx.compose.material3.DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("撤销上一张", fontSize = 13.sp) },
-                            enabled = canUndo,
-                            onClick = { showMore = false; onUndo() },
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                        modifier = Modifier.clickable(onClick = onToggleReviewMode),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "退出复习",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "KnowFlick",
+                            maxLines = 1,
+                            color = EditorialColor.aiAmber,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Serif,
                         )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("知识测验", fontSize = 13.sp) },
-                            onClick = { showMore = false; onOpenQuiz() },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("搜索与筛选…", fontSize = 13.sp) },
-                            onClick = { showMore = false; onOpenSearch() },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("分享当前海报…", fontSize = 13.sp) },
-                            enabled = topCard != null,
-                            onClick = {
-                                showMore = false
-                                sharePosterCard = topCard
-                            },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("添加桌面微件…", fontSize = 13.sp) },
-                            onClick = {
-                                showMore = false
-                                val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                                val provider = android.content.ComponentName(context, com.knowflick.app.widget.DailyCardGlanceWidgetReceiver::class.java)
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && appWidgetManager.isRequestPinAppWidgetSupported) {
-                                    appWidgetManager.requestPinAppWidget(provider, null, null)
-                                } else {
-                                    android.widget.Toast.makeText(context, "可长按手机桌面空白处添加 KnowFlick 微件", android.widget.Toast.LENGTH_SHORT).show()
+                        if (dueReviewCount > 0) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0x28FFB74D),
+                                border = BorderStroke(0.8.dp, Color(0x66FFB74D)),
+                                modifier = Modifier.clickable(onClick = onToggleReviewMode),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(5.dp)
+                                            .background(Color(0xFFFFB74D), CircleShape)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        "复习 $dueReviewCount",
+                                        color = Color(0xFFFFB74D),
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
                                 }
-                            },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("学习统计", fontSize = 13.sp) },
-                            onClick = { showMore = false; onOpenStats() },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("数据备份与导出…", fontSize = 13.sp) },
-                            onClick = {
-                                showMore = false
-                                onOpenBackupExport()
-                            },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("导入归档数据…", fontSize = 13.sp) },
-                            onClick = {
-                                showMore = false
-                                onPickImportFile()
-                            },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("AI 服务设置", fontSize = 13.sp) },
-                            onClick = { showMore = false; onOpenSettings() },
-                        )
+                            }
+                        }
                     }
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isAmbientMode) EditorialColor.aiAmber.copy(alpha = 0.16f) else androidx.compose.ui.graphics.Color.Transparent)
-                        .border(
-                            1.dp,
-                            if (isAmbientMode) EditorialColor.aiAmber.copy(alpha = 0.40f) else androidx.compose.ui.graphics.Color.Transparent,
-                            RoundedCornerShape(12.dp),
-                        ),
-                ) {
-                    IconButton(onClick = onToggleAmbient) {
+                    Spacer(Modifier.weight(1f))
+                    if (isGenerating) {
+                        androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = { if (!isGenerating) onGenerateRequest() }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.AddCircle, contentDescription = "AI 生成新知识", tint = EditorialColor.aiAmber, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onOpenSearch),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(AppIcons.Search, contentDescription = "搜索与筛选", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onOpenFavorites),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(AppIcons.Bookmarks, contentDescription = "收藏阁", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(2.dp))
+                    var showMore by remember { mutableStateOf(false) }
+                    Box {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .clickable(onClick = { showMore = true }),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+                        }
+                        androidx.compose.material3.DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("专属到期复习卡堆 ($dueReviewCount)", fontSize = 13.sp) },
+                                onClick = {
+                                    showMore = false
+                                    onToggleReviewMode()
+                                },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("撤销上一张", fontSize = 13.sp) },
+                                enabled = canUndo,
+                                onClick = { showMore = false; onUndo() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("知识测验", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenQuiz() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("搜索与筛选…", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenSearch() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("分享当前海报…", fontSize = 13.sp) },
+                                enabled = topCard != null,
+                                onClick = {
+                                    showMore = false
+                                    sharePosterCard = topCard
+                                },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("添加桌面微件…", fontSize = 13.sp) },
+                                onClick = {
+                                    showMore = false
+                                    val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
+                                    val hasSupported = appWidgetManager.isRequestPinAppWidgetSupported
+                                    if (hasSupported) {
+                                        val component = android.content.ComponentName(context, com.knowflick.app.widget.DailyCardGlanceWidgetReceiver::class.java)
+                                        appWidgetManager.requestPinAppWidget(component, null, null)
+                                    } else {
+                                        android.widget.Toast.makeText(context, "当前桌面启动器不支持直接锁定添加微件，请长按桌面手动添加", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("学习统计", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenStats() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("数据备份与导出…", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenBackupExport() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("导入归档数据…", fontSize = 13.sp) },
+                                onClick = { showMore = false; onPickImportFile() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("AI 服务设置", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenSettings() },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isAmbientMode) EditorialColor.aiAmber.copy(alpha = 0.16f) else androidx.compose.ui.graphics.Color.Transparent)
+                            .border(
+                                1.dp,
+                                if (isAmbientMode) EditorialColor.aiAmber.copy(alpha = 0.40f) else androidx.compose.ui.graphics.Color.Transparent,
+                                RoundedCornerShape(8.dp),
+                            )
+                            .clickable(onClick = onToggleAmbient),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Icon(
                             AppIcons.Headphones,
                             contentDescription = if (isAmbientMode) "退出磨耳朵" else "磨耳朵连续朗读",
                             tint = if (isAmbientMode) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
-                }
-                IconButton(onClick = {
-                    topCard?.let { card ->
-                        flyingCard = card
-                        flyingDirection = SwipeDirection.SKIP
-                        flyingStart = Offset.Zero
-                        onMutate { store.swipe(card, SwipeDirection.SKIP) }
+                    Spacer(Modifier.width(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = {
+                                topCard?.let { card ->
+                                    flyingCard = card
+                                    flyingDirection = SwipeDirection.SKIP
+                                    flyingStart = Offset.Zero
+                                    onMutate { store.swipe(card, SwipeDirection.SKIP) }
+                                }
+                            }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(AppIcons.Sync, contentDescription = "换一批", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
                     }
-                }) {
-                    Icon(AppIcons.Sync, contentDescription = "换一批", tint = MaterialTheme.colorScheme.onBackground)
                 }
             }
 
@@ -333,7 +463,14 @@ fun DeckScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 if (topCard == null) {
-                    EmptyState(onRestart = { onMutate { store.clearHistory() } })
+                    if (isReviewMode) {
+                        ReviewCelebrationCard(
+                            sessionCount = reviewSessionCount,
+                            onBackToExplore = onToggleReviewMode,
+                        )
+                    } else {
+                        EmptyState(onRestart = { onMutate { store.clearHistory() } })
+                    }
                 } else {
                     // 底层卡：最深的先绘制；变换按真实堆叠位置计算
                     //（此前 asReversed 的索引被直接当作深度，导致最深卡全尺寸渲染、图章阶梯外漏）
@@ -400,7 +537,12 @@ fun DeckScreen(
                                                     flyingCard = card
                                                     flyingDirection = direction
                                                     flyingStart = Offset(rawDrag.x, rawDrag.y * VERTICAL_DAMPING_RATIO)
-                                                    onMutate { store.swipe(card, direction) }
+                                                    if (isReviewMode) {
+                                                        val rating = if (direction == SwipeDirection.RIGHT) SpacedRating.GOOD else SpacedRating.AGAIN
+                                                        onSubmitReviewRating(card, rating)
+                                                    } else {
+                                                        onMutate { store.swipe(card, direction) }
+                                                    }
                                                     rawDrag = Offset.Zero
                                                     thresholdCrossed = false
                                                 } else {
@@ -447,6 +589,7 @@ fun DeckScreen(
                                     modifier = cardModifier,
                                     isTop = isTop,
                                     swipeProgress = swipeProgress,
+                                    isReviewMode = isReviewMode,
                                 )
                             }
                         }
@@ -510,43 +653,105 @@ fun DeckScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 )
             }
-            // 底部意图按钮
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 40.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IntentButton(
-                    icon = Icons.Filled.Close,
-                    tint = EditorialColor.dislikeRed,
-                    size = 50,
-                    label = "不喜欢",
+            if (isReviewMode) {
+                val previews = remember(topCard?.id) {
+                    topCard?.let { SpacedRepetitionEngine.previewNextIntervals(it) } ?: emptyMap()
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    topCard?.let { card ->
-                        flyingCard = card
-                        flyingDirection = SwipeDirection.LEFT
-                        flyingStart = Offset.Zero
-                        onMutate { store.swipe(card, SwipeDirection.LEFT) }
+                    ReviewGradeButton(
+                        label = "重来",
+                        subLabel = "${previews[SpacedRating.AGAIN] ?: 1}天",
+                        color = Color(0xFFEF5350),
+                    ) {
+                        topCard?.let { card ->
+                            flyingCard = card
+                            flyingDirection = SwipeDirection.LEFT
+                            flyingStart = Offset.Zero
+                            onSubmitReviewRating(card, SpacedRating.AGAIN)
+                        }
+                    }
+                    ReviewGradeButton(
+                        label = "较难",
+                        subLabel = "${previews[SpacedRating.HARD] ?: 3}天",
+                        color = Color(0xFFFFB74D),
+                    ) {
+                        topCard?.let { card ->
+                            flyingCard = card
+                            flyingDirection = SwipeDirection.RIGHT
+                            flyingStart = Offset.Zero
+                            onSubmitReviewRating(card, SpacedRating.HARD)
+                        }
+                    }
+                    ReviewGradeButton(
+                        label = "良好",
+                        subLabel = "${previews[SpacedRating.GOOD] ?: 6}天",
+                        color = Color(0xFF26A69A),
+                    ) {
+                        topCard?.let { card ->
+                            flyingCard = card
+                            flyingDirection = SwipeDirection.RIGHT
+                            flyingStart = Offset.Zero
+                            onSubmitReviewRating(card, SpacedRating.GOOD)
+                        }
+                    }
+                    ReviewGradeButton(
+                        label = "容易",
+                        subLabel = "${previews[SpacedRating.EASY] ?: 12}天",
+                        color = Color(0xFF42A5F5),
+                    ) {
+                        topCard?.let { card ->
+                            flyingCard = card
+                            flyingDirection = SwipeDirection.RIGHT
+                            flyingStart = Offset.Zero
+                            onSubmitReviewRating(card, SpacedRating.EASY)
+                        }
                     }
                 }
-                IntentButton(
-                    icon = if (topCard?.isFavorite == true) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    tint = EditorialColor.likeGreen,
-                    size = 58,
-                    label = "收藏",
-                    pulseTrigger = topCard?.isFavorite == true,
+            } else {
+                // 底部意图按钮
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 40.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    topCard?.let { card -> onMutate { store.toggleFavorite(card) } }
-                }
-                IntentButton(
-                    icon = Icons.AutoMirrored.Filled.ArrowForward,
-                    tint = MaterialTheme.colorScheme.onBackground,
-                    size = 50,
-                    label = "详情",
-                ) {
-                    topCard?.let(onOpenDetail)
+                    IntentButton(
+                        icon = Icons.Filled.Close,
+                        tint = EditorialColor.dislikeRed,
+                        size = 50,
+                        label = "不喜欢",
+                    ) {
+                        topCard?.let { card ->
+                            flyingCard = card
+                            flyingDirection = SwipeDirection.LEFT
+                            flyingStart = Offset.Zero
+                            onMutate { store.swipe(card, SwipeDirection.LEFT) }
+                        }
+                    }
+                    IntentButton(
+                        icon = if (topCard?.isFavorite == true) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        tint = EditorialColor.likeGreen,
+                        size = 58,
+                        label = "收藏",
+                        pulseTrigger = topCard?.isFavorite == true,
+                    ) {
+                        topCard?.let { card -> onMutate { store.toggleFavorite(card) } }
+                    }
+                    IntentButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowForward,
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        size = 50,
+                        label = "详情",
+                    ) {
+                        topCard?.let(onOpenDetail)
+                    }
                 }
             }
         }
@@ -647,6 +852,105 @@ private fun EmptyState(onRestart: () -> Unit) {
         Spacer(Modifier.height(22.dp))
         TextButton(onClick = onRestart) {
             Text("重新探索全部卡片 ↻", color = EditorialColor.aiAmber, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun ReviewGradeButton(
+    label: String,
+    subLabel: String,
+    color: Color,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1.0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.65f),
+        label = "gradeScale",
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .scale(scale)
+            .clip(RoundedCornerShape(14.dp))
+            .background(color.copy(alpha = 0.14f))
+            .border(1.dp, color.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(bounded = true),
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            label,
+            color = color,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            subLabel,
+            color = color.copy(alpha = 0.8f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun ReviewCelebrationCard(
+    sessionCount: Int,
+    onBackToExplore: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .background(EditorialColor.aiAmber.copy(alpha = 0.15f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.Star,
+                contentDescription = null,
+                tint = EditorialColor.aiAmber,
+                modifier = Modifier.size(36.dp),
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "今日到期复习圆满达成！",
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Serif,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "本次已通过 SM-2 算法强化巩固 $sessionCount 张核心卡片\n遗忘曲线已重置至高可提取度区间",
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(26.dp))
+        Button(
+            onClick = onBackToExplore,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = EditorialColor.aiAmber,
+            ),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Text("返回常规探索卡堆 ↻", color = Color(0xFF1E1E24), fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
     }
 }

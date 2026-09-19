@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
                             val deckVersion = viewModel.version
                             DeckScreen(
                                 store = viewModel.model.store,
-                                deck = viewModel.model.store.deck,
+                                deck = if (viewModel.isReviewDeckMode) viewModel.reviewQueue else viewModel.model.store.deck,
                                 version = deckVersion,
                                 onMutate = viewModel::mutate,
                                 showAIMark = viewModel.settings.showAIMark,
@@ -94,13 +94,13 @@ class MainActivity : ComponentActivity() {
                                 onOpenStats = { screen = Screen.STATS },
                                 onOpenFavorites = { screen = Screen.LIBRARY },
                                 onOpenSettings = { screen = Screen.SETTINGS },
-                            isGenerating = viewModel.isGenerating,
-                            notice = viewModel.persistenceNotice ?: viewModel.generateNotice,
-                            onGenerateRequest = { viewModel.generateNewCards(count = 3) },
-                            onOpenQuiz = {
-                                viewModel.startQuiz()
-                                screen = Screen.QUIZ
-                            },
+                                isGenerating = viewModel.isGenerating,
+                                notice = viewModel.persistenceNotice ?: viewModel.generateNotice,
+                                onGenerateRequest = { viewModel.generateNewCards(count = 3) },
+                                onOpenQuiz = {
+                                    viewModel.startQuiz()
+                                    screen = Screen.QUIZ
+                                },
                                 isAmbientMode = viewModel.speech.isAmbientMode,
                                 onToggleAmbient = {
                                     viewModel.speech.toggleAmbient(viewModel.model.store.topCard)
@@ -113,6 +113,13 @@ class MainActivity : ComponentActivity() {
                                     importFilePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/json", "text/*", "*/*"))
                                 },
                                 onOpenSearch = { viewModel.openSearchSheet() },
+                                isReviewMode = viewModel.isReviewDeckMode,
+                                dueReviewCount = viewModel.dueCardsCount,
+                                onToggleReviewMode = { viewModel.toggleReviewDeckMode() },
+                                onSubmitReviewRating = { card, rating ->
+                                    viewModel.submitReviewRating(card, rating)
+                                },
+                                reviewSessionCount = viewModel.reviewSessionCount,
                             )
                         }
                         Screen.DETAIL -> {

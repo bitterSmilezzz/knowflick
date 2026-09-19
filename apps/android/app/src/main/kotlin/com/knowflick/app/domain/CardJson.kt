@@ -95,6 +95,9 @@ object CardJson {
             reviewCount = obj.intField("reviewCount") ?: 0,
             masteryLevel = obj.intField("masteryLevel") ?: 0,
             lastReviewedAt = obj.longField("lastReviewedAt"),
+            repetition = obj.intField("repetition") ?: 0,
+            intervalDays = obj.intField("intervalDays") ?: 1,
+            easeFactor = (obj["easeFactor"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 2.5,
         )
     }
 
@@ -122,6 +125,9 @@ object CardJson {
         put("reviewCount", card.reviewCount)
         put("masteryLevel", card.masteryLevel)
         card.lastReviewedAt?.let { put("lastReviewedAt", encodeDate(it)) }
+        put("repetition", card.repetition)
+        put("intervalDays", card.intervalDays)
+        put("easeFactor", card.easeFactor)
     }
 
     object CardJsonSerializer : KSerializer<KnowledgeCard> {

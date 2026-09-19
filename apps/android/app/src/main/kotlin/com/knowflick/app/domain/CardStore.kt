@@ -203,6 +203,26 @@ class CardStore(
         recompute()
     }
 
+    /** 间隔重复复习自评：使用 SM-2 结果更新卡片记忆模型参数并重算排程 */
+    fun recordReviewResult(
+        cardId: String,
+        result: com.knowflick.app.domain.spaced.SpacedReviewResult,
+    ) {
+        val index = cards.indexOfFirst { it.id == cardId }
+        if (index < 0) return
+        val current = cards[index]
+        val updated = current.copy(
+            reviewCount = current.reviewCount + 1,
+            repetition = result.repetition,
+            intervalDays = result.intervalDays,
+            easeFactor = result.easeFactor,
+            masteryLevel = result.masteryLevel.coerceIn(0, 2),
+            lastReviewedAt = result.lastReviewedAt,
+        )
+        cards = cards.toMutableList().apply { set(index, updated) }
+        recompute()
+    }
+
     /** 合并外部卡片（导入 / AI 生成 / 种子增量），归一化标题去重，默认置顶 */
     fun addCards(incoming: List<KnowledgeCard>, insertAtTop: Boolean = true): Int {
         val existingHeadlines = cards.map { CardTextUtils.normalizeHeadline(it.headline) }.toSet()

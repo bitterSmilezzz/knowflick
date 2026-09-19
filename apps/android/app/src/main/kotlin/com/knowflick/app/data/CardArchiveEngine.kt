@@ -108,7 +108,7 @@ object CardArchiveEngine {
         val manifestJson = buildJsonObject {
             put("app", "KnowFlick")
             put("platform", "Android")
-            put("version", "0.8.7")
+            put("version", "0.8.8")
             put("exportTime", nowStr)
             put("totalCards", cards.size)
             put("favoriteCards", favoritesCount)
