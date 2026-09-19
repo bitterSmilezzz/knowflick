@@ -145,14 +145,16 @@ fun DetailScreen(
                 fontFamily = FontFamily.Serif,
             )
             Spacer(Modifier.height(28.dp))
-            card.paragraphs.forEachIndexed { index, para ->
-                if (index > 0) Spacer(Modifier.height(18.dp))
-                Text(
-                    para,
-                    color = Color.White.copy(alpha = 0.82f),
-                    fontSize = 14.sp,
-                    lineHeight = 24.sp,
-                    letterSpacing = 0.15.sp,
+            card.paragraphs.forEachIndexed { idx, para ->
+                if (idx > 0) Spacer(Modifier.height(18.dp))
+                com.knowflick.app.ui.common.MarkdownText(
+                    markdown = para,
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = androidx.compose.ui.text.TextStyle(
+                        fontSize = 14.sp,
+                        lineHeight = 24.sp,
+                        letterSpacing = 0.15.sp,
+                    ),
                 )
             }
             if (card.links.isNotEmpty()) {

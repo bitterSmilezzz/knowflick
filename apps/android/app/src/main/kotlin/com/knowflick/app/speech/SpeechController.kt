@@ -121,6 +121,10 @@ class SpeechController(
     private var ttsPausedAccumulatedMs: Long = 0L
     private var ttsEstimatedTotalDurationMs: Long = 0L
 
+    init {
+        SpeechPlaybackService.activeController = this
+    }
+
     // ---------- 对外播控接口 ----------
 
     fun ensureTts() {
@@ -139,7 +143,7 @@ class SpeechController(
                     updateEngineSpeedAndPitch()
                     pendingCard?.let { card ->
                         pendingCard = null
-                        if (isSpeaking && speakingCardId == card.id) speak(card)
+                        speakWithSystemTts(card)
                     }
                 }
             }
@@ -180,6 +184,15 @@ class SpeechController(
         playbackProgress = 0f
         currentPositionMs = 0L
 
+        SpeechPlaybackService.updateService(
+            context = context,
+            card = card,
+            isPlaying = true,
+            isAmbientMode = isAmbientMode,
+            positionMs = 0L,
+            durationMs = durationMs,
+        )
+
         when (val decision = SpeechChannelPolicy.decide(settings, apiKey)) {
             is SpeechChannelPolicy.Decision.SystemTts -> speakWithSystemTts(card)
             is SpeechChannelPolicy.Decision.Remote -> {
@@ -198,6 +211,15 @@ class SpeechController(
         isSpeaking = false
         isPaused = true
         stopProgressTracker()
+
+        SpeechPlaybackService.updateService(
+            context = context,
+            card = currentCard,
+            isPlaying = false,
+            isAmbientMode = isAmbientMode,
+            positionMs = currentPositionMs,
+            durationMs = durationMs,
+        )
 
         // MediaPlayer 通道
         mediaPlayer?.let { player ->
@@ -223,6 +245,15 @@ class SpeechController(
         val card = currentCard ?: return
         isSpeaking = true
         isPaused = false
+
+        SpeechPlaybackService.updateService(
+            context = context,
+            card = card,
+            isPlaying = true,
+            isAmbientMode = isAmbientMode,
+            positionMs = currentPositionMs,
+            durationMs = durationMs,
+        )
 
         // MediaPlayer 通道
         mediaPlayer?.let { player ->
@@ -251,6 +282,8 @@ class SpeechController(
         playbackProgress = 0f
         currentPositionMs = 0L
         durationMs = 0L
+
+        SpeechPlaybackService.stopService(context)
     }
 
     /** 相对快进快退（单位秒，负数快退，正数快进） */

@@ -37,7 +37,15 @@ enum class SpacedRating(
 }
 
 /**
- * SM-2 计算结果包
+ * 间隔重复核心算法引擎类型
+ */
+enum class SpacedAlgorithm(val displayName: String) {
+    SM2("SM-2 经典排程"),
+    FSRS("FSRS 自适应认知算法");
+}
+
+/**
+ * 间隔重复计算结果包
  */
 data class SpacedReviewResult(
     val cardId: String,
@@ -47,12 +55,14 @@ data class SpacedReviewResult(
     val masteryLevel: Int,
     val lastReviewedAt: Long,
     val retrievability: Int,
+    val stability: Double = 0.0,
+    val difficulty: Double = 0.0,
 )
 
 /**
- * 工业级 SuperMemo SM-2 间隔重复与艾宾浩斯遗忘曲线引擎：
- * 1. 动态自适应间隔（Interval）与简易度（Ease Factor）演进；
- * 2. 艾宾浩斯遗忘曲线记忆可提取率（Retrievability）数学建模；
+ * 工业级 SuperMemo SM-2 & FSRS 双引擎间隔重复系统：
+ * 1. 动态自适应间隔（Interval）与简易度（Ease Factor / Stability）演进；
+ * 2. 艾宾浩斯与 FSRS 幂律遗忘曲线记忆可提取率（Retrievability）数学建模；
  * 3. 即时多档间隔预告（Preview Intervals）；
  * 4. 100% 向后兼容与三档/四档平滑映射。
  */
@@ -60,14 +70,22 @@ object SpacedRepetitionEngine {
 
     private val TIME_ZONE: ZoneId = ZoneId.systemDefault()
 
+    /** 当前激活的间隔重复算法（默认保持 SM-2 稳定排程，用户可在统计中随时切换至 FSRS） */
+    var activeAlgorithm: SpacedAlgorithm = SpacedAlgorithm.SM2
+
     /**
-     * 根据当前卡片记忆状态与自评档位，计算下一阶段 SM-2 记忆参数
+     * 根据当前卡片记忆状态与自评档位，计算下一阶段记忆参数
      */
     fun calculate(
         card: KnowledgeCard,
         rating: SpacedRating,
         nowEpochMs: Long = System.currentTimeMillis(),
+        algorithm: SpacedAlgorithm = activeAlgorithm,
     ): SpacedReviewResult {
+        if (algorithm == SpacedAlgorithm.FSRS) {
+            return FsrsEngine.calculate(card, rating, nowEpochMs)
+        }
+
         val q = rating.quality
         val prevRepetition = card.repetition
         val prevInterval = card.intervalDays.coerceAtLeast(1)
@@ -118,22 +136,25 @@ object SpacedRepetitionEngine {
             masteryLevel = newMastery,
             lastReviewedAt = nowEpochMs,
             retrievability = 100, // 刚复习完时刻瞬时留存率定义为 100%
+            stability = card.stability,
+            difficulty = card.difficulty,
         )
     }
 
     /**
      * 预计算四档操作在当前卡片下的具体天数（用于在 UI 按钮上直观标注「1天 / 3天 / 6天 / 14天」）
      */
-    fun previewNextIntervals(card: KnowledgeCard): Map<SpacedRating, Int> {
+    fun previewNextIntervals(
+        card: KnowledgeCard,
+        algorithm: SpacedAlgorithm = activeAlgorithm,
+    ): Map<SpacedRating, Int> {
         return SpacedRating.entries.associateWith { rating ->
-            calculate(card, rating).intervalDays
+            calculate(card, rating, algorithm = algorithm).intervalDays
         }
     }
 
     /**
-     * 艾宾浩斯遗忘曲线：计算卡片在当前时刻的记忆可提取率（Retrievability, 0 ~ 100%）
-     * 数学模型：R(t) = exp(- k * t / S)，其中 k = ln(10/9) ≈ 0.10536
-     * （在经过 interval 天时，预期记忆留存率为 90% 标准门限）
+     * 计算卡片在当前时刻的记忆可提取率（Retrievability, 0 ~ 100%）
      */
     fun calculateRetrievability(
         card: KnowledgeCard,
@@ -147,6 +168,12 @@ object SpacedRepetitionEngine {
         val elapsedDays = ChronoUnit.DAYS.between(lastDate, nowDate).coerceAtLeast(0L)
 
         if (elapsedDays <= 0L) return 100
+
+        // 若卡片已具有 FSRS 稳定性数据，优先使用 FSRS 幂律遗忘曲线
+        if (card.stability > 0.0) {
+            val retrievability = FsrsEngine.calculateRetrievability(elapsedDays.toDouble(), card.stability)
+            return (retrievability * 100.0).roundToInt().coerceIn(10, 100)
+        }
 
         val interval = card.intervalDays.coerceAtLeast(1).toDouble()
         // 目标留存衰减率: R = exp(- 0.10536 * (t / S))

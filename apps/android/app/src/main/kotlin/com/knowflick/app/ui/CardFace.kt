@@ -34,8 +34,12 @@ import com.knowflick.app.domain.CardThemeResolver
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.KnowledgeCard
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import com.knowflick.app.ui.common.MarkdownText
+
 /**
- * 单张卡面：分类摄影底图 + 多阶暗化遮罩 + 宋体式衬线大标题 + 交互滑动印章。
+ * 单张卡面：分类摄影底图 + 多阶暗化遮罩 + 宋体式衬线大标题 + 交互滑动印章 + 3D 轴心微倾角。
  * 对齐 macOS 端 CardView / DynamicScrim 的视觉结构。
  */
 @Composable
@@ -49,9 +53,17 @@ fun CardFace(
 ) {
     val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
     val cardShape = RoundedCornerShape(22.dp)
+    val density = LocalDensity.current.density
+
+    // 3D 轴心立体微视差动效：随拖拽位移产生细微真实的 Y 轴微旋转
+    val tiltY = if (isTop && swipeProgress != 0f) (swipeProgress * 6.5f).coerceIn(-6.5f, 6.5f) else 0f
 
     Box(
         modifier = modifier
+            .graphicsLayer {
+                rotationY = tiltY
+                cameraDistance = 16f * density
+            }
             .clip(cardShape)
             .border(
                 1.dp,
@@ -181,12 +193,14 @@ fun CardFace(
                 ),
             )
             Spacer(Modifier.height(12.dp))
-            Text(
-                card.summary,
+            MarkdownText(
+                markdown = card.summary,
                 color = Color.White.copy(alpha = 0.88f),
-                fontSize = 13.5.sp,
-                lineHeight = 22.sp,
-                letterSpacing = 0.1.sp,
+                style = TextStyle(
+                    fontSize = 13.5.sp,
+                    lineHeight = 22.sp,
+                    letterSpacing = 0.1.sp,
+                ),
                 maxLines = 4,
             )
             if (isTop) {

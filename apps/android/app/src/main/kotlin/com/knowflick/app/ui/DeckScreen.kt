@@ -146,7 +146,7 @@ fun DeckScreen(
     onSubmitReviewRating: (KnowledgeCard, SpacedRating) -> Unit = { _, _ -> },
     reviewSessionCount: Int = 0,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = com.knowflick.app.ui.common.rememberHapticFeedbackHelper()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // 跨设备一致的手势标尺：全部由 dp 推导，与设备像素密度无关
@@ -512,6 +512,7 @@ fun DeckScreen(
                                         val velocityTracker = VelocityTracker()
                                         detectDragGestures(
                                             onDragStart = {
+                                                haptics.tick()
                                                 velocityTracker.resetTracking()
                                                 val current = if (isReturning) returnAnim.value else rawDrag
                                                 returnJob?.cancel()
@@ -537,6 +538,11 @@ fun DeckScreen(
                                                     flyingCard = card
                                                     flyingDirection = direction
                                                     flyingStart = Offset(rawDrag.x, rawDrag.y * VERTICAL_DAMPING_RATIO)
+                                                    if (direction == SwipeDirection.RIGHT) {
+                                                        haptics.success()
+                                                    } else {
+                                                        haptics.warning()
+                                                    }
                                                     if (isReviewMode) {
                                                         val rating = if (direction == SwipeDirection.RIGHT) SpacedRating.GOOD else SpacedRating.AGAIN
                                                         onSubmitReviewRating(card, rating)
@@ -560,7 +566,7 @@ fun DeckScreen(
                                             val crossed = abs(rawDrag.x) > swipeThresholdPx && isHorizontalDominant && !thresholdCrossed
                                             if (crossed) {
                                                 thresholdCrossed = true
-                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                haptics.click()
                                             } else if (abs(rawDrag.x) < hysteresisPx || !isHorizontalDominant) {
                                                 thresholdCrossed = false
                                             }
@@ -669,6 +675,7 @@ fun DeckScreen(
                         subLabel = "${previews[SpacedRating.AGAIN] ?: 1}天",
                         color = Color(0xFFE56363),
                     ) {
+                        haptics.warning()
                         topCard?.let { card ->
                             flyingCard = card
                             flyingDirection = SwipeDirection.LEFT
@@ -681,6 +688,7 @@ fun DeckScreen(
                         subLabel = "${previews[SpacedRating.HARD] ?: 3}天",
                         color = Color(0xFFE59C38),
                     ) {
+                        haptics.warning()
                         topCard?.let { card ->
                             flyingCard = card
                             flyingDirection = SwipeDirection.RIGHT
@@ -693,6 +701,7 @@ fun DeckScreen(
                         subLabel = "${previews[SpacedRating.GOOD] ?: 6}天",
                         color = Color(0xFF389E82),
                     ) {
+                        haptics.success()
                         topCard?.let { card ->
                             flyingCard = card
                             flyingDirection = SwipeDirection.RIGHT
@@ -705,6 +714,7 @@ fun DeckScreen(
                         subLabel = "${previews[SpacedRating.EASY] ?: 12}天",
                         color = Color(0xFF4A88B8),
                     ) {
+                        haptics.success()
                         topCard?.let { card ->
                             flyingCard = card
                             flyingDirection = SwipeDirection.RIGHT

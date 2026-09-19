@@ -98,6 +98,8 @@ object CardJson {
             repetition = obj.intField("repetition") ?: 0,
             intervalDays = obj.intField("intervalDays") ?: 1,
             easeFactor = (obj["easeFactor"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 2.5,
+            stability = (obj["stability"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.0,
+            difficulty = (obj["difficulty"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.0,
         )
     }
 
@@ -128,6 +130,8 @@ object CardJson {
         put("repetition", card.repetition)
         put("intervalDays", card.intervalDays)
         put("easeFactor", card.easeFactor)
+        if (card.stability > 0.0) put("stability", card.stability)
+        if (card.difficulty > 0.0) put("difficulty", card.difficulty)
     }
 
     object CardJsonSerializer : KSerializer<KnowledgeCard> {

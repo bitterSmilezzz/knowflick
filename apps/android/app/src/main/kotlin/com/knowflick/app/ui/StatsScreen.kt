@@ -27,6 +27,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -112,7 +114,7 @@ fun StatsScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // 1. 艾宾浩斯间隔复习概览卡
+            // 1. 艾宾浩斯与 FSRS 间隔复习概览卡
             SpacedRepetitionDueCard(
                 plan = plan,
                 onStartDueReview = onStartDueReview,
@@ -120,7 +122,15 @@ fun StatsScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // 2. 掌握度三档分布可视化
+            // 2. 35 天学习活跃度打卡热力图
+            com.knowflick.app.ui.stats.LearningHeatmap(
+                cards = cards,
+                today = today,
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            // 3. 掌握度三档分布可视化
             MasteryDistributionCard(
                 distribution = masteryDist,
             )
@@ -291,18 +301,39 @@ private fun SpacedRepetitionDueCard(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "艾宾浩斯间隔复习",
+                    "间隔复习与认知排程",
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Serif,
                 )
                 Spacer(Modifier.weight(1f))
-                Text(
-                    "间隔法则 1/3/7天",
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
-                    fontSize = 10.sp,
-                )
+                var currentAlgo by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf(com.knowflick.app.domain.spaced.SpacedRepetitionEngine.activeAlgorithm)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(EditorialColor.aiAmber.copy(alpha = 0.14f))
+                        .border(1.dp, EditorialColor.aiAmber.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                        .clickable {
+                            val next = if (currentAlgo == com.knowflick.app.domain.spaced.SpacedAlgorithm.FSRS) {
+                                com.knowflick.app.domain.spaced.SpacedAlgorithm.SM2
+                            } else {
+                                com.knowflick.app.domain.spaced.SpacedAlgorithm.FSRS
+                            }
+                            com.knowflick.app.domain.spaced.SpacedRepetitionEngine.activeAlgorithm = next
+                            currentAlgo = next
+                        }
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        currentAlgo.displayName,
+                        color = EditorialColor.aiAmber,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
 
             Spacer(Modifier.height(12.dp))

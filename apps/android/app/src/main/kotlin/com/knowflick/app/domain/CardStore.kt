@@ -203,7 +203,7 @@ class CardStore(
         recompute()
     }
 
-    /** 间隔重复复习自评：使用 SM-2 结果更新卡片记忆模型参数并重算排程 */
+    /** 间隔重复复习自评：使用 SM-2 / FSRS 结果更新卡片记忆模型参数并重算排程 */
     fun recordReviewResult(
         cardId: String,
         result: com.knowflick.app.domain.spaced.SpacedReviewResult,
@@ -218,6 +218,8 @@ class CardStore(
             easeFactor = result.easeFactor,
             masteryLevel = result.masteryLevel.coerceIn(0, 2),
             lastReviewedAt = result.lastReviewedAt,
+            stability = if (result.stability > 0.0) result.stability else current.stability,
+            difficulty = if (result.difficulty > 0.0) result.difficulty else current.difficulty,
         )
         cards = cards.toMutableList().apply { set(index, updated) }
         recompute()

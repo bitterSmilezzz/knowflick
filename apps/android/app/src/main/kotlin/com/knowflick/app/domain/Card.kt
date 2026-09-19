@@ -1,5 +1,6 @@
 package com.knowflick.app.domain
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -29,6 +30,7 @@ enum class CardSource(val raw: String) {
 }
 
 /** 科普链接 */
+@Immutable
 @Serializable
 data class ScienceLink(val title: String, val url: String)
 
@@ -39,6 +41,7 @@ data class ScienceLink(val title: String, val url: String)
  * 序列化细节见 [CardJson]——kotlinx.serialization 默认生成器无法表达 Swift 侧
  * 「缺字段回填 / 未知来源兜底 / 宽松日期」的解码语义，故由 [CardJson.CardJsonSerializer] 接管编解码。
  */
+@Immutable
 @Serializable(with = CardJson.CardJsonSerializer::class)
 data class KnowledgeCard(
     val id: String,
@@ -63,10 +66,14 @@ data class KnowledgeCard(
     val lastReviewedAt: Long? = null,
     /** SM-2 连续成功复习次数 */
     val repetition: Int = 0,
-    /** SM-2 下次复习间隔天数（初始 1 天） */
+    /** SM-2 / FSRS 下次复习间隔天数（初始 1 天） */
     val intervalDays: Int = 1,
     /** SM-2 简易度系数 EF（初始 2.5，范围 1.3 ~ 3.0） */
     val easeFactor: Double = 2.5,
+    /** FSRS 记忆稳定性 Stability（单位：天，0.0 表示未初始化） */
+    val stability: Double = 0.0,
+    /** FSRS 记忆难度 Difficulty（范围 1.0 ~ 10.0，0.0 表示未初始化） */
+    val difficulty: Double = 0.0,
 ) {
     /** 解析正文为段落（macOS 端以双换行分段） */
     val paragraphs: List<String> get() = details.split("\n\n").filter { it.isNotBlank() }
@@ -94,5 +101,6 @@ data class KnowledgeCard(
 }
 
 /** 学习意图偏好：收藏管理使用的三态 */
+@Immutable
 @Serializable
 data class CategoryConfig(val name: String, val description: String)
