@@ -6,6 +6,26 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [android-v0.8.9] - 2026-09-19
+
+### Android：多角度深度体验打磨 — 3D触感动效、系统媒体播控、LaTeX排版、FSRS自适应算法与打卡热力图
+
+- **分级触觉震感与 3D 轴心视差倾角动效（Haptics & 3D Parallax）**：
+  - 引入 `HapticFeedbackHelper`，实现 `tick`（按压抓取）、`click`（越过判定阈值）、`success`（掌握/右划双振）、`warning`（跳过/左划双振）四档精细物理反馈。
+  - 卡片滑动引入真实 3D 轴心微倾角（`rotationY = tiltY`，`cameraDistance = 16f * density`），结合弹簧阻尼调优，呈现温润生动的物理纸牌视差质感。
+- **系统原生媒体播控与锁屏中心（MediaSession & Foreground Service）**：
+  - 新增 `SpeechPlaybackService` 前台媒体服务，集成系统级 `MediaSession` 与 `Notification.MediaStyle`。
+  - 支持 Android 13+ / 14 / 15 大图波浪纹媒体通知面板，锁屏与通知栏支持切卡、上一张与播放/暂停原生控制。
+- **高性能富文本排版与 LaTeX 科学公式引擎（MarkdownTextRenderer）**：
+  - 纯 Kotlin / Compose 轻量高效解析，支持粗体、斜体、代码块、引用块及列表项。
+  - 自动转换 LaTeX 科学数学符号（如希腊字母、$\pm$、$\times$、$\approx$、$\rightarrow$ 等）与上下标（$x^2 \rightarrow x²$, $H_2O \rightarrow H₂O$），主卡面与详情页排版专业度大幅跃升。
+- **FSRS 4.5 自适应认知排程算法与 35 天活跃度热力图（FSRS & Activity Heatmap）**：
+  - 集成现代间隔重复记忆前沿算法 FSRS 4.5（稳定性 $S$、难度 $D$ 与可提取率 $R$ 三维模型），根据 90% 目标留存率动态计算最优复习间隔。
+  - `SpacedRepetitionEngine` 支持 SM-2 与 FSRS 双算法引擎动态双向热切换，完美兼容历史数据。
+  - 学习统计中心新增 GitHub 风格 35 天（5 周）学习打卡活跃度日历热力图，提供 5 阶微彩图谱直观展现连续打卡习惯。
+- **Compose 性能与编译器重组优化**：
+  - 核心领域模型 `Card` 标注 `@androidx.compose.runtime.Immutable`，向 Compose 编译器声明不可变契约，杜绝滑动过程中的无效重组与内存抖动。
+
 ## [android-v0.8.8] - 2026-09-19
 
 ### Android：SM-2 智能复习系统、扁平化人文设计、全文检索与全功能伴学矩阵
