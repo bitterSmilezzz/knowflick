@@ -1,50 +1,67 @@
 package com.knowflick.app.ai
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 
 /**
- * 增量对象扫描器：字节级状态机从流式累积 buffer 中提取顶层 JSON 对象。
- * 记录扫描位置，每个 delta 只扫新增字节（移植自 macOS IncrementalObjectScanner）。
- * JSON 结构字符与转义均为 ASCII，多字节 UTF-8 内容不会误触状态机。
+ * 增量对象扫描器：原生基本类型字节级状态机，从流式累积 buffer 中提取顶层 JSON 对象并直接解码。
+ * 彻底消除 Byte 对象装箱开销与二次字符串重建。
  */
 class AiObjectScanner {
-    private var buffer: MutableList<Byte> = ArrayList()
+    private var buffer = ByteArray(8192)
+    private var size = 0
     private var position = 0
     private var depth = 0
     private var inString = false
     private var escape = false
     private var start = 0
-    private val found = ArrayList<JsonObject>()
+    private val found = ArrayList<AiCardPayload>()
 
     fun append(delta: String) {
         if (delta.isEmpty()) return
-        buffer.addAll(delta.toByteArray(Charsets.UTF_8).asList())
+        val bytes = delta.toByteArray(Charsets.UTF_8)
+        ensureCapacity(size + bytes.size)
+        System.arraycopy(bytes, 0, buffer, size, bytes.size)
+        size += bytes.size
         scan()
     }
 
-    val objects: List<JsonObject> get() = found
+    val objects: List<AiCardPayload> get() = found
+
+    private fun ensureCapacity(minCapacity: Int) {
+        if (minCapacity <= buffer.size) return
+        var newCap = buffer.size * 2
+        if (newCap < minCapacity) newCap = minCapacity
+        val newBuf = ByteArray(newCap)
+        System.arraycopy(buffer, 0, newBuf, 0, size)
+        buffer = newBuf
+    }
 
     private fun scan() {
-        while (position < buffer.size) {
+        while (position < size) {
             val byte = buffer[position]
-            when {
-                escape -> escape = false
-                byte == BACKSLASH && inString -> escape = true
-                byte == QUOTE -> inString = !inString
-                !inString -> when (byte) {
-                    BRACE_OPEN -> {
-                        if (depth == 0) start = position
-                        depth += 1
-                    }
-                    BRACE_CLOSE -> {
-                        depth -= 1
-                        if (depth == 0) {
-                            val objData = buffer.subList(start, position + 1).toByteArray()
-                            runCatching {
-                                json.decodeFromString(JsonObject.serializer(), objData.decodeToString())
-                            }.getOrNull()?.let { found.add(it) }
-                        }
+            if (depth == 0) {
+                if (byte == BRACE_OPEN) {
+                    start = position
+                    depth = 1
+                }
+            } else if (escape) {
+                escape = false
+            } else if (byte == BACKSLASH && inString) {
+                escape = true
+            } else if (byte == QUOTE) {
+                inString = !inString
+            } else if (!inString) {
+                if (byte == BRACE_OPEN) {
+                    depth += 1
+                } else if (byte == BRACE_CLOSE) {
+                    depth -= 1
+                    if (depth == 0) {
+                        inString = false
+                        escape = false
+                        val objStr = String(buffer, start, position - start + 1, Charsets.UTF_8)
+                        runCatching {
+                            json.decodeFromString(AiCardPayload.serializer(), objStr)
+                        }.getOrNull()?.let { found.add(it) }
                     }
                 }
             }
@@ -52,7 +69,7 @@ class AiObjectScanner {
         }
     }
 
-    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true }
 
     companion object {
         private val QUOTE: Byte = '"'.code.toByte()

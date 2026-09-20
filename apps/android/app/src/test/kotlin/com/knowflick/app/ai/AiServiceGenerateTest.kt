@@ -93,4 +93,21 @@ class AiServiceGenerateTest {
             server.shutdown()
         }
     }
+
+    @Test
+    fun generateCardsSplitsBatchesWhenCountExceedsLimit() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(sseBody("量子纠缠与信息守恒")))
+        server.enqueue(MockResponse().setBody(sseBody("深海热泉生态系统的能量来源")))
+        server.start()
+        try {
+            val service = AiService(client = okhttp3.OkHttpClient(), retryBaseDelayMs = 1)
+            val settings = AiSettings(baseURL = server.url("/v1").toString(), model = "test-model")
+            val cards = service.generateCards(settings, apiKey = "k", count = 8, excludeHeadlines = emptyList())
+            assertEquals(2, cards.size)
+            assertEquals(2, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
 }

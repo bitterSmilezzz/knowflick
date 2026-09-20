@@ -34,11 +34,7 @@ class AiServiceUtilTest {
             scanner.append(text.substring(index, end))
             index = end
         }
-        assertEquals(whole.map { it.headline }, scanner.objects.map { obj ->
-            runCatching {
-                kotlinx.serialization.json.Json.decodeFromJsonElement(AiCardPayload.serializer(), obj)
-            }.getOrNull()?.headline
-        })
+        assertEquals(whole.map { it.headline }, scanner.objects.map { it.headline })
     }
 
     @Test

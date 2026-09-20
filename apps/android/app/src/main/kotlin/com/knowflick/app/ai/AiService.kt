@@ -7,6 +7,9 @@ import com.knowflick.app.net.executeCancellable
 import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -93,38 +96,56 @@ class AiService(
         val allCards = ArrayList<KnowledgeCard>(count)
         val now = System.currentTimeMillis()
 
+        val batches = ArrayList<Int>()
         var remaining = count
         while (remaining > 0) {
             val batch = minOf(remaining, MAX_CARDS_PER_REQUEST)
-            val payloads = requestBatch(
-                settings, key, needsKey, batch, topic,
+            batches.add(batch)
+            remaining -= batch
+        }
+
+        val allPayloads: List<AiCardPayload> = if (batches.size == 1) {
+            requestBatch(
+                settings, key, needsKey, batches[0], topic,
                 excludeList.takeLast(EXCLUDE_HEADLINE_LIMIT), onDelta,
             )
-            for (payload in payloads) {
-                if (payload.details.length < 80) continue
-                val headlineKey = AiTextUtils.normalizeHeadline(payload.headline)
-                val bigram = AiTextUtils.bigramSet(payload.headline)
-                if (headlineKey.isEmpty() || !seenHeadlines.add(headlineKey)) continue
-                if (excludedBigrams.any { AiTextUtils.jaccard(bigram, it) > AiTextUtils.NEAR_DUPLICATE_THRESHOLD }) continue
-                seenHeadlines += headlineKey
-                excludedBigrams += bigram
-                excludeList += payload.headline
-                allCards += KnowledgeCard(
-                    id = newId(),
-                    category = com.knowflick.app.domain.CategoryRegistry.normalize(payload.category, custom = emptyList()),
-                    headline = payload.headline,
-                    summary = payload.summary,
-                    details = payload.details,
-                    links = AiTextUtils.buildSearchLinks(
-                        keywords = payload.searchKeywords,
-                        preferred = preferredSources,
-                        aiSources = payload.sources,
-                    ),
-                    source = CardSource.AI,
-                    createdAt = now,
-                )
+        } else {
+            coroutineScope {
+                batches.map { batch ->
+                    async {
+                        requestBatch(
+                            settings, key, needsKey, batch, topic,
+                            excludeList.takeLast(EXCLUDE_HEADLINE_LIMIT), onDelta,
+                        )
+                    }
+                }.awaitAll().flatten()
             }
-            remaining -= batch
+        }
+
+        for (payload in allPayloads) {
+            if (payload.details.length < 80) continue
+            val headlineKey = AiTextUtils.normalizeHeadline(payload.headline)
+            val bigram = AiTextUtils.bigramSet(payload.headline)
+            if (headlineKey.isEmpty() || !seenHeadlines.add(headlineKey)) continue
+            if (excludedBigrams.any { AiTextUtils.jaccard(bigram, it) > AiTextUtils.NEAR_DUPLICATE_THRESHOLD }) continue
+            seenHeadlines += headlineKey
+            excludedBigrams += bigram
+            excludeList += payload.headline
+            allCards += KnowledgeCard(
+                id = newId(),
+                category = com.knowflick.app.domain.CategoryRegistry.normalize(payload.category, custom = emptyList()),
+                headline = payload.headline,
+                summary = payload.summary,
+                details = payload.details,
+                links = AiTextUtils.buildSearchLinks(
+                    keywords = payload.searchKeywords,
+                    preferred = preferredSources,
+                    aiSources = payload.sources,
+                ),
+                source = CardSource.AI,
+                createdAt = now,
+            )
+            if (allCards.size >= count) break
         }
         if (allCards.isEmpty()) throw AiError.NoUsableCards()
         return allCards
@@ -181,7 +202,7 @@ class AiService(
                             onDelta?.invoke(delta)
                             if (scanner.objects.size >= batchCount) break
                         }
-                        val found = AiPayloadParser.parseObjects(scanner.objects.joinToString("") { it.toString() })
+                        val found = scanner.objects
                         if (found.isEmpty()) throw AiError.Parse("AI 未返回可用回复，请重试")
                         found
                 }

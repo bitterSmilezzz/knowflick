@@ -54,7 +54,7 @@ public struct AIService: Sendable {
 
     // MARK: - 生成知识卡片
 
-    public struct AICardPayload: Decodable {
+    public struct AICardPayload: Decodable, Sendable {
         public let category: String
         public let headline: String
         public let summary: String
@@ -130,56 +130,81 @@ public struct AIService: Sendable {
         )
 
         // 单次请求产出上限：约 900 token/张、max_tokens 封顶 8192 → 单请求最多约 6 张。
-        // 更大批量分多次请求，每批把前批产出纳入排除口径，避免跨批重复。
+        // 大于 6 张时采用并发批处理（TaskGroup），大幅缩减用户等待耗时。
+        var batches: [Int] = []
+        var rem = count
+        while rem > 0 {
+            let b = min(rem, Self.maxCardsPerRequest)
+            batches.append(b)
+            rem -= b
+        }
+
+        let allPayloads: [AICardPayload]
+        if batches.count == 1 {
+            allPayloads = try await requestBatch(
+                systemPrompt: systemPrompt,
+                settings: settings,
+                batchCount: batches[0],
+                topic: topic,
+                customHint: customHint,
+                excludeList: Array(excludeListParam.prefix(100)),
+                preferredSources: preferredSources
+            )
+        } else {
+            allPayloads = try await withThrowingTaskGroup(of: [AICardPayload].self) { group in
+                for batch in batches {
+                    group.addTask {
+                        try await self.requestBatch(
+                            systemPrompt: systemPrompt,
+                            settings: settings,
+                            batchCount: batch,
+                            topic: topic,
+                            customHint: customHint,
+                            excludeList: Array(excludeListParam.prefix(100)),
+                            preferredSources: preferredSources
+                        )
+                    }
+                }
+                var aggregated: [AICardPayload] = []
+                for try await batchResults in group {
+                    aggregated.append(contentsOf: batchResults)
+                }
+                return aggregated
+            }
+        }
+
         var excludedKeys = excludedKeysParam
         var excludedBigrams = excludedBigramsParam
         var seenKeys = Set<String>()
         var seenBigrams: [Set<String>] = []
-        var excludeList = excludeListParam
         var allCards: [KnowledgeCard] = []
         let now = Date()
 
-        var remaining = count
-        while remaining > 0 {
-            let batch = min(remaining, Self.maxCardsPerRequest)
-            let payloads = try await requestBatch(
-                systemPrompt: systemPrompt,
-                settings: settings,
-                batchCount: batch,
-                topic: topic,
-                customHint: customHint,
-                excludeList: Array(excludeList.prefix(100)),
-                preferredSources: preferredSources
-            )
-
-
-            for p in payloads {
-                guard p.details.count >= 80 else { continue }
-                let key = Self.normalizeHeadline(p.headline)
-                let bigram = Self.bigramSet(p.headline)
-                guard !key.isEmpty, !excludedKeys.contains(key), seenKeys.insert(key).inserted else { continue }
-                guard !excludedBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { continue }
-                guard !seenBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { continue }
-                excludedKeys.insert(key)
-                excludedBigrams.append(bigram)
-                excludeList.append(p.headline)
-                seenBigrams.append(bigram)
-                allCards.append(KnowledgeCard(
-                    category: CategoryRegistry.normalize(p.category, custom: settings.customCategoryNames),
-                    headline: p.headline,
-                    summary: p.summary,
-                    details: p.details,
-                    links: Self.buildSearchLinks(
-                        keywords: p.searchKeywords,
-                        sources: p.sources.isEmpty ? preferredSources : p.sources
-                    ),
-                    source: .ai,
-                    createdAt: now
-                ))
+        for p in allPayloads {
+            guard p.details.count >= 80 else { continue }
+            let key = Self.normalizeHeadline(p.headline)
+            let bigram = Self.bigramSet(p.headline)
+            guard !key.isEmpty, !excludedKeys.contains(key), seenKeys.insert(key).inserted else { continue }
+            guard !excludedBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { continue }
+            guard !seenBigrams.contains(where: { Self.jaccard(bigram, $0) > Self.nearDuplicateThreshold }) else { continue }
+            excludedKeys.insert(key)
+            excludedBigrams.append(bigram)
+            seenBigrams.append(bigram)
+            allCards.append(KnowledgeCard(
+                category: CategoryRegistry.normalize(p.category, custom: settings.customCategoryNames),
+                headline: p.headline,
+                summary: p.summary,
+                details: p.details,
+                links: Self.buildSearchLinks(
+                    keywords: p.searchKeywords,
+                    sources: p.sources.isEmpty ? preferredSources : p.sources
+                ),
+                source: .ai,
+                createdAt: now
+            ))
+            if allCards.count >= count {
+                break
             }
-            // 该批无任何可用产出且仍有后续批时，继续（可能是全部撞上去重）；
-            // 所有批次均无产出时由末尾 noUsableCards 兜底
-            remaining -= batch
         }
 
         // 「请求成功但无可用产出」是一等语义，不再用空数组当第二失败通道
@@ -241,28 +266,36 @@ public struct AIService: Sendable {
     /// 生成系统提示词（分类白名单/内容方向/信源偏好，与批次无关）
     private static func cardSystemPrompt(categoryWhitelist: String, categoryGuides: String, sourcesHint: String) -> String {
         """
-        你是一个严谨的知识卡片编辑，为中文读者生成真实、可查证的领域知识卡。
+        你是一位知识架构师与资深科学编辑，致力于为中文读者创作高认知密度、真实可查证且富有洞见的「KnowFlick 知识卡片」。
 
-        硬性要求：
-        - 每条内容必须真实准确；不确定的事实宁可不写，严禁编造数字、人名、年份
-        - 标题一句话点出反直觉、有趣或有用的点（如「香蕉是浆果，草莓不是」）
-        - 摘要一句话概括核心
-        - 详情 3-6 段，每段讲一个角度（机制解释、历史背景、冷门细节、相关现象/实操要点），用 \\n\\n 分段
-        - 分类必须从下列白名单中选择，不要发明新分类：
+        【标题设计准则】
+        - 标题是一张卡片的灵魂：必须一句话点出反直觉事实、颠覆性认知或核心矛盾（如「过拟合：模型把背题当成了学会」「香蕉是浆果，草莓却不是」）；
+        - 严禁空泛、教科书式的学术绪论标题（坚决杜绝「XX 的基本原理」「浅析 XX」「XX 概述与应用」等平庸写法）。
+
+        【正文三段式递进结构】
+        正文（details）必须为 3 到 5 个自然段，用 \\n\\n 分隔，各段逻辑清晰递进：
+        1. 【本质机理解构】：用极精炼且通俗形象的语言，讲透背后的物理、数学、生理或运转底层机理；
+        2. 【颠覆常识/关键证据】：讲述最具戏剧性或颠覆认知的实验证据、历史转折或冷门惊奇细节；
+        3. 【现实映射与应用】：讲明该原理在现代前沿科技、工程系统或日常认知中的深刻映射。
+        - 严禁任何 AI 套话废话（坚决禁止「总而言之」「综上所述」「值得一提的是」「不可否认」等口癖）。
+
+        【硬性字段约束】
+        - 分类必须从下列白名单中选择，严禁自造分类：
           \(categoryWhitelist)
         \(categoryGuides)
-        - sources 从下列用户偏好站点中选择 1-2 个（只允许用列表内的，不要编造其他站点名）：
+        - sources：从下列推荐站点中选择 1-2 个权威站点（仅限列表内知名信源，严禁编造虚假 URL）：
           \(sourcesHint)
-        - 每次返回 count 条，避免与已有标题重复或高度相似
+        - searchKeywords：必须给出 2-3 个精准专有名词（如 ["量子退相干", "薛定谔猫态"]），便于读者延伸检索；
+        - 每条内容必须严格真实准确，不确定事实宁可不写，严禁虚构年份、数据或人名。
 
-        示例输出（仅示范结构与字段，内容请原创）：
+        示例输出（仅示范结构与字段规范）：
         [
           {
             "category": "AI",
             "headline": "过拟合：模型把「背题」当成了「学会」",
-            "summary": "训练集上满分、新题上失分，是机器学习最常见的翻车现场",
-            "details": "第一段。\\n\\n第二段。",
-            "searchKeywords": ["过拟合", "正则化", "泛化"],
+            "summary": "训练集上满分、新题上翻车，是机器学习最经典的认知陷阱。",
+            "details": "模型学习的本质不是记忆答案，而是在高维参数空间中拟合规律。当模型容量过大而样本不足时，它会把训练集中的随机噪声当成普遍规律死记硬背。\\n\\n在人脸识别早期实验中，模型曾准确区分了雪地上的哈士奇与丛林中的狼。研究人员后来发现，模型根本没有识别人脸特征，而是仅仅学会了「背景有雪就是哈士奇」——这就是经典的过拟合悲剧。\\n\\n现实工业界中，引入 Dropout（随机失活神经元）与 L2 正则化就如同强迫学生闭卷答题，能有效打破对特定特征的过度依赖，逼迫网络学会真正的泛化表征。",
+            "searchKeywords": ["过拟合", "泛化能力", "正则化"],
             "sources": ["维基百科"]
           }
         ]

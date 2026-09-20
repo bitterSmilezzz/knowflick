@@ -3,7 +3,7 @@ package com.knowflick.app.ai
 import kotlinx.serialization.Serializable
 
 /** AI 返回的单张卡片载荷 */
-@kotlinx.serialization.Serializable
+@Serializable
 data class AiCardPayload(
     val category: String = "",
     val headline: String = "",
@@ -15,13 +15,9 @@ data class AiCardPayload(
 
 /** 生成批次解析：从顶层 JSON 数组字符串提取卡片对象 */
 object AiPayloadParser {
-    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-
     fun parseObjects(raw: String): List<AiCardPayload> {
         val scanner = AiObjectScanner()
         scanner.append(raw)
-        return scanner.objects.mapNotNull { obj ->
-            runCatching { json.decodeFromJsonElement(AiCardPayload.serializer(), obj) }.getOrNull()
-        }
+        return scanner.objects
     }
 }
