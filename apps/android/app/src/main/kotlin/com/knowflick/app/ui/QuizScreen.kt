@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knowflick.app.data.CategoryStampColor
@@ -68,6 +69,8 @@ fun QuizScreen(
     onRate: (QuizRating) -> Unit,
     onNextRound: () -> Unit,
     onRetestWeakCards: (Map<String, QuizRating>) -> Unit = {},
+    onOpenChat: (KnowledgeCard) -> Unit = {},
+    onPromoteCardToDeck: (KnowledgeCard) -> Unit = {},
     onExit: () -> Unit,
 ) {
     androidx.activity.compose.BackHandler { onExit() }
@@ -195,6 +198,8 @@ fun QuizScreen(
                 session = session,
                 onNextRound = onNextRound,
                 onRetestWeakCards = onRetestWeakCards,
+                onOpenChat = onOpenChat,
+                onPromoteCardToDeck = onPromoteCardToDeck,
                 onExit = onExit,
             )
         } else {
@@ -208,7 +213,11 @@ fun QuizScreen(
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
                     .clickable { flipped = !flipped },
             ) {
-                QuizCardFace(card = card, flipped = flipped)
+                QuizCardFace(
+                    card = card,
+                    flipped = flipped,
+                    onOpenChat = { onOpenChat(card) },
+                )
             }
             // 三档自评（翻面后可用）
             Row(
@@ -233,7 +242,11 @@ fun QuizScreen(
 }
 
 @Composable
-private fun QuizCardFace(card: KnowledgeCard, flipped: Boolean) {
+private fun QuizCardFace(
+    card: KnowledgeCard,
+    flipped: Boolean,
+    onOpenChat: () -> Unit = {},
+) {
     val rotation by animateFloatAsState(
         targetValue = if (flipped) 180f else 0f,
         animationSpec = tween(durationMillis = 380),
@@ -297,6 +310,31 @@ private fun QuizCardFace(card: KnowledgeCard, flipped: Boolean) {
                         fontSize = 13.5.sp,
                         lineHeight = 23.sp,
                     )
+                }
+                Spacer(Modifier.height(16.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EditorialColor.aiAmber.copy(alpha = 0.12f))
+                        .border(0.8.dp, EditorialColor.aiAmber.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                        .clickable { onOpenChat() }
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            AppIcons.Sparkles,
+                            contentDescription = null,
+                            tint = EditorialColor.aiAmber,
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "向 AI 导师追问本卡解析",
+                            color = EditorialColor.aiAmber,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
         }
@@ -364,6 +402,8 @@ private fun QuizSummary(
     session: QuizSession,
     onNextRound: () -> Unit,
     onRetestWeakCards: (Map<String, QuizRating>) -> Unit,
+    onOpenChat: (KnowledgeCard) -> Unit = {},
+    onPromoteCardToDeck: (KnowledgeCard) -> Unit = {},
     onExit: () -> Unit,
 ) {
     val countMastered = session.summary[QuizRating.MASTERED] ?: 0
@@ -371,6 +411,9 @@ private fun QuizSummary(
     val countForgot = session.summary[QuizRating.FORGOT] ?: 0
     val total = session.total
     val weakCount = countForgot + countHesitant
+
+    val weakCards = remember(session) { session.weakCardsWithRatings() }
+    var promotedCardIds by remember { mutableStateOf(emptySet<String>()) }
 
     val retentionRate = if (total == 0) 0 else {
         ((countMastered * 1.0 + countHesitant * 0.5) / total * 100).toInt().coerceIn(0, 100)
@@ -500,6 +543,47 @@ private fun QuizSummary(
             )
         }
 
+        // 待强化错题清单与就地复盘
+        if (weakCards.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "本轮待强化卡片 (${weakCards.size} 张)",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Serif,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "点击展开解析",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
+                    fontSize = 11.5.sp,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Column(
+                Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                weakCards.forEach { (weakCard, rating) ->
+                    WeakCardReviewItem(
+                        card = weakCard,
+                        rating = rating,
+                        isPromoted = promotedCardIds.contains(weakCard.id),
+                        onPromoteToDeck = {
+                            promotedCardIds = promotedCardIds + weakCard.id
+                            onPromoteCardToDeck(weakCard)
+                        },
+                        onOpenChat = { onOpenChat(weakCard) },
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.height(28.dp))
 
         // 底部行动按键组
@@ -551,6 +635,156 @@ private fun QuizSummary(
         }
 
         Spacer(Modifier.height(20.dp))
+    }
+}
+
+@Composable
+private fun WeakCardReviewItem(
+    card: KnowledgeCard,
+    rating: QuizRating,
+    isPromoted: Boolean,
+    onPromoteToDeck: () -> Unit,
+    onOpenChat: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val categoryColor = CategoryStampColor.forCategory(card.category)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(
+                0.8.dp,
+                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
+                RoundedCornerShape(12.dp),
+            )
+            .padding(12.dp),
+    ) {
+        // 头部行：分类 + 标题 + 自评状态标签
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .background(categoryColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    card.category.ifBlank { "未分类" },
+                    color = categoryColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                card.headline,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = if (expanded) Int.MAX_VALUE else 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            val (badgeText, badgeColor) = if (rating == QuizRating.FORGOT) {
+                "没想起来" to EditorialColor.dislikeRed
+            } else {
+                "犹豫想起" to EditorialColor.aiAmber
+            }
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(badgeColor.copy(alpha = 0.12f))
+                    .border(0.6.dp, badgeColor.copy(alpha = 0.40f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    badgeText,
+                    color = badgeColor,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+
+        // 展开详情区域：核心摘要与第一段解析
+        if (expanded) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                card.summary,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+            )
+            if (card.paragraphs.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "解析：${card.paragraphs.first()}",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.80f),
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // 操作区：置顶卡堆 + AI 追问
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
+        ) {
+            // 置顶卡堆
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (isPromoted) EditorialColor.likeGreen.copy(alpha = 0.12f) else EditorialColor.aiAmber.copy(alpha = 0.10f))
+                    .border(0.6.dp, if (isPromoted) EditorialColor.likeGreen.copy(alpha = 0.35f) else EditorialColor.aiAmber.copy(alpha = 0.30f), RoundedCornerShape(6.dp))
+                    .clickable(enabled = !isPromoted) { onPromoteToDeck() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    if (isPromoted) "✓ 已置顶卡堆" else "置顶卡堆",
+                    color = if (isPromoted) EditorialColor.likeGreen else EditorialColor.aiAmber,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            // AI 追问
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(EditorialColor.aiAmber.copy(alpha = 0.15f))
+                    .border(0.6.dp, EditorialColor.aiAmber.copy(alpha = 0.40f), RoundedCornerShape(6.dp))
+                    .clickable { onOpenChat() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        AppIcons.Sparkles,
+                        contentDescription = null,
+                        tint = EditorialColor.aiAmber,
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        "AI 追问",
+                        color = EditorialColor.aiAmber,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
     }
 }
 

@@ -128,4 +128,39 @@ class QuizSessionTest {
         assertEquals(2, session.total)
         assertEquals(setOf(hesitantCard.id, forgotCard.id), session.cards.map { it.id }.toSet())
     }
+
+    @Test
+    fun weakCardsWithRatingsPrioritizesForgotOverHesitant() {
+        val mastered = card("掌握卡")
+        val hesitant = card("犹豫卡")
+        val forgot = card("遗忘卡")
+        val session = QuizSession(listOf(mastered, hesitant, forgot))
+
+        session.rate(QuizRating.MASTERED)
+        session.rate(QuizRating.HESITANT)
+        session.rate(QuizRating.FORGOT)
+
+        val weak = session.weakCardsWithRatings()
+        assertEquals(2, weak.size)
+        // FORGOT (masteryLevel 0) 应排在 HESITANT (masteryLevel 1) 前面
+        assertEquals(forgot.id, weak[0].first.id)
+        assertEquals(QuizRating.FORGOT, weak[0].second)
+        assertEquals(hesitant.id, weak[1].first.id)
+        assertEquals(QuizRating.HESITANT, weak[1].second)
+    }
+
+    @Test
+    fun buildPersistentWeakCardsFiltersAndSortsByReviewCount() {
+        val c1 = card("卡片1", mastery = 0).copy(reviewCount = 5)
+        val c2 = card("卡片2", mastery = 0).copy(reviewCount = 2)
+        val c3 = card("已掌握卡", mastery = 2).copy(reviewCount = 3)
+        val c4 = card("全新未测验卡", mastery = 0).copy(reviewCount = 0)
+
+        val session = QuizSession.buildPersistentWeakCards(listOf(c1, c2, c3, c4), limit = 10)
+        assertEquals(QuizType.WEAK_RETEST, session.type)
+        assertEquals(2, session.total)
+        // 复习次数更多（遗忘更顽固）的排在前面
+        assertEquals(c1.id, session.cards[0].id)
+        assertEquals(c2.id, session.cards[1].id)
+    }
 }

@@ -92,4 +92,19 @@ struct QuizGuardTests {
             #expect(store.cards.first { $0.id == subject.id }?.reviewCount == 2)
         }
     }
+
+    /// 错题置顶到卡堆顶部：验证 promoteToDeckTop 能正确将弱项卡片推到首位
+    @Test func promoteWeakCardPlacesItOnTopOfTheDeck() throws {
+        try withStore { store, _, _ in
+            let c1 = card(seen: now)
+            let c2 = card(seen: now)
+            store.cards = [c1, c2]
+
+            #expect(store.currentCard?.id == c1.id)
+
+            // 将第二张错题卡置顶
+            store.promoteToDeckTop(c2)
+            #expect(store.currentCard?.id == c2.id)
+        }
+    }
 }

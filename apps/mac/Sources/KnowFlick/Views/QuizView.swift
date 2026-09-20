@@ -7,12 +7,14 @@ struct QuizView: View {
     let store: AppStore
     var category: String? = nil
     var plannedCards: [KnowledgeCard]? = nil
+    var onOpenChat: ((KnowledgeCard) -> Void)? = nil
     let onClose: () -> Void
 
     @State private var quizCards: [KnowledgeCard] = []
     @State private var currentIndex: Int = 0
     @State private var isFlipped: Bool = false
     @State private var ratings: [UUID: AppStore.QuizRating] = [:]
+    @State private var promotedCardIds: Set<UUID> = []
     @State private var isCompleted: Bool = false
     @State private var animateRing: Bool = false
     /// 评分输入锁：一次评分动作已受理、卡片切换动画尚未结束时，忽略重复的按钮/⌘1-3 输入，
@@ -194,6 +196,9 @@ struct QuizView: View {
                     },
                     onRate: { rating in
                         submitRating(rating)
+                    },
+                    onOpenChat: {
+                        onOpenChat?(card)
                     }
                 )
                 .id(card.id)
@@ -298,6 +303,43 @@ struct QuizView: View {
                     )
                 }
                 .frame(maxWidth: 560)
+
+                let weakCards: [(KnowledgeCard, AppStore.QuizRating)] = quizCards.compactMap { card in
+                    guard let rating = ratings[card.id], rating != .mastered else { return nil }
+                    return (card, rating)
+                }.sorted { $0.1 == .forgot && $1.1 != .forgot }
+
+                if !weakCards.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("本轮待强化卡片 (\(weakCards.count) 张)")
+                                .font(EditorialFont.modalTitle)
+                                .foregroundStyle(EditorialColor.textPrimary)
+                            Spacer()
+                            Text("点击就地复盘")
+                                .font(EditorialFont.captionSmall)
+                                .foregroundStyle(EditorialColor.textTertiary)
+                        }
+
+                        VStack(spacing: 8) {
+                            ForEach(weakCards, id: \.0.id) { (weakCard, rating) in
+                                WeakCardRowView(
+                                    card: weakCard,
+                                    rating: rating,
+                                    isPromoted: promotedCardIds.contains(weakCard.id),
+                                    onPromote: {
+                                        promotedCardIds.insert(weakCard.id)
+                                        store.promoteToDeckTop(weakCard)
+                                    },
+                                    onChat: {
+                                        onOpenChat?(weakCard)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 560)
+                }
 
                 // 底部行动按键组
                 HStack(spacing: 16) {
@@ -505,3 +547,119 @@ struct QuizView: View {
         rateCurrent(rating)
     }
 }
+
+// MARK: - 待强化错题复盘行组件
+
+private struct WeakCardRowView: View {
+    let card: KnowledgeCard
+    let rating: AppStore.QuizRating
+    let isPromoted: Bool
+    let onPromote: () -> Void
+    let onChat: () -> Void
+
+    @State private var isExpanded: Bool = false
+
+    private var theme: CategoryTheme {
+        CategoryTheme.theme(for: card, cache: .shared)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(card.category)
+                    .font(EditorialFont.badge)
+                    .foregroundStyle(theme.accent)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(theme.accent.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().strokeBorder(theme.accent.opacity(0.3), lineWidth: 0.8))
+
+                Text(card.headline)
+                    .font(EditorialFont.label)
+                    .foregroundStyle(EditorialColor.textPrimary)
+                    .lineLimit(isExpanded ? nil : 1)
+
+                Spacer()
+
+                let isForgot = (rating == .forgot)
+                Text(isForgot ? "没想起来" : "犹豫想起")
+                    .font(EditorialFont.captionSmall.weight(.bold))
+                    .foregroundStyle(isForgot ? EditorialColor.dislikeRed : EditorialColor.aiAmber)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2.5)
+                    .background(isForgot ? EditorialColor.dislikeRed.opacity(0.12) : EditorialColor.aiAmberBg, in: Capsule())
+                    .overlay(Capsule().strokeBorder(isForgot ? EditorialColor.dislikeRed.opacity(0.4) : EditorialColor.aiAmberBorder, lineWidth: 0.8))
+
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(EditorialColor.textTertiary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isExpanded.toggle()
+                }
+            }
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(card.summary)
+                        .font(EditorialFont.summarySerif)
+                        .foregroundStyle(EditorialColor.textSecondary)
+                        .lineSpacing(4)
+                        .padding(.top, 8)
+
+                    Text("解析：" + card.details)
+                        .font(EditorialFont.bodySerif)
+                        .foregroundStyle(EditorialColor.textTertiary)
+                        .lineSpacing(4)
+                        .lineLimit(4)
+                        .padding(.top, 4)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+
+                Button(action: onPromote) {
+                    HStack(spacing: 4) {
+                        Image(systemName: isPromoted ? "checkmark" : "arrow.up.to.line")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(isPromoted ? "已置顶卡堆" : "置顶卡堆")
+                            .font(EditorialFont.captionSmall.weight(.medium))
+                    }
+                    .foregroundStyle(isPromoted ? EditorialColor.likeGreen : EditorialColor.aiAmber)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4.5)
+                    .background(isPromoted ? EditorialColor.likeGreen.opacity(0.12) : EditorialColor.aiAmberBg, in: Capsule())
+                    .overlay(Capsule().strokeBorder(isPromoted ? EditorialColor.likeGreen.opacity(0.4) : EditorialColor.aiAmberBorder, lineWidth: 0.8))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(isPromoted)
+
+                Button(action: onChat) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("AI 追问")
+                            .font(EditorialFont.captionSmall.weight(.semibold))
+                    }
+                    .foregroundStyle(EditorialColor.aiAmber)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4.5)
+                    .background(EditorialColor.aiAmberBg, in: Capsule())
+                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 0.8))
+                }
+                .buttonStyle(PressableButtonStyle())
+            }
+            .padding(.top, 10)
+        }
+        .padding(14)
+        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+        )
+    }
+}
+

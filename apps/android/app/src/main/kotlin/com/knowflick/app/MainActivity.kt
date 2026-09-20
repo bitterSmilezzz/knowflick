@@ -240,6 +240,16 @@ class MainActivity : ComponentActivity() {
                                     onRate = { rating -> viewModel.rateQuiz(rating) },
                                     onNextRound = { viewModel.nextQuizRound() },
                                     onRetestWeakCards = { ratings -> viewModel.retestWeakCards(ratings) },
+                                    onOpenChat = { card ->
+                                        detailCardId = card.id
+                                        detailReturnScreen = Screen.QUIZ
+                                        screen = Screen.DETAIL
+                                        viewModel.openChat(card)
+                                    },
+                                    onPromoteCardToDeck = { card ->
+                                        viewModel.promoteCardToDeck(card)
+                                        android.widget.Toast.makeText(this@MainActivity, "已置顶「${card.headline}」到卡堆", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
                                     onExit = {
                                         viewModel.exitQuiz()
                                         screen = Screen.DECK

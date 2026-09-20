@@ -8,6 +8,7 @@ struct QuizCardView: View {
     let isFlipped: Bool
     let onFlip: () -> Void
     let onRate: (AppStore.QuizRating) -> Void
+    var onOpenChat: (() -> Void)? = nil
 
     @State private var isHoveringFront = false
     @State private var hoveredRating: AppStore.QuizRating? = nil
@@ -245,6 +246,24 @@ struct QuizCardView: View {
                     .padding(.vertical, 10)
             }
             .frame(maxHeight: .infinity)
+
+            if let onOpenChat {
+                Button(action: onOpenChat) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("向 AI 追问本卡解析")
+                            .font(EditorialFont.labelSmall)
+                    }
+                    .foregroundStyle(EditorialColor.aiAmber)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(EditorialColor.aiAmberBg, in: Capsule())
+                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .padding(.top, 4)
+            }
 
             Divider()
                 .overlay(EditorialColor.glassDivider)

@@ -43,6 +43,18 @@ class QuizSession(
         get() = QuizRating.entries.associateWith { rating -> ratings.values.count { it == rating } }
 
     /**
+     * 提取本轮评价为「没想起来」或「犹豫想起」的薄弱卡片列表及其自评结果。
+     * 排序规则：FORGOT（没想起来）优先排在最前，其次为 HESITANT（犹豫想起）。
+     */
+    fun weakCardsWithRatings(): List<Pair<KnowledgeCard, QuizRating>> {
+        val cardMap = cards.associateBy { it.id }
+        return ratings.entries
+            .filter { it.value != QuizRating.MASTERED }
+            .mapNotNull { (id, rating) -> cardMap[id]?.let { it to rating } }
+            .sortedBy { (_, rating) -> rating.masteryLevel }
+    }
+
+    /**
      * 提交当前卡评分：同一张卡本轮只接受第一次提交。
      * 返回是否被接受（未接受时调用方可提示「本轮已评过」）。
      */
@@ -111,6 +123,24 @@ class QuizSession(
             val weakCardIds = ratings.filter { it.value != QuizRating.MASTERED }.keys
             val selected = cards.filter { it.id in weakCardIds }
             return QuizSession(selected, type = QuizType.WEAK_RETEST)
+        }
+
+        /**
+         * 构建历史顽固错题集（复习过但掌握度仍为 0 的卡片）
+         * 优先出复习次数较多（屡次记不住）的难点卡
+         */
+        fun buildPersistentWeakCards(
+            cards: List<KnowledgeCard>,
+            limit: Int = 10,
+            category: String? = null,
+        ): QuizSession {
+            if (limit <= 0) return QuizSession(emptyList(), type = QuizType.WEAK_RETEST)
+            val pool = if (category.isNullOrBlank()) cards else cards.filter { it.category == category }
+            val weak = pool
+                .filter { it.reviewCount > 0 && it.masteryLevel == 0 }
+                .sortedByDescending { it.reviewCount }
+                .take(limit)
+            return QuizSession(weak, type = QuizType.WEAK_RETEST)
         }
     }
 }
