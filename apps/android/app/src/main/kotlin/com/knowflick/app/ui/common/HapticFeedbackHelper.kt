@@ -26,7 +26,13 @@ class HapticFeedbackHelper(
     private val composeHaptic: HapticFeedback? = null,
 ) {
     private val vibrator: Vibrator? = runCatching {
-        context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
     }.getOrNull()
 
     /** 轻微刻度感（拖拽起始或微小位移） */

@@ -229,64 +229,75 @@ object KnowledgeGraphEngine {
         val nodeMap = nodes.associateBy { it.cardId }
 
         // 3. 构建倒排索引以高效发现公共关键词并建立引力连线
-        val invertedIndex = HashMap<String, MutableList<String>>()
-        for ((cardId, kwSet) in cardKeywords) {
+        val invertedIndex = HashMap<String, MutableList<Int>>()
+        for ((index, card) in cards.withIndex()) {
+            val kwSet = cardKeywords[card.id] ?: emptySet()
             for (kw in kwSet) {
-                invertedIndex.getOrPut(kw) { ArrayList() }.add(cardId)
+                invertedIndex.getOrPut(kw) { ArrayList() }.add(index)
             }
         }
 
-        // 统计卡片对重合权重
-        val candidatePairs = HashSet<Pair<String, String>>()
-        for ((_, cardList) in invertedIndex) {
-            if (cardList.size in 2..20) {
-                for (i in 0 until cardList.size - 1) {
-                    for (j in i + 1 until cardList.size) {
-                        val a = cardList[i]
-                        val b = cardList[j]
-                        val sortedPair = if (a < b) a to b else b to a
-                        candidatePairs.add(sortedPair)
+        val edges = ArrayList<GraphEdge>()
+        val connectionCount = HashMap<String, Int>()
+        val seenEdgeIds = HashSet<String>()
+
+        for (i in cards.indices) {
+            val cardA = cards[i]
+            val kwA = cardKeywords[cardA.id] ?: emptySet()
+
+            // 统计与 cardA 共享关键词的候选卡片
+            val candidateIndices = HashSet<Int>()
+            for (kw in kwA) {
+                val matches = invertedIndex[kw] ?: continue
+                for (j in matches) {
+                    if (j > i) {
+                        candidateIndices.add(j)
                     }
                 }
             }
-        }
 
-        // 为同分类相邻卡片补充基础学科引力连线
-        val byCategory = cards.groupBy { it.category }
-        for ((_, catCards) in byCategory) {
-            if (catCards.size >= 2) {
-                for (i in 0 until minOf(catCards.size - 1, 15)) {
-                    val a = catCards[i].id
-                    val b = catCards[i + 1].id
-                    val sortedPair = if (a < b) a to b else b to a
-                    candidatePairs.add(sortedPair)
+            // 为同分类后续卡片补充基础学科候选（最多 3 张），确保同科聚合
+            var catCount = 0
+            for (j in (i + 1) until cards.size) {
+                if (cards[j].category == cardA.category) {
+                    candidateIndices.add(j)
+                    catCount++
+                    if (catCount >= 3) break
                 }
             }
-        }
 
-        val cardMap = cards.associateBy { it.id }
-        val edges = ArrayList<GraphEdge>()
-        val connectionCount = HashMap<String, Int>()
+            val bestMatches = ArrayList<Triple<Int, RelationKind, Float>>()
+            for (j in candidateIndices) {
+                val cardB = cards[j]
+                val kwB = cardKeywords[cardB.id] ?: emptySet()
+                val relation = evaluateRelation(cardA, cardB, kwA, kwB) ?: continue
+                bestMatches.add(Triple(j, relation.first, relation.second))
+            }
 
-        for ((idA, idB) in candidatePairs) {
-            val cardA = cardMap[idA] ?: continue
-            val cardB = cardMap[idB] ?: continue
-            val kwA = cardKeywords[idA] ?: emptySet()
-            val kwB = cardKeywords[idB] ?: emptySet()
-
-            val relation = evaluateRelation(cardA, cardB, kwA, kwB) ?: continue
-            val (kind, weight) = relation
-
-            val edge = GraphEdge(
-                id = "${idA}_${idB}",
-                sourceId = idA,
-                targetId = idB,
-                weight = weight,
-                kind = kind,
+            // 按权重降序，平局按下标升序（完全确定性）
+            bestMatches.sortWith(
+                compareByDescending<Triple<Int, RelationKind, Float>> { it.third }
+                    .thenBy { it.first }
             )
-            edges.add(edge)
-            connectionCount[idA] = (connectionCount[idA] ?: 0) + 1
-            connectionCount[idB] = (connectionCount[idB] ?: 0) + 1
+
+            // 取最强 2 条连线
+            for ((j, kind, weight) in bestMatches.take(2)) {
+                val cardB = cards[j]
+                val edgeId = if (cardA.id < cardB.id) "${cardA.id}_${cardB.id}" else "${cardB.id}_${cardA.id}"
+                if (seenEdgeIds.add(edgeId)) {
+                    edges.add(
+                        GraphEdge(
+                            id = edgeId,
+                            sourceId = cardA.id,
+                            targetId = cardB.id,
+                            weight = weight,
+                            kind = kind,
+                        )
+                    )
+                    connectionCount[cardA.id] = (connectionCount[cardA.id] ?: 0) + 1
+                    connectionCount[cardB.id] = (connectionCount[cardB.id] ?: 0) + 1
+                }
+            }
         }
 
         val completedNodes = nodes.map { node ->

@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var aiSources = ""
     @State private var showAIMark = true
     @State private var appearance: AppearanceMode = .system
+    @State private var paperTheme: PaperTheme = .xuanzhiWhite
     @State private var customCategories: [CategoryConfig] = []   // 自定义分类（编辑副本）
     @State private var speech = SpeechSettings()
     @State private var speechRate: Float = 1.0
@@ -90,6 +91,7 @@ struct SettingsView: View {
         .frame(minWidth: 620, idealWidth: 680, minHeight: 520, idealHeight: 700)
         .onAppear {
             appearance = store.settings.appearance
+            paperTheme = store.settings.paperTheme
             baseURL = store.settings.baseURL
             model = store.settings.model
             apiKey = store.settings.apiKey
@@ -258,6 +260,70 @@ struct SettingsView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                }
+            }
+
+            Divider().overlay(EditorialColor.glassDivider)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("纸质人文主题")
+                        .font(EditorialFont.label)
+                        .foregroundStyle(EditorialColor.textPrimary)
+                    Spacer()
+                    Text(paperTheme.subtitle)
+                        .font(EditorialFont.caption)
+                        .foregroundStyle(EditorialColor.textMuted)
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(PaperTheme.allCases) { theme in
+                        let isSelected = (paperTheme == theme)
+                        let palette = PaperThemePalette.colors(for: theme)
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                paperTheme = theme
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(palette.canvas)
+                                    .frame(width: 24, height: 24)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .strokeBorder(palette.border, lineWidth: 1)
+                                    )
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(theme.title)
+                                        .font(EditorialFont.label)
+                                        .foregroundStyle(isSelected ? EditorialColor.aiAmber : EditorialColor.textPrimary)
+                                    Text(theme.subtitle)
+                                        .font(EditorialFont.captionSmall)
+                                        .foregroundStyle(EditorialColor.textMuted)
+                                }
+                                Spacer()
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(EditorialColor.aiAmber)
+                                }
+                            }
+                            .padding(10)
+                            .background(
+                                isSelected ? EditorialColor.aiAmberBg : EditorialColor.glassSurface,
+                                in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                                    .strokeBorder(
+                                        isSelected ? EditorialColor.aiAmberBorder : EditorialColor.glassBorder,
+                                        lineWidth: isSelected ? 1.5 : 1
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
@@ -949,6 +1015,7 @@ struct SettingsView: View {
         updated.aiSources = aiSources.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.showAIMark = showAIMark
         updated.appearance = appearance
+        updated.paperTheme = paperTheme
         updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.speech = speech
         updated.speechRate = speechRate

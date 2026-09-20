@@ -38,6 +38,34 @@ public enum AppearanceMode: String, Codable, CaseIterable, Identifiable, Sendabl
     }
 }
 
+/// 纸质人文主题（对齐 Android 端 4 款温润纸质主题）
+public enum PaperTheme: String, Codable, CaseIterable, Identifiable, Sendable {
+    case xuanzhiWhite = "xuanzhi_white"   // 宣纸白
+    case parchment = "parchment"           // 羊皮纸
+    case morningMist = "morning_mist"     // 晨雾灰
+    case warmObsidian = "warm_obsidian"   // 暖曜黑
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .xuanzhiWhite: return "宣纸白"
+        case .parchment: return "羊皮纸"
+        case .morningMist: return "晨雾灰"
+        case .warmObsidian: return "暖曜黑"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .xuanzhiWhite: return "温润雅致 · 米白纸感"
+        case .parchment: return "复古典雅 · 温润羊皮"
+        case .morningMist: return "低调沉静 · 石板冷灰"
+        case .warmObsidian: return "深邃曜黑 · 暗夜沉浸"
+        }
+    }
+}
+
 /// AI 服务设置（base_url / model 存 settings.json，API key 存 Keychain）
 public struct AISettings: Codable, Equatable, Sendable {
     public var baseURL: String
@@ -50,6 +78,7 @@ public struct AISettings: Codable, Equatable, Sendable {
     public var aiSources: String       // AI 引用站点偏好（逗号分隔）
     public var showAIMark: Bool        // 显示 AI 内容标记
     public var appearance: AppearanceMode // 外观模式（跟随系统/深色/浅色）
+    public var paperTheme: PaperTheme   // 纸质人文主题
     public var customCategories: [CategoryConfig]   // 用户自定义分类（可增删改）
     public var speechRate: Float = 1.0              // 默认朗读语速倍率 (0.75x ~ 1.5x)
     public var speechVoiceIdentifier: String = "auto" // 默认朗读声音标识符 ("auto" 自动探测)
@@ -68,6 +97,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         aiSources: String = "维基百科, 国家地理, NASA",
         showAIMark: Bool = true,
         appearance: AppearanceMode = .system,
+        paperTheme: PaperTheme = .xuanzhiWhite,
         customCategories: [CategoryConfig] = AISettings.defaultCustomCategories,
         speechRate: Float = 1.0,
         speechVoiceIdentifier: String = "auto",
@@ -84,6 +114,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         self.aiSources = aiSources
         self.showAIMark = showAIMark
         self.appearance = appearance
+        self.paperTheme = paperTheme
         self.customCategories = customCategories
         self.speechRate = speechRate
         self.speechVoiceIdentifier = speechVoiceIdentifier
@@ -97,7 +128,8 @@ public struct AISettings: Codable, Equatable, Sendable {
         apiKey: "",
         autoGenerate: true,
         categoryFilter: "",
-        appearance: .system
+        appearance: .system,
+        paperTheme: .xuanzhiWhite
     )
 
     /// 默认预置的自定义分类（用户当前聚焦方向）
@@ -171,6 +203,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         try c.encode(aiSources, forKey: .aiSources)
         try c.encode(showAIMark, forKey: .showAIMark)
         try c.encode(appearance, forKey: .appearance)
+        try c.encode(paperTheme, forKey: .paperTheme)
         try c.encode(customCategories, forKey: .customCategories)
         try c.encode(speechRate, forKey: .speechRate)
         try c.encode(speechVoiceIdentifier, forKey: .speechVoiceIdentifier)
@@ -181,7 +214,7 @@ public struct AISettings: Codable, Equatable, Sendable {
     // 旧版 settings.json 无新字段——解码时给默认值，避免旧用户设置被整体重置
     private enum CodingKeys: String, CodingKey {
         case baseURL, model, apiKey, autoGenerate, categoryFilter, speech
-        case enableSeed, enableAI, aiSources, showAIMark, appearance, customCategories
+        case enableSeed, enableAI, aiSources, showAIMark, appearance, paperTheme, customCategories
         case speechRate, speechVoiceIdentifier, ambientGapSeconds, autoSpeakOnDetailOpen
     }
 
@@ -198,6 +231,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         aiSources = try c.decodeIfPresent(String.self, forKey: .aiSources) ?? "维基百科, 国家地理, NASA"
         showAIMark = try c.decodeIfPresent(Bool.self, forKey: .showAIMark) ?? true
         appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
+        paperTheme = try c.decodeIfPresent(PaperTheme.self, forKey: .paperTheme) ?? .xuanzhiWhite
         customCategories = try c.decodeIfPresent([CategoryConfig].self, forKey: .customCategories) ?? AISettings.defaultCustomCategories
         speechRate = try c.decodeIfPresent(Float.self, forKey: .speechRate) ?? 1.0
         speechVoiceIdentifier = try c.decodeIfPresent(String.self, forKey: .speechVoiceIdentifier) ?? "auto"

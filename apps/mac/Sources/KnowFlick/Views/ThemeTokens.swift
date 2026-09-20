@@ -25,7 +25,85 @@ public enum EditorialColor {
         })
     }
 
-    // 画布底色
+// MARK: - 纸质主题调色盘 (Paper Theme Palette)
+
+public struct PaperThemeColors: Sendable {
+    public let canvasLight: NSColor
+    public let canvasDark: NSColor
+    public let surfaceLight: NSColor
+    public let surfaceDark: NSColor
+    public let borderLight: NSColor
+    public let borderDark: NSColor
+    public let textPrimaryLight: NSColor
+    public let textPrimaryDark: NSColor
+
+    public var canvas: Color { EditorialColor.dynamic(light: canvasLight, dark: canvasDark) }
+    public var surface: Color { EditorialColor.dynamic(light: surfaceLight, dark: surfaceDark) }
+    public var border: Color { EditorialColor.dynamic(light: borderLight, dark: borderDark) }
+    public var textPrimary: Color { EditorialColor.dynamic(light: textPrimaryLight, dark: textPrimaryDark) }
+}
+
+public enum PaperThemePalette {
+    public static func colors(for theme: PaperTheme) -> PaperThemeColors {
+        switch theme {
+        case .xuanzhiWhite:
+            return PaperThemeColors(
+                canvasLight: NSColor(red: 0.984, green: 0.976, blue: 0.961, alpha: 1.0),
+                canvasDark: NSColor(red: 0.078, green: 0.078, blue: 0.086, alpha: 1.0),
+                surfaceLight: NSColor(white: 1.0, alpha: 0.95),
+                surfaceDark: NSColor(red: 0.110, green: 0.110, blue: 0.122, alpha: 1.0),
+                borderLight: NSColor(red: 0.910, green: 0.894, blue: 0.863, alpha: 1.0),
+                borderDark: NSColor(red: 0.173, green: 0.173, blue: 0.188, alpha: 1.0),
+                textPrimaryLight: NSColor(red: 0.169, green: 0.157, blue: 0.141, alpha: 1.0),
+                textPrimaryDark: NSColor(red: 0.929, green: 0.914, blue: 0.882, alpha: 1.0)
+            )
+        case .parchment:
+            return PaperThemeColors(
+                canvasLight: NSColor(red: 0.961, green: 0.937, blue: 0.878, alpha: 1.0),
+                canvasDark: NSColor(red: 0.094, green: 0.082, blue: 0.071, alpha: 1.0),
+                surfaceLight: NSColor(red: 0.980, green: 0.965, blue: 0.925, alpha: 0.95),
+                surfaceDark: NSColor(red: 0.133, green: 0.118, blue: 0.098, alpha: 1.0),
+                borderLight: NSColor(red: 0.886, green: 0.843, blue: 0.765, alpha: 1.0),
+                borderDark: NSColor(red: 0.208, green: 0.180, blue: 0.145, alpha: 1.0),
+                textPrimaryLight: NSColor(red: 0.173, green: 0.141, blue: 0.106, alpha: 1.0),
+                textPrimaryDark: NSColor(red: 0.918, green: 0.882, blue: 0.824, alpha: 1.0)
+            )
+        case .morningMist:
+            return PaperThemeColors(
+                canvasLight: NSColor(red: 0.941, green: 0.949, blue: 0.957, alpha: 1.0),
+                canvasDark: NSColor(red: 0.071, green: 0.078, blue: 0.090, alpha: 1.0),
+                surfaceLight: NSColor(red: 0.973, green: 0.976, blue: 0.980, alpha: 0.95),
+                surfaceDark: NSColor(red: 0.102, green: 0.114, blue: 0.133, alpha: 1.0),
+                borderLight: NSColor(red: 0.867, green: 0.882, blue: 0.902, alpha: 1.0),
+                borderDark: NSColor(red: 0.157, green: 0.176, blue: 0.208, alpha: 1.0),
+                textPrimaryLight: NSColor(red: 0.118, green: 0.137, blue: 0.157, alpha: 1.0),
+                textPrimaryDark: NSColor(red: 0.894, green: 0.910, blue: 0.929, alpha: 1.0)
+            )
+        case .warmObsidian:
+            return PaperThemeColors(
+                canvasLight: NSColor(red: 0.137, green: 0.133, blue: 0.125, alpha: 1.0),
+                canvasDark: NSColor(red: 0.051, green: 0.051, blue: 0.059, alpha: 1.0),
+                surfaceLight: NSColor(red: 0.176, green: 0.169, blue: 0.157, alpha: 0.95),
+                surfaceDark: NSColor(red: 0.082, green: 0.082, blue: 0.094, alpha: 1.0),
+                borderLight: NSColor(red: 0.243, green: 0.231, blue: 0.216, alpha: 1.0),
+                borderDark: NSColor(red: 0.141, green: 0.141, blue: 0.161, alpha: 1.0),
+                textPrimaryLight: NSColor(red: 0.941, green: 0.925, blue: 0.902, alpha: 1.0),
+                textPrimaryDark: NSColor(red: 0.918, green: 0.910, blue: 0.894, alpha: 1.0)
+            )
+        }
+    }
+
+    public static func canvasGradient(for theme: PaperTheme) -> LinearGradient {
+        let palette = colors(for: theme)
+        return LinearGradient(
+            colors: [palette.canvas, palette.canvas.opacity(0.92)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+}
+
+// 画布底色
     public static let canvasDark = dynamic(
         light: NSColor(red: 0.959, green: 0.951, blue: 0.933, alpha: 1.0),
         dark: NSColor(red: 0.075, green: 0.079, blue: 0.075, alpha: 1.0)

@@ -49,18 +49,19 @@ fun CardFace(
     modifier: Modifier = Modifier,
     isTop: Boolean = true,
     swipeProgress: Float = 0f,
+    swipeProgressProvider: (() -> Float)? = null,
     isReviewMode: Boolean = false,
 ) {
     val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
     val cardShape = RoundedCornerShape(22.dp)
     val density = LocalDensity.current.density
-
-    // 3D 轴心立体微视差动效：随拖拽位移产生细微真实的 Y 轴微旋转
-    val tiltY = if (isTop && swipeProgress != 0f) (swipeProgress * 6.5f).coerceIn(-6.5f, 6.5f) else 0f
+    val getProgress = swipeProgressProvider ?: { swipeProgress }
 
     Box(
         modifier = modifier
             .graphicsLayer {
+                val progress = getProgress()
+                val tiltY = if (isTop && progress != 0f) (progress * 6.5f).coerceIn(-6.5f, 6.5f) else 0f
                 rotationY = tiltY
                 cameraDistance = 16f * density
             }
@@ -95,45 +96,78 @@ fun CardFace(
                 ),
         )
 
-        // 滑动意图实时反馈印章（向右收藏 / 向左略过）
-        if (isTop && swipeProgress != 0f) {
-            val isRight = swipeProgress > 0f
-            val progress = kotlin.math.abs(swipeProgress)
-            // 设定 0.28f 死区：微小拖动或轻微颤动不唤醒印章，在 [0.28f, 0.80f] 之间平滑渐变
-            val stampAlpha = ((progress - 0.28f) / 0.52f).coerceIn(0f, 1f)
-            if (stampAlpha > 0f) {
-                val stampColor = if (isRight) EditorialColor.likeGreen else EditorialColor.dislikeRed
-                val stampText = if (isRight) "♥ 收藏" else "✕ 略过"
-                val stampRotation = if (isRight) -10f else 10f
-                val stampScale = 0.88f + 0.12f * stampAlpha
-
+        // 滑动意图实时反馈印章（向右收藏 / 向左略过）- 纯硬件层变换，零重组
+        if (isTop) {
+            // 右滑印章（♥ 收藏）
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val progress = getProgress()
+                        if (progress > 0f) {
+                            val stampAlpha = ((progress - 0.28f) / 0.52f).coerceIn(0f, 1f)
+                            alpha = stampAlpha
+                            scaleX = 0.88f + 0.12f * stampAlpha
+                            scaleY = 0.88f + 0.12f * stampAlpha
+                            rotationZ = -10f
+                        } else {
+                            alpha = 0f
+                        }
+                    }
+                    .padding(end = 44.dp, top = 96.dp),
+                contentAlignment = Alignment.TopEnd,
+            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(
-                            start = if (!isRight) 44.dp else 0.dp,
-                            end = if (isRight) 44.dp else 0.dp,
-                            top = 96.dp,
-                        ),
-                    contentAlignment = if (isRight) Alignment.TopEnd else Alignment.TopStart,
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EditorialColor.likeGreen.copy(alpha = 0.18f))
+                        .border(1.5.dp, EditorialColor.likeGreen.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 14.dp, vertical = 5.dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .rotate(stampRotation)
-                            .scale(stampScale)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(stampColor.copy(alpha = stampAlpha * 0.18f))
-                            .border(1.5.dp, stampColor.copy(alpha = stampAlpha * 0.85f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 14.dp, vertical = 5.dp),
-                    ) {
-                        Text(
-                            text = stampText,
-                            color = stampColor.copy(alpha = stampAlpha),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.5.sp,
-                        )
+                    Text(
+                        text = "♥ 收藏",
+                        color = EditorialColor.likeGreen,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                    )
+                }
+            }
+
+            // 左滑印章（✕ 略过）
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val progress = getProgress()
+                        if (progress < 0f) {
+                            val absProgress = -progress
+                            val stampAlpha = ((absProgress - 0.28f) / 0.52f).coerceIn(0f, 1f)
+                            alpha = stampAlpha
+                            scaleX = 0.88f + 0.12f * stampAlpha
+                            scaleY = 0.88f + 0.12f * stampAlpha
+                            rotationZ = 10f
+                        } else {
+                            alpha = 0f
+                        }
                     }
+                    .padding(start = 44.dp, top = 96.dp),
+                contentAlignment = Alignment.TopStart,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EditorialColor.dislikeRed.copy(alpha = 0.18f))
+                        .border(1.5.dp, EditorialColor.dislikeRed.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 14.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = "✕ 略过",
+                        color = EditorialColor.dislikeRed,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                    )
                 }
             }
         }

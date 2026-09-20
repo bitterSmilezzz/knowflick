@@ -600,19 +600,24 @@ fun DeckScreen(
                                         .background(MaterialTheme.colorScheme.surface),
                                 )
                             } else {
-                                val currentDrag = if (isReturning) returnAnim.value else rawDrag
-                                val isCurrentHorizontalDominant = abs(currentDrag.x) > abs(currentDrag.y) * HORIZONTAL_DOMINANCE_RATIO
-                                val swipeProgress = if (isTop && flyingCard == null && isCurrentHorizontalDominant) {
-                                    (currentDrag.x / swipeThresholdPx).coerceIn(-1f, 1f)
-                                } else {
-                                    0f
-                                }
                                 CardFace(
                                     card = card,
                                     showAIMark = showAIMark,
                                     modifier = cardModifier,
                                     isTop = isTop,
-                                    swipeProgress = swipeProgress,
+                                    swipeProgressProvider = if (isTop && flyingCard == null) {
+                                        {
+                                            val currentDrag = if (isReturning) returnAnim.value else rawDrag
+                                            val isCurrentHorizontalDominant = abs(currentDrag.x) > abs(currentDrag.y) * HORIZONTAL_DOMINANCE_RATIO
+                                            if (isCurrentHorizontalDominant) {
+                                                (currentDrag.x / swipeThresholdPx).coerceIn(-1f, 1f)
+                                            } else {
+                                                0f
+                                            }
+                                        }
+                                    } else {
+                                        { 0f }
+                                    },
                                     isReviewMode = isReviewMode,
                                 )
                             }

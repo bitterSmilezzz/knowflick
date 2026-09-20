@@ -135,7 +135,7 @@ fun KnowledgeGraphScreen(
 
     val isDark = MaterialTheme.colorScheme.background.red < 0.2f
     val bgColor = if (isDark) Color(0xFF0F1014) else Color(0xFFF7F5F0)
-    val canvasCenter = remember { Offset(600f, 600f) }
+    val canvasCenter = remember { Offset(700f, 700f) }
 
     Box(
         modifier = modifier
@@ -244,6 +244,15 @@ fun KnowledgeGraphScreen(
                     val dstScreenX = screenCenterX + panX + (dst.x - canvasCenter.x) * scale
                     val dstScreenY = screenCenterY + panY + (dst.y - canvasCenter.y) * scale
 
+                    // 视口剔除：若两个端点均在视口外部同一侧，跳过连线绘制
+                    if ((srcScreenX < -60f && dstScreenX < -60f) ||
+                        (srcScreenX > size.width + 60f && dstScreenX > size.width + 60f) ||
+                        (srcScreenY < -60f && dstScreenY < -60f) ||
+                        (srcScreenY > size.height + 60f && dstScreenY > size.height + 60f)
+                    ) {
+                        continue
+                    }
+
                     val isConnectedToSelected = selectedNode != null &&
                         (edge.sourceId == selectedNode!!.cardId || edge.targetId == selectedNode!!.cardId)
                     val isDimmed = selectedNode != null && !isConnectedToSelected
@@ -335,8 +344,9 @@ fun KnowledgeGraphScreen(
                         center = Offset(screenX, screenY),
                     )
 
-                    // 在合适缩放比下绘制节点微标题文字
-                    if (scale >= 0.75f && !isDimmed) {
+                    // LOD 优化：缩放低于 0.75f 时仅在选中或高亮时绘制文字，避免文字密集重叠并极大节省 drawText 耗时
+                    val shouldDrawText = if (scale < 0.75f) (isSelected || isConnected) else !isDimmed
+                    if (shouldDrawText) {
                         labelPaint.color = if (isDark) 0xFFEDE9E1.toInt() else 0xFF2B2824.toInt()
                         labelPaint.textSize = (11f * scale).coerceIn(10f, 18f)
                         labelPaint.textAlign = android.graphics.Paint.Align.CENTER

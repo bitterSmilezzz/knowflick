@@ -18,6 +18,7 @@ enum ActiveSheet: Identifiable {
     case importNotes
     case plannedReview([KnowledgeCard])
     case editCard(KnowledgeCard)
+    case sync
 
     var id: String {
         switch self {
@@ -36,6 +37,7 @@ enum ActiveSheet: Identifiable {
         case .importNotes: return "importNotes"
         case .plannedReview: return "plannedReview"
         case .editCard(let card): return "edit_\(card.id)"
+        case .sync: return "sync"
         }
     }
 }
@@ -293,6 +295,8 @@ struct CardDeckView: View {
                     QuizView(store: store, plannedCards: cards) { activeSheet = nil }
                 case .editCard(let card):
                     CardEditorView(card: card, store: store) { activeSheet = nil }
+                case .sync:
+                    SyncSheetView(store: store) { activeSheet = nil }
                 }
             }
         }
@@ -370,6 +374,7 @@ struct CardDeckView: View {
                 .contentShape(RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous))
                 .onTapGesture {
                     if swipingCard == nil && abs(dragOffset.width) < 10 {
+                        AudioEffectManager.shared.playCardFlip()
                         activeSheet = .detail(top)
                     }
                 }
@@ -504,6 +509,11 @@ struct CardDeckView: View {
         guard let card = store.topCard else { return }
         guard swipingCard == nil else { return }
         HapticFeedbackHelper.shared.cardSwiped()
+        if direction == .right {
+            AudioEffectManager.shared.playMasteryChime()
+        } else {
+            AudioEffectManager.shared.playPaperSlide()
+        }
 
         let initialOffset = dragOffset
         swipingCard = card
@@ -758,6 +768,7 @@ struct CardDeckView: View {
                                 store.clearHistory()
                             }
                         }
+                        Button("局域网极速同步…", systemImage: "arrow.triangle.2.circlepath") { activeSheet = .sync }
                         Button("偏好设置", systemImage: "gearshape") { activeSheet = .settings }
                         Button("快捷键帮助", systemImage: "questionmark.circle") { activeSheet = .help }
                     }
@@ -964,7 +975,9 @@ struct CardDeckView: View {
 
     private var ambientBackground: some View {
         ZStack {
-            LinearGradient(colors: currentTheme.ambient, startPoint: .top, endPoint: .bottom)
+            PaperThemePalette.canvasGradient(for: store.settings.paperTheme)
+
+            LinearGradient(colors: currentTheme.ambient.map { $0.opacity(0.85) }, startPoint: .top, endPoint: .bottom)
 
             // 顶部光晕
             RadialGradient(

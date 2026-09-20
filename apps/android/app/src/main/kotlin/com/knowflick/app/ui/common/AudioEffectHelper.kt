@@ -42,9 +42,11 @@ object AudioEffectHelper {
     }
 
     private fun playTrack(context: Context, trackProvider: () -> AudioTrack?) {
-        if (!isEnabled || isSystemMuted(context)) return
+        if (!isEnabled) return
+        val appContext = context.applicationContext
         executor.execute {
             try {
+                if (isSystemMuted(appContext)) return@execute
                 // 首次 PCM 合成与 AudioTrack 初始化也留在音频线程，避免第一次划卡卡顿。
                 val track = trackProvider() ?: return@execute
                 if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
