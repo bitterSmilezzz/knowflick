@@ -17,6 +17,7 @@ public final class ChatSessionStore {
     public var currentChatSession: CardChatSession?
     public var isChatStreaming = false
     public var chatErrorMessage: String?
+    public var savedCardMessageIds: Set<UUID> = []
 
     private let storage: Storage
     private let aiService: AIService

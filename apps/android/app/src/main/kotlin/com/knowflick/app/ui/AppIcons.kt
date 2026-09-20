@@ -548,6 +548,39 @@ object AppIcons {
         }
     }
 
+    /** 勾选/成功图标（对齐 Material Check） */
+    val Check: ImageVector by lazy {
+        materialIcon("AppIcons.Check") {
+            moveTo(9f, 16.17f)
+            lineTo(4.83f, 12f)
+            lineTo(3.41f, 13.41f)
+            lineTo(9f, 19f)
+            lineTo(21f, 7f)
+            lineTo(19.59f, 5.59f)
+            close()
+        }
+    }
+
+    /** 加号/沉淀图标（对齐 Material Add） */
+    val Add: ImageVector by lazy {
+        materialIcon("AppIcons.Add") {
+            moveTo(19f, 13f)
+            horizontalLineTo(13f)
+            verticalLineTo(19f)
+            horizontalLineTo(11f)
+            verticalLineTo(13f)
+            horizontalLineTo(5f)
+            verticalLineTo(11f)
+            horizontalLineTo(11f)
+            verticalLineTo(5f)
+            horizontalLineTo(13f)
+            verticalLineTo(11f)
+            horizontalLineTo(19f)
+            verticalLineTo(13f)
+            close()
+        }
+    }
+
     private fun materialIcon(
         name: String,
         pathBuilder: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit,

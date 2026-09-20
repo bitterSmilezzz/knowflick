@@ -606,6 +606,21 @@ public final class AppStore {
         chat.clearCurrentSession()
     }
 
+    /// 将助手追问回复提炼为新卡片并插入卡堆
+    @discardableResult
+    public func deriveAndSaveCardFromChat(message: CardChatMessage, parentCard: KnowledgeCard) -> KnowledgeCard {
+        let newCard = CardChatInsightDeriver.deriveCard(from: message.content, parentCard: parentCard)
+        chat.savedCardMessageIds.insert(message.id)
+        importCards([newCard], insertAtTop: true)
+        return newCard
+    }
+
+    /// 导出当前追问会话为 Markdown
+    public func exportCurrentChatMarkdown() -> String? {
+        guard let session = currentChatSession, let card = activeChatCard else { return nil }
+        return CardChatInsightDeriver.exportMarkdown(session: session, parentCard: card)
+    }
+
     // MARK: - 预置库
 
     private nonisolated static func loadSeedCards() -> [KnowledgeCard] {

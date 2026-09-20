@@ -93,10 +93,12 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     var activeChatCard: KnowledgeCard? by mutableStateOf(null)
         private set
     var currentChatSession: CardChatSession? by mutableStateOf(null)
-        private set
+        internal set
     var isChatStreaming: Boolean by mutableStateOf(false)
         private set
     var chatErrorMessage: String? by mutableStateOf(null)
+        private set
+    var savedChatMessageIds: Set<String> by mutableStateOf(emptySet())
         private set
 
     private var chatStreamJob: Job? = null
@@ -650,6 +652,22 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             chatStorage.clearSession(card.id)
         }
+    }
+
+    /** 将助手追问回复提炼为新卡片并插入卡堆（置顶） */
+    fun deriveAndSaveCardFromChat(messageId: String, content: String, parentCard: KnowledgeCard): KnowledgeCard {
+        val newCard = com.knowflick.app.ai.CardChatInsightDeriver.deriveCard(content, parentCard)
+        savedChatMessageIds = savedChatMessageIds + messageId
+        mutate { model.store.addCards(listOf(newCard), insertAtTop = true) }
+        return newCard
+    }
+
+    /** 导出当前卡片的追问对话为 Markdown */
+    fun exportCurrentChatMarkdown(): String? {
+        val session = currentChatSession ?: return null
+        val card = activeChatCard ?: return null
+        if (session.messages.isEmpty()) return null
+        return com.knowflick.app.ai.CardChatInsightDeriver.exportMarkdown(session, card)
     }
 
     // ---------- 知识测验 ----------

@@ -66,12 +66,15 @@ fun DetailScreen(
     chatSession: com.knowflick.app.ai.CardChatSession? = null,
     isChatStreaming: Boolean = false,
     chatErrorMessage: String? = null,
+    savedChatMessageIds: Set<String> = emptySet(),
     onOpenChat: () -> Unit = {},
     onCloseChat: () -> Unit = {},
     onSendChatMessage: (String) -> Unit = {},
     onCancelChatStreaming: () -> Unit = {},
     onClearChatSession: () -> Unit = {},
     onSpeakChatMessage: (String) -> Unit = {},
+    onDeriveCardFromChat: (messageId: String, content: String) -> Unit = { _, _ -> },
+    onExportChatMarkdown: () -> Unit = {},
     relatedCards: List<KnowledgeCard> = emptyList(),
     onSelectRelatedCard: (KnowledgeCard) -> Unit = {},
 ) {
@@ -419,10 +422,13 @@ fun DetailScreen(
                 session = chatSession,
                 isStreaming = isChatStreaming,
                 errorMessage = chatErrorMessage,
+                savedMessageIds = savedChatMessageIds,
                 onSendMessage = onSendChatMessage,
                 onCancelStreaming = onCancelChatStreaming,
                 onClearSession = onClearChatSession,
                 onSpeakMessage = onSpeakChatMessage,
+                onDeriveCard = onDeriveCardFromChat,
+                onExportMarkdown = onExportChatMarkdown,
                 onClose = {
                     showChatSheet = false
                     onCloseChat()

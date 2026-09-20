@@ -1,8 +1,11 @@
 package com.knowflick.app
 
 import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -169,12 +172,28 @@ class MainActivity : ComponentActivity() {
                                     chatSession = viewModel.currentChatSession,
                                     isChatStreaming = viewModel.isChatStreaming,
                                     chatErrorMessage = viewModel.chatErrorMessage,
+                                    savedChatMessageIds = viewModel.savedChatMessageIds,
                                     onOpenChat = { viewModel.openChat(card) },
                                     onCloseChat = { viewModel.closeChat() },
                                     onSendChatMessage = { prompt -> viewModel.sendChatMessage(prompt) },
                                     onCancelChatStreaming = { viewModel.cancelChatStreaming() },
                                     onClearChatSession = { viewModel.clearCurrentChatSession() },
                                     onSpeakChatMessage = { text -> viewModel.speech.speakText(text) },
+                                    onDeriveCardFromChat = { messageId, content ->
+                                        viewModel.deriveAndSaveCardFromChat(messageId, content, card)
+                                        Toast.makeText(this@MainActivity, "已将洞见沉淀为新卡片并置顶插入卡堆", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onExportChatMarkdown = {
+                                        val markdown = viewModel.exportCurrentChatMarkdown()
+                                        if (!markdown.isNullOrBlank()) {
+                                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            val clip = ClipData.newPlainText("KnowFlick 追问笔记", markdown)
+                                            clipboard.setPrimaryClip(clip)
+                                            Toast.makeText(this@MainActivity, "已复制追问 Markdown 笔记到剪贴板", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(this@MainActivity, "当前无追问内容可导出", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
                                     relatedCards = relatedCards,
                                     onSelectRelatedCard = { related ->
                                         viewModel.closeChat()

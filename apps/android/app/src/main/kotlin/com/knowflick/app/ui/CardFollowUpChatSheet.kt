@@ -34,6 +34,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -81,10 +82,13 @@ fun CardFollowUpChatSheet(
     session: CardChatSession?,
     isStreaming: Boolean,
     errorMessage: String?,
+    savedMessageIds: Set<String> = emptySet(),
     onSendMessage: (String) -> Unit,
     onCancelStreaming: () -> Unit,
     onClearSession: () -> Unit,
     onSpeakMessage: (String) -> Unit,
+    onDeriveCard: (messageId: String, content: String) -> Unit = { _, _ -> },
+    onExportMarkdown: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -126,10 +130,11 @@ fun CardFollowUpChatSheet(
             .navigationBarsPadding(),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // 顶栏：图标 + 标题 + 分类胶囊 + 清空 + 完成
+            // 顶栏：图标 + 标题 + 分类胶囊 + 导出 + 清空 + 完成
             ChatHeaderBar(
                 category = card.category,
                 hasMessages = messages.isNotEmpty(),
+                onExportClick = onExportMarkdown,
                 onClearClick = { showClearDialog = true },
                 onClose = onClose,
             )
@@ -147,11 +152,18 @@ fun CardFollowUpChatSheet(
                     )
                 } else {
                     ChatMessageList(
+                        card = card,
                         messages = messages,
+                        isStreaming = isStreaming,
+                        savedMessageIds = savedMessageIds,
                         onSpeak = onSpeakMessage,
                         onCopy = { text ->
                             clipboardManager.setText(AnnotatedString(text))
                             Toast.makeText(context, "已复制回答", Toast.LENGTH_SHORT).show()
+                        },
+                        onDeriveCard = onDeriveCard,
+                        onStarterClick = { prompt ->
+                            onSendMessage(prompt)
                         },
                     )
                 }
@@ -213,6 +225,7 @@ fun CardFollowUpChatSheet(
 private fun ChatHeaderBar(
     category: String,
     hasMessages: Boolean,
+    onExportClick: () -> Unit,
     onClearClick: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -257,6 +270,22 @@ private fun ChatHeaderBar(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (hasMessages) {
+                IconButton(
+                    onClick = onExportClick,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = "导出对话记录",
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
                 IconButton(
                     onClick = onClearClick,
                     modifier = Modifier
@@ -410,9 +439,14 @@ private fun ChatStartersView(
 /** 消息瀑布流列表 */
 @Composable
 private fun ChatMessageList(
+    card: KnowledgeCard,
     messages: List<CardChatMessage>,
+    isStreaming: Boolean,
+    savedMessageIds: Set<String>,
     onSpeak: (String) -> Unit,
     onCopy: (String) -> Unit,
+    onDeriveCard: (messageId: String, content: String) -> Unit,
+    onStarterClick: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
 
@@ -431,11 +465,93 @@ private fun ChatMessageList(
         items(messages, key = { it.id }) { msg ->
             ChatMessageBubble(
                 message = msg,
+                isSaved = savedMessageIds.contains(msg.id),
                 onSpeak = { onSpeak(msg.content) },
                 onCopy = { onCopy(msg.content) },
+                onDeriveCard = { onDeriveCard(msg.id, msg.content) },
             )
         }
+        val lastAssistant = messages.lastOrNull()
+        if (lastAssistant != null && lastAssistant.sender == MessageSender.ASSISTANT && !isStreaming && lastAssistant.content.isNotEmpty()) {
+            item {
+                FollowUpSuggestions(
+                    card = card,
+                    lastContent = lastAssistant.content,
+                    onSuggestionClick = onStarterClick,
+                )
+            }
+        }
         item { Spacer(Modifier.height(12.dp)) }
+    }
+}
+
+/** 动态追问建议 */
+@Composable
+private fun FollowUpSuggestions(
+    card: KnowledgeCard,
+    lastContent: String,
+    onSuggestionClick: (String) -> Unit,
+) {
+    val suggestions = remember(lastContent) {
+        com.knowflick.app.ai.CardChatInsightDeriver.suggestFollowUps(lastContent, card)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+        ) {
+            Icon(
+                imageVector = AppIcons.Sparkles,
+                contentDescription = null,
+                tint = EditorialColor.aiAmber,
+                modifier = Modifier.size(13.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "深度追问建议 (Click to Ask)",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+
+        suggestions.forEach { suggestion ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                    .clickable { onSuggestionClick(suggestion) }
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = suggestion,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.88f),
+                        fontSize = 12.5.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        imageVector = AppIcons.ArrowUp,
+                        contentDescription = null,
+                        tint = EditorialColor.aiAmber.copy(alpha = 0.85f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -443,8 +559,10 @@ private fun ChatMessageList(
 @Composable
 private fun ChatMessageBubble(
     message: CardChatMessage,
+    isSaved: Boolean,
     onSpeak: () -> Unit,
     onCopy: () -> Unit,
+    onDeriveCard: () -> Unit,
 ) {
     val isUser = message.sender == MessageSender.USER
 
@@ -546,12 +664,45 @@ private fun ChatMessageBubble(
                 }
             }
 
-            // 助手回答工具栏（朗读 + 复制）
+            // 助手回答工具栏（沉淀为卡片 + 朗读 + 复制）
             if (!isUser && message.content.isNotEmpty() && !message.isStreaming) {
                 Row(
                     modifier = Modifier.padding(top = 6.dp, start = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (isSaved) EditorialColor.likeGreen.copy(alpha = 0.12f)
+                                else EditorialColor.aiAmber.copy(alpha = 0.12f),
+                            )
+                            .border(
+                                1.dp,
+                                if (isSaved) EditorialColor.likeGreen.copy(alpha = 0.35f)
+                                else EditorialColor.aiAmber.copy(alpha = 0.35f),
+                                RoundedCornerShape(12.dp),
+                            )
+                            .clickable(enabled = !isSaved) { onDeriveCard() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isSaved) AppIcons.Check else AppIcons.Add,
+                                contentDescription = null,
+                                tint = if (isSaved) EditorialColor.likeGreen else EditorialColor.aiAmber,
+                                modifier = Modifier.size(12.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                if (isSaved) "已沉淀为卡片" else "沉淀为卡片",
+                                color = if (isSaved) EditorialColor.likeGreen else EditorialColor.aiAmber,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
@@ -568,7 +719,7 @@ private fun ChatMessageBubble(
                                 modifier = Modifier.size(12.dp),
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("朗读此回答", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f), fontSize = 11.sp)
+                            Text("朗读", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f), fontSize = 11.sp)
                         }
                     }
 

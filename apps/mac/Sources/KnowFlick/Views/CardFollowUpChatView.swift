@@ -10,6 +10,7 @@ struct CardFollowUpChatView: View {
 
     @State private var inputText: String = ""
     @State private var showClearAlert: Bool = false
+    @State private var toastMessage: String? = nil
     @FocusState private var isInputFocused: Bool
 
     private var theme: CategoryTheme {
@@ -38,6 +39,10 @@ struct CardFollowUpChatView: View {
                     } else {
                         welcomeAndStartersView
                     }
+                }
+
+                if let toast = toastMessage {
+                    chatToastBanner(message: toast)
                 }
 
                 if let error = store.chatErrorMessage {
@@ -83,6 +88,28 @@ struct CardFollowUpChatView: View {
             Spacer()
 
             if let session = store.currentChatSession, !session.messages.isEmpty {
+                Button(action: {
+                    if let md = store.exportCurrentChatMarkdown() {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(md, forType: .string)
+                        toastMessage = "已导出对话 Markdown 至剪贴板 ✓"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            if toastMessage == "已导出对话 Markdown 至剪贴板 ✓" {
+                                toastMessage = nil
+                            }
+                        }
+                    }
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(EditorialColor.textTertiary)
+                        .padding(7)
+                        .background(EditorialColor.glassSurface, in: Circle())
+                        .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .help("导出对话记录 (Markdown)")
+
                 Button(action: { showClearAlert = true }) {
                     Image(systemName: "trash")
                         .font(.system(size: 12, weight: .medium))
@@ -208,6 +235,10 @@ struct CardFollowUpChatView: View {
                         messageRow(msg)
                             .id(msg.id)
                     }
+
+                    if let last = messages.last, last.sender == .assistant, !last.isStreaming, !last.content.isEmpty {
+                        followUpSuggestionsView(lastContent: last.content)
+                    }
                 }
                 .padding(20)
             }
@@ -297,16 +328,50 @@ struct CardFollowUpChatView: View {
                         )
                 )
 
-                // 助手回答工具栏（朗读 + 复制）
+                // 助手回答工具栏（沉淀为卡片 + 朗读 + 复制）
                 if msg.sender == .assistant && !msg.content.isEmpty && !msg.isStreaming {
-                    HStack(spacing: 12) {
+                    let isSaved = store.chat.savedCardMessageIds.contains(msg.id)
+                    HStack(spacing: 10) {
+                        Button(action: {
+                            guard !isSaved else { return }
+                            let newCard = store.deriveAndSaveCardFromChat(message: msg, parentCard: card)
+                            toastMessage = "已沉淀为新卡片《\(newCard.headline)》并加入卡堆！"
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                                if toastMessage?.contains(newCard.headline) == true {
+                                    toastMessage = nil
+                                }
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: isSaved ? "checkmark.circle.fill" : "plus.rectangle.on.rectangle")
+                                    .font(.system(size: 10))
+                                Text(isSaved ? "已沉淀为卡片" : "沉淀为卡片")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundStyle(isSaved ? EditorialColor.likeGreen : EditorialColor.aiAmber)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(
+                                isSaved ? EditorialColor.likeGreen.opacity(0.12) : EditorialColor.aiAmber.opacity(0.12),
+                                in: Capsule()
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(
+                                    isSaved ? EditorialColor.likeGreen.opacity(0.3) : EditorialColor.aiAmber.opacity(0.3),
+                                    lineWidth: 1
+                                )
+                            )
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .disabled(isSaved)
+
                         Button(action: {
                             store.speechService.speakResponse(msg.content, for: card)
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "speaker.wave.2.fill")
                                     .font(.system(size: 10))
-                                Text("朗读此回答")
+                                Text("朗读")
                                     .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundStyle(EditorialColor.textSecondary)
@@ -320,6 +385,12 @@ struct CardFollowUpChatView: View {
                         Button(action: {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(msg.content, forType: .string)
+                            toastMessage = "已复制回答内容 ✓"
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                if toastMessage == "已复制回答内容 ✓" {
+                                    toastMessage = nil
+                                }
+                            }
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "doc.on.doc")
@@ -356,6 +427,69 @@ struct CardFollowUpChatView: View {
                 Spacer(minLength: 40)
             }
         }
+    }
+
+    // MARK: - 动态追问建议
+
+    private func followUpSuggestionsView(lastContent: String) -> some View {
+        let suggestions = CardChatInsightDeriver.suggestFollowUps(for: lastContent, parentCard: card)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(EditorialColor.aiAmber)
+                Text("深度追问建议 (Click to Ask)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(EditorialColor.textTertiary)
+            }
+            .padding(.leading, 4)
+
+            VStack(spacing: 6) {
+                ForEach(suggestions, id: \.self) { suggestion in
+                    Button(action: {
+                        store.sendChatMessage(prompt: suggestion)
+                    }) {
+                        HStack(spacing: 8) {
+                            Text(suggestion)
+                                .font(EditorialFont.caption)
+                                .foregroundStyle(EditorialColor.textPrimary)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(EditorialColor.aiAmber.opacity(0.8))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                }
+            }
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - 提示反馈横幅
+
+    private func chatToastBanner(message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(EditorialColor.likeGreen)
+                .font(.system(size: 12))
+            Text(message)
+                .font(EditorialFont.caption)
+                .foregroundStyle(EditorialColor.textPrimary)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(EditorialColor.likeGreen.opacity(0.12))
     }
 
     // MARK: - 错误提示
