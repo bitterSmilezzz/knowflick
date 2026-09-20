@@ -98,4 +98,26 @@ struct LearningPlanTests {
         store.flushPersistence()
         #expect(Storage(baseDir: directory).loadCards().first == result)
     }
+
+    @Test func masteryDistributionAndUpcomingScheduleAreCalculatedAccurately() {
+        let c1 = card(seen: now, reviewed: now, mastery: 2) // mastered (7 days)
+        let c2 = card(seen: now, reviewed: now, mastery: 1) // hesitant (3 days)
+        let c3 = card(seen: now, reviewed: now, mastery: 0) // needsReview (1 day)
+        let c4 = card() // unread
+
+        let plan = LearningPlan(cards: [c1, c2, c3, c4], now: now, calendar: calendar)
+        #expect(plan.masteryDistribution.masteredCount == 1)
+        #expect(plan.masteryDistribution.hesitantCount == 1)
+        #expect(plan.masteryDistribution.needsReviewCount == 2)
+        #expect(plan.masteryDistribution.testedCards == 3)
+        #expect(plan.masteryDistribution.totalCards == 4)
+        #expect(plan.masteryDistribution.retentionRate > 0)
+
+        let schedule = plan.upcomingSchedule(days: 7)
+        #expect(schedule.count == 7)
+        // Day 0 is today, Day 1 is 1 day later (c3 due), Day 3 is 3 days later (c2 due)
+        #expect(schedule[1].count == 1) // c3
+        #expect(schedule[3].count == 1) // c2
+    }
 }
+

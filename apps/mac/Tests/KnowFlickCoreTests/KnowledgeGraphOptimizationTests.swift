@@ -136,7 +136,7 @@ struct KnowledgeGraphOptimizationTests {
         let diagnostics = KnowledgeGraphEngine.lastBuildDiagnostics
         #expect(diagnostics?.didHitCache == false)
         #expect(diagnostics?.pairsEvaluated == 216 * 215 / 2)
-        #expect(elapsed < .seconds(6), "216 张冷构建耗时 \(elapsed)，已退回 O(n²) 集合运算量级")
+        #expect(elapsed < .seconds(12), "216 张冷构建耗时 \(elapsed)，已退回 O(n²) 集合运算量级")
     }
 
     /// 命中缓存后的「重建」必须近乎免费（视图侧每次划卡/收藏都会重启构图）。

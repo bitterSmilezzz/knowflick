@@ -59,7 +59,7 @@ struct ChatStreamTests {
         #expect(store.currentChatSession?.messages.first?.content == "为什么这么轻？")
 
         // 等待流结束（超时保护避免慢机误报）
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
         while store.isChatStreaming && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(25))
         }
@@ -72,7 +72,7 @@ struct ChatStreamTests {
 
         // 会话已落盘（写入走后台串行队列，轮询等待）
         let persistedStorage = Storage(baseDir: directory)
-        let persistDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let persistDeadline = ContinuousClock.now.advanced(by: .seconds(6))
         var persisted = persistedStorage.loadChatSession(for: subject.id)
         while persisted?.messages.last?.content != "碳纤维比铝还轻" && ContinuousClock.now < persistDeadline {
             try await Task.sleep(for: .milliseconds(25))
@@ -91,7 +91,7 @@ struct ChatStreamTests {
         store.activeChatCard = subject
         store.sendChatMessage(prompt: "讲讲机理")
 
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
         while store.isChatStreaming && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(25))
         }

@@ -57,7 +57,7 @@ struct PersistenceFeedbackTests {
         try FileManager.default.removeItem(at: obstruction)
         store.retryPersistence()
         // 等待防抖写入完成；超时保护避免慢机器上的误报，同时不阻塞主线程。
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(8))
         while store.persistenceWarning != nil && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(25))
         }

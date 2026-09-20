@@ -134,7 +134,7 @@ fun KnowledgeGraphScreen(
     }
 
     val isDark = MaterialTheme.colorScheme.background.red < 0.2f
-    val bgColor = if (isDark) Color(0xFF0F1014) else Color(0xFFF7F5F0)
+    val bgColor = MaterialTheme.colorScheme.background
     val canvasCenter = remember { Offset(700f, 700f) }
 
     Box(

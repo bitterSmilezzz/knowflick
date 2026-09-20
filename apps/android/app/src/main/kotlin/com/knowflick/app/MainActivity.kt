@@ -134,6 +134,22 @@ class MainActivity : ComponentActivity() {
                                 screen = detailReturnScreen
                             } else {
                                 val isFavorite = card.isFavorite
+                                val relatedCards = remember(card.id, viewModel.version) {
+                                    viewModel.model.store.cards
+                                        .filter { it.id != card.id }
+                                        .map { other ->
+                                            var score = 0
+                                            if (other.category == card.category) score += 5
+                                            val cardKeywords = card.headline.chunked(2).toSet()
+                                            val otherKeywords = other.headline.chunked(2).toSet()
+                                            score += (cardKeywords intersect otherKeywords).size * 2
+                                            other to score
+                                        }
+                                        .filter { it.second > 0 }
+                                        .sortedByDescending { it.second }
+                                        .take(3)
+                                        .map { it.first }
+                                }
                                 DetailScreen(
                                     card = card,
                                     isFavorite = isFavorite,
@@ -159,6 +175,11 @@ class MainActivity : ComponentActivity() {
                                     onCancelChatStreaming = { viewModel.cancelChatStreaming() },
                                     onClearChatSession = { viewModel.clearCurrentChatSession() },
                                     onSpeakChatMessage = { text -> viewModel.speech.speakText(text) },
+                                    relatedCards = relatedCards,
+                                    onSelectRelatedCard = { related ->
+                                        viewModel.closeChat()
+                                        detailCardId = related.id
+                                    },
                                 )
                             }
                         }

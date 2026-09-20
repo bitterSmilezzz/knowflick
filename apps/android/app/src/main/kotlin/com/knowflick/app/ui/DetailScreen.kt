@@ -46,10 +46,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knowflick.app.domain.CardThemeResolver
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.ui.common.HapticFeedbackHelper
 
 /** 详情页：整页摄影底图 + 遮罩 + 正文段落 + 延伸阅读 + 收藏切换 */
 @Composable
@@ -70,16 +72,24 @@ fun DetailScreen(
     onCancelChatStreaming: () -> Unit = {},
     onClearChatSession: () -> Unit = {},
     onSpeakChatMessage: (String) -> Unit = {},
+    relatedCards: List<KnowledgeCard> = emptyList(),
+    onSelectRelatedCard: (KnowledgeCard) -> Unit = {},
 ) {
     val context = LocalContext.current
     val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
     var showChatSheet by remember { mutableStateOf(false) }
     var showPosterSheet by remember { mutableStateOf(false) }
 
+    val isDark = MaterialTheme.colorScheme.background.red < 0.2f
+    val bgColor = MaterialTheme.colorScheme.background
+    val textColorPrimary = MaterialTheme.colorScheme.onBackground
+    val textColorSecondary = textColorPrimary.copy(alpha = if (isDark) 0.88f else 0.78f)
+    val textColorTertiary = textColorPrimary.copy(alpha = if (isDark) 0.65f else 0.55f)
+
     // 系统返回键与屏内返回语义一致（弹窗展开时拦截返回键优先关闭弹窗）
     androidx.activity.compose.BackHandler(enabled = !showChatSheet && !showPosterSheet) { onBack() }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF121215))) {
+    Box(Modifier.fillMaxSize().background(bgColor)) {
         Box(Modifier.fillMaxSize()) {
             if (bg != null) {
                 Image(
@@ -92,11 +102,19 @@ fun DetailScreen(
                     Modifier
                         .fillMaxSize()
                         .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.50f),
-                                0.30f to Color(0xD9141416),
-                                1f to Color(0xFF121215),
-                            ),
+                            if (isDark) {
+                                Brush.verticalGradient(
+                                    0f to Color.Black.copy(alpha = 0.50f),
+                                    0.30f to Color(0xD9141416),
+                                    1f to bgColor,
+                                )
+                            } else {
+                                Brush.verticalGradient(
+                                    0f to bgColor.copy(alpha = 0.35f),
+                                    0.28f to bgColor.copy(alpha = 0.88f),
+                                    1f to bgColor,
+                                )
+                            },
                         ),
                 )
             }
@@ -129,7 +147,7 @@ fun DetailScreen(
             Spacer(Modifier.height(12.dp))
             Text(
                 card.headline,
-                color = Color.White,
+                color = textColorPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Serif,
@@ -139,7 +157,7 @@ fun DetailScreen(
             Spacer(Modifier.height(14.dp))
             Text(
                 card.summary,
-                color = Color.White.copy(alpha = 0.88f),
+                color = textColorSecondary,
                 fontSize = 15.5.sp,
                 lineHeight = 24.sp,
                 fontFamily = FontFamily.Serif,
@@ -149,7 +167,7 @@ fun DetailScreen(
                 if (idx > 0) Spacer(Modifier.height(18.dp))
                 com.knowflick.app.ui.common.MarkdownText(
                     markdown = para,
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = textColorSecondary,
                     style = androidx.compose.ui.text.TextStyle(
                         fontSize = 14.sp,
                         lineHeight = 24.sp,
@@ -176,8 +194,8 @@ fun DetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color.White.copy(alpha = 0.06f))
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                            .background(if (isDark) Color.White.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surface)
+                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
                             .clickable(
                                 enabled = linkUri != null,
                                 onClickLabel = "打开延伸阅读",
@@ -197,7 +215,7 @@ fun DetailScreen(
                         Spacer(Modifier.width(10.dp))
                         Text(
                             link.title,
-                            color = Color.White.copy(alpha = 0.82f),
+                            color = textColorPrimary.copy(alpha = 0.85f),
                             fontSize = 12.5.sp,
                             lineHeight = 18.sp,
                             modifier = Modifier.weight(1f),
@@ -206,18 +224,89 @@ fun DetailScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.35f),
+                            tint = textColorTertiary,
                             modifier = Modifier.size(13.dp),
                         )
                     }
                 }
             }
+
+            // 关联知识探索（推荐阅读同领域/关联知识卡片）
+            if (relatedCards.isNotEmpty()) {
+                Spacer(Modifier.height(32.dp))
+                Text(
+                    "关联知识探索",
+                    color = EditorialColor.aiAmber,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                relatedCards.forEach { related ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isDark) Color.White.copy(alpha = 0.05f) else MaterialTheme.colorScheme.surface)
+                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.10f) else MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                            .clickable {
+                                HapticFeedbackHelper.click(context)
+                                onSelectRelatedCard(related)
+                            }
+                            .padding(14.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(EditorialColor.aiAmber.copy(alpha = 0.14f))
+                                .padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                related.category,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = EditorialColor.aiAmber,
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                related.headline,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Serif,
+                                color = textColorPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                related.summary,
+                                fontSize = 11.5.sp,
+                                color = textColorTertiary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = textColorTertiary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+
             Spacer(Modifier.height(28.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(EditorialColor.aiAmber.copy(alpha = 0.10f))
+                    .background(EditorialColor.aiAmber.copy(alpha = if (isDark) 0.10f else 0.08f))
                     .border(1.dp, EditorialColor.aiAmber.copy(alpha = 0.32f), RoundedCornerShape(14.dp))
                     .clickable {
                         showChatSheet = true
@@ -234,9 +323,9 @@ fun DetailScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("AI 伴学深度追问", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("AI 伴学深度追问", color = textColorPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(2.dp))
-                        Text("探究底层机理、现实案例与跨学科碰撞", color = Color.White.copy(alpha = 0.65f), fontSize = 11.5.sp)
+                        Text("探究底层机理、现实案例与跨学科碰撞", color = textColorTertiary, fontSize = 11.5.sp)
                     }
                     Icon(
                         imageVector = AppIcons.ArrowUp,
@@ -249,7 +338,11 @@ fun DetailScreen(
             Spacer(Modifier.height(40.dp))
         }
 
-        // 顶栏浮动按钮：返回 / 朗读 / 收藏 / AI 伴学（微透圆钮 + 1px 细发丝边框）
+        // 顶栏浮动按钮：返回 / 朗读 / 收藏 / AI 伴学（微透圆钮 + 1px 细发丝边框，自适应深浅纸质底色）
+        val btnBg = if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+        val btnBorder = if (isDark) Color.White.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outline
+        val btnIconTint = textColorPrimary
+
         Row(
             Modifier
                 .fillMaxWidth()
@@ -260,10 +353,10 @@ fun DetailScreen(
             IconButton(
                 onClick = onBack,
                 modifier = Modifier
-                    .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                    .background(btnBg, CircleShape)
+                    .border(1.dp, btnBorder, CircleShape),
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = btnIconTint)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IconButton(
@@ -272,8 +365,8 @@ fun DetailScreen(
                         onOpenChat()
                     },
                     modifier = Modifier
-                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                        .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                        .background(btnBg, CircleShape)
+                        .border(1.dp, btnBorder, CircleShape),
                 ) {
                     Icon(
                         AppIcons.Sparkles,
@@ -284,37 +377,37 @@ fun DetailScreen(
                 IconButton(
                     onClick = { onToggleSpeech() },
                     modifier = Modifier
-                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                        .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                        .background(btnBg, CircleShape)
+                        .border(1.dp, btnBorder, CircleShape),
                 ) {
                     Icon(
                         if (isSpeakingState) Icons.Filled.Close else AppIcons.VolumeUp,
                         contentDescription = if (isSpeakingState) "停止朗读" else "朗读全文",
-                        tint = if (isSpeakingState) EditorialColor.aiAmber else Color.White,
+                        tint = if (isSpeakingState) EditorialColor.aiAmber else btnIconTint,
                     )
                 }
                 IconButton(
                     onClick = { showPosterSheet = true },
                     modifier = Modifier
-                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                        .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                        .background(btnBg, CircleShape)
+                        .border(1.dp, btnBorder, CircleShape),
                 ) {
                     Icon(
                         Icons.Filled.Share,
                         contentDescription = "导出分享海报",
-                        tint = Color.White,
+                        tint = btnIconTint,
                     )
                 }
                 IconButton(
                     onClick = onToggleFavorite,
                     modifier = Modifier
-                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                        .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                        .background(btnBg, CircleShape)
+                        .border(1.dp, btnBorder, CircleShape),
                 ) {
                     Icon(
                         if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = "收藏或取消收藏",
-                        tint = if (isFavorite) EditorialColor.likeGreen else Color.White,
+                        tint = if (isFavorite) EditorialColor.likeGreen else btnIconTint,
                     )
                 }
             }

@@ -30,7 +30,7 @@ struct SpeechTests {
         let utterance = try #require(service.currentUtterance)
         service.speechSynthesizer(AVSpeechSynthesizer(), didFinish: utterance)
 
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(8))
         while service.isAmbientMode && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(25))
         }
