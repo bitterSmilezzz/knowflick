@@ -344,10 +344,21 @@ class MainActivity : ComponentActivity() {
                             onSourceChange = { viewModel.updateSearchSource(it) },
                             allCards = viewModel.model.store.cards,
                             searchResults = searchResults,
+                            searchHistory = viewModel.searchHistory,
+                            onAddSearchHistory = { viewModel.addSearchHistory(it) },
+                            onRemoveSearchHistory = { viewModel.removeSearchHistory(it) },
+                            onClearSearchHistory = { viewModel.clearSearchHistory() },
                             onOpenDetail = { card ->
                                 detailCardId = card.id
                                 detailReturnScreen = screen
                                 screen = Screen.DETAIL
+                                viewModel.closeSearchSheet()
+                            },
+                            onOpenChat = { card ->
+                                detailCardId = card.id
+                                detailReturnScreen = screen
+                                screen = Screen.DETAIL
+                                viewModel.openChat(card)
                                 viewModel.closeSearchSheet()
                             },
                             onPromoteToDeck = { card ->

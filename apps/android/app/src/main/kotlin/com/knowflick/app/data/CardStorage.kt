@@ -6,6 +6,9 @@ import java.io.FileOutputStream
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 
 /** 保存结果（与 macOS 端 CardSaveResult 对齐） */
 sealed class CardSaveResult {
@@ -94,6 +97,31 @@ class CardStorage(private val baseDir: File) {
 
     fun saveSpeechJson(json: String): Boolean =
         atomicWrite(File(baseDir, "speech.json"), json.toByteArray(Charsets.UTF_8)) == null
+
+    // ---------- 搜索历史 (Search History) ----------
+
+    private val stringListSerializer = ListSerializer(String.serializer())
+    private val jsonSerializer = Json { ignoreUnknownKeys = true }
+
+    /** 加载最近搜索历史（上限 8 条，LRU 顺序） */
+    fun loadSearchHistory(): List<String> {
+        val bytes = readFileSafe(File(baseDir, "search_history.json")) ?: return emptyList()
+        return try {
+            jsonSerializer.decodeFromString(stringListSerializer, bytes.decodeToString())
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    /** 保存搜索历史 */
+    fun saveSearchHistory(history: List<String>): Boolean {
+        val raw = try {
+            jsonSerializer.encodeToString(stringListSerializer, history)
+        } catch (_: Throwable) {
+            return false
+        }
+        return atomicWrite(File(baseDir, "search_history.json"), raw.toByteArray(Charsets.UTF_8)) == null
+    }
 
     /**
      * 同目录临时文件 + fsync + 原子替换；不支持 ATOMIC_MOVE 的文件系统退回安全替换。

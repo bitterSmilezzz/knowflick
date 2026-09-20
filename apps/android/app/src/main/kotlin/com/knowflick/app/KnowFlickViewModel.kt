@@ -327,6 +327,35 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     var searchIntent by mutableStateOf<SwipeDirection?>(null)
         private set
 
+    /** 最近搜索历史关键词列表（上限 8 条，LRU 顺序） */
+    var searchHistory: List<String> by mutableStateOf(model.storage.loadSearchHistory())
+        private set
+
+    fun addSearchHistory(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
+        val list = (listOf(trimmed) + searchHistory.filter { it != trimmed }).take(8)
+        searchHistory = list
+        viewModelScope.launch(Dispatchers.IO) {
+            model.storage.saveSearchHistory(list)
+        }
+    }
+
+    fun removeSearchHistory(query: String) {
+        val list = searchHistory.filter { it != query }
+        searchHistory = list
+        viewModelScope.launch(Dispatchers.IO) {
+            model.storage.saveSearchHistory(list)
+        }
+    }
+
+    fun clearSearchHistory() {
+        searchHistory = emptyList()
+        viewModelScope.launch(Dispatchers.IO) {
+            model.storage.saveSearchHistory(emptyList())
+        }
+    }
+
     fun openSearchSheet() {
         showSearchSheet = true
     }

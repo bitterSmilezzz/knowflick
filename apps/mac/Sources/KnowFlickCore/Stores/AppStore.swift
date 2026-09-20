@@ -40,6 +40,9 @@ public final class AppStore {
     /// 全文检索与智能搜索引擎
     public let searchEngine = KnowledgeSearchEngine()
 
+    /// 搜索历史关键词（上限 8 条，LRU 顺序）
+    public private(set) var searchHistory: [String] = []
+
     /// 收藏阁：显式收藏的卡片列表（按收藏时间倒序，与喜好意图解耦）。
     /// 存储派生快照，随 recomputeDeckAndHistory 刷新；避免视图 body 每次访问都全库 filter+sort。
     public private(set) var favorites: [KnowledgeCard] = []
@@ -93,6 +96,7 @@ public final class AppStore {
         // 追问会话与卡片写入共用同一条串行队列：清除/保存/读盘的先后顺序因此天然成立
         self.chat = ChatSessionStore(storage: storage, aiService: resolvedAIService, persistenceQueue: queue)
         self.settingsStore = SettingsStore(storage: storage, credentials: resolvedCredentials, aiService: resolvedAIService)
+        self.searchHistory = storage.loadSearchHistory()
         recomputeDeckAndHistory()
 
         self.speechService.speedMultiplier = settings.speechRate
@@ -619,6 +623,46 @@ public final class AppStore {
     public func exportCurrentChatMarkdown() -> String? {
         guard let session = currentChatSession, let card = activeChatCard else { return nil }
         return CardChatInsightDeriver.exportMarkdown(session: session, parentCard: card)
+    }
+
+    // MARK: - 搜索历史管理
+
+    /// 记录一条搜索关键词（前插、去重、上限 8 条、过滤空串）
+    public func addSearchHistory(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var list = searchHistory.filter { $0 != trimmed }
+        list.insert(trimmed, at: 0)
+        if list.count > 8 {
+            list = Array(list.prefix(8))
+        }
+        searchHistory = list
+        schedulePersistSearchHistory()
+    }
+
+    /// 移除单条搜索历史记录
+    public func removeSearchHistory(_ query: String) {
+        searchHistory.removeAll { $0 == query }
+        schedulePersistSearchHistory()
+    }
+
+    /// 清空全部搜索历史
+    public func clearSearchHistory() {
+        searchHistory.removeAll()
+        schedulePersistSearchHistory()
+    }
+
+    private func schedulePersistSearchHistory() {
+        let snapshot = searchHistory
+        let storage = self.storage
+        persistenceQueue.async {
+            do {
+                try storage.saveSearchHistoryThrowing(snapshot)
+            } catch {
+                NSLog("KnowFlick: 保存搜索历史失败: %@", error.localizedDescription)
+            }
+        }
     }
 
     // MARK: - 预置库

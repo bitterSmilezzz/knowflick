@@ -271,4 +271,25 @@ public struct Storage: Sendable {
         do { try data.write(to: fileURL("chat_sessions.json"), options: .atomic) }
         catch { throw StorageWriteError.writing(error.localizedDescription) }
     }
+
+    // MARK: - 搜索历史 (Search History)
+
+    public func loadSearchHistory() -> [String] {
+        let url = fileURL("search_history.json")
+        guard fileManager.fileExists(atPath: url.path) else { return [] }
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode([String].self, from: data)
+        } catch {
+            return []
+        }
+    }
+
+    public func saveSearchHistoryThrowing(_ history: [String]) throws {
+        let data: Data
+        do { data = try JSONEncoder().encode(history) }
+        catch { throw StorageWriteError.encoding(error.localizedDescription) }
+        do { try data.write(to: fileURL("search_history.json"), options: .atomic) }
+        catch { throw StorageWriteError.writing(error.localizedDescription) }
+    }
 }

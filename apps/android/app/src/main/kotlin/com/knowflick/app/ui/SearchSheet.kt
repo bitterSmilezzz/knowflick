@@ -47,6 +47,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -72,7 +74,12 @@ fun SearchSheet(
     onSourceChange: (SearchSourceFilter) -> Unit,
     allCards: List<KnowledgeCard>,
     searchResults: List<SearchResultItem>,
+    searchHistory: List<String> = emptyList(),
+    onAddSearchHistory: (String) -> Unit = {},
+    onRemoveSearchHistory: (String) -> Unit = {},
+    onClearSearchHistory: () -> Unit = {},
     onOpenDetail: (KnowledgeCard) -> Unit,
+    onOpenChat: (KnowledgeCard) -> Unit = {},
     onPromoteToDeck: (KnowledgeCard) -> Unit,
     onToggleFavorite: (KnowledgeCard) -> Unit,
     onResetFilters: () -> Unit,
@@ -84,6 +91,17 @@ fun SearchSheet(
     val focusRequester = remember { FocusRequester() }
     val categories = remember(allCards) {
         listOf("全部") + allCards.map { it.category.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    val categoryCounts = remember(allCards) {
+        val counts = mutableMapOf<String, Int>()
+        counts["全部"] = allCards.size
+        allCards.forEach { card ->
+            val cat = card.category.trim()
+            if (cat.isNotBlank()) {
+                counts[cat] = (counts[cat] ?: 0) + 1
+            }
+        }
+        counts
     }
 
     val hasActiveFilter = query.isNotBlank() ||
@@ -232,12 +250,18 @@ fun SearchSheet(
                 categories.forEach { cat ->
                     val isSelected = (selectedCategory == cat) || (selectedCategory.isNullOrBlank() && cat == "全部")
                     val catColor = if (cat == "全部") EditorialColor.aiAmber else CategoryStampColor.forCategory(cat)
+                    val count = categoryCounts[cat] ?: 0
                     CategoryFilterPill(
                         category = cat,
+                        count = count,
                         color = catColor,
                         selected = isSelected,
                         onClick = {
-                            onCategoryChange(if (cat == "全部") null else cat)
+                            if (isSelected) {
+                                onCategoryChange(null)
+                            } else {
+                                onCategoryChange(if (cat == "全部") null else cat)
+                            }
                         },
                     )
                 }
@@ -248,7 +272,10 @@ fun SearchSheet(
             // 5. 结果区域：引导页 / 搜索结果列表 / 无匹配提示
             if (query.isBlank() && selectedSource == SearchSourceFilter.ALL && (selectedCategory.isNullOrBlank() || selectedCategory == "全部")) {
                 SearchGuideView(
+                    searchHistory = searchHistory,
                     onSelectKeyword = onQueryChange,
+                    onRemoveHistory = onRemoveSearchHistory,
+                    onClearHistory = onClearSearchHistory,
                     onSelectSource = onSourceChange,
                 )
             } else {
@@ -290,8 +317,19 @@ fun SearchSheet(
                         items(searchResults, key = { it.card.id }) { item ->
                             SearchResultCard(
                                 item = item,
-                                onOpenDetail = { onOpenDetail(item.card) },
-                                onPromoteToDeck = { onPromoteToDeck(item.card) },
+                                query = query,
+                                onOpenDetail = {
+                                    if (query.isNotBlank()) onAddSearchHistory(query)
+                                    onOpenDetail(item.card)
+                                },
+                                onOpenChat = {
+                                    if (query.isNotBlank()) onAddSearchHistory(query)
+                                    onOpenChat(item.card)
+                                },
+                                onPromoteToDeck = {
+                                    if (query.isNotBlank()) onAddSearchHistory(query)
+                                    onPromoteToDeck(item.card)
+                                },
                                 onToggleFavorite = { onToggleFavorite(item.card) },
                             )
                         }
@@ -336,6 +374,7 @@ private fun FilterPill(
 @Composable
 private fun CategoryFilterPill(
     category: String,
+    count: Int,
     color: Color,
     selected: Boolean,
     onClick: () -> Unit,
@@ -356,19 +395,30 @@ private fun CategoryFilterPill(
             .clickable { onClick() }
             .padding(horizontal = 11.dp, vertical = 5.dp),
     ) {
-        Text(
-            category,
-            color = if (selected) color else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
-            fontSize = 11.5.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                category,
+                color = if (selected) color else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
+                fontSize = 11.5.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                "($count)",
+                color = if (selected) color.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 
 @Composable
 private fun SearchResultCard(
     item: SearchResultItem,
+    query: String,
     onOpenDetail: () -> Unit,
+    onOpenChat: () -> Unit,
     onPromoteToDeck: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
@@ -442,23 +492,29 @@ private fun SearchResultCard(
 
         Spacer(Modifier.height(8.dp))
 
-        // 标题
-        Text(
-            card.headline,
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            lineHeight = 22.sp,
+        // 标题 (智能关键词高亮)
+        HighlightedText(
+            text = card.headline,
+            query = query,
+            baseStyle = TextStyle(
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 22.sp,
+            ),
         )
 
         // 摘要摘录（针对正文或观点匹配做高光展示）
         if (item.matchedField == SearchMatchedField.DETAILS || item.matchedField == SearchMatchedField.SUMMARY) {
             Spacer(Modifier.height(6.dp))
-            Text(
-                "“${item.matchedExcerpt}”",
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.60f),
-                fontSize = 12.5.sp,
-                lineHeight = 18.sp,
+            HighlightedText(
+                text = "“${item.matchedExcerpt}”",
+                query = query,
+                baseStyle = TextStyle(
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.60f),
+                    fontSize = 12.5.sp,
+                    lineHeight = 18.sp,
+                ),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -466,7 +522,7 @@ private fun SearchResultCard(
 
         Spacer(Modifier.height(10.dp))
 
-        // 底部快捷操作栏：置顶探索 + 进入详情
+        // 底部快捷操作栏：相关度 + 追问 + 置顶刷卡
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -477,6 +533,37 @@ private fun SearchResultCard(
                 fontSize = 10.5.sp,
             )
             Spacer(Modifier.weight(1f))
+
+            // 快捷追问入口
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(EditorialColor.aiAmber.copy(alpha = 0.08f))
+                    .border(0.6.dp, EditorialColor.aiAmber.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                    .clickable { onOpenChat() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        AppIcons.Sparkles,
+                        contentDescription = null,
+                        tint = EditorialColor.aiAmber,
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        "追问",
+                        color = EditorialColor.aiAmber,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            // 置顶刷卡
             Box(
                 Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -508,7 +595,10 @@ private fun SearchResultCard(
 
 @Composable
 private fun SearchGuideView(
+    searchHistory: List<String>,
     onSelectKeyword: (String) -> Unit,
+    onRemoveHistory: (String) -> Unit,
+    onClearHistory: () -> Unit,
     onSelectSource: (SearchSourceFilter) -> Unit,
 ) {
     Column(
@@ -517,7 +607,7 @@ private fun SearchGuideView(
             .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(10.dp))
         Box(
             Modifier
                 .size(54.dp)
@@ -547,7 +637,45 @@ private fun SearchGuideView(
             fontSize = 12.5.sp,
         )
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(24.dp))
+
+        // 最近搜索历史
+        if (searchHistory.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "最近搜索",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.60f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "清空",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
+                    fontSize = 11.5.sp,
+                    modifier = Modifier.clickable { onClearHistory() },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                searchHistory.forEach { item ->
+                    SearchHistoryChip(
+                        keyword = item,
+                        onClick = { onSelectKeyword(item) },
+                        onDelete = { onRemoveHistory(item) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+        }
 
         // 快捷探索建议热词
         Text(
@@ -578,7 +706,7 @@ private fun SearchGuideView(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(24.dp))
 
         // 快捷状态卡片
         Row(
@@ -599,6 +727,102 @@ private fun SearchGuideView(
             )
         }
     }
+}
+
+@Composable
+private fun SearchHistoryChip(
+    keyword: String,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(
+                0.8.dp,
+                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.10f),
+                RoundedCornerShape(8.dp),
+            )
+            .clickable { onClick() }
+            .padding(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                keyword,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.80f),
+                fontSize = 12.sp,
+            )
+            Spacer(Modifier.width(6.dp))
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .clickable { onDelete() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "删除历史",
+                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
+                    modifier = Modifier.size(11.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 关键词智能高亮文本组件
+ * 支持空格分隔的多 token 词、不区分大小写
+ */
+@Composable
+private fun HighlightedText(
+    text: String,
+    query: String,
+    baseStyle: TextStyle,
+    highlightColor: Color = EditorialColor.aiAmber.copy(alpha = 0.22f),
+    highlightTextColor: Color = EditorialColor.aiAmber,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    modifier: Modifier = Modifier,
+) {
+    val annotatedString = remember(text, query) {
+        val tokens = query.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+        if (tokens.isEmpty()) {
+            AnnotatedString(text)
+        } else {
+            val builder = AnnotatedString.Builder(text)
+            val lowerText = text.lowercase()
+            for (token in tokens) {
+                val lowerToken = token.lowercase()
+                var startIndex = 0
+                while (startIndex < lowerText.length) {
+                    val index = lowerText.indexOf(lowerToken, startIndex)
+                    if (index == -1) break
+                    builder.addStyle(
+                        style = SpanStyle(
+                            background = highlightColor,
+                            color = highlightTextColor,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        start = index,
+                        end = index + lowerToken.length,
+                    )
+                    startIndex = index + lowerToken.length
+                }
+            }
+            builder.toAnnotatedString()
+        }
+    }
+
+    Text(
+        text = annotatedString,
+        style = baseStyle,
+        maxLines = maxLines,
+        overflow = overflow,
+        modifier = modifier,
+    )
 }
 
 @Composable

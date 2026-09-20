@@ -35,6 +35,20 @@ struct GlobalSearchModalView: View {
         return ["全部"] + Array(set).sorted()
     }
 
+    private var categoryCounts: [String: Int] {
+        var dict: [String: Int] = ["全部": store.cards.count]
+        for c in store.cards {
+            dict[c.category, default: 0] += 1
+        }
+        return dict
+    }
+
+    private func selectCard(_ card: KnowledgeCard, action: (KnowledgeCard) -> Void) {
+        store.addSearchHistory(query)
+        dismiss()
+        action(card)
+    }
+
     /// 过滤条件变化后调度一次防抖搜索
     private func scheduleSearch() {
         searchDebounceTask?.cancel()
@@ -126,11 +140,10 @@ struct GlobalSearchModalView: View {
         .onKeyPress(.return, phases: .down) { press in
             if !results.isEmpty && selectedIndex < results.count {
                 let card = results[selectedIndex].card
-                dismiss()
                 if press.modifiers.contains(.command) {
-                    onPromote(card)
+                    selectCard(card, action: onPromote)
                 } else {
-                    onSelect(card)
+                    selectCard(card, action: onSelect)
                 }
                 return .handled
             }
@@ -139,8 +152,7 @@ struct GlobalSearchModalView: View {
         .onKeyPress(KeyEquivalent("j"), phases: .down) { press in
             if press.modifiers.contains(.command) && !results.isEmpty && selectedIndex < results.count {
                 let card = results[selectedIndex].card
-                dismiss()
-                onChat(card)
+                selectCard(card, action: onChat)
                 return .handled
             }
             return .ignored
@@ -239,15 +251,21 @@ struct GlobalSearchModalView: View {
                     .padding(.horizontal, 4)
 
                 // 学科分类筛选
+                let counts = categoryCounts
                 ForEach(allCategories, id: \.self) { cat in
                     let isSelected = selectedCategory == cat
+                    let count = counts[cat] ?? 0
                     Button {
                         withAnimation(.easeInOut(duration: 0.18)) {
-                            selectedCategory = cat
+                            if selectedCategory == cat && cat != "全部" {
+                                selectedCategory = "全部"
+                            } else {
+                                selectedCategory = cat
+                            }
                             selectedIndex = 0
                         }
                     } label: {
-                        Text(cat)
+                        Text("\(cat) (\(count))")
                             .font(EditorialFont.labelSmall)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
@@ -282,8 +300,7 @@ struct GlobalSearchModalView: View {
                     LazyVStack(spacing: 6) {
                         ForEach(Array(results.enumerated()), id: \.element.card.id) { index, item in
                             Button {
-                                dismiss()
-                                onSelect(item.card)
+                                selectCard(item.card, action: onSelect)
                             } label: {
                                 searchResultRow(item: item, index: index)
                             }
@@ -375,8 +392,7 @@ struct GlobalSearchModalView: View {
                 // 快捷操作按钮组
                 HStack(spacing: 4) {
                     Button {
-                        dismiss()
-                        onPromote(item.card)
+                        selectCard(item.card, action: onPromote)
                     } label: {
                         Text("置顶刷卡")
                             .font(.system(size: 11, weight: .medium))
@@ -388,8 +404,7 @@ struct GlobalSearchModalView: View {
                     .help("置于卡堆顶部 ⌘⏎")
 
                     Button {
-                        dismiss()
-                        onChat(item.card)
+                        selectCard(item.card, action: onChat)
                     } label: {
                         Image(systemName: "bubble.left.and.text.bubble.right")
                             .font(.system(size: 11))
@@ -432,6 +447,8 @@ struct GlobalSearchModalView: View {
                 Text("支持中文拼音首字母（如 xzl 搜租赁）、学科领域、作者文献或正文细节")
                     .font(EditorialFont.caption)
                     .foregroundStyle(EditorialColor.textTertiary)
+
+                recentSearchHistoryView
 
                 // 启发式搜索建议气泡
                 HStack(spacing: 8) {
@@ -488,6 +505,71 @@ struct GlobalSearchModalView: View {
         .padding(.vertical, 40)
     }
 
+    @ViewBuilder
+    private var recentSearchHistoryView: some View {
+        if !store.searchHistory.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    HStack(spacing: 5) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(EditorialColor.aiAmber)
+                        Text("最近搜索")
+                            .font(EditorialFont.captionSmall.weight(.semibold))
+                            .foregroundStyle(EditorialColor.textSecondary)
+                    }
+                    Spacer()
+                    Button("清空") {
+                        withAnimation {
+                            store.clearSearchHistory()
+                        }
+                    }
+                    .font(EditorialFont.captionSmall)
+                    .foregroundStyle(EditorialColor.textTertiary)
+                    .buttonStyle(.plain)
+                    .help("清空搜索历史")
+                }
+                .padding(.horizontal, 4)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(store.searchHistory, id: \.self) { historyItem in
+                            HStack(spacing: 6) {
+                                Button {
+                                    query = historyItem
+                                } label: {
+                                    Text(historyItem)
+                                        .font(EditorialFont.labelSmall)
+                                        .foregroundStyle(EditorialColor.textPrimary)
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    withAnimation {
+                                        store.removeSearchHistory(historyItem)
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(EditorialColor.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("删除搜索历史：\(historyItem)")
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(EditorialColor.glassSurface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .frame(maxWidth: 540)
+            .padding(.top, 4)
+        }
+    }
+
     // MARK: - 底部快捷键状态栏
 
     private var footerBar: some View {
@@ -542,23 +624,27 @@ struct HighlightedText: View {
                 .font(font)
                 .foregroundStyle(textColor)
         } else {
-            buildHighlightedText(text: text, query: trimmed.lowercased())
+            let tokens = trimmed.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+            buildHighlightedText(text: text, tokens: tokens)
                 .font(font)
         }
     }
 
-    private func buildHighlightedText(text: String, query: String) -> Text {
-        // 在原字符串上做大小写不敏感查找：跨 lowercased() 副本传 String.Index，
-        // 遇到 İ 等小写化后长度变化的字符会越界崩溃。
-        guard let range = text.range(of: query, options: .caseInsensitive) else {
+    private func buildHighlightedText(text: String, tokens: [String]) -> Text {
+        guard let first = tokens.first else {
             return Text(text).foregroundColor(textColor)
+        }
+        guard let range = text.range(of: first, options: .caseInsensitive) else {
+            return buildHighlightedText(text: text, tokens: Array(tokens.dropFirst()))
         }
         let before = String(text[..<range.lowerBound])
         let match = String(text[range])
         let after = String(text[range.upperBound...])
 
-        return Text(before).foregroundColor(textColor)
+        let remainingTokens = Array(tokens.dropFirst())
+        let beforeText = remainingTokens.isEmpty ? Text(before).foregroundColor(textColor) : buildHighlightedText(text: before, tokens: remainingTokens)
+        return beforeText
             + Text(match).bold().foregroundColor(highlightColor)
-            + buildHighlightedText(text: after, query: query)
+            + buildHighlightedText(text: after, tokens: tokens)
     }
 }
