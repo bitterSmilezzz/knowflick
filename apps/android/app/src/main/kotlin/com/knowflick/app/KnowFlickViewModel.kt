@@ -33,6 +33,10 @@ import com.knowflick.app.domain.search.KnowledgeSearchEngine
 import com.knowflick.app.domain.search.SearchResultItem
 import com.knowflick.app.domain.search.SearchSourceFilter
 import com.knowflick.app.domain.SwipeDirection
+import com.knowflick.app.sync.SyncClient
+import com.knowflick.app.sync.SyncResult
+import com.knowflick.app.sync.SyncServer
+import java.security.SecureRandom
 
 /**
  * 应用级状态持有者：卡库持久化 + 卡堆状态机 + AI 服务。
@@ -101,9 +105,22 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     private var persistJob: Job? = null
     private val persistenceQueue = CardPersistenceQueue(model.storage, ::handlePersistenceResult)
 
+    /** 局域网同步只在用户显式开启时监听；六位配对码防止同网段设备静默读取卡库。 */
+    val syncAccessCode: String = (SecureRandom().nextInt(900_000) + 100_000).toString()
+    var showSyncSheet by mutableStateOf(false)
+        private set
+    var isSyncServerRunning by mutableStateOf(false)
+        private set
+    var syncServerPort by mutableIntStateOf(8998)
+        private set
+    var syncLocalIp by mutableStateOf<String?>(null)
+        private set
+    private var syncServer: SyncServer? = null
+
     init {
         model.bootstrap()
         settings = loadSettings()
+        com.knowflick.app.ui.common.AudioEffectHelper.isEnabled = settings.soundEffectsEnabled
         speechSettings = com.knowflick.app.speech.SpeechSettings.fromJson(model.storage.loadSpeechJson() ?: "")
             ?: com.knowflick.app.speech.SpeechSettings()
         applySpeechConfig()
@@ -191,6 +208,88 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         version++
         schedulePersist()
         return settingsSaved && credentialSaved
+    }
+
+    val currentPaperTheme: com.knowflick.app.ui.PaperTheme
+        get() = com.knowflick.app.ui.PaperTheme.fromName(settings.paperTheme)
+
+    fun setPaperTheme(theme: com.knowflick.app.ui.PaperTheme) {
+        val updated = settings.copy(paperTheme = theme.name)
+        model.storage.saveSettingsJson(updated.toJson())
+        settings = updated
+        version++
+    }
+
+    fun setSoundEffectsEnabled(enabled: Boolean) {
+        val updated = settings.copy(soundEffectsEnabled = enabled)
+        model.storage.saveSettingsJson(updated.toJson())
+        settings = updated
+        com.knowflick.app.ui.common.AudioEffectHelper.isEnabled = enabled
+        version++
+    }
+
+    fun openSyncSheet() {
+        syncLocalIp = SyncServer.getLocalIpAddress()
+        showSyncSheet = true
+    }
+
+    fun closeSyncSheet() {
+        showSyncSheet = false
+    }
+
+    fun setSyncServerEnabled(enabled: Boolean) {
+        if (!enabled) {
+            syncServer?.stop()
+            syncServer = null
+            isSyncServerRunning = false
+            return
+        }
+        if (isSyncServerRunning) return
+
+        val server = SyncServer(
+            accessCode = syncAccessCode,
+            getCards = {
+                withContext(Dispatchers.Main.immediate) { model.store.cards.toList() }
+            },
+            onReceiveCards = { incoming ->
+                withContext(Dispatchers.Main.immediate) {
+                    val result = model.store.restoreArchive(incoming)
+                    version++
+                    schedulePersist()
+                    result
+                }
+            },
+        )
+        server.start().fold(
+            onSuccess = { port ->
+                syncServer = server
+                syncServerPort = port
+                syncLocalIp = SyncServer.getLocalIpAddress()
+                isSyncServerRunning = true
+            },
+            onFailure = { error ->
+                server.stop()
+                generateNotice = "同步服务启动失败：${error.message ?: "端口不可用"}"
+                isSyncServerRunning = false
+            },
+        )
+    }
+
+    fun executeLanSync(target: String, onDone: (Result<SyncResult>) -> Unit) {
+        viewModelScope.launch {
+            val localSnapshot = model.store.cards.toList()
+            val result = SyncClient.executeBidirectionalSync(
+                target = target,
+                localCards = localSnapshot,
+                onApplyRemoteCards = { remote ->
+                    val merged = model.store.restoreArchive(remote)
+                    version++
+                    schedulePersist()
+                    merged
+                },
+            )
+            onDone(result)
+        }
     }
 
     /** 连通性测试：返回用户可读状态 */
@@ -702,6 +801,8 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     override fun onCleared() {
+        syncServer?.stop()
+        syncServer = null
         persistJob?.cancel()
         persistJob = null
         persistenceQueue.closeAfter(model.store.cards)

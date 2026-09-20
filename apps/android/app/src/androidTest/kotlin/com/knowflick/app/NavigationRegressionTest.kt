@@ -119,6 +119,6 @@ class NavigationRegressionTest {
 
         rule.onNodeWithContentDescription("详情").performClick()
 
-        rule.onNodeWithText("◦ $linkTitle").assertHasClickAction()
+        rule.onNodeWithText(linkTitle).assertHasClickAction()
     }
 }

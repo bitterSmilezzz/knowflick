@@ -7,6 +7,22 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+/**
+ * 纸质人文主题风格体系 (Paper Themes)
+ */
+enum class PaperTheme(val displayName: String, val subtitle: String) {
+    SYSTEM("跟随系统", "自适应系统深浅模式"),
+    RICE_PAPER("宣纸白", "温暖米白，如抚手造质感纸张"),
+    PARCHMENT("羊皮纸", "温润驼黄，沉淀古籍典雅书卷感"),
+    MORNING_MIST("晨雾灰", "清朗灰调，宁静专注的现代排版"),
+    WARM_OBSIDIAN("暖曜黑", "柔和深邃，舒适护眼的人文暗色");
+
+    companion object {
+        fun fromName(name: String?): PaperTheme =
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: SYSTEM
+    }
+}
+
 /** 语义色与扁平化设计令牌（与 macOS ThemeTokens 对齐；Editorial / Flat Minimalist） */
 object EditorialColor {
     // 语义主色（经典低饱和）
@@ -38,17 +54,8 @@ object EditorialColor {
     val hairlineCard = Color(0x26FFFFFF)
 }
 
-private val DarkColors = darkColorScheme(
-    primary = EditorialColor.aiAmber,
-    background = Color(0xFF121215),
-    surface = Color(0xFF1B1B1F),
-    surfaceVariant = Color(0xFF232328),
-    outline = Color(0x26FFFFFF),
-    onBackground = Color(0xFFEDE9E1),
-    onSurface = Color(0xFFEDE9E1),
-)
-
-private val LightColors = lightColorScheme(
+// 1. 宣纸白（天然手造纸）
+val RicePaperColors = lightColorScheme(
     primary = EditorialColor.aiAmber,
     background = Color(0xFFFAF9F6),
     surface = Color(0xFFFFFFFF),
@@ -58,11 +65,55 @@ private val LightColors = lightColorScheme(
     onSurface = Color(0xFF23211E),
 )
 
-/** 暗色人文画报（Dark Editorial）基调，跟随系统深浅色 */
+// 2. 复古羊皮纸（古典书卷）
+val ParchmentColors = lightColorScheme(
+    primary = Color(0xFFB58838),
+    background = Color(0xFFF5EFE6),
+    surface = Color(0xFFFAF6EE),
+    surfaceVariant = Color(0xFFEBE2D3),
+    outline = Color(0x1E5C4328),
+    onBackground = Color(0xFF2E271F),
+    onSurface = Color(0xFF2E271F),
+)
+
+// 3. 晨雾冷灰（清朗现代）
+val MorningMistColors = lightColorScheme(
+    primary = EditorialColor.detailBlue,
+    background = Color(0xFFEFF2F4),
+    surface = Color(0xFFF7F9FA),
+    surfaceVariant = Color(0xFFE1E6EB),
+    outline = Color(0x1E2C3844),
+    onBackground = Color(0xFF1E252C),
+    onSurface = Color(0xFF1E252C),
+)
+
+// 4. 暖曜黑（墨玉护眼）
+val WarmObsidianColors = darkColorScheme(
+    primary = EditorialColor.aiAmber,
+    background = Color(0xFF121215),
+    surface = Color(0xFF1B1B1F),
+    surfaceVariant = Color(0xFF232328),
+    outline = Color(0x26FFFFFF),
+    onBackground = Color(0xFFEDE9E1),
+    onSurface = Color(0xFFEDE9E1),
+)
+
+/** 全局主题包装，支持跟随系统与 4 款纸质人文主题热切换 */
 @Composable
-fun KnowFlickTheme(content: @Composable () -> Unit) {
+fun KnowFlickTheme(
+    paperTheme: PaperTheme = PaperTheme.SYSTEM,
+    content: @Composable () -> Unit,
+) {
+    val isSystemDark = isSystemInDarkTheme()
+    val scheme = when (paperTheme) {
+        PaperTheme.SYSTEM -> if (isSystemDark) WarmObsidianColors else RicePaperColors
+        PaperTheme.RICE_PAPER -> RicePaperColors
+        PaperTheme.PARCHMENT -> ParchmentColors
+        PaperTheme.MORNING_MIST -> MorningMistColors
+        PaperTheme.WARM_OBSIDIAN -> WarmObsidianColors
+    }
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = scheme,
         content = content,
     )
 }

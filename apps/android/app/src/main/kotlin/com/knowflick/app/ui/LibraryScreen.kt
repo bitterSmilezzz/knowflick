@@ -68,6 +68,7 @@ fun LibraryScreen(
     onPickImportFile: () -> Unit,
     onOpenBackupExport: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
+    onOpenGraph: () -> Unit = {},
 ) {
     androidx.activity.compose.BackHandler { onBack() }
 
@@ -114,6 +115,9 @@ fun LibraryScreen(
             // 搜索与全局检索
             IconButton(onClick = onOpenSearch) {
                 Icon(AppIcons.Search, contentDescription = "搜索与筛选", tint = MaterialTheme.colorScheme.onBackground)
+            }
+            IconButton(onClick = onOpenGraph) {
+                Icon(AppIcons.Sparkles, contentDescription = "知识全景星图", tint = EditorialColor.aiAmber)
             }
             // 备份与全量多格式导出
             IconButton(onClick = onOpenBackupExport) {

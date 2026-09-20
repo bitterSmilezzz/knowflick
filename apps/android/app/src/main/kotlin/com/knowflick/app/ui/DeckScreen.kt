@@ -61,6 +61,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -128,6 +129,8 @@ fun DeckScreen(
     onMutate: (() -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     onOpenSettings: () -> Unit = {},
+    onOpenGraph: () -> Unit = {},
+    onOpenSync: () -> Unit = {},
     onOpenQuiz: () -> Unit = {},
     onGenerateRequest: () -> Unit = {},
     isGenerating: Boolean = false,
@@ -373,6 +376,14 @@ fun DeckScreen(
                                 onClick = { showMore = false; onOpenSearch() },
                             )
                             androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("知识全景星图", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenGraph() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("局域网极速同步…", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenSync() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("分享当前海报…", fontSize = 13.sp) },
                                 enabled = topCard != null,
                                 onClick = {
@@ -507,12 +518,16 @@ fun DeckScreen(
                             }
                             if (isTop && flyingCard == null) {
                                 cardModifier = cardModifier
-                                    .clickable(onClickLabel = "查看详情") { onOpenDetail(card) }
+                                    .clickable(onClickLabel = "查看详情") {
+                                        com.knowflick.app.ui.common.AudioEffectHelper.playCardFlip(context)
+                                        onOpenDetail(card)
+                                    }
                                     .pointerInput(card.id) {
                                         val velocityTracker = VelocityTracker()
                                         detectDragGestures(
                                             onDragStart = {
                                                 haptics.tick()
+                                                com.knowflick.app.ui.common.AudioEffectHelper.playPaperSlide(context)
                                                 velocityTracker.resetTracking()
                                                 val current = if (isReturning) returnAnim.value else rawDrag
                                                 returnJob?.cancel()
@@ -540,8 +555,10 @@ fun DeckScreen(
                                                     flyingStart = Offset(rawDrag.x, rawDrag.y * VERTICAL_DAMPING_RATIO)
                                                     if (direction == SwipeDirection.RIGHT) {
                                                         haptics.success()
+                                                        com.knowflick.app.ui.common.AudioEffectHelper.playMasteryChime(context)
                                                     } else {
                                                         haptics.warning()
+                                                        com.knowflick.app.ui.common.AudioEffectHelper.playPaperSlide(context)
                                                     }
                                                     if (isReviewMode) {
                                                         val rating = if (direction == SwipeDirection.RIGHT) SpacedRating.GOOD else SpacedRating.AGAIN
@@ -567,6 +584,7 @@ fun DeckScreen(
                                             if (crossed) {
                                                 thresholdCrossed = true
                                                 haptics.click()
+                                                com.knowflick.app.ui.common.AudioEffectHelper.playClick(context)
                                             } else if (abs(rawDrag.x) < hysteresisPx || !isHorizontalDominant) {
                                                 thresholdCrossed = false
                                             }
@@ -702,6 +720,7 @@ fun DeckScreen(
                         color = Color(0xFF389E82),
                     ) {
                         haptics.success()
+                        com.knowflick.app.ui.common.AudioEffectHelper.playMasteryChime(context)
                         topCard?.let { card ->
                             flyingCard = card
                             flyingDirection = SwipeDirection.RIGHT
@@ -715,6 +734,7 @@ fun DeckScreen(
                         color = Color(0xFF4A88B8),
                     ) {
                         haptics.success()
+                        com.knowflick.app.ui.common.AudioEffectHelper.playMasteryChime(context)
                         topCard?.let { card ->
                             flyingCard = card
                             flyingDirection = SwipeDirection.RIGHT
@@ -725,7 +745,7 @@ fun DeckScreen(
                 }
             } else {
                 // 底部意图按钮：低饱和微彩平托盘，无沉重阴影，触觉反馈舒适
-                val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+                val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.35f
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -767,7 +787,10 @@ fun DeckScreen(
                         size = 50,
                         label = "详情",
                     ) {
-                        topCard?.let(onOpenDetail)
+                        topCard?.let { card ->
+                            com.knowflick.app.ui.common.AudioEffectHelper.playCardFlip(context)
+                            onOpenDetail(card)
+                        }
                     }
                 }
             }

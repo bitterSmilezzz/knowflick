@@ -72,6 +72,24 @@ class HapticFeedbackHelper(
         }
         composeHaptic?.performHapticFeedback(HapticFeedbackType.LongPress)
     }
+
+    companion object {
+        fun tick(context: Context) {
+            HapticFeedbackHelper(context).tick()
+        }
+
+        fun click(context: Context) {
+            HapticFeedbackHelper(context).click()
+        }
+
+        fun success(context: Context) {
+            HapticFeedbackHelper(context).success()
+        }
+
+        fun warning(context: Context) {
+            HapticFeedbackHelper(context).warning()
+        }
+    }
 }
 
 @Composable

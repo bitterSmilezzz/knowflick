@@ -3,7 +3,6 @@ package com.knowflick.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +70,10 @@ fun SettingsScreen(
     onSaveSpeech: (com.knowflick.app.speech.SpeechSettings, String) -> Boolean,
     /** 凭据是否运行在 Keystore 加密存储上；false 表示已降级为明文存储，必须让用户知情 */
     credentialsEncrypted: Boolean = true,
+    currentPaperTheme: PaperTheme = PaperTheme.SYSTEM,
+    onSelectPaperTheme: (PaperTheme) -> Unit = {},
+    soundEffectsEnabled: Boolean = true,
+    onToggleSoundEffects: (Boolean) -> Unit = {},
 ) {
     androidx.activity.compose.BackHandler { onBack() }
 
@@ -88,7 +92,7 @@ fun SettingsScreen(
     var speechModel by rememberSaveable { mutableStateOf(initialSpeech.model) }
     var speechVoice by rememberSaveable { mutableStateOf(initialSpeech.voice) }
     var speechKey by rememberSaveable { mutableStateOf(initialSpeechKey) }
-    val isDarkTheme = isSystemInDarkTheme()
+    val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.35f
     val scope = rememberCoroutineScope()
 
     val currentPreset = AiProviderPresets.presets.firstOrNull { it.id == providerId } ?: AiProviderPresets.fallback()
@@ -341,6 +345,137 @@ fun SettingsScreen(
                     color = if (isDarkTheme) EditorialColor.likeGreen else Color(0xFF1E3A24),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+            androidx.compose.material3.HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                thickness = 1.dp,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            // 纸质人文视觉主题选择
+            Text(
+                "纸质人文视觉主题",
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "精细调校的温润纸张底色与排版对比度，纯平微结构，拒绝单调刺眼",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                fontSize = 11.5.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PaperTheme.entries.forEach { theme ->
+                    val isSelected = theme == currentPaperTheme
+                    val previewBg = when (theme) {
+                        PaperTheme.SYSTEM -> if (isDarkTheme) Color(0xFF121215) else Color(0xFFFAF9F6)
+                        PaperTheme.RICE_PAPER -> Color(0xFFFAF9F6)
+                        PaperTheme.PARCHMENT -> Color(0xFFF5EFE6)
+                        PaperTheme.MORNING_MIST -> Color(0xFFEFF2F4)
+                        PaperTheme.WARM_OBSIDIAN -> Color(0xFF121215)
+                    }
+                    val previewBorder = when (theme) {
+                        PaperTheme.WARM_OBSIDIAN -> Color(0x33FFFFFF)
+                        else -> Color(0x1F000000)
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (isSelected) EditorialColor.aiAmber.copy(alpha = 0.12f)
+                                else MaterialTheme.colorScheme.surface
+                            )
+                            .border(
+                                1.dp,
+                                if (isSelected) EditorialColor.aiAmber
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                RoundedCornerShape(10.dp),
+                            )
+                            .clickable { onSelectPaperTheme(theme) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(previewBg)
+                                .border(1.dp, previewBorder, CircleShape)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                theme.displayName,
+                                color = if (isSelected) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            )
+                            Text(
+                                theme.subtitle,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                                fontSize = 11.sp,
+                            )
+                        }
+                        if (isSelected) {
+                            Text(
+                                "✓ 当前生效",
+                                color = EditorialColor.aiAmber,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            androidx.compose.material3.HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                thickness = 1.dp,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            // 拟真物理音效与触感
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "卡片拟真物理音效",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Serif,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "划卡轻微纸张沙沙声与掌握清脆音（0 KB 纯程序合成，静音时自动静音）",
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.material3.Switch(
+                    checked = soundEffectsEnabled,
+                    onCheckedChange = onToggleSoundEffects,
+                    colors = androidx.compose.material3.SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = EditorialColor.aiAmber,
+                    ),
                 )
             }
             Spacer(Modifier.height(40.dp))

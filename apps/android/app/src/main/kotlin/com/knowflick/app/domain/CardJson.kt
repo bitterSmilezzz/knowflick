@@ -166,4 +166,12 @@ object CardJson {
             return jsonDecoder.decodeJsonElement().jsonArray.map(CardJson::fromJsonElement)
         }
     }
+
+    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    fun encodeList(cards: List<KnowledgeCard>): String =
+        json.encodeToString(CardListSerializer, cards)
+
+    fun decodeList(text: String): List<KnowledgeCard> =
+        json.decodeFromString(CardListSerializer, text)
 }

@@ -16,6 +16,8 @@ data class AiSettings(
     val enableAI: Boolean = true,
     val showAIMark: Boolean = true,
     val preferredCategories: List<String> = emptyList(),
+    val paperTheme: String = "SYSTEM",
+    val soundEffectsEnabled: Boolean = true,
 ) {
     val isConfigured: Boolean get() = baseURL.isNotBlank() && model.isNotBlank()
 

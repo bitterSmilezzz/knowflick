@@ -40,7 +40,7 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalComposeUiApi::class)
 class MainActivity : ComponentActivity() {
 
-    private enum class Screen { DECK, DETAIL, STATS, SETTINGS, LIBRARY, QUIZ }
+    private enum class Screen { DECK, DETAIL, STATS, SETTINGS, LIBRARY, QUIZ, GRAPH }
 
     private val viewModel: KnowFlickViewModel by viewModels()
 
@@ -61,11 +61,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         screen = Screen.entries.firstOrNull { it.name == savedInstanceState?.getString("screen") } ?: Screen.DECK
         detailCardId = savedInstanceState?.getString("detailCardId")
-        detailReturnScreen = if (savedInstanceState?.getString("detailReturnScreen") == Screen.LIBRARY.name) Screen.LIBRARY else Screen.DECK
+        detailReturnScreen = Screen.entries.firstOrNull {
+            it.name == savedInstanceState?.getString("detailReturnScreen")
+        } ?: Screen.DECK
         handleIncomingIntent(intent)
         enableEdgeToEdge()
         setContent {
-            KnowFlickTheme {
+            KnowFlickTheme(paperTheme = viewModel.currentPaperTheme) {
                 val libraryState = rememberSaveableStateHolder()
                 Box(
                     Modifier
@@ -94,6 +96,8 @@ class MainActivity : ComponentActivity() {
                                 onOpenStats = { screen = Screen.STATS },
                                 onOpenFavorites = { screen = Screen.LIBRARY },
                                 onOpenSettings = { screen = Screen.SETTINGS },
+                                onOpenGraph = { screen = Screen.GRAPH },
+                                onOpenSync = { viewModel.openSyncSheet() },
                                 isGenerating = viewModel.isGenerating,
                                 notice = viewModel.persistenceNotice ?: viewModel.generateNotice,
                                 onGenerateRequest = { viewModel.generateNewCards(count = 3) },
@@ -181,6 +185,10 @@ class MainActivity : ComponentActivity() {
                             onSave = { updated, key -> viewModel.saveSettings(updated, key) },
                             onSaveSpeech = { speech, key -> viewModel.saveSpeechSettings(speech, key) },
                             credentialsEncrypted = viewModel.credentialsEncrypted,
+                            currentPaperTheme = viewModel.currentPaperTheme,
+                            onSelectPaperTheme = viewModel::setPaperTheme,
+                            soundEffectsEnabled = viewModel.settings.soundEffectsEnabled,
+                            onToggleSoundEffects = viewModel::setSoundEffectsEnabled,
                         )
                         Screen.QUIZ -> {
                             val session = viewModel.quizSession
@@ -227,12 +235,26 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenBackupExport = { viewModel.openBackupExport() },
                                 onOpenSearch = { viewModel.openSearchSheet() },
+                                onOpenGraph = { screen = Screen.GRAPH },
                             )
                         }
+                        Screen.GRAPH -> com.knowflick.app.ui.graph.KnowledgeGraphScreen(
+                            cards = viewModel.model.store.cards,
+                            onBack = { screen = Screen.DECK },
+                            onSelectCard = { card ->
+                                detailCardId = card.id
+                                detailReturnScreen = Screen.GRAPH
+                                screen = Screen.DETAIL
+                            },
+                            onPromoteToTop = { card ->
+                                viewModel.promoteCardToDeck(card)
+                                screen = Screen.DECK
+                            },
+                        )
                     }
 
                     // 悬浮 Mini Player 播控条（当有播放任务且控制台与全屏面板未展开时常显）
-                    if (!viewModel.showAudioConsole && !viewModel.showBackupExportSheet && !viewModel.showSearchSheet) {
+                    if (!viewModel.showAudioConsole && !viewModel.showBackupExportSheet && !viewModel.showSearchSheet && !viewModel.showSyncSheet) {
                         AmbientAudioPlayerBar(
                             controller = viewModel.speech,
                             onOpenConsole = { viewModel.openAudioConsole() },
@@ -298,6 +320,18 @@ class MainActivity : ComponentActivity() {
                             },
                             onResetFilters = { viewModel.clearSearchFilters() },
                             onClose = { viewModel.closeSearchSheet() },
+                        )
+                    }
+
+                    if (viewModel.showSyncSheet) {
+                        com.knowflick.app.ui.sync.SyncSheet(
+                            isServerRunning = viewModel.isSyncServerRunning,
+                            serverPort = viewModel.syncServerPort,
+                            localIp = viewModel.syncLocalIp,
+                            accessCode = viewModel.syncAccessCode,
+                            onToggleServer = viewModel::setSyncServerEnabled,
+                            onExecuteSync = viewModel::executeLanSync,
+                            onClose = { viewModel.closeSyncSheet() },
                         )
                     }
 
