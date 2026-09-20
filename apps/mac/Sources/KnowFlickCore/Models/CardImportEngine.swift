@@ -340,6 +340,222 @@ public enum CardImportEngine {
 
     // MARK: - 3. 去重与合并
 
+    /// 对称式字段级无损合并单张卡片：`mergeCard(a, b) == mergeCard(b, a)`
+    public static func mergeCard(_ a: KnowledgeCard, _ b: KnowledgeCard) -> KnowledgeCard {
+        // 1. ID 与创建时间：若 ID 相同直接使用；若按标题匹配不同 ID，取更早创建时间与对应 ID
+        let mergedId: UUID
+        let createdAt: Date
+        if a.id == b.id {
+            mergedId = a.id
+            createdAt = min(a.createdAt, b.createdAt)
+        } else {
+            if a.createdAt < b.createdAt {
+                mergedId = a.id
+                createdAt = a.createdAt
+            } else if b.createdAt < a.createdAt {
+                mergedId = b.id
+                createdAt = b.createdAt
+            } else {
+                mergedId = a.id.uuidString <= b.id.uuidString ? a.id : b.id
+                createdAt = a.createdAt
+            }
+        }
+
+        // 2. 正文与元数据（category, headline, summary, details, links, source）：
+        // 若内容不同，取创建时间较晚或详情更丰富的一方；非空优先
+        let primary: KnowledgeCard
+        let secondary: KnowledgeCard
+        if a.createdAt >= b.createdAt {
+            primary = a; secondary = b
+        } else {
+            primary = b; secondary = a
+        }
+
+        let category = primary.category.isEmpty ? secondary.category : primary.category
+        let headline = primary.headline.isEmpty ? secondary.headline : primary.headline
+        let summary = primary.summary.isEmpty ? secondary.summary : primary.summary
+        let details = primary.details.isEmpty ? secondary.details : (primary.details.count >= secondary.details.count ? primary.details : secondary.details)
+        let links = primary.links.isEmpty ? secondary.links : primary.links
+        let source = primary.source == .seed && secondary.source != .seed ? secondary.source : primary.source
+
+        // 3. 浏览足迹与意图（seenAt, swiped）：
+        // 保留最新浏览时间；swiped 归属最新浏览那一端
+        let seenAt: Date?
+        let swiped: SwipeDirection?
+        switch (a.seenAt, b.seenAt) {
+        case let (sA?, sB?):
+            if sA >= sB {
+                seenAt = sA
+                swiped = a.swiped ?? b.swiped
+            } else {
+                seenAt = sB
+                swiped = b.swiped ?? a.swiped
+            }
+        case let (sA?, nil):
+            seenAt = sA
+            swiped = a.swiped
+        case let (nil, sB?):
+            seenAt = sB
+            swiped = b.swiped
+        case (nil, nil):
+            seenAt = nil
+            swiped = a.swiped ?? b.swiped
+        }
+
+        // 4. 收藏状态（isFavorite, favoritedAt）：
+        // 任一端收藏即为收藏；保留最新收藏时间戳
+        let isFavorite = a.isFavorite || b.isFavorite
+        let favoritedAt: Date?
+        switch (a.favoritedAt, b.favoritedAt) {
+        case let (fA?, fB?):
+            favoritedAt = max(fA, fB)
+        case let (fA?, nil):
+            favoritedAt = fA
+        case let (nil, fB?):
+            favoritedAt = fB
+        case (nil, nil):
+            favoritedAt = isFavorite ? seenAt : nil
+        }
+
+        // 5. SM-2 / FSRS 记忆模型与复习状态：
+        // 比较 lastReviewedAt：以复习时间更新（更近期）的一端为主
+        let reviewCount = max(a.reviewCount, b.reviewCount)
+        let masteryLevel: Int
+        let lastReviewedAt: Date?
+        let repetition: Int
+        let intervalDays: Int
+        let easeFactor: Double
+        let stability: Double
+        let difficulty: Double
+
+        switch (a.lastReviewedAt, b.lastReviewedAt) {
+        case let (rA?, rB?):
+            if rA > rB {
+                masteryLevel = a.masteryLevel
+                lastReviewedAt = rA
+                repetition = a.repetition
+                intervalDays = a.intervalDays
+                easeFactor = a.easeFactor
+                stability = a.stability > 0 ? a.stability : b.stability
+                difficulty = a.difficulty > 0 ? a.difficulty : b.difficulty
+            } else if rB > rA {
+                masteryLevel = b.masteryLevel
+                lastReviewedAt = rB
+                repetition = b.repetition
+                intervalDays = b.intervalDays
+                easeFactor = b.easeFactor
+                stability = b.stability > 0 ? b.stability : a.stability
+                difficulty = b.difficulty > 0 ? b.difficulty : a.difficulty
+            } else {
+                masteryLevel = max(a.masteryLevel, b.masteryLevel)
+                lastReviewedAt = rA
+                repetition = max(a.repetition, b.repetition)
+                intervalDays = max(a.intervalDays, b.intervalDays)
+                easeFactor = max(a.easeFactor, b.easeFactor)
+                stability = max(a.stability, b.stability)
+                difficulty = max(a.difficulty, b.difficulty)
+            }
+        case let (rA?, nil):
+            masteryLevel = a.masteryLevel
+            lastReviewedAt = rA
+            repetition = a.repetition
+            intervalDays = a.intervalDays
+            easeFactor = a.easeFactor
+            stability = a.stability
+            difficulty = a.difficulty
+        case let (nil, rB?):
+            masteryLevel = b.masteryLevel
+            lastReviewedAt = rB
+            repetition = b.repetition
+            intervalDays = b.intervalDays
+            easeFactor = b.easeFactor
+            stability = b.stability
+            difficulty = b.difficulty
+        case (nil, nil):
+            masteryLevel = max(a.masteryLevel, b.masteryLevel)
+            lastReviewedAt = nil
+            repetition = max(a.repetition, b.repetition)
+            intervalDays = max(a.intervalDays, b.intervalDays)
+            easeFactor = max(a.easeFactor, b.easeFactor)
+            stability = max(a.stability, b.stability)
+            difficulty = max(a.difficulty, b.difficulty)
+        }
+
+        return KnowledgeCard(
+            id: mergedId,
+            category: category,
+            headline: headline,
+            summary: summary,
+            details: details,
+            links: links,
+            source: source,
+            createdAt: createdAt,
+            seenAt: seenAt,
+            swiped: swiped,
+            isFavorite: isFavorite,
+            favoritedAt: favoritedAt,
+            reviewCount: reviewCount,
+            masteryLevel: masteryLevel,
+            lastReviewedAt: lastReviewedAt,
+            repetition: repetition,
+            intervalDays: intervalDays,
+            easeFactor: easeFactor,
+            stability: stability,
+            difficulty: difficulty
+        )
+    }
+
+    /// 智能合并卡片列表：
+    /// 匹配已有卡片并就地升级字段；新卡按去重规则追加
+    public static func mergeCardList(
+        existing: [KnowledgeCard],
+        incoming: [KnowledgeCard]
+    ) -> (mergedCards: [KnowledgeCard], addedCount: Int, updatedCount: Int, ignoredCount: Int) {
+        var working = existing
+        var indexById: [UUID: Int] = [:]
+        var indexByHeadline: [String: Int] = [:]
+
+        for (idx, card) in working.enumerated() {
+            indexById[card.id] = idx
+            let norm = normalizeHeadline(card.headline)
+            if !norm.isEmpty && indexByHeadline[norm] == nil {
+                indexByHeadline[norm] = idx
+            }
+        }
+
+        var addedCount = 0
+        var updatedCount = 0
+        var ignoredCount = 0
+
+        for inc in incoming {
+            let norm = normalizeHeadline(inc.headline)
+            let matchIdx = indexById[inc.id] ?? (norm.isEmpty ? nil : indexByHeadline[norm])
+
+            if let idx = matchIdx {
+                let current = working[idx]
+                let merged = mergeCard(current, inc)
+                if merged != current {
+                    working[idx] = merged
+                    updatedCount += 1
+                } else {
+                    ignoredCount += 1
+                }
+            } else {
+                guard !norm.isEmpty else {
+                    ignoredCount += 1
+                    continue
+                }
+                working.append(inc)
+                let newIdx = working.count - 1
+                indexById[inc.id] = newIdx
+                indexByHeadline[norm] = newIdx
+                addedCount += 1
+            }
+        }
+
+        return (working, addedCount, updatedCount, ignoredCount)
+    }
+
     public static func deduplicateAndMerge(
         existing: [KnowledgeCard],
         incoming: [KnowledgeCard]

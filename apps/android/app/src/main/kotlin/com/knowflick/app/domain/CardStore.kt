@@ -272,21 +272,8 @@ class CardStore(
 
             if (matchIndex != null) {
                 val local = working[matchIndex]
-                val localId = local.id
-                // 合并而非整卡替换：归档负责内容与来源，本机负责学习状态。
-                // 归档常来自未带 isFavorite/seenAt 的旧导出版本，整卡覆盖会把收藏清空、
-                // 并把已浏览的卡按 seenAt=null 塞回卡堆。
-                working[matchIndex] = raw.copy(
-                    id = localId,
-                    createdAt = local.createdAt,
-                    seenAt = raw.seenAt ?: local.seenAt,
-                    swiped = raw.swiped ?: local.swiped,
-                    isFavorite = local.isFavorite || raw.isFavorite,
-                    favoritedAt = raw.favoritedAt ?: local.favoritedAt,
-                    reviewCount = maxOf(local.reviewCount, raw.reviewCount),
-                    masteryLevel = maxOf(local.masteryLevel, raw.masteryLevel),
-                    lastReviewedAt = raw.lastReviewedAt ?: local.lastReviewedAt,
-                )
+                val merged = mergeCard(local, raw).copy(id = local.id)
+                working[matchIndex] = merged
                 restored++
             } else {
                 var safeId = raw.id.trim()
@@ -309,6 +296,173 @@ class CardStore(
         }
         recompute()
         return ArchiveRestoreResult(added = addedIds.size, restored = restored, ignored = ignored)
+    }
+
+    companion object {
+        /**
+         * 对称式字段级无损合并单张卡片：`mergeCard(a, b) == mergeCard(b, a)`
+         */
+        fun mergeCard(a: KnowledgeCard, b: KnowledgeCard): KnowledgeCard {
+            // 1. ID 与创建时间：若 ID 相同直接使用；若按标题匹配不同 ID，取更早创建时间与对应 ID
+            val mergedId = when {
+                a.id == b.id -> a.id
+                a.createdAt < b.createdAt -> a.id
+                b.createdAt < a.createdAt -> b.id
+                a.id <= b.id -> a.id
+                else -> b.id
+            }
+            val createdAt = minOf(a.createdAt, b.createdAt)
+
+            // 2. 正文与元数据
+            val (primary, secondary) = if (a.createdAt >= b.createdAt) a to b else b to a
+            val category = primary.category.ifBlank { secondary.category }
+            val headline = primary.headline.ifBlank { secondary.headline }
+            val summary = primary.summary.ifBlank { secondary.summary }
+            val details = if (primary.details.isBlank()) {
+                secondary.details
+            } else if (primary.details.length >= secondary.details.length) {
+                primary.details
+            } else {
+                secondary.details
+            }
+            val links = if (primary.links.isNotEmpty()) primary.links else secondary.links
+            val source = if (primary.source == CardSource.SEED && secondary.source != CardSource.SEED) {
+                secondary.source
+            } else {
+                primary.source
+            }
+
+            // 3. 浏览足迹与意图（保留最新 seenAt）
+            val seenAt: Long?
+            val swiped: SwipeDirection?
+            val sA = a.seenAt
+            val sB = b.seenAt
+            when {
+                sA != null && sB != null -> {
+                    if (sA >= sB) {
+                        seenAt = sA
+                        swiped = a.swiped ?: b.swiped
+                    } else {
+                        seenAt = sB
+                        swiped = b.swiped ?: a.swiped
+                    }
+                }
+                sA != null -> {
+                    seenAt = sA
+                    swiped = a.swiped
+                }
+                sB != null -> {
+                    seenAt = sB
+                    swiped = b.swiped
+                }
+                else -> {
+                    seenAt = null
+                    swiped = a.swiped ?: b.swiped
+                }
+            }
+
+            // 4. 收藏状态（任一端收藏即为收藏，保留最新收藏时间）
+            val isFavorite = a.isFavorite || b.isFavorite
+            val favoritedAt = when {
+                a.favoritedAt != null && b.favoritedAt != null -> maxOf(a.favoritedAt, b.favoritedAt)
+                a.favoritedAt != null -> a.favoritedAt
+                b.favoritedAt != null -> b.favoritedAt
+                isFavorite -> seenAt
+                else -> null
+            }
+
+            // 5. SM-2 / FSRS 记忆模型与复习状态（以最新 lastReviewedAt 为主）
+            val reviewCount = maxOf(a.reviewCount, b.reviewCount)
+            val masteryLevel: Int
+            val lastReviewedAt: Long?
+            val repetition: Int
+            val intervalDays: Int
+            val easeFactor: Double
+            val stability: Double
+            val difficulty: Double
+
+            val rA = a.lastReviewedAt
+            val rB = b.lastReviewedAt
+            when {
+                rA != null && rB != null -> {
+                    if (rA > rB) {
+                        masteryLevel = a.masteryLevel
+                        lastReviewedAt = rA
+                        repetition = a.repetition
+                        intervalDays = a.intervalDays
+                        easeFactor = a.easeFactor
+                        stability = if (a.stability > 0.0) a.stability else b.stability
+                        difficulty = if (a.difficulty > 0.0) a.difficulty else b.difficulty
+                    } else if (rB > rA) {
+                        masteryLevel = b.masteryLevel
+                        lastReviewedAt = rB
+                        repetition = b.repetition
+                        intervalDays = b.intervalDays
+                        easeFactor = b.easeFactor
+                        stability = if (b.stability > 0.0) b.stability else a.stability
+                        difficulty = if (b.difficulty > 0.0) b.difficulty else a.difficulty
+                    } else {
+                        masteryLevel = maxOf(a.masteryLevel, b.masteryLevel)
+                        lastReviewedAt = rA
+                        repetition = maxOf(a.repetition, b.repetition)
+                        intervalDays = maxOf(a.intervalDays, b.intervalDays)
+                        easeFactor = maxOf(a.easeFactor, b.easeFactor)
+                        stability = maxOf(a.stability, b.stability)
+                        difficulty = maxOf(a.difficulty, b.difficulty)
+                    }
+                }
+                rA != null -> {
+                    masteryLevel = a.masteryLevel
+                    lastReviewedAt = rA
+                    repetition = a.repetition
+                    intervalDays = a.intervalDays
+                    easeFactor = a.easeFactor
+                    stability = a.stability
+                    difficulty = a.difficulty
+                }
+                rB != null -> {
+                    masteryLevel = b.masteryLevel
+                    lastReviewedAt = rB
+                    repetition = b.repetition
+                    intervalDays = b.intervalDays
+                    easeFactor = b.easeFactor
+                    stability = b.stability
+                    difficulty = b.difficulty
+                }
+                else -> {
+                    masteryLevel = maxOf(a.masteryLevel, b.masteryLevel)
+                    lastReviewedAt = null
+                    repetition = maxOf(a.repetition, b.repetition)
+                    intervalDays = maxOf(a.intervalDays, b.intervalDays)
+                    easeFactor = maxOf(a.easeFactor, b.easeFactor)
+                    stability = maxOf(a.stability, b.stability)
+                    difficulty = maxOf(a.difficulty, b.difficulty)
+                }
+            }
+
+            return KnowledgeCard(
+                id = mergedId,
+                category = category,
+                headline = headline,
+                summary = summary,
+                details = details,
+                links = links,
+                source = source,
+                createdAt = createdAt,
+                seenAt = seenAt,
+                swiped = swiped,
+                isFavorite = isFavorite,
+                favoritedAt = favoritedAt,
+                reviewCount = reviewCount,
+                masteryLevel = masteryLevel,
+                lastReviewedAt = lastReviewedAt,
+                repetition = repetition,
+                intervalDays = intervalDays,
+                easeFactor = easeFactor,
+                stability = stability,
+                difficulty = difficulty,
+            )
+        }
     }
 
     /** 用卡库快照整体替换（持久化层加载 / 清空历史等场景） */

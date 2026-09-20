@@ -115,9 +115,56 @@ object SyncClient {
         }
     }
 
+    private fun requestWithRetry(
+        target: Target,
+        method: String,
+        path: String,
+        body: ByteArray? = null,
+        maxAttempts: Int = 3,
+    ): HttpResponse {
+        var lastException: Exception? = null
+        for (attempt in 1..maxAttempts) {
+            try {
+                val response = request(target, method, path, body)
+                if (response.status == 401) {
+                    error("配对码错误，请核对 6 位数字配对码是否与对端一致")
+                }
+                if (response.status == 413) {
+                    error("卡片数据超过 25 MiB 同步上限")
+                }
+                if (response.status in 200..299) {
+                    return response
+                }
+                if (response.status in listOf(502, 503)) {
+                    error("对端设备暂时繁忙 (HTTP ${response.status})")
+                }
+                error("对端设备响应错误 HTTP ${response.status}")
+            } catch (e: Exception) {
+                val msg = e.message.orEmpty()
+                if (msg.contains("配对码错误") || msg.contains("超过 25 MiB") || msg.contains("响应头过多")) {
+                    throw e
+                }
+                lastException = e
+                if (attempt < maxAttempts) {
+                    val baseDelay = 500L * (1L shl (attempt - 1))
+                    val jitter = (Math.random() * 100).toLong()
+                    try {
+                        Thread.sleep(baseDelay + jitter)
+                    } catch (_: InterruptedException) {}
+                }
+            }
+        }
+        val ex = lastException ?: IllegalStateException("同步请求失败")
+        when (ex) {
+            is java.net.SocketTimeoutException -> throw java.net.SocketTimeoutException("连接对端超时，请检查两端是否在同一 Wi-Fi 或检查局域网防火墙配置")
+            is java.net.ConnectException -> throw java.net.ConnectException("无法连接到对端设备，请确认对端已开启「接收服务」且两端连接至同一 Wi-Fi")
+            else -> throw ex
+        }
+    }
+
     suspend fun fetchRemoteInfo(target: String): Result<RemoteDeviceInfo> = withContext(Dispatchers.IO) {
         runCatching {
-            val response = request(parseTarget(target), "GET", "/api/info")
+            val response = requestWithRetry(parseTarget(target), "GET", "/api/info")
             if (response.status !in 200..299) error("对端设备响应错误 HTTP ${response.status}")
             val obj = Json.parseToJsonElement(response.body).jsonObject
             RemoteDeviceInfo(
@@ -137,7 +184,7 @@ object SyncClient {
     ): Result<SyncResult> = runCatching {
         val parsed = withContext(Dispatchers.IO) { parseTarget(target) }
         val pulledCards = withContext(Dispatchers.IO) {
-            val response = request(parsed, "GET", "/api/cards")
+            val response = requestWithRetry(parsed, "GET", "/api/cards")
             if (response.status !in 200..299) error("拉取对端卡片失败 HTTP ${response.status}")
             CardJson.decodeList(response.body)
         }
@@ -147,7 +194,7 @@ object SyncClient {
         withContext(Dispatchers.IO) {
             val payload = CardJson.encodeList(localCards).toByteArray(StandardCharsets.UTF_8)
             require(payload.size <= SyncServer.MAX_REQUEST_BODY_BYTES) { "本机卡片数据超过 25 MiB 同步上限" }
-            val response = request(parsed, "POST", "/api/cards", payload)
+            val response = requestWithRetry(parsed, "POST", "/api/cards", payload)
             if (response.status !in 200..299) error("推送卡片至对端失败 HTTP ${response.status}")
         }
 

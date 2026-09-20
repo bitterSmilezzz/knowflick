@@ -320,11 +320,11 @@ struct SyncSheetView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.seal.fill")
                                 .foregroundStyle(EditorialColor.likeGreen)
-                            Text("同步完成！")
+                            Text("双向极速同步完成！")
                                 .font(EditorialFont.label)
                                 .foregroundStyle(EditorialColor.likeGreen)
                         }
-                        Text("推送本机 \(res.pushedCount) 张卡片，拉取对端 \(res.pulledCount) 张，新增 \(res.addedCount) 张，恢复 \(res.restoredCount) 张。")
+                        Text("向对端推送 \(res.pushedCount) 张，从对端拉取 \(res.pulledCount) 张（本机新增 \(res.addedCount) 张，更新学习进度 \(res.restoredCount) 张）。")
                             .font(EditorialFont.caption)
                             .foregroundStyle(EditorialColor.textSecondary)
                     }
@@ -348,14 +348,14 @@ struct SyncSheetView: View {
             Button("关闭") {
                 onClose()
             }
-            .font(EditorialFont.label)
-            .foregroundStyle(EditorialColor.textSecondary)
+            .buttonStyle(BorderedProminentButtonStyle())
+            .tint(EditorialColor.aiAmber)
+            .foregroundStyle(Color.black)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 12)
+        .padding(.top, 4)
     }
 
-    // MARK: - 逻辑方法
+    // MARK: - 同步与服务逻辑
 
     private func initializeServerDefaults() {
         if pairingCode.isEmpty {
@@ -378,8 +378,8 @@ struct SyncSheetView: View {
             },
             onReceiveCards: { [store] incoming in
                 await MainActor.run {
-                    let result = store.importCards(incoming, insertAtTop: false)
-                    return (added: result.parsedCards.count, restored: 0, ignored: result.duplicateCount)
+                    let result = store.mergeCards(incoming, insertNewAtTop: false)
+                    return (added: result.added, restored: result.updated, ignored: result.ignored)
                 }
             }
         )
@@ -440,8 +440,8 @@ struct SyncSheetView: View {
                     localCards: localCards
                 ) { incoming in
                     await MainActor.run {
-                        let res = store.importCards(incoming, insertAtTop: false)
-                        return (added: res.parsedCards.count, restored: 0, ignored: res.duplicateCount)
+                        let res = store.mergeCards(incoming, insertNewAtTop: false)
+                        return (added: res.added, restored: res.updated, ignored: res.ignored)
                     }
                 }
                 await MainActor.run {

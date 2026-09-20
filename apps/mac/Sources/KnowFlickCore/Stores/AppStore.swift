@@ -377,6 +377,26 @@ public final class AppStore {
         )
     }
 
+    /// 智能合并外部卡片库（支持局域网同步就地升级已有卡片的学习进度与内容）
+    @discardableResult
+    public func mergeCards(_ incoming: [KnowledgeCard], insertNewAtTop: Bool = false) -> (added: Int, updated: Int, ignored: Int) {
+        let (merged, added, updated, ignored) = CardImportEngine.mergeCardList(existing: cards, incoming: incoming)
+        guard added > 0 || updated > 0 else {
+            return (added: 0, updated: 0, ignored: ignored)
+        }
+
+        if insertNewAtTop && added > 0 {
+            let newCards = Array(merged.suffix(added))
+            let existingAndUpdated = Array(merged.prefix(merged.count - added))
+            cards = newCards + existingAndUpdated
+        } else {
+            cards = merged
+        }
+        persist()
+
+        return (added: added, updated: updated, ignored: ignored)
+    }
+
     /// 通过 AI 将长文笔记提纯为知识卡片
     public func transformNoteToCards(noteContent: String) async throws -> [KnowledgeCard] {
         try await aiService.transformNoteToCards(noteText: noteContent, settings: settings)

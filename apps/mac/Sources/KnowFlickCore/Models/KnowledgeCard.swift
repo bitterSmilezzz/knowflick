@@ -20,6 +20,11 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
     public var reviewCount: Int = 0          // 累计复习次数
     public var masteryLevel: Int = 0         // 熟练度：0-未测验 1-学习中 2-已掌握
     public var lastReviewedAt: Date? = nil   // 上次复习时间戳
+    public var repetition: Int = 0           // SM-2 连续成功复习次数
+    public var intervalDays: Int = 1         // SM-2 / FSRS 下次复习间隔天数 (初始 1 天)
+    public var easeFactor: Double = 2.5      // SM-2 简易度系数 EF (初始 2.5)
+    public var stability: Double = 0.0       // FSRS 记忆稳定性 (0.0 表示未初始化)
+    public var difficulty: Double = 0.0      // FSRS 记忆难度 (0.0 表示未初始化)
 
     public init(
         id: UUID = UUID(),
@@ -36,7 +41,12 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         favoritedAt: Date? = nil,
         reviewCount: Int = 0,
         masteryLevel: Int = 0,
-        lastReviewedAt: Date? = nil
+        lastReviewedAt: Date? = nil,
+        repetition: Int = 0,
+        intervalDays: Int = 1,
+        easeFactor: Double = 2.5,
+        stability: Double = 0.0,
+        difficulty: Double = 0.0
     ) {
         self.id = id
         self.category = category
@@ -53,11 +63,17 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         self.reviewCount = reviewCount
         self.masteryLevel = masteryLevel
         self.lastReviewedAt = lastReviewedAt
+        self.repetition = repetition
+        self.intervalDays = intervalDays
+        self.easeFactor = easeFactor
+        self.stability = stability
+        self.difficulty = difficulty
     }
 
     enum CodingKeys: String, CodingKey {
         case id, category, headline, summary, details, links, source
         case createdAt, seenAt, swiped, isFavorite, favoritedAt, reviewCount, masteryLevel, lastReviewedAt
+        case repetition, intervalDays, easeFactor, stability, difficulty
     }
 
     public init(from decoder: Decoder) throws {
@@ -81,6 +97,11 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         self.reviewCount = try container.decodeIfPresent(Int.self, forKey: .reviewCount) ?? 0
         self.masteryLevel = try container.decodeIfPresent(Int.self, forKey: .masteryLevel) ?? 0
         self.lastReviewedAt = try container.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
+        self.repetition = try container.decodeIfPresent(Int.self, forKey: .repetition) ?? 0
+        self.intervalDays = try container.decodeIfPresent(Int.self, forKey: .intervalDays) ?? 1
+        self.easeFactor = try container.decodeIfPresent(Double.self, forKey: .easeFactor) ?? 2.5
+        self.stability = try container.decodeIfPresent(Double.self, forKey: .stability) ?? 0.0
+        self.difficulty = try container.decodeIfPresent(Double.self, forKey: .difficulty) ?? 0.0
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -100,6 +121,15 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         try container.encode(reviewCount, forKey: .reviewCount)
         try container.encode(masteryLevel, forKey: .masteryLevel)
         try container.encodeIfPresent(lastReviewedAt, forKey: .lastReviewedAt)
+        try container.encode(repetition, forKey: .repetition)
+        try container.encode(intervalDays, forKey: .intervalDays)
+        try container.encode(easeFactor, forKey: .easeFactor)
+        if stability > 0.0 {
+            try container.encode(stability, forKey: .stability)
+        }
+        if difficulty > 0.0 {
+            try container.encode(difficulty, forKey: .difficulty)
+        }
     }
 }
 

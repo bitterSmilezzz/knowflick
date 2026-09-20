@@ -469,7 +469,7 @@ fun SyncSheet(
                                         color = Color(0xFF2E7D32),
                                     )
                                     Text(
-                                        text = "向对端推送 ${res.pushedCount} 张，从对端拉取 ${res.pulledCount} 张（本机新增 ${res.addedCount} 张，更新进度 ${res.restoredCount} 张）",
+                                        text = "向对端推送 ${res.pushedCount} 张，从对端拉取 ${res.pulledCount} 张（本机新增 ${res.addedCount} 张，更新学习进度 ${res.restoredCount} 张）",
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                                     )
