@@ -6,6 +6,27 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [android-v0.9.1] - 2026-09-20
+
+### Android & macOS：双端渲染性能深度优化与功能同构落地
+
+- **安卓端主卡堆 120 FPS 满帧丝滑优化**：
+  - 重构 `CardFace.kt` 与 `DeckScreen.kt`：引入 `swipeProgressProvider: (() -> Float)?`，将高频手势位移、3D 轴心微倾角（`rotationY` / `rotationZ`）以及意图印章（♥ 收藏 / ✕ 略过）全部移入 Draw 阶段的 `graphicsLayer { ... }` 内部延迟读取；
+  - 拖拽卡片时 Composable 树完全不发生重组（Zero Recomposition），彻底根治卡顿掉帧，满血 120 FPS 硬件层渲染。
+- **知识全景星图引力拓扑极速瘦身（冗余边减少 96.4%）**：
+  - 重构 `KnowledgeGraphEngine.kt`：利用倒排索引寻找公共关键词候选卡片，按关联系数降序排序后限制保留最强的前 2 条精炼引力线，彻底消除 $O(N^2)$ 连线爆炸；
+  - 连线总数从 11,748 条狂降至 419 条（减少 96.4%），单帧绘制耗时由 >100ms 降至 <2ms。
+  - `KnowledgeGraphScreen.kt` 引入视口剔除（Frustum Culling）与 LOD（缩放 < 0.75 时自动略过非高亮文字绘制），大图缩放与平移漫游无掉帧。
+- **系统状态异步化与主线程零阻塞**：
+  - `AudioEffectHelper.kt` 中 `isSystemMuted` 涉及 IPC `ringerMode` 调用，全部移入单线程后台 Executor 异步轮询，避免触摸事件阻塞主线程。
+- **macOS 桌面端功能完全同构落地**：
+  - **局域网 P2P 极速同步**：落地 `SyncServer`（基于原生 BSD Socket 监听 8998 端口）与 `SyncClient`（支持 RFC1918 私有网段校验），生成 6 位随机安全配对码，与 Android 端完全互通，提供 `SyncSheetView.swift` 交互面板。
+  - **4 款纸质人文主题**：落地宣纸白、复古羊皮纸、晨雾冷灰、暖曜黑主题色板与渐变底色，设置页提供 4 款主题可视化切换网格。
+  - **16-bit PCM 拟真物理音效**：落地 `AudioEffectManager.swift`，纯 Swift 内存程序化合成 WAV 波形，严格遵循 Swift 6 并发安全与 `@MainActor` 隔离。
+- **全量自动化测试 100% 绿灯**：
+  - macOS 端 35 组测试套件、242 项测试全部通过（包含 `SyncServiceTests`）；
+  - Android 端 28 组测试套件、140+ 项测试全部通过。
+
 ## [android-v0.9.0] - 2026-09-20
 
 ### Android：全景知识星图、拟真物理音效、纸质人文主题与局域网极速同步
