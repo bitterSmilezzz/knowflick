@@ -2,6 +2,20 @@ import SwiftUI
 import AppKit
 import KnowFlickCore
 
+/// 星图分片：全景 / 某学科（`nil` 学科即「未分级」那一片）。
+/// `all` 与 `subject(nil)` 必须可区分，否则未分级卡会被藏进全景里无法单独查看。
+enum GraphShard: Hashable {
+    case all
+    case subject(String?)
+
+    func select(from cards: [KnowledgeCard]) -> [KnowledgeCard] {
+        switch self {
+        case .all: return cards
+        case .subject(let slug): return SubjectRegistry.cards(cards, in: slug)
+        }
+    }
+}
+
 /// 全景交互知识星图：将知识卡片化为浩瀚星宿，以引力线织造学科语义网络
 struct KnowledgeGraphView: View {
     let store: AppStore
@@ -11,9 +25,11 @@ struct KnowledgeGraphView: View {
     @State private var isLoadingGraph = true
     @State private var graphData: KnowledgeGraphData = .init(nodes: [], edges: [])
     @State private var nodeById: [UUID: GraphNode] = [:]
+    /// 卡片 id → 直接相连的卡片 id：拖拽/悬停每帧都重扫全部引力线的话，一帧就没了
+    @State private var adjacency: [UUID: Set<UUID>] = [:]
     @State private var selectedNode: GraphNode? = nil
     @State private var hoveredNode: GraphNode? = nil
-    @State private var selectedCategory: String? = nil
+    @State private var selectedShard: GraphShard = .all
     @State private var searchText: String = ""
 
     // 视口平移与缩放手势
@@ -21,14 +37,23 @@ struct KnowledgeGraphView: View {
     @State private var currentDragTranslation: CGSize = .zero
     @State private var zoomScale: CGFloat = 1.0
     @State private var pinchStartZoom: CGFloat? = nil
+    /// 窗口尺寸：自适应缩放要用它（画布本身是固定 1200×900 的世界画布）
+    @State private var viewportSize: CGSize = .zero
 
     // 星尘粒子随机种子
     private let starDustCount = 80
     private let canvasBaseWidth: CGFloat = 1200
     private let canvasBaseHeight: CGFloat = 900
 
-    private var allCategories: [String] {
-        Array(Set(graphData.nodes.map(\.category))).sorted()
+    /// 构图输入：默认只看一个学科。全库构图是 O(n²)（实测 2400 张 18s），
+    /// 单学科则落在亚秒级——所以「全景」是显式选项，而不是默认视图。
+    private var shardCards: [KnowledgeCard] {
+        selectedShard.select(from: store.cards)
+    }
+
+    /// 分片摘要（含「未分级」一片），按全库统计，切换时能看到每片规模
+    private var shardSummaries: [SubjectRegistry.SubjectSummary] {
+        SubjectRegistry.subjectSummaries(store.cards)
     }
 
     /// 归一化检索词：剔除两端空白并小写，供渲染侧与热区层共用
@@ -36,10 +61,10 @@ struct KnowledgeGraphView: View {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    /// 节点「可见判据」的唯一来源：学科筛选命中 **且** 检索词命中（标题或学科）。
+    /// 节点「可见判据」的唯一来源：检索词命中（标题或学科）。
     /// Canvas 渲染（dimOpacity）与热区层都调用这里，保证「视觉上被压暗的星宿」同时不可点、不可 hover。
+    /// 学科过滤不再在此判定——它发生在构图输入阶段（`shardCards`），片内节点全部可见。
     private func isNodeVisible(_ node: GraphNode) -> Bool {
-        guard selectedCategory == nil || node.category == selectedCategory else { return false }
         let query = normalizedQuery
         guard !query.isEmpty else { return true }
         return node.headline.lowercased().contains(query) || node.category.lowercased().contains(query)
@@ -47,11 +72,8 @@ struct KnowledgeGraphView: View {
 
     private var connectedNodeIdsForSelectedOrHovered: Set<UUID> {
         guard let active = hoveredNode ?? selectedNode else { return [] }
-        var set = Set<UUID>([active.cardId])
-        for edge in graphData.edges {
-            if edge.sourceId == active.cardId { set.insert(edge.targetId) }
-            if edge.targetId == active.cardId { set.insert(edge.sourceId) }
-        }
+        var set = adjacency[active.cardId] ?? []
+        set.insert(active.cardId)
         return set
     }
 
@@ -62,7 +84,7 @@ struct KnowledgeGraphView: View {
                 .ignoresSafeArea()
 
             // 星图主体交互画布
-            GeometryReader { _ in
+            GeometryReader { proxy in
                 ZStack {
                     Canvas { context, size in
                         drawGraph(context: context, size: size)
@@ -76,12 +98,12 @@ struct KnowledgeGraphView: View {
                             .onChanged { value in
                                 let start = pinchStartZoom ?? zoomScale
                                 if pinchStartZoom == nil { pinchStartZoom = zoomScale }
-                                zoomScale = min(2.2, max(0.6, start * value))
+                                zoomScale = min(3.2, max(0.3, start * value))
                             }
                             .onEnded { _ in pinchStartZoom = nil }
                     )
                     .background(GraphScrollZoomCatcher { zoomDelta in
-                        zoomScale = min(2.2, max(0.6, zoomScale + zoomDelta))
+                        zoomScale = min(3.2, max(0.3, zoomScale + zoomDelta))
                     })
 
                     // 节点轻触与悬停热区层
@@ -91,6 +113,12 @@ struct KnowledgeGraphView: View {
                         .offset(x: panOffset.width + currentDragTranslation.width, y: panOffset.height + currentDragTranslation.height)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onChange(of: proxy.size) { _, newSize in
+                    guard newSize != viewportSize else { return }
+                    viewportSize = newSize
+                    applyFit()
+                }
+                .onAppear { viewportSize = proxy.size }
             }
 
             // 顶栏操作区
@@ -117,8 +145,13 @@ struct KnowledgeGraphView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .task(id: store.cards) {
+        .task(id: shardCards) {
             await loadGraph()
+        }
+        .onChange(of: selectedShard) { _, _ in
+            // 换片时立刻收掉选中态，避免旧片的节点残留在新片上
+            selectedNode = nil
+            hoveredNode = nil
         }
     }
 
@@ -194,20 +227,21 @@ struct KnowledgeGraphView: View {
     private var categoryFilterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                categoryFilterChip(title: "全部星系", isSelected: selectedCategory == nil) {
+                categoryFilterChip(title: "全部星系", isSelected: selectedShard == .all) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedCategory = nil
+                        selectedShard = .all
                     }
                 }
 
-                ForEach(allCategories, id: \.self) { cat in
-                    let count = graphData.nodes.filter { $0.category == cat }.count
+                ForEach(shardSummaries) { summary in
+                    let option = GraphShard.subject(summary.slug)
                     categoryFilterChip(
-                        title: "\(cat) (\(count))",
-                        isSelected: selectedCategory == cat
+                        title: "\(summary.name) (\(summary.count))",
+                        isSelected: selectedShard == option
                     ) {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedCategory = (selectedCategory == cat) ? nil : cat
+                            // 再点一次回到全景，与 Android 端一致
+                            selectedShard = (selectedShard == option) ? .all : option
                         }
                     }
                 }
@@ -246,7 +280,7 @@ struct KnowledgeGraphView: View {
             HStack(spacing: 6) {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        zoomScale = max(0.6, zoomScale - 0.2)
+                        zoomScale = max(0.3, zoomScale - 0.2)
                     }
                 } label: {
                     Image(systemName: "minus")
@@ -263,7 +297,7 @@ struct KnowledgeGraphView: View {
 
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        zoomScale = min(2.2, zoomScale + 0.2)
+                        zoomScale = min(3.2, zoomScale + 0.2)
                     }
                 } label: {
                     Image(systemName: "plus")
@@ -280,9 +314,8 @@ struct KnowledgeGraphView: View {
 
             Button {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    panOffset = .zero
+                    applyFit()   // 复位 = 重新自适应，而不是回到看不见的 1:1
                     currentDragTranslation = .zero
-                    zoomScale = 1.0
                 }
             } label: {
                 HStack(spacing: 4) {
@@ -334,7 +367,7 @@ struct KnowledgeGraphView: View {
             guard let src = nodeMap[edge.sourceId], let dst = nodeMap[edge.targetId] else { continue }
 
             let isEdgeActive = activeNode != nil && (src.cardId == activeNode?.cardId || dst.cardId == activeNode?.cardId)
-            let isCategoryMatched = (selectedCategory == nil) || (src.category == selectedCategory && dst.category == selectedCategory)
+            let isCategoryMatched = true
 
             var linePath = Path()
             linePath.move(to: CGPoint(x: src.x, y: src.y))
@@ -496,6 +529,26 @@ struct KnowledgeGraphView: View {
                         }
                         .buttonStyle(PressableButtonStyle())
 
+                        Button {
+                            // 置顶后收起星图：回到卡堆时该星宿已在首位（与 Android 端同义）
+                            store.promoteToDeckTop(card)
+                            onClose()
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.up.to.line.compact")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text("置顶进入卡堆")
+                                    .font(EditorialFont.labelSmall)
+                            }
+                            .foregroundStyle(EditorialColor.aiAmber)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Color.white.opacity(0.08), in: Capsule())
+                            .overlay(Capsule().strokeBorder(EditorialColor.aiAmber.opacity(0.5), lineWidth: 1))
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .help("把这张卡片提到卡堆顶部，接着就能刷到它")
+
                         Spacer()
 
                         Text("点击 ✕ 或再次点击该星宿关闭")
@@ -567,6 +620,22 @@ struct KnowledgeGraphView: View {
 
     // MARK: - 辅助逻辑
 
+    /// 把当前这片星图缩放居中到窗口内。
+    /// 画布是固定 1200×900 的世界坐标，小窗口下不自适应就只能看到一角——与 Android 端同一口径。
+    private func applyFit() {
+        guard let bounds = KnowledgeGraphEngine.bounds(of: graphData.nodes),
+              viewportSize.width > 0, viewportSize.height > 0 else { return }
+        let fit = KnowledgeGraphEngine.fitToViewport(
+            bounds: bounds, viewWidth: viewportSize.width, viewHeight: viewportSize.height
+        )
+        zoomScale = fit.scale
+        // scaleEffect 以画布中心为原点：让包围盒中心落到窗口中心
+        panOffset = CGSize(
+            width: (canvasBaseWidth / 2 - (bounds.minX + bounds.maxX) / 2) * fit.scale,
+            height: (canvasBaseHeight / 2 - (bounds.minY + bounds.maxY) / 2) * fit.scale
+        )
+    }
+
     private func loadGraph() async {
         isLoadingGraph = true
         let cards = store.cards
@@ -583,6 +652,15 @@ struct KnowledgeGraphView: View {
         graphData = result
         // nodeMap 一次性预计算：此前每次 Canvas 重绘（含 hover 进出）都重建整表
         nodeById = Dictionary(uniqueKeysWithValues: result.nodes.map { ($0.cardId, $0) })
+
+        var adjacencyTable: [UUID: Set<UUID>] = [:]
+        adjacencyTable.reserveCapacity(result.nodes.count)
+        for edge in result.edges {
+            adjacencyTable[edge.sourceId, default: []].insert(edge.targetId)
+            adjacencyTable[edge.targetId, default: []].insert(edge.sourceId)
+        }
+        adjacency = adjacencyTable
+        applyFit()
         isLoadingGraph = false
     }
 

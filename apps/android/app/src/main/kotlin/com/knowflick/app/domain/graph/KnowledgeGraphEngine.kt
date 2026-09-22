@@ -2,8 +2,10 @@ package com.knowflick.app.domain.graph
 
 import androidx.compose.runtime.Immutable
 import com.knowflick.app.domain.KnowledgeCard
+import java.util.Arrays
 import java.util.Collections
 import kotlin.math.cos
+import kotlin.math.sqrt
 import kotlin.math.sin
 
 /**
@@ -42,6 +44,15 @@ data class GraphEdge(
     val targetId: String,
     val weight: Float,
     val kind: RelationKind,
+)
+
+/** 节点包围盒（世界坐标） */
+@Immutable
+data class GraphBounds(
+    val minX: Float,
+    val minY: Float,
+    val maxX: Float,
+    val maxY: Float,
 )
 
 /**
@@ -92,10 +103,47 @@ object KnowledgeGraphEngine {
     private val keywordCache = Collections.synchronizedMap(LinkedHashMap<String, Set<String>>())
 
     /**
+     * 图结果缓存（容量 6，访问序 LRU）：与 macOS 端 GraphCacheBox 同口径。
+     * 星图按学科分片后缓存键是「某一片」，容量太小会在来回切换时把刚看过的片挤掉、重算 O(n²)。
+     */
+    private const val GRAPH_CACHE_CAPACITY = 6
+
+    private val graphCache = LinkedHashMap<Long, KnowledgeGraphData>(4, 0.75f, true)
+
+    /** 一次构图的诊断快照（测试与性能观测用，不含用户内容） */
+    data class BuildDiagnostics(val didHitCache: Boolean, val cards: Int, val edges: Int)
+
+    private var diagnostics: BuildDiagnostics? = null
+
+    /** 最近一次构图的诊断（供测试断言缓存命中） */
+    val lastBuildDiagnostics: BuildDiagnostics?
+        get() = synchronized(this) { diagnostics }
+
+    /** 清空构图结果缓存：测试与内容整体重建时使用 */
+    fun invalidateGraphCache() = synchronized(this) { graphCache.clear() }
+
+    /**
+     * 构图内容签名：只取**影响拓扑**的字段（分类/标题/摘要/正文/复习次数/掌握度 + 画布尺寸）。
+     * 划卡、收藏、换一批等与拓扑无关的变化不换签名，因此能命中缓存，不再重算 n² 关系。
+     */
+    fun graphSignature(cards: List<KnowledgeCard>, width: Float, height: Float): Long {
+        var hash = width.toRawBits() * 31L + height.toRawBits()
+        for (card in cards) {
+            val part = "${card.id}|${card.category}|${card.headline}|${card.summary}|${card.details}" +
+                "|${card.reviewCount}|${card.masteryLevel}"
+            hash = hash * 1_099_511_628_211L + part.hashCode().toLong()
+        }
+        return hash
+    }
+
+    /**
      * 提取卡片关键词集合（N-Gram + 英文 Token）
      */
     fun extractKeywords(card: KnowledgeCard): Set<String> {
-        val cacheKey = "${card.id}_${card.category}_${card.headline.hashCode()}"
+        // 缓存 key 必须覆盖全部被朗读/建图使用的字段：只带标题哈希时，
+        // 编辑正文或摘要后会复用旧词集，星图引力线与详情页相关卡都会停在旧内容上。
+        val cacheKey = "${card.id}|${card.category}|${card.headline.hashCode()}:" +
+            "${card.summary.hashCode()}:${card.details.hashCode()}"
         keywordCache[cacheKey]?.let { return it }
 
         val text = "${card.headline} ${card.summary} ${card.details}".lowercase()
@@ -128,6 +176,13 @@ object KnowledgeGraphEngine {
         }
         keywordCache[cacheKey] = words
         return words
+    }
+
+    /** 由字符串确定性派生 [0,1) 分布的实数（同一张卡坐标永远一致） */
+    private fun hashUnit(seed: String, salt: String): Double {
+        val mixed = (seed.hashCode().toLong() * 31L + salt.hashCode().toLong()) * 0x9E3779B97F4A7C15U.toLong()
+        val positive = mixed and 0x7FFFFFFFFFFFFFFFL
+        return (positive % 1_000_000L) / 1_000_000.0
     }
 
     private fun isChinese(c: Char): Boolean = c in '\u4e00'..'\u9fa5'
@@ -176,15 +231,87 @@ object KnowledgeGraphEngine {
     ): KnowledgeGraphData {
         if (cards.isEmpty()) return KnowledgeGraphData(emptyList(), emptyList())
 
+        val signature = graphSignature(cards, width, height)
+        val cached = synchronized(this) { graphCache[signature] }
+        if (cached != null) {
+            diagnostics = BuildDiagnostics(didHitCache = true, cards = cards.size, edges = cached.edges.size)
+            return cached
+        }
+
+        val built = computeGraph(cards, width, height)
+        synchronized(this) {
+            graphCache[signature] = built
+            // accessOrder=true：迭代顺序即最近使用顺序，队首是最久未命中者
+            while (graphCache.size > GRAPH_CACHE_CAPACITY) {
+                graphCache.remove(graphCache.keys.first())
+            }
+            diagnostics = BuildDiagnostics(didHitCache = false, cards = cards.size, edges = built.edges.size)
+        }
+        return built
+    }
+
+    /** 视口自适应结果：screen = world * scale + offset */
+    data class GraphFit(val scale: Float, val offsetX: Float, val offsetY: Float)
+
+    /**
+     * 把节点包围盒等比缩放并居中到视口内（四周留 padding）。
+     *
+     * 手机屏宽只有世界画布的两成，不做自适应就等于「进图永远只看到左上角一块」——
+     * 纯函数，便于双端同一口径单测。包围盒退化（单点/空）时按 1:1 居中。
+     */
+    fun fitToViewport(
+        minX: Float,
+        minY: Float,
+        maxX: Float,
+        maxY: Float,
+        viewWidth: Float,
+        viewHeight: Float,
+        padding: Float = 24f,
+        minScale: Float = 0.45f,
+        maxScale: Float = 3.2f,
+    ): GraphFit {
+        if (viewWidth <= 0f || viewHeight <= 0f) return GraphFit(1f, 0f, 0f)
+        val bboxWidth = (maxX - minX).coerceAtLeast(1f)
+        val bboxHeight = (maxY - minY).coerceAtLeast(1f)
+        val usableWidth = (viewWidth - padding * 2f).coerceAtLeast(1f)
+        val usableHeight = (viewHeight - padding * 2f).coerceAtLeast(1f)
+        val scale = minOf(usableWidth / bboxWidth, usableHeight / bboxHeight).coerceIn(minScale, maxScale)
+        val centerX = (minX + maxX) / 2f
+        val centerY = (minY + maxY) / 2f
+        return GraphFit(scale, viewWidth / 2f - centerX * scale, viewHeight / 2f - centerY * scale)
+    }
+
+    /** 节点包围盒；空图返回 null */
+    fun boundsOf(nodes: List<GraphNode>): GraphBounds? {
+        if (nodes.isEmpty()) return null
+        var minX = Float.MAX_VALUE
+        var minY = Float.MAX_VALUE
+        var maxX = -Float.MAX_VALUE
+        var maxY = -Float.MAX_VALUE
+        for (node in nodes) {
+            if (node.x < minX) minX = node.x
+            if (node.x > maxX) maxX = node.x
+            if (node.y < minY) minY = node.y
+            if (node.y > maxY) maxY = node.y
+        }
+        return GraphBounds(minX, minY, maxX, maxY)
+    }
+
+    private fun computeGraph(
+        cards: List<KnowledgeCard>,
+        width: Float,
+        height: Float,
+    ): KnowledgeGraphData {
         val centerX = width / 2f
         val centerY = height / 2f
 
         // 1. 收集学科分类并分配星系圆心角
         val categories = cards.map { it.category }.distinct().sorted()
-        val catAngleMap = HashMap<String, Double>()
         val catCount = categories.size.coerceAtLeast(1)
+        val sector = 2.0 * Math.PI / catCount
+        val catAngleMap = HashMap<String, Double>()
         categories.forEachIndexed { index, cat ->
-            catAngleMap[cat] = (index.toDouble() / catCount.toDouble()) * 2.0 * Math.PI
+            catAngleMap[cat] = index * sector
         }
 
         // 2. 映射节点初始坐标
@@ -196,12 +323,12 @@ object KnowledgeGraphEngine {
             cardKeywords[card.id] = kw
 
             val catAngle = catAngleMap[card.category] ?: 0.0
-            // 确定性伪随机偏移，保证同一张卡片在星图中的坐标稳定
-            val seed = (card.id.hashCode() and 0x7FFFFFFF) % 10000 / 10000.0
-            val angleJitter = (seed - 0.5) * 0.9
-            val radiusDist = 160.0 + seed * 320.0
-
-            val finalAngle = catAngle + angleJitter
+            // 两个独立确定性哈希：角度铺满整个学科扇区、半径按 sqrt 均匀覆盖面积。
+            // 旧写法只在扇区中轴附近抖 ±0.45rad，单学科或两学科的片子会塌成一条横线。
+            val angleSeed = hashUnit(card.id, "angle")
+            val radiusSeed = hashUnit(card.id, "radius")
+            val radiusDist = 160.0 + sqrt(radiusSeed) * 320.0
+            val finalAngle = catAngle + angleSeed * sector
             val x = (centerX + radiusDist * cos(finalAngle)).toFloat()
             val y = (centerY + radiusDist * sin(finalAngle)).toFloat()
 
@@ -237,6 +364,19 @@ object KnowledgeGraphEngine {
             }
         }
 
+        // 分类下标表：同科聚合候选按升序下标直取。原实现对每张卡都向后线性扫描整个数组
+        // 找 3 张同类卡，卡片上千时这是 O(N²) 的另一处主要来源。
+        val categoryIndices = HashMap<String, IntArray>()
+        run {
+            val buckets = HashMap<String, ArrayList<Int>>()
+            for ((index, card) in cards.withIndex()) {
+                buckets.getOrPut(card.category) { ArrayList() }.add(index)
+            }
+            for ((category, list) in buckets) {
+                categoryIndices[category] = list.toIntArray()
+            }
+        }
+
         val edges = ArrayList<GraphEdge>()
         val connectionCount = HashMap<String, Int>()
         val seenEdgeIds = HashSet<String>()
@@ -257,12 +397,15 @@ object KnowledgeGraphEngine {
             }
 
             // 为同分类后续卡片补充基础学科候选（最多 3 张），确保同科聚合
-            var catCount = 0
-            for (j in (i + 1) until cards.size) {
-                if (cards[j].category == cardA.category) {
-                    candidateIndices.add(j)
-                    catCount++
-                    if (catCount >= 3) break
+            val sameCategory = categoryIndices[cardA.category]
+            if (sameCategory != null) {
+                val position = Arrays.binarySearch(sameCategory, i)
+                var cursor = if (position >= 0) position + 1 else -position - 1
+                var taken = 0
+                while (cursor < sameCategory.size && taken < 3) {
+                    candidateIndices.add(sameCategory[cursor])
+                    cursor++
+                    taken++
                 }
             }
 

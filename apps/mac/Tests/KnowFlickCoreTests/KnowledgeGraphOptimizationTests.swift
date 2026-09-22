@@ -120,6 +120,66 @@ struct KnowledgeGraphOptimizationTests {
         #expect(KnowledgeGraphEngine.lastBuildDiagnostics?.didHitCache == false)
     }
 
+    /// 星图按学科分片后，来回切学科必须继续命中缓存：容量只有 2 时，
+    /// 切回刚才看过的那片就会重算 O(n²)，表现为「点一下学科卡一下」。
+    @Test func shardSwitchingStaysWithinCacheCapacity() {
+        let shards = (0..<6).map { index in
+            (0..<8).map { card("学科\(index)", "分片卡片\(index)-\($0)", details: "分片内容 \(index)") }
+        }
+        shards.forEach { _ = KnowledgeGraphEngine.buildGraph(from: $0) }
+        _ = KnowledgeGraphEngine.buildGraph(from: shards[0])
+        #expect(KnowledgeGraphEngine.lastBuildDiagnostics?.didHitCache == true, "切回最早的分片不应重新构图")
+
+        // 第 7 片进来才应把最久未用的挤掉
+        let eighth = (0..<8).map { card("学科X", "挤出卡片\($0)", details: "挤出内容") }
+        _ = KnowledgeGraphEngine.buildGraph(from: eighth)
+        #expect(KnowledgeGraphEngine.lastBuildDiagnostics?.didHitCache == false)
+    }
+
+    // MARK: - 视口自适应
+
+    @Test func fitCentersBoundingBoxInViewPort() {
+        let bounds = KnowledgeGraphEngine.GraphBounds(minX: 0, minY: 0, maxX: 2000, maxY: 2000)
+        let fit = KnowledgeGraphEngine.fitToViewport(bounds: bounds, viewWidth: 1000, viewHeight: 1000)
+        // 包围盒中心必须落到视口中心
+        #expect(abs((1000 * fit.scale) + fit.offsetX - 500) < 0.001)
+        #expect(abs((1000 * fit.scale) + fit.offsetY - 500) < 0.001)
+        #expect(fit.scale < 0.5, "2000 世界单位塞进 1000 视口，缩放必然小于 1")
+    }
+
+    @Test func fitRespectsScaleLimitsAndDegenerateBounds() {
+        let tiny = KnowledgeGraphEngine.GraphBounds(minX: 700, minY: 700, maxX: 700, maxY: 700)
+        let fit = KnowledgeGraphEngine.fitToViewport(bounds: tiny, viewWidth: 400, viewHeight: 400)
+        #expect(fit.scale == 3.2, "单点包围盒按上限放大，而不是除零或无限放大")
+        #expect(abs(fit.offsetX + 700 * 3.2 - 200) < 0.001)
+
+        let zero = KnowledgeGraphEngine.fitToViewport(bounds: tiny, viewWidth: 0, viewHeight: 400)
+        #expect(zero == KnowledgeGraphEngine.GraphFit(scale: 1, offsetX: 0, offsetY: 0))
+    }
+
+    /// 只有 2 个学科的片：旧布局会把节点压在一条直线上（视觉上「星图塌了」）
+    @Test func fewCategoryShardsStillFillTwoDimensions() throws {
+        let cards = (0..<40).map { index in
+            card(index % 2 == 0 ? "物理" : "数学", "扇区铺开\(index)", details: "角度与半径确定性散布")
+        }
+        let graph = KnowledgeGraphEngine.buildGraph(from: cards, width: 1400, height: 1400)
+        let bounds = try #require(KnowledgeGraphEngine.bounds(of: graph.nodes))
+        let width = bounds.maxX - bounds.minX
+        let height = bounds.maxY - bounds.minY
+        #expect(height > width * 0.25, "两学科分片应铺成面而不是线：宽 \(width) 高 \(height)")
+    }
+
+    @Test func boundsCoverEveryNode() {
+        let cards = (0..<12).map { card("物理", "包围盒卡片\($0)", details: "坐标散布") }
+        let graph = KnowledgeGraphEngine.buildGraph(from: cards, width: 860, height: 620)
+        let bounds = try? #require(KnowledgeGraphEngine.bounds(of: graph.nodes))
+        for node in graph.nodes {
+            #expect(node.x >= bounds!.minX && node.x <= bounds!.maxX)
+            #expect(node.y >= bounds!.minY && node.y <= bounds!.maxY)
+        }
+        #expect(KnowledgeGraphEngine.bounds(of: []) == nil)
+    }
+
     // MARK: - 性能断言（216 张，与审计实测同规模）
 
     /// 216 张卡（关键词集规模与真实库同量级）的冷构建必须远低于优化前量级。

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,9 +48,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,12 +65,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.domain.SubjectRegistry
+import com.knowflick.app.domain.graph.GraphBounds
 import com.knowflick.app.domain.graph.GraphNode
 import com.knowflick.app.domain.graph.KnowledgeGraphData
 import com.knowflick.app.domain.graph.KnowledgeGraphEngine
@@ -77,6 +81,7 @@ import com.knowflick.app.domain.graph.RelationKind
 import com.knowflick.app.ui.EditorialColor
 import com.knowflick.app.ui.common.AudioEffectHelper
 import com.knowflick.app.ui.common.HapticFeedbackHelper
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -95,47 +100,66 @@ fun KnowledgeGraphScreen(
     val context = LocalContext.current
     var graphData by remember { mutableStateOf(KnowledgeGraphData(emptyList(), emptyList())) }
     var selectedNode by remember { mutableStateOf<GraphNode?>(null) }
-    var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var shard by remember { mutableStateOf<GraphShard>(GraphShard.All) }
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
 
-    // 视口变换参数
-    var scale by remember { mutableFloatStateOf(1f) }
-    var panX by remember { mutableFloatStateOf(0f) }
-    var panY by remember { mutableFloatStateOf(0f) }
+    // 视口变换：刻意**不放进组合状态**。手势每帧写它，只让画布重绘，不触发整棵 Composable 树重组。
+    val viewport = remember { GraphViewport() }
+
+    // 已建图的拓扑签名：划卡/收藏/复习只换 cards 数组，拓扑不变时既不建图也不赋值
+    var builtSignature by remember { mutableLongStateOf(0L) }
+
+    // 分片输入：默认只看一个学科（构图成本 ~O(n²)，全库 2400 张要 18s，一个学科 <1.5s）
+    val shardCards = remember(cards, shard) { shard.select(cards) }
 
     // 异步构建星图拓扑
-    LaunchedEffect(cards) {
-        val snapshot = cards.toList()
+    LaunchedEffect(shardCards) {
+        val snapshot = shardCards.toList()
+        val signature = withContext(Dispatchers.Default) {
+            KnowledgeGraphEngine.graphSignature(snapshot, GRAPH_WORLD_SIZE, GRAPH_WORLD_SIZE)
+        }
+        if (signature == builtSignature) return@LaunchedEffect
+        builtSignature = signature
         graphData = withContext(Dispatchers.Default) {
-            KnowledgeGraphEngine.buildGraph(snapshot, width = 1400f, height = 1400f)
+            KnowledgeGraphEngine.buildGraph(snapshot, width = GRAPH_WORLD_SIZE, height = GRAPH_WORLD_SIZE)
         }
         selectedNode = null
     }
 
     val cardMap = remember(cards) { cards.associateBy { it.id } }
-    val categories = remember(cards) { cards.map { it.category }.distinct().sorted() }
-    val nodeMap = remember(graphData) { graphData.nodes.associateBy { it.cardId } }
-    val labelPaint = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
-    val currentScale by rememberUpdatedState(scale)
-    val currentPanX by rememberUpdatedState(panX)
-    val currentPanY by rememberUpdatedState(panY)
+    val shards = remember(cards) { SubjectRegistry.subjectSummaries(cards) }
 
-    // 与选中节点相连的所有节点 ID 集合
-    val connectedCardIds = remember(selectedNode, graphData) {
-        val sel = selectedNode ?: return@remember emptySet<String>()
-        val set = HashSet<String>()
-        set.add(sel.cardId)
-        for (edge in graphData.edges) {
-            if (edge.sourceId == sel.cardId) set.add(edge.targetId)
-            if (edge.targetId == sel.cardId) set.add(edge.sourceId)
-        }
-        set
+    // 逐帧只读数组的扁平布局：世界坐标、预取色、预截断标签、边的下标对
+    val layout = remember(graphData) { GraphLayout(graphData) }
+    val labelPaint = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
+
+    // 分类 + 检索词的命中掩码：逐帧 contains 会让每根手指移动都跑一遍字符串比较
+    val matched = remember(searchQuery, layout) { layout.matchedFlags(searchQuery) }
+    // 与选中节点相连的节点掩码
+    val connected = remember(selectedNode, layout) { layout.connectivityFlags(selectedNode?.cardId) }
+
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // 换片 / 首次量到尺寸后自适应
+    LaunchedEffect(graphData, canvasSize) {
+        if (graphData.nodes.isEmpty() || canvasSize == IntSize.Zero) return@LaunchedEffect
+        viewport.setViewportSize(canvasSize.width.toFloat(), canvasSize.height.toFloat())
+        viewport.fitTo(KnowledgeGraphEngine.boundsOf(graphData.nodes))
     }
 
     val isDark = MaterialTheme.colorScheme.background.red < 0.2f
     val bgColor = MaterialTheme.colorScheme.background
-    val canvasCenter = remember { Offset(700f, 700f) }
+    val glowBrush = remember(isDark) {
+        Brush.radialGradient(
+            colors = listOf(
+                EditorialColor.aiAmber.copy(alpha = if (isDark) 0.08f else 0.04f),
+                Color.Transparent,
+            ),
+            center = Offset(GRAPH_WORLD_CENTER, GRAPH_WORLD_CENTER),
+            radius = 450f,
+        )
+    }
 
     Box(
         modifier = modifier
@@ -146,10 +170,11 @@ fun KnowledgeGraphScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onSizeChanged { canvasSize = it }
                 .semantics {
                     contentDescription = "知识星图画布，共 ${graphData.nodes.size} 个知识节点；可双指缩放、拖动，轻点节点查看详情"
                 }
-                .pointerInput(graphData) {
+                .pointerInput(layout) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         var zoom = 1f
@@ -168,7 +193,7 @@ fun KnowledgeGraphScreen(
                                     zoom *= zoomChange
                                     pan += panChange
                                     val centroidSize = event.calculateCentroidSize(useCurrent = false)
-                                    val zoomMotion = kotlin.math.abs(1 - zoom) * centroidSize
+                                    val zoomMotion = abs(1 - zoom) * centroidSize
                                     val panMotion = pan.getDistance()
 
                                     if (zoomMotion > touchSlop || panMotion > touchSlop) {
@@ -176,41 +201,28 @@ fun KnowledgeGraphScreen(
                                     }
                                 }
 
-                                if (pastTouchSlop) {
-                                    if (zoomChange != 1f || panChange != Offset.Zero) {
-                                        scale = (scale * zoomChange).coerceIn(0.45f, 3.2f)
-                                        panX += panChange.x
-                                        panY += panChange.y
-                                        event.changes.forEach { it.consume() }
-                                    }
+                                if (pastTouchSlop && (zoomChange != 1f || panChange != Offset.Zero)) {
+                                    viewport.transformBy(zoomChange, panChange)
+                                    event.changes.forEach { it.consume() }
                                 }
                             }
                         } while (event.changes.any { it.pressed })
 
                         if (!pastTouchSlop) {
-                            // 轻点触达节点
-                            val tapOffset = down.position
-                            val screenCenterX = size.width / 2f
-                            val screenCenterY = size.height / 2f
-                            val worldX = (tapOffset.x - screenCenterX - panX) / scale + canvasCenter.x
-                            val worldY = (tapOffset.y - screenCenterY - panY) / scale + canvasCenter.y
-
-                            var nearestNode: GraphNode? = null
-                            var nearestDist = Float.MAX_VALUE
-                            for (node in graphData.nodes) {
-                                val dist = hypot(node.x - worldX, node.y - worldY)
-                                if (dist < nearestDist && dist <= (node.radius + 80f)) {
-                                    nearestDist = dist
-                                    nearestNode = node
-                                }
-                            }
-
-                            android.util.Log.d("KnowFlickGraph", "Tap at $tapOffset -> world ($worldX, $worldY), nearestDist=$nearestDist, hit=${nearestNode?.headline}")
-
-                            if (nearestNode != null) {
+                            // 轻点触达节点：屏幕坐标反算世界坐标后取最近节点
+                            val hit = layout.nodeAt(
+                                tapX = down.position.x,
+                                tapY = down.position.y,
+                                scale = viewport.scale,
+                                panX = viewport.panX,
+                                panY = viewport.panY,
+                                viewWidth = size.width.toFloat(),
+                                viewHeight = size.height.toFloat(),
+                            )
+                            if (hit >= 0) {
                                 HapticFeedbackHelper.click(context)
                                 AudioEffectHelper.playClick(context)
-                                selectedNode = nearestNode
+                                selectedNode = graphData.nodes[hit]
                             } else {
                                 selectedNode = null
                             }
@@ -219,151 +231,143 @@ fun KnowledgeGraphScreen(
                 }
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val screenCenterX = size.width / 2f
-                val screenCenterY = size.height / 2f
+                // 读视口状态只发生在本 lambda 内：手势期间仅重绘这张画布
+                val scale = viewport.scale
+                val panX = viewport.panX
+                val panY = viewport.panY
 
-                // 绘制背景微弱放射光芒
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            EditorialColor.aiAmber.copy(alpha = if (isDark) 0.08f else 0.04f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(screenCenterX + panX, screenCenterY + panY),
-                        radius = 450f * scale,
-                    )
-                )
+                // 世界→屏幕一次性写进画布变换，节点与连线全程按世界坐标绘制
+                val tx = size.width / 2f + panX - GRAPH_WORLD_CENTER * scale
+                val ty = size.height / 2f + panY - GRAPH_WORLD_CENTER * scale
+                val left = -tx / scale - GRAPH_CULL_MARGIN
+                val right = (size.width - tx) / scale + GRAPH_CULL_MARGIN
+                val top = -ty / scale - GRAPH_CULL_MARGIN
+                val bottom = (size.height - ty) / scale + GRAPH_CULL_MARGIN
 
-                // 绘制星图连线（引力光索）
-                for (edge in graphData.edges) {
-                    val src = nodeMap[edge.sourceId] ?: continue
-                    val dst = nodeMap[edge.targetId] ?: continue
+                val canvasHandle = drawContext.canvas
+                canvasHandle.save()
+                canvasHandle.translate(tx, ty)
+                canvasHandle.scale(scale, scale)
 
-                    val srcScreenX = screenCenterX + panX + (src.x - canvasCenter.x) * scale
-                    val srcScreenY = screenCenterY + panY + (src.y - canvasCenter.y) * scale
-                    val dstScreenX = screenCenterX + panX + (dst.x - canvasCenter.x) * scale
-                    val dstScreenY = screenCenterY + panY + (dst.y - canvasCenter.y) * scale
+                // 背景微弱放射光芒（画刷按 isDark 缓存，不再每帧重建 shader 与颜色表）
+                drawCircle(brush = glowBrush, radius = 450f, center = Offset(GRAPH_WORLD_CENTER, GRAPH_WORLD_CENTER))
 
-                    // 视口剔除：若两个端点均在视口外部同一侧，跳过连线绘制
-                    if ((srcScreenX < -60f && dstScreenX < -60f) ||
-                        (srcScreenX > size.width + 60f && dstScreenX > size.width + 60f) ||
-                        (srcScreenY < -60f && dstScreenY < -60f) ||
-                        (srcScreenY > size.height + 60f && dstScreenY > size.height + 60f)
+                val selectedIndex = layout.indexOfCard(selectedNode?.cardId)
+
+                // 引力光索
+                for (e in layout.edges.indices) {
+                    val src = layout.edgeSrc[e]
+                    val dst = layout.edgeDst[e]
+                    if (src < 0 || dst < 0) continue
+
+                    val srcX = layout.xs[src]
+                    val srcY = layout.ys[src]
+                    val dstX = layout.xs[dst]
+                    val dstY = layout.ys[dst]
+
+                    // 视口剔除：两端都在视野同一侧则跳过
+                    if ((srcX < left && dstX < left) || (srcX > right && dstX > right) ||
+                        (srcY < top && dstY < top) || (srcY > bottom && dstY > bottom)
                     ) {
                         continue
                     }
 
-                    val isConnectedToSelected = selectedNode != null &&
-                        (edge.sourceId == selectedNode!!.cardId || edge.targetId == selectedNode!!.cardId)
-                    val isDimmed = selectedNode != null && !isConnectedToSelected
-
-                    val edgeColor = when (edge.kind) {
-                        RelationKind.DISCIPLINE_DEEPEN -> EditorialColor.likeGreen
-                        RelationKind.CROSS_DISCIPLINE -> EditorialColor.aiAmber
-                        RelationKind.CONCEPT_BRIDGE -> EditorialColor.detailBlue
-                        RelationKind.SERENDIPITY -> EditorialColor.warningOrange
-                    }
-
+                    val isConnectedToSelected = selectedIndex >= 0 && (src == selectedIndex || dst == selectedIndex)
+                    val isDimmed = selectedIndex >= 0 && !isConnectedToSelected
                     val alpha = when {
                         isConnectedToSelected -> 0.85f
                         isDimmed -> 0.04f
-                        else -> (edge.weight * 0.35f).coerceIn(0.12f, 0.45f)
+                        else -> (layout.edgeWeights[e] * 0.35f).coerceIn(0.12f, 0.45f)
                     }
 
-                    val strokeWidth = if (isConnectedToSelected) 2.2f * scale else 1.0f * scale
-
                     drawLine(
-                        color = edgeColor.copy(alpha = alpha),
-                        start = Offset(srcScreenX, srcScreenY),
-                        end = Offset(dstScreenX, dstScreenY),
-                        strokeWidth = strokeWidth,
+                        color = layout.edgeColors[e].copy(alpha = alpha),
+                        start = Offset(srcX, srcY),
+                        end = Offset(dstX, dstY),
+                        strokeWidth = if (isConnectedToSelected) 2.2f else 1.0f,
                         cap = StrokeCap.Round,
                     )
                 }
 
-                // 绘制星图节点
-                for (node in graphData.nodes) {
-                    val screenX = screenCenterX + panX + (node.x - canvasCenter.x) * scale
-                    val screenY = screenCenterY + panY + (node.y - canvasCenter.y) * scale
+                // 标签可读性取决于「屏上有多少个点」，而不是缩放倍率本身：
+                // 自适应之后小分片的 scale 很小但屏幕很空，按旧规则会一个字都不写。
+                var visibleCount = 0
+                for (i in 0 until layout.count) {
+                    val nodeX = layout.xs[i]
+                    val nodeY = layout.ys[i]
+                    if (nodeX >= left && nodeX <= right && nodeY >= top && nodeY <= bottom) visibleCount++
+                }
+                val labelsAllowed = scale >= 0.75f || visibleCount <= LABELS_WHEN_SPARSE
 
-                    // 视口剔除（超出屏幕边界则跳过渲染）
-                    if (screenX < -50 || screenX > size.width + 50 || screenY < -50 || screenY > size.height + 50) {
-                        continue
-                    }
+                labelPaint.textAlign = android.graphics.Paint.Align.CENTER
+                // 字号在屏幕空间保持 10~18sp，故世界空间要除以 scale
+                labelPaint.textSize = (11f * scale).coerceIn(10f, 18f) / scale
+                labelPaint.color = if (isDark) 0xFFEDE9E1.toInt() else 0xFF2B2824.toInt()
 
-                    val isSelected = selectedNode?.cardId == node.cardId
-                    val isConnected = connectedCardIds.contains(node.cardId)
-                    val isCategoryMatched = selectedCategory == null || node.category == selectedCategory
-                    val isSearchMatched = searchQuery.isEmpty() ||
-                        node.headline.contains(searchQuery, ignoreCase = true) ||
-                        node.category.contains(searchQuery, ignoreCase = true)
+                // 星图节点
+                for (i in 0 until layout.count) {
+                    val nodeX = layout.xs[i]
+                    val nodeY = layout.ys[i]
+                    if (nodeX < left || nodeX > right || nodeY < top || nodeY > bottom) continue
 
-                    val isHighlighted = isSelected || isConnected || (selectedNode == null && isCategoryMatched && isSearchMatched)
+                    val isSelected = i == selectedIndex
+                    val isConnected = selectedIndex >= 0 && connected[i]
+                    val isHighlighted = if (selectedIndex >= 0) isSelected || isConnected else matched[i]
                     val isDimmed = !isHighlighted
 
                     val nodeAlpha = if (isDimmed) 0.18f else 1.0f
-                    val baseRadius = node.radius * scale
-                    val nodeColor = getNodeColor(node.category)
+                    val baseRadius = layout.radii[i]
+                    val nodeColor = layout.colors[i]
 
-                    // 选中态光环扩散
                     if (isSelected) {
                         drawCircle(
                             color = nodeColor.copy(alpha = 0.25f),
                             radius = baseRadius * 2.2f,
-                            center = Offset(screenX, screenY),
+                            center = Offset(nodeX, nodeY),
                         )
                         drawCircle(
                             color = nodeColor.copy(alpha = 0.45f),
                             radius = baseRadius * 1.6f,
-                            center = Offset(screenX, screenY),
-                            style = Stroke(width = 1.5f * scale),
+                            center = Offset(nodeX, nodeY),
+                            style = Stroke(width = 1.5f),
                         )
                     }
 
-                    // 掌握度外环
-                    if (node.masteryLevel >= 2) {
+                    if (layout.mastery[i] >= 2) {
                         drawCircle(
                             color = EditorialColor.likeGreen.copy(alpha = nodeAlpha),
-                            radius = baseRadius + 3f * scale,
-                            center = Offset(screenX, screenY),
-                            style = Stroke(width = 1.6f * scale),
+                            radius = baseRadius + 3f,
+                            center = Offset(nodeX, nodeY),
+                            style = Stroke(width = 1.6f),
                         )
                     }
 
-                    // 核心实体圆
                     drawCircle(
                         color = nodeColor.copy(alpha = nodeAlpha),
                         radius = baseRadius,
-                        center = Offset(screenX, screenY),
+                        center = Offset(nodeX, nodeY),
                     )
 
-                    // 节点中心白色高光微核
                     drawCircle(
-                        color = Color.White.copy(alpha = if (isDimmed) 0.3f else 0.9f),
+                        color = if (isDimmed) Color.White.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.9f),
                         radius = (baseRadius * 0.38f).coerceAtLeast(1.5f),
-                        center = Offset(screenX, screenY),
+                        center = Offset(nodeX, nodeY),
                     )
 
-                    // LOD 优化：缩放低于 0.75f 时仅在选中或高亮时绘制文字，避免文字密集重叠并极大节省 drawText 耗时
-                    val shouldDrawText = if (scale < 0.75f) (isSelected || isConnected) else !isDimmed
+                    // LOD：缩得远时只给选中/相连的节点写字，避免文字堆叠与 drawText 风暴
+                    val shouldDrawText = !isDimmed && (labelsAllowed || isSelected || isConnected)
                     if (shouldDrawText) {
-                        labelPaint.color = if (isDark) 0xFFEDE9E1.toInt() else 0xFF2B2824.toInt()
-                        labelPaint.textSize = (11f * scale).coerceIn(10f, 18f)
-                        labelPaint.textAlign = android.graphics.Paint.Align.CENTER
                         labelPaint.isFakeBoldText = isSelected
-                        val shortTitle = if (node.headline.length > 8) {
-                            node.headline.take(7) + "…"
-                        } else {
-                            node.headline
-                        }
                         drawContext.canvas.nativeCanvas.drawText(
-                            shortTitle,
-                            screenX,
-                            screenY + baseRadius + 14f * scale,
+                            layout.labels[i],
+                            nodeX,
+                            nodeY + baseRadius + 14f,
                             labelPaint
                         )
                     }
                 }
+
+                canvasHandle.restore()
             }
         }
 
@@ -413,11 +417,9 @@ fun KnowledgeGraphScreen(
 
                 // 视口复位重置
                 IconButton(onClick = {
-                    scale = 1f
-                    panX = 0f
-                    panY = 0f
+                    viewport.fitTo(KnowledgeGraphEngine.boundsOf(graphData.nodes))
                     selectedNode = null
-                    selectedCategory = null
+                    shard = GraphShard.All
                     searchQuery = ""
                     HapticFeedbackHelper.tick(context)
                 }) {
@@ -457,18 +459,20 @@ fun KnowledgeGraphScreen(
             ) {
                 GraphFilterChip(
                     text = "全景星系",
-                    isSelected = selectedCategory == null,
+                    isSelected = shard is GraphShard.All,
                     onClick = {
-                        selectedCategory = null
+                        shard = GraphShard.All
                         HapticFeedbackHelper.tick(context)
                     },
                 )
-                for (cat in categories) {
+                for (summary in shards) {
+                    val option = GraphShard.Subject(summary.slug)
                     GraphFilterChip(
-                        text = cat,
-                        isSelected = selectedCategory == cat,
+                        text = "${summary.name} (${summary.count})",
+                        isSelected = shard == option,
                         onClick = {
-                            selectedCategory = if (selectedCategory == cat) null else cat
+                            // 再点一次回到全景，与 mac 端一致
+                            shard = if (shard == option) GraphShard.All else option
                             HapticFeedbackHelper.tick(context)
                         },
                     )
@@ -594,6 +598,20 @@ fun KnowledgeGraphScreen(
     }
 }
 
+/**
+ * 星图分片选择。`All` 与 `Subject(null)` 必须可区分：后者是「未分级」那一片，
+ * 用 null 兼表两义会把未分级卡藏进全景里无法单独查看。
+ */
+private sealed interface GraphShard {
+    data object All : GraphShard
+    data class Subject(val slug: String?) : GraphShard
+
+    fun select(cards: List<KnowledgeCard>): List<KnowledgeCard> = when (this) {
+        All -> cards
+        is Subject -> SubjectRegistry.cardsIn(cards, slug)
+    }
+}
+
 @Composable
 private fun GraphFilterChip(
     text: String,
@@ -636,4 +654,179 @@ private fun getNodeColor(category: String): Color = when (category) {
     "编程", "Rust", "Python" -> Color(0xFF38B000)
     "投资理财", "中级会计" -> Color(0xFF2A9D8F)
     else -> Color(0xFF8D99AE)
+}
+
+// ---------------------------------------------------------------- 绘制支撑
+//
+// 星图的视口与扁平布局：两者都不参与组合状态的读写扩散，
+// 因此手势期间的成本只有「一张画布重绘」，没有整树重组与逐帧分配。
+
+/** 世界画布边长与圆心（与构图引擎调用参数一致） */
+private const val GRAPH_WORLD_SIZE = 1400f
+private const val GRAPH_WORLD_CENTER = 700f
+private const val GRAPH_MIN_SCALE = 0.45f
+private const val GRAPH_MAX_SCALE = 3.2f
+private const val GRAPH_CULL_MARGIN = 80f
+
+/** 屏上节点数不超过这个数量时，即使缩得远也照样写字（此时不会糊成一团） */
+private const val LABELS_WHEN_SPARSE = 40
+
+/**
+ * 星图视口（缩放 + 平移）。
+ *
+ * 状态只在 Draw 阶段与手势回调里读写：手势每帧写它只会让画布重绘，
+ * 不会让整棵 Composable 树（顶栏、胶囊筛选、底部预览卡）跟着重组。
+ */
+private class GraphViewport {
+    var scale by mutableFloatStateOf(1f)
+        private set
+    var panX by mutableFloatStateOf(0f)
+        private set
+    var panY by mutableFloatStateOf(0f)
+        private set
+
+    /** 视口尺寸：由 onSizeChanged 写入，只在自适应计算里读，不参与组合 */
+    var viewWidth = 0f
+        private set
+    var viewHeight = 0f
+        private set
+
+    fun setViewportSize(width: Float, height: Float) {
+        viewWidth = width
+        viewHeight = height
+    }
+
+    fun transformBy(zoomChange: Float, panChange: Offset) {
+        scale = (scale * zoomChange).coerceIn(GRAPH_MIN_SCALE, GRAPH_MAX_SCALE)
+        panX += panChange.x
+        panY += panChange.y
+    }
+
+    fun reset() {
+        scale = 1f
+        panX = 0f
+        panY = 0f
+    }
+
+    /**
+     * 自适应：把整片星图缩放居中到视口内。
+     * 手机屏宽只有世界画布的约两成，不自适应就等于「进图只看到左上角一块」。
+     */
+    fun fitTo(bounds: GraphBounds?) {
+        if (bounds == null || viewWidth <= 0f || viewHeight <= 0f) {
+            reset()
+            return
+        }
+        val fit = KnowledgeGraphEngine.fitToViewport(
+            minX = bounds.minX, minY = bounds.minY, maxX = bounds.maxX, maxY = bounds.maxY,
+            viewWidth = viewWidth, viewHeight = viewHeight,
+        )
+        scale = fit.scale
+        // 绘制层约定 screen = viewCenter + pan + (world - center) * scale，反解等效 pan
+        panX = fit.offsetX - viewWidth / 2f + GRAPH_WORLD_CENTER * fit.scale
+        panY = fit.offsetY - viewHeight / 2f + GRAPH_WORLD_CENTER * fit.scale
+    }
+}
+
+/**
+ * 一次成型的绘制布局：世界坐标、颜色、截断标签、边端点下标都压进定长数组。
+ *
+ * 建图之后每帧绘制只剩数组访问——原先每帧要查两次 HashMap、截一次字符串、
+ * 跑一次分类色 when 分支，手指移动时就是每帧数百次分配。
+ */
+private class GraphLayout(data: KnowledgeGraphData) {
+    val count = data.nodes.size
+    val xs = FloatArray(count)
+    val ys = FloatArray(count)
+    val radii = FloatArray(count)
+    val mastery = IntArray(count)
+    val colors = Array(count) { Color.Unspecified }
+    val labels = Array(count) { "" }
+    private val lowerTitles = Array(count) { "" }
+    private val lowerCategories = Array(count) { "" }
+    private val categories = Array(count) { "" }
+    private val indexByCardId = HashMap<String, Int>(count * 2 + 1)
+
+    val edges = data.edges
+    val edgeSrc = IntArray(data.edges.size) { -1 }
+    val edgeDst = IntArray(data.edges.size) { -1 }
+    val edgeWeights = FloatArray(data.edges.size)
+    val edgeColors = Array(data.edges.size) { Color.Unspecified }
+
+    init {
+        for (i in 0 until count) {
+            val node = data.nodes[i]
+            xs[i] = node.x
+            ys[i] = node.y
+            radii[i] = node.radius
+            mastery[i] = node.masteryLevel
+            colors[i] = getNodeColor(node.category)
+            labels[i] = if (node.headline.length > 8) node.headline.take(7) + "…" else node.headline
+            lowerTitles[i] = node.headline.lowercase()
+            categories[i] = node.category
+            lowerCategories[i] = node.category.lowercase()
+            indexByCardId[node.cardId] = i
+        }
+        for (e in data.edges.indices) {
+            val edge = data.edges[e]
+            val src = indexByCardId[edge.sourceId]
+            val dst = indexByCardId[edge.targetId]
+            if (src == null || dst == null) continue
+            edgeSrc[e] = src
+            edgeDst[e] = dst
+            edgeWeights[e] = edge.weight
+            edgeColors[e] = when (edge.kind) {
+                RelationKind.DISCIPLINE_DEEPEN -> EditorialColor.likeGreen
+                RelationKind.CROSS_DISCIPLINE -> EditorialColor.aiAmber
+                RelationKind.CONCEPT_BRIDGE -> EditorialColor.detailBlue
+                RelationKind.SERENDIPITY -> EditorialColor.warningOrange
+            }
+        }
+    }
+
+    fun indexOfCard(cardId: String?): Int = if (cardId == null) -1 else indexByCardId[cardId] ?: -1
+
+    /** 检索词命中掩码（逐帧 contains 的替代）。学科过滤在构图输入阶段完成，不在这里做。 */
+    fun matchedFlags(query: String): BooleanArray {
+        val trimmed = query.trim().lowercase()
+        if (trimmed.isEmpty()) return BooleanArray(count) { true }
+        return BooleanArray(count) { i -> lowerTitles[i].contains(trimmed) || lowerCategories[i].contains(trimmed) }
+    }
+
+    /** 与选中节点直接相连的掩码（含自身） */
+    fun connectivityFlags(cardId: String?): BooleanArray {
+        val flags = BooleanArray(count)
+        val selected = indexOfCard(cardId)
+        if (selected < 0) return flags
+        flags[selected] = true
+        for (e in edgeSrc.indices) {
+            if (edgeSrc[e] == selected) flags[edgeDst[e]] = true
+            else if (edgeDst[e] == selected) flags[edgeSrc[e]] = true
+        }
+        return flags
+    }
+
+    /** 轻点命中：屏幕坐标反算世界坐标，取阈值内最近节点下标，未命中返回 -1 */
+    fun nodeAt(
+        tapX: Float,
+        tapY: Float,
+        scale: Float,
+        panX: Float,
+        panY: Float,
+        viewWidth: Float,
+        viewHeight: Float,
+    ): Int {
+        val worldX = (tapX - viewWidth / 2f - panX) / scale + GRAPH_WORLD_CENTER
+        val worldY = (tapY - viewHeight / 2f - panY) / scale + GRAPH_WORLD_CENTER
+        var nearest = -1
+        var nearestDist = Float.MAX_VALUE
+        for (i in 0 until count) {
+            val dist = hypot(xs[i] - worldX, ys[i] - worldY)
+            if (dist <= radii[i] + 80f && dist < nearestDist) {
+                nearestDist = dist
+                nearest = i
+            }
+        }
+        return nearest
+    }
 }

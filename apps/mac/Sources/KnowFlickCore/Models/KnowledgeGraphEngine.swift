@@ -306,6 +306,58 @@ public enum KnowledgeGraphEngine {
     }
 
     /// 将卡片集映射为星空引力拓扑图
+    /// 节点包围盒（世界坐标）；空图返回 nil
+    public struct GraphBounds: Equatable, Sendable {
+        public let minX: CGFloat
+        public let minY: CGFloat
+        public let maxX: CGFloat
+        public let maxY: CGFloat
+    }
+
+    /// 视口自适应结果：screen = world * scale + offset
+    public struct GraphFit: Equatable, Sendable {
+        public let scale: CGFloat
+        public let offsetX: CGFloat
+        public let offsetY: CGFloat
+    }
+
+    /// 由卡片 id + 盐值确定性派生 [0,1) 实数（同一张卡坐标永远一致）
+    private static func hashUnit(_ seed: String, salt: String) -> Double {
+        let mixed = CardThemeResolver.deterministicHash("\(seed)|\(salt)") % 1_000_000
+        return Double(mixed) / 1_000_000.0
+    }
+
+    public static func bounds(of nodes: [GraphNode]) -> GraphBounds? {
+        guard let first = nodes.first else { return nil }
+        var minX = first.x, maxX = first.x, minY = first.y, maxY = first.y
+        for node in nodes.dropFirst() {
+            minX = min(minX, node.x); maxX = max(maxX, node.x)
+            minY = min(minY, node.y); maxY = max(maxY, node.y)
+        }
+        return GraphBounds(minX: minX, minY: minY, maxX: maxX, maxY: maxY)
+    }
+
+    /// 把包围盒等比缩放并居中到视口内（四周留 padding）。
+    /// 纯函数，与 Android 端 `fitToViewport` 同口径，便于双端各测一遍锁住行为。
+    public static func fitToViewport(
+        bounds: GraphBounds,
+        viewWidth: CGFloat,
+        viewHeight: CGFloat,
+        padding: CGFloat = 24,
+        minScale: CGFloat = 0.45,
+        maxScale: CGFloat = 3.2
+    ) -> GraphFit {
+        guard viewWidth > 0, viewHeight > 0 else { return GraphFit(scale: 1, offsetX: 0, offsetY: 0) }
+        let bboxWidth = max(1, bounds.maxX - bounds.minX)
+        let bboxHeight = max(1, bounds.maxY - bounds.minY)
+        let usableWidth = max(1, viewWidth - padding * 2)
+        let usableHeight = max(1, viewHeight - padding * 2)
+        let scale = min(usableWidth / bboxWidth, usableHeight / bboxHeight).clamped(to: minScale...maxScale)
+        let centerX = (bounds.minX + bounds.maxX) / 2
+        let centerY = (bounds.minY + bounds.maxY) / 2
+        return GraphFit(scale: scale, offsetX: viewWidth / 2 - centerX * scale, offsetY: viewHeight / 2 - centerY * scale)
+    }
+
     public static func buildGraph(
         from cards: [KnowledgeCard],
         width: CGFloat = 860,
@@ -332,10 +384,10 @@ public enum KnowledgeGraphEngine {
 
         // 收集所有分类并为各分类分配星系圆心角
         let categories = Array(Set(cards.map(\.category))).sorted()
+        let sector = 2.0 * .pi / Double(max(1, categories.count))
         var categoryAngles: [String: Double] = [:]
         for (idx, cat) in categories.enumerated() {
-            let angle = (Double(idx) / Double(max(1, categories.count))) * 2.0 * .pi
-            categoryAngles[cat] = angle
+            categoryAngles[cat] = Double(idx) * sector
         }
 
         var nodes: [GraphNode] = []
@@ -343,12 +395,12 @@ public enum KnowledgeGraphEngine {
 
         for card in cards {
             let catAngle = categoryAngles[card.category] ?? 0
-            // 在所属分类星云附近散布，半径 140~270
-            let seed = Double(CardThemeResolver.deterministicHash(card.id.uuidString) % 10000) / 10000.0
-            let angleJitter = (seed - 0.5) * 0.9
-            let radiusDist = 120.0 + seed * 160.0
-
-            let finalAngle = catAngle + angleJitter
+            // 两个独立确定性哈希：角度铺满整个学科扇区、半径按 sqrt 均匀覆盖面积。
+            // 旧写法只在扇区中轴附近抖 ±0.45rad，单学科或两学科的片子会塌成一条横线。
+            let angleSeed = hashUnit(card.id.uuidString, salt: "angle")
+            let radiusSeed = hashUnit(card.id.uuidString, salt: "radius")
+            let radiusDist = 120.0 + sqrt(radiusSeed) * 160.0
+            let finalAngle = catAngle + angleSeed * sector
             let nx = centerX + CGFloat(cos(finalAngle) * radiusDist)
             let ny = centerY + CGFloat(sin(finalAngle) * radiusDist * 0.78)
 
@@ -493,7 +545,9 @@ public enum KnowledgeGraphEngine {
         }
     }
 
-    /// 图结果缓存（容量 2）：同一份卡片重复构图直接复用。
+    /// 图结果缓存（容量 6）：同一份卡片重复构图直接复用。
+    /// 星图改成按学科分片后，缓存的键是「某一片」的签名——容量 2 会在来回切学科时把刚看过的片挤掉，
+    /// 每次切换都重算 O(n²)，所以放宽到 6（覆盖常见学科数，超出者按 LRU 淘汰）。
     /// 锁纪律：仅经 lock 读写（Swift 6 下以 @unchecked Sendable 显式豁免静态可变状态检查）。
     private final class GraphCacheBox: @unchecked Sendable {
         private let lock = NSLock()
@@ -511,7 +565,13 @@ public enum KnowledgeGraphEngine {
             lock.lock(); defer { lock.unlock() }
             entries.removeAll { $0.signature == signature }
             entries.append((signature, graph))
-            if entries.count > 2 { entries.removeFirst(entries.count - 2) }
+            if entries.count > 6 { entries.removeFirst(entries.count - 6) }
         }
+    }
+}
+
+private extension Comparable {
+    func clamped(to limits: ClosedRange<Self>) -> Self {
+        min(max(self, limits.lowerBound), limits.upperBound)
     }
 }
