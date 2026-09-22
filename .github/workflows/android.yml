@@ -81,6 +81,12 @@ jobs:
       - name: 检查 shell 脚本陷阱
         run: ./tools/lint_shell_vars.sh
 
+      - name: 校验学科契约与内容
+        # 学科体系有三处事实来源：shared/assets/taxonomy_map.json、mac 与 Android 各自内嵌的
+        # SubjectRegistry。这里先做契约自洽 + 种子内容合法 + 三处一致的粗校验，
+        # 双端逐字段的等价性仍由各自的单测保证（那两层缺一不可）。
+        run: python3 tools/check_taxonomy.py
+
       - name: 单元测试与 Lint
         run: |
           cd apps/android

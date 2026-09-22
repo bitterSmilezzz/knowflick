@@ -71,6 +71,17 @@ jobs:
       - name: 检查 shell 脚本陷阱
         run: ./tools/lint_shell_vars.sh
 
+      - name: 校验 MCP server
+        # 零依赖 stdio JSON-RPC：这里既跑纯逻辑，也真的 spawn 一次 server 走完整往返，
+        # 保证「Agent 接不上」不会等到用户现场才发现。
+        run: node --test tools/knowflick-mcp/test.mjs
+
+      - name: 校验学科契约与内容
+        # 学科体系有三处事实来源：shared/assets/taxonomy_map.json、mac 与 Android 各自内嵌的
+        # SubjectRegistry。这里先做契约自洽 + 种子内容合法 + 三处一致的粗校验，
+        # 双端逐字段的等价性仍由各自的单测保证（那两层缺一不可）。
+        run: python3 tools/check_taxonomy.py
+
       - name: 运行 Swift 测试
         run: ./tools/test.sh
 
