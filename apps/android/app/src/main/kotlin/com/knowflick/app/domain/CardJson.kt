@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -100,6 +101,13 @@ object CardJson {
             easeFactor = (obj["easeFactor"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 2.5,
             stability = (obj["stability"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.0,
             difficulty = (obj["difficulty"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.0,
+            subject = obj.str("subject")?.takeIf { it.isNotBlank() },
+            branch = obj.str("branch")?.takeIf { it.isNotBlank() },
+            level = obj.intField("level")?.takeIf { it in 1..5 },
+            track = obj.str("track")?.takeIf { it.isNotBlank() },
+            orderKey = obj.str("orderKey")?.takeIf { it.isNotBlank() },
+            prereq = (obj["prereq"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                ?: emptyList(),
         )
     }
 
@@ -132,6 +140,15 @@ object CardJson {
         put("easeFactor", card.easeFactor)
         if (card.stability > 0.0) put("stability", card.stability)
         if (card.difficulty > 0.0) put("difficulty", card.difficulty)
+        // 学科字段只在有值时写出：未分级的历史卡不产生新键，双端与旧版本互传保持字节级友好
+        card.subject?.let { put("subject", it) }
+        card.branch?.let { put("branch", it) }
+        card.level?.let { put("level", it) }
+        card.track?.let { put("track", it) }
+        card.orderKey?.let { put("orderKey", it) }
+        if (card.prereq.isNotEmpty()) {
+            put("prereq", JsonArray(card.prereq.map { JsonPrimitive(it) }))
+        }
     }
 
     object CardJsonSerializer : KSerializer<KnowledgeCard> {

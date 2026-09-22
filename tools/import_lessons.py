@@ -23,15 +23,20 @@ import re
 import sys
 from pathlib import Path
 
+import taxonomy
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# 学科文件 → 卡片分类
-CATEGORY_MAP = {
-    "kj": "中级会计",     # 中级会计
-    "ai": "AI",     # AI 学堂
-    "code": "AI 开发",   # 编程
-    "en": "冷知识",     # 英语
+# 学科文件前缀 → 学科坐标 + 展示用叶子分类。
+# 旧版这里只有一层 CATEGORY_MAP，把「英语」整门课压成「冷知识」——三级体系落地后
+# 学科/标尺显式声明，category 仅作为界面展示名保留。
+SUBJECT_MAP = {
+    "kj": {"subject": "accounting", "track": "中级会计", "category": "中级会计"},
+    "ai": {"subject": "ai", "track": None, "category": "AI"},
+    "code": {"subject": "ai-dev", "track": None, "category": "AI 开发"},
+    "en": {"subject": "english", "track": None, "category": "英语"},
 }
+
 
 # headline 硬限制
 MAX_HEADLINE_LEN = 40  # 仅约束新增卡片；历史种子存在 52 字标题，属历史数据不做追溯
@@ -58,7 +63,10 @@ SELFTEST = re.compile(r"^答案[:：]", re.M)          # 自测题答案块特�
 
 
 def load_lessons(path: Path, key: str):
-    """读取一个学科 JSON，返回 [(lesson_dict, category), ...]"""
+    """读取一个学科 JSON，返回 [(lesson_dict, spec), ...]（保持 parts→topics→lessons 原序）。
+
+    原序就是「一点点看」的推进顺序，因此 orderKey 直接按位置生成，不打乱。
+    """
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     lessons = [
@@ -67,7 +75,8 @@ def load_lessons(path: Path, key: str):
         for topic in part["topics"]
         for lesson in topic["lessons"]
     ]
-    return [(lesson, CATEGORY_MAP[key]) for lesson in lessons]
+    spec = SUBJECT_MAP[key]
+    return [(lesson, spec) for lesson in lessons]
 
 
 def first_sentence(text: str, limit: int = 40) -> str:
@@ -133,7 +142,21 @@ def selftest_summary(text: str) -> str:
     return truncate(first_line, 40)
 
 
-def make_card(lesson: dict, category: str) -> dict:
+def resolve_branch(lesson: dict, subject_slug: str, data: dict) -> str | None:
+    """只有素材自己标了 tag 且能对上学科分支时才写 branch；不猜、不硬塞。"""
+    tag = (lesson.get("tag") or "").strip()
+    if not tag:
+        return None
+    branches = taxonomy.index(data).get(subject_slug, {}).get("branches", {})
+    if tag in branches:
+        return tag
+    for slug, name in branches.items():
+        if name == tag:
+            return slug
+    return None
+
+
+def make_card(lesson: dict, spec: dict, data: dict, position: int) -> dict:
     title = (lesson.get("title") or "").strip()
     tldr = (lesson.get("tldr") or "").strip()
     text = (lesson.get("text") or "").strip()
@@ -156,13 +179,25 @@ def make_card(lesson: dict, category: str) -> dict:
     if not details:
         raise ValueError(f"details 为空: {title}")
 
-    return {
-        "category": category,
+    card = {
+        "category": spec["category"],
         "headline": headline,
         "summary": summary,
         "details": details,
         "links": [],
+        "subject": spec["subject"],
     }
+    if spec.get("track"):
+        card["track"] = spec["track"]
+    branch = resolve_branch(lesson, spec["subject"], data)
+    if branch:
+        card["branch"] = branch
+    level = lesson.get("level")
+    if isinstance(level, int):
+        card["level"] = level        # 越界值原样带出，由 validate_card 报错而不是静默丢弃
+    # orderKey 决定支线内的推进顺序；prereq 留给有真实卡片 id 的场景（种子卡 id 由 App 加载时补齐）
+    card["orderKey"] = taxonomy.order_key(spec["subject"], branch, position)
+    return card
 
 
 def main() -> int:
@@ -194,12 +229,13 @@ def main() -> int:
             ap.error(f"数据源不存在: {p}")
 
     new_cards = []
+    data = taxonomy.load_map()
     for path in sources:
         key = path.name.split("-")[0]
-        if key not in CATEGORY_MAP:
-            ap.error(f"未知学科前缀 {key!r}（文件 {path.name}），无法映射分类；支持的映射见 CATEGORY_MAP")
-        for lesson, category in load_lessons(path, key):
-            new_cards.append(make_card(lesson, category))
+        if key not in SUBJECT_MAP:
+            ap.error(f"未知学科前缀 {key!r}（文件 {path.name}），无法映射学科；支持的映射见 SUBJECT_MAP")
+        for position, (lesson, spec) in enumerate(load_lessons(path, key), start=1):
+            new_cards.append(make_card(lesson, spec, data, position))
 
     # 读现有种子卡，原样追加
     existing = json.loads(output.read_text(encoding="utf-8"))
@@ -220,6 +256,10 @@ def main() -> int:
     assert not bad_headline, f"headline 空/超长: {bad_headline}"
     assert not bad_summary, f"summary 为空: {bad_summary}"
     assert not bad_details, f"details 为空: {bad_details}"
+    # 学科字段必须落在契约内：非法 slug/越界难度在这里就挡住，而不是等 App 运行时显示「未分级」
+    for card in new_cards:
+        issues = taxonomy.validate_card(card, data)
+        assert not issues, f"{card['headline'][:20]} 学科字段非法: {issues}"
     assert len(existing) == original_count + len(new_cards)
 
     tmp = output.with_suffix(".json.tmp")

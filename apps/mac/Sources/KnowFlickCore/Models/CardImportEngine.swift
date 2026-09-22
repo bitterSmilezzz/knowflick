@@ -501,7 +501,15 @@ public enum CardImportEngine {
             intervalDays: intervalDays,
             easeFactor: easeFactor,
             stability: stability,
-            difficulty: difficulty
+            difficulty: difficulty,
+            // 学科体系是**内容元数据**而非学习状态：逐字段非空优先，较新的一端胜出。
+            // 这样一端补过分级、另一端没补，合并后不会把分级冲掉。
+            subject: primary.subject ?? secondary.subject,
+            branch: primary.branch ?? secondary.branch,
+            level: primary.level ?? secondary.level,
+            track: primary.track ?? secondary.track,
+            orderKey: primary.orderKey ?? secondary.orderKey,
+            prereq: primary.prereq.isEmpty ? secondary.prereq : primary.prereq
         )
     }
 

@@ -74,6 +74,21 @@ data class KnowledgeCard(
     val stability: Double = 0.0,
     /** FSRS 记忆难度 Difficulty（范围 1.0 ~ 10.0，0.0 表示未初始化） */
     val difficulty: Double = 0.0,
+    // ---- 学科体系（学科 → 分支 → 难度）----
+    // 全部可选，且不改 `category` 的语义：category 仍是展示用叶子名，
+    // 学科能力读 SubjectRegistry.taxonomy(of:)。旧 JSON 缺这些键时为 null，行为与升级前一致。
+    /** 学科 slug，如 english；null 表示未分级（历史卡） */
+    val subject: String? = null,
+    /** 分支 slug，如 grammar；隶属某个 subject */
+    val branch: String? = null,
+    /** 内容难度 1..5。与 difficulty（FSRS 记忆难度）是两回事 */
+    val level: Int? = null,
+    /** 应试标尺名，如 CET-6、中级会计 */
+    val track: String? = null,
+    /** 分支内序号：决定「一点点看」的推进顺序 */
+    val orderKey: String? = null,
+    /** 前置卡片 id：学习路径的边 */
+    val prereq: List<String> = emptyList(),
 ) {
     /** 解析正文为段落（macOS 端以双换行分段） */
     val paragraphs: List<String> get() = details.split("\n\n").filter { it.isNotBlank() }

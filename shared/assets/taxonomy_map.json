@@ -1,0 +1,95 @@
+{
+  "_comment": "学科体系单一事实来源。mac 端 SubjectRegistry.swift 与 Android 端 SubjectRegistry.kt 各自内嵌同一张表（运行时不读此文件，避免资源 bundle 与 APK 资产的脆弱依赖），由两端各自的 parity 测试与 tools/build_curriculum.py 共同校验：任何一侧漂移都会在 CI 失败。",
+  "levels": {
+    "1": "入门",
+    "2": "基础",
+    "3": "进阶",
+    "4": "应试实战",
+    "5": "精通"
+  },
+  "subjects": [
+    {
+      "slug": "ai",
+      "name": "AI",
+      "branches": [
+        { "slug": "basics", "name": "AI 基础" },
+        { "slug": "agents", "name": "AI Agent" },
+        { "slug": "tools", "name": "工具与用法" }
+      ]
+    },
+    {
+      "slug": "ai-dev",
+      "name": "AI 开发",
+      "branches": [
+        { "slug": "prompt", "name": "提示工程" },
+        { "slug": "rag", "name": "RAG 与检索" },
+        { "slug": "finetune", "name": "微调与训练" },
+        { "slug": "app", "name": "应用开发" }
+      ]
+    },
+    {
+      "slug": "english",
+      "name": "英语",
+      "tracks": ["高中英语", "大学英语四级", "大学英语六级"],
+      "branches": [
+        { "slug": "vocabulary", "name": "词汇" },
+        { "slug": "grammar", "name": "语法" },
+        { "slug": "reading", "name": "阅读" },
+        { "slug": "listening", "name": "听力" },
+        { "slug": "writing", "name": "写作" }
+      ]
+    },
+    {
+      "slug": "accounting",
+      "name": "会计",
+      "tracks": ["初级会计", "中级会计", "注册会计师"],
+      "branches": [
+        { "slug": "assets", "name": "资产" },
+        { "slug": "liabilities", "name": "负债与所有者权益" },
+        { "slug": "revenue", "name": "收入与费用" },
+        { "slug": "cost", "name": "成本核算" },
+        { "slug": "reporting", "name": "报表编制" }
+      ]
+    },
+    {
+      "slug": "finance",
+      "name": "金融",
+      "branches": [
+        { "slug": "statements", "name": "财报分析" },
+        { "slug": "valuation", "name": "估值" },
+        { "slug": "risk", "name": "风险与配置" },
+        { "slug": "instruments", "name": "品种与市场" }
+      ]
+    },
+    {
+      "slug": "programming",
+      "name": "编程架构",
+      "branches": [
+        { "slug": "architecture", "name": "系统架构" },
+        { "slug": "algorithms", "name": "算法与数据结构" },
+        { "slug": "data", "name": "数据与存储" },
+        { "slug": "delivery", "name": "工程实践" }
+      ]
+    },
+    {
+      "slug": "trivia",
+      "name": "冷知识",
+      "branches": []
+    }
+  ],
+  "legacyCategoryMap": {
+    "AI": { "subject": "ai", "branch": "basics" },
+    "AI 开发": { "subject": "ai-dev" },
+    "AI Agent": { "subject": "ai", "branch": "agents" },
+    "中级会计": { "subject": "accounting", "track": "中级会计" },
+    "会计": { "subject": "accounting" },
+    "投资理财": { "subject": "finance" },
+    "冷知识": { "subject": "trivia" },
+    "英语": { "subject": "english" },
+    "语言": { "subject": "english" },
+    "编程": { "subject": "programming" },
+    "算法": { "subject": "programming", "branch": "algorithms" },
+    "Python": { "subject": "programming" },
+    "Rust": { "subject": "programming" }
+  }
+}

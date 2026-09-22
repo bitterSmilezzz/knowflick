@@ -26,6 +26,25 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
     public var stability: Double = 0.0       // FSRS 记忆稳定性 (0.0 表示未初始化)
     public var difficulty: Double = 0.0      // FSRS 记忆难度 (0.0 表示未初始化)
 
+    // MARK: - 学科体系（三级：学科 → 分支 → 难度）
+    //
+    // 这六个字段全部可选，且**不参与** `category` 的语义：`category` 仍是展示用的叶子名
+    // （全仓数百处引用它），学科能力一律读这里的派生结果 `SubjectRegistry.taxonomy(of:)`。
+    // 旧 cards.json / 旧同步包没有这些键时解出 nil，行为与升级前完全一致。
+
+    /// 学科 slug，如 `english`；nil 表示未分级（历史卡）
+    public var subject: String? = nil
+    /// 分支 slug，如 `grammar`；隶属某个 subject
+    public var branch: String? = nil
+    /// 内容难度 1...5。与 FSRS 的 `difficulty`（记忆难度）是两回事，不要混用
+    public var level: Int? = nil
+    /// 应试标尺名，如 `CET-6`、`中级会计`；给难度提供人类可读的解释
+    public var track: String? = nil
+    /// 分支内序号：决定「一点点看」的推进顺序
+    public var orderKey: String? = nil
+    /// 前置卡片 id：学习路径的边
+    public var prereq: [String] = []
+
     public init(
         id: UUID = UUID(),
         category: String,
@@ -46,7 +65,13 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         intervalDays: Int = 1,
         easeFactor: Double = 2.5,
         stability: Double = 0.0,
-        difficulty: Double = 0.0
+        difficulty: Double = 0.0,
+        subject: String? = nil,
+        branch: String? = nil,
+        level: Int? = nil,
+        track: String? = nil,
+        orderKey: String? = nil,
+        prereq: [String] = []
     ) {
         self.id = id
         self.category = category
@@ -68,12 +93,19 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         self.easeFactor = easeFactor
         self.stability = stability
         self.difficulty = difficulty
+        self.subject = subject
+        self.branch = branch
+        self.level = level
+        self.track = track
+        self.orderKey = orderKey
+        self.prereq = prereq
     }
 
     enum CodingKeys: String, CodingKey {
         case id, category, headline, summary, details, links, source
         case createdAt, seenAt, swiped, isFavorite, favoritedAt, reviewCount, masteryLevel, lastReviewedAt
         case repetition, intervalDays, easeFactor, stability, difficulty
+        case subject, branch, level, track, orderKey, prereq
     }
 
     public init(from decoder: Decoder) throws {
@@ -102,6 +134,12 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         self.easeFactor = try container.decodeIfPresent(Double.self, forKey: .easeFactor) ?? 2.5
         self.stability = try container.decodeIfPresent(Double.self, forKey: .stability) ?? 0.0
         self.difficulty = try container.decodeIfPresent(Double.self, forKey: .difficulty) ?? 0.0
+        subject = try container.decodeIfPresent(String.self, forKey: .subject)
+        branch = try container.decodeIfPresent(String.self, forKey: .branch)
+        level = try container.decodeIfPresent(Int.self, forKey: .level)
+        track = try container.decodeIfPresent(String.self, forKey: .track)
+        orderKey = try container.decodeIfPresent(String.self, forKey: .orderKey)
+        prereq = try container.decodeIfPresent([String].self, forKey: .prereq) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -129,6 +167,15 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         }
         if difficulty > 0.0 {
             try container.encode(difficulty, forKey: .difficulty)
+        }
+        // 学科字段只在有值时写出：未分级的历史卡不产生新键，双端与旧版本互传保持字节级友好
+        try container.encodeIfPresent(subject, forKey: .subject)
+        try container.encodeIfPresent(branch, forKey: .branch)
+        try container.encodeIfPresent(level, forKey: .level)
+        try container.encodeIfPresent(track, forKey: .track)
+        try container.encodeIfPresent(orderKey, forKey: .orderKey)
+        if !prereq.isEmpty {
+            try container.encode(prereq, forKey: .prereq)
         }
     }
 }
