@@ -19,4 +19,7 @@
 ## 验证与边界
 
 本机运行 Core 测试；完整 SwiftUI 构建、打包、签名校验与启动检查由 GitHub macOS workflow 执行。
+本次首轮 CI 抓到 4 处 SwiftUI 编译错误（调色盘代码块被误插进 `EditorialColor` 内部导致 `PaperThemePalette` 变成嵌套类型、
+缺失的 `detailBlue` 色值、越权访问 `private` 的会话存储），已在发版提交中修复；
+这类错误本机编译不了，只能以 CI 为准。
 本版尚未提供系统媒体键/控制中心集成与关窗继续播放开关；Windows 客户端仍未实现。

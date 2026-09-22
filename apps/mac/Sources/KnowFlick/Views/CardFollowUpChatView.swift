@@ -330,7 +330,7 @@ struct CardFollowUpChatView: View {
 
                 // 助手回答工具栏（沉淀为卡片 + 朗读 + 复制）
                 if msg.sender == .assistant && !msg.content.isEmpty && !msg.isStreaming {
-                    let isSaved = store.chat.savedCardMessageIds.contains(msg.id)
+                    let isSaved = store.savedChatCardMessageIds.contains(msg.id)
                     HStack(spacing: 10) {
                         Button(action: {
                             guard !isSaved else { return }

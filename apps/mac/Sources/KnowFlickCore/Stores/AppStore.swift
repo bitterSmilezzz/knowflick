@@ -63,6 +63,9 @@ public final class AppStore {
         get { chat.chatErrorMessage }
         set { chat.chatErrorMessage = newValue }
     }
+    /// 已沉淀为新卡的追问消息 id：视图只需要读，写由 `deriveAndSaveCardFromChat` 内部完成，
+    /// 所以这里只开只读转发，不把整个 `ChatSessionStore` 暴露出去。
+    public var savedChatCardMessageIds: Set<UUID> { chat.savedCardMessageIds }
 
     private let aiService: AIService
     private let storage: Storage
