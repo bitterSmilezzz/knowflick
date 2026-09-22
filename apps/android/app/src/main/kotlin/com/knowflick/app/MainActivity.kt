@@ -22,6 +22,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +44,7 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalComposeUiApi::class)
 class MainActivity : ComponentActivity() {
 
-    private enum class Screen { DECK, DETAIL, STATS, SETTINGS, LIBRARY, QUIZ, GRAPH }
+    private enum class Screen { DECK, DETAIL, STATS, SETTINGS, LIBRARY, QUIZ, GRAPH, MAP }
 
     private val viewModel: KnowFlickViewModel by viewModels()
 
@@ -100,6 +101,9 @@ class MainActivity : ComponentActivity() {
                                 onOpenFavorites = { screen = Screen.LIBRARY },
                                 onOpenSettings = { screen = Screen.SETTINGS },
                                 onOpenGraph = { screen = Screen.GRAPH },
+                                onOpenMap = { screen = Screen.MAP },
+                                onOpenClip = { viewModel.openClipSheet() },
+                                studyScopeLabel = viewModel.studyScope.describe(),
                                 onOpenSync = { viewModel.openSyncSheet() },
                                 isGenerating = viewModel.isGenerating,
                                 notice = viewModel.persistenceNotice ?: viewModel.generateNotice,
@@ -288,6 +292,15 @@ class MainActivity : ComponentActivity() {
                                 onOpenGraph = { screen = Screen.GRAPH },
                             )
                         }
+                        Screen.MAP -> key(viewModel.version) {
+                            com.knowflick.app.ui.map.LearningMapScreen(
+                                cards = viewModel.model.store.cards,
+                                scope = viewModel.studyScope,
+                                onBack = { screen = Screen.DECK },
+                                onApplyScope = { scope -> viewModel.applyStudyScope(scope) },
+                            )
+                        }
+
                         Screen.GRAPH -> com.knowflick.app.ui.graph.KnowledgeGraphScreen(
                             cards = viewModel.model.store.cards,
                             onBack = { screen = Screen.DECK },
@@ -304,7 +317,9 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // 悬浮 Mini Player 播控条（当有播放任务且控制台与全屏面板未展开时常显）
-                    if (!viewModel.showAudioConsole && !viewModel.showBackupExportSheet && !viewModel.showSearchSheet && !viewModel.showSyncSheet) {
+                    if (!viewModel.showAudioConsole && !viewModel.showBackupExportSheet &&
+                        !viewModel.showSearchSheet && !viewModel.showSyncSheet && !viewModel.showClipSheet
+                    ) {
                         AmbientAudioPlayerBar(
                             controller = viewModel.speech,
                             onOpenConsole = { viewModel.openAudioConsole() },
@@ -384,6 +399,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    // 网页剪藏面板（分享链接与手动粘贴同一条路径）
+                    if (viewModel.showClipSheet) {
+                        com.knowflick.app.ui.clip.ClipSheet(viewModel = viewModel)
+                    }
+
                     if (viewModel.showSyncSheet) {
                         com.knowflick.app.ui.sync.SyncSheet(
                             isServerRunning = viewModel.isSyncServerRunning,
@@ -448,6 +468,14 @@ class MainActivity : ComponentActivity() {
             detailCardId = targetCardId
             detailReturnScreen = Screen.DECK
             screen = Screen.DETAIL
+        }
+        // 浏览器「分享 → KnowFlick」：直接进剪藏面板并自动开始抽取，用户不用再点一次
+        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            val shared = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+            if (shared.isNotEmpty()) {
+                intent.removeExtra(Intent.EXTRA_TEXT)  // 配置变更/重新 resume 时不再重复弹
+                viewModel.openClipSheet(sharedText = shared)
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 # KnowFlick Android
 
-原生 Kotlin + Jetpack Compose 应用。当前版本 **0.8.8**（versionCode 16），最低 Android 8.0 / API 26，target/compile SDK 35。
+原生 Kotlin + Jetpack Compose 应用。当前版本 **0.10.0**（versionCode 20），最低 Android 8.0 / API 26，target/compile SDK 35。
 
 已实现刷卡、详情、收藏与历史、学习统计、知识测验、撤销上一张、AI 流式生成与服务商配置、卡片 JSON 导入，以及 JSON/Markdown/Anki 文本导出。语音支持系统 TTS、云端 OpenAI 兼容接口与本地回环网关。背景图使用 WebP 与领域多图池（42 张，计算机与 AI / 自然宇宙科学 / 人文心智 / 商业财会金融四池），发布包内置 baseline profile。
 
@@ -103,6 +103,23 @@ adb install -r dist/android/KnowFlick-0.8.6.apk
 ```
 
 如果手机已安装相同包名的 Debug 版，因签名不同无法覆盖。先从知识库导出需要保留的卡片，再由用户自行卸载旧版后安装；卸载会清除本地学习记录和配置。后续同签名 Release 可直接覆盖更新。
+
+## 网页剪藏（分享收口）
+
+浏览器里长按链接 → 分享 → KnowFlick，会直接打开剪藏面板并自动抽取正文；卡堆 ⋮ 菜单「剪藏网页…」是同一面板的手动入口。抽取与提炼是两步：面板先给正文预览，点「AI 提炼成卡片并置顶入堆」才写库（`source=IMPORTED`，来源链接排在最前）。
+
+- Manifest 只注册 `ACTION_SEND text/plain`，**不注册 `ACTION_VIEW`**——否则本 App 会被列成系统默认浏览器候选，而我们并不能真正浏览网页。
+- 抓取沿用 `res/xml/network_security_config.xml` 的明文策略：**只有回环地址允许 http**。剪 `http://10.0.2.2:...` 这类地址会失败并给出可读提示，这是预期行为，不是 bug；https 站点不受影响。
+- 无浏览器时可用 adb 模拟分享（`adb reverse` 把本机夹具端口映到设备回环）：
+
+```sh
+adb -e reverse tcp:8899 tcp:8899
+adb -e shell am start -n com.knowflick.app/.MainActivity \
+  -a android.intent.action.SEND -t text/plain \
+  --es android.intent.extra.TEXT '"看这篇 http://127.0.0.1:8899/article.html"'
+```
+
+正文抽取规则与 macOS 端逐条对齐（同一链接双端必须抽出同样内容），改动 `domain/WebClipEngine.kt` 时要同步 `apps/mac/Sources/KnowFlickCore/Models/WebClipEngine.swift`，两端各有一份夹具与期望值完全相同的测试。
 
 ## 语音配置
 

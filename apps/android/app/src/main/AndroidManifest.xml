@@ -34,10 +34,22 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!--
+              浏览器「分享 → KnowFlick」收口：网页剪藏的入口。
+              只声明 SEND + text/plain（分享链接与正文混排文本都走这一条），不声明 ACTION_VIEW，
+              否则本 App 会被列成系统默认浏览器候选——而我们并不能真正浏览网页。
+              singleTop：App 已在前台时分享进来复用实例（走 onNewIntent），不堆第二个卡堆。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
 

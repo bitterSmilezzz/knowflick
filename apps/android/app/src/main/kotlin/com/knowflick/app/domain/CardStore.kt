@@ -28,6 +28,12 @@ class CardStore(
     /** 偏好分类（多选；空 = 全部） */
     var preferredCategories: Set<String> = emptySet()
 
+    /**
+     * 学习范围（学习地图设置）。生效时**接管分类维度**：`preferredCategories` 让位，
+     * 因为地图本身就是更结构化的学科/分支/难度选择器，两套过滤叠着只会让人看不懂当前在学什么。
+     */
+    var studyScope: StudyScope = StudyScope.None
+
     /** 来源开关：只开其一则只看该来源；全关则队列为空（含导入卡片，口径与 macOS 一致） */
     var enableSeed: Boolean = true
     var enableAI: Boolean = true
@@ -74,19 +80,28 @@ class CardStore(
                 CardSource.IMPORTED -> false
             }
         }
-        val filtered: List<KnowledgeCard> = if (preferredCategories.isEmpty()) {
+        val scoped = if (studyScope.isActive) {
+            studyScope.filter(sourceFiltered)
+        } else if (preferredCategories.isEmpty()) {
             sourceFiltered
         } else {
             val preferred = sourceFiltered.filter { it.category in preferredCategories }
             if (preferred.isEmpty()) sourceFiltered else preferred
         }
+        // 「专学这条支线」要的是推进顺序，不是背景图多样性：顺序模式下跳过防重打散
+        val filtered = studyScope.orderForDeck(scoped)
 
         val existingDeckIds = deck.map { it.id }.toSet()
         val currentCards = filtered.associateBy { it.id }
         val remainingInDeck = deck.mapNotNull { currentCards[it.id] }
         val newCards = filtered.filter { it.id !in existingDeckIds }
 
-        deck = when {
+        deck = if (studyScope.isActive && studyScope.sequential) {
+            // 专学模式：「按导入顺序一级一级往前推」就是产品语义，必须跳过背景图防重打散
+            // 与增量拼接——打散会把学习顺序冲掉。划走即 seenAt != null，自然离开队列，
+            // 撤销则回到它在 orderKey 上的原位（比"插回队首"更符合路径语义）。
+            filtered
+        } else when {
             remainingInDeck.isNotEmpty() && newCards.isEmpty() -> {
                 // 日常划卡出队：直接移除划走卡片，100% 保留排好的无碰撞队列顺序
                 remainingInDeck
@@ -461,6 +476,14 @@ class CardStore(
                 easeFactor = easeFactor,
                 stability = stability,
                 difficulty = difficulty,
+                // 学科体系是**内容元数据**而非学习状态：逐字段非空优先、较新的一端胜出，
+                // 避免一端补过分级后被另一端冲掉。
+                subject = primary.subject ?: secondary.subject,
+                branch = primary.branch ?: secondary.branch,
+                level = primary.level ?: secondary.level,
+                track = primary.track ?: secondary.track,
+                orderKey = primary.orderKey ?: secondary.orderKey,
+                prereq = if (primary.prereq.isNotEmpty()) primary.prereq else secondary.prereq,
             )
         }
     }

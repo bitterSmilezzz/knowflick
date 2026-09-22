@@ -108,4 +108,42 @@ object AiTextUtils {
         若偏好某分类请优先该分类：${categoryFilter.ifBlank { "不限" }}
         """
     }
+
+    /**
+     * 外部材料（网页剪藏、粘贴的笔记）提炼提示词。
+     *
+     * 与 mac 端 `CardImportEngine.buildAITransformPrompt` 逐字一致——这份提示词决定
+     * 了产出的 JSON 形状与质量门槛（30 字标题 / 60 字摘要 / 200–500 字机理），
+     * 两端文案不同会让同一条链接在手机与桌面上提炼出不同数量的卡片。
+     */
+    fun transformPrompt(noteContent: String): String = """
+        你是一位知识提炼专家。请将用户提供的以下笔记或文章内容，深度解构并提炼为 1 到 5 张高品质的「KnowFlick 知识闪卡」。
+
+        【提炼设计准则】
+        1. 必须提炼为符合以下 JSON 结构的卡片数组，仅输出 JSON，不要任何多余解释；
+        2. category: 精准学科分类（如：物理、计算机、心理学、经济学、生物学、历史、哲学、医学等）；
+        3. headline: 一句话反常识/颠覆认知/核心命题标题（例如：「过拟合：模型把背题当成了学会」），不超过 30 字；
+        4. summary: 卡片正面摘要，提炼核心论点，不超过 60 字；
+        5. details: 卡片深度机理解剖（200-500字，用通俗生动语言讲解背后深层原理或机制）；
+        6. searchKeywords: 2-3 个核心学术关键词（如 ["热力学第三定律", "绝对零度"]）；
+        7. sources: 1-2 个推荐参考权威来源（如 ["维基百科", "Nature"]）。
+
+        【输出 JSON 示例】
+        [
+          {
+            "category": "物理",
+            "headline": "绝对零度永远无法真正达到",
+            "summary": "-273.15°C之下没有静止，粒子仍有零点能量。",
+            "details": "根据量子力学不确定性原理与热力学第三定律...",
+            "searchKeywords": ["热力学第三定律", "绝对零度"],
+            "sources": ["维基百科"]
+          }
+        ]
+
+        【用户笔记原文】
+        ${noteContent.take(MAX_TRANSFORM_NOTE_CHARACTERS)}
+    """.trimIndent()
+
+    /** 与 mac 端提示词里的 `prefix(4000)` 同一预算 */
+    const val MAX_TRANSFORM_NOTE_CHARACTERS = 4_000
 }

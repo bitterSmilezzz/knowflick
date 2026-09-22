@@ -70,6 +70,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -130,7 +132,13 @@ fun DeckScreen(
     modifier: Modifier = Modifier,
     onOpenSettings: () -> Unit = {},
     onOpenGraph: () -> Unit = {},
+    /** 学习地图：范围生效时顶栏出现徽标，点击回到地图调整 */
+    onOpenMap: () -> Unit = {},
+    /** 非空表示当前处于限定范围学习，内容为范围描述 */
+    studyScopeLabel: String = "",
     onOpenSync: () -> Unit = {},
+    /** 网页剪藏：粘链接或从浏览器分享进来 */
+    onOpenClip: () -> Unit = {},
     onOpenQuiz: () -> Unit = {},
     onGenerateRequest: () -> Unit = {},
     isGenerating: Boolean = false,
@@ -278,6 +286,37 @@ fun DeckScreen(
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Serif,
                         )
+                        if (studyScopeLabel.isNotEmpty()) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0x2866D0A0),
+                                border = BorderStroke(0.8.dp, Color(0x6666D0A0)),
+                                modifier = Modifier
+                                    .clickable(onClick = onOpenMap)
+                                    .semantics { contentDescription = "正在限定范围学习：$studyScopeLabel，点击调整" },
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(5.dp)
+                                            .background(Color(0xFF66D0A0), CircleShape)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        studyScopeLabel,
+                                        color = Color(0xFF2A9D8F),
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                }
+                            }
+                        }
                         if (dueReviewCount > 0) {
                             Spacer(Modifier.width(6.dp))
                             Surface(
@@ -378,6 +417,14 @@ fun DeckScreen(
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("知识全景星图", fontSize = 13.sp) },
                                 onClick = { showMore = false; onOpenGraph() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(if (studyScopeLabel.isEmpty()) "学习地图" else "学习地图 · 退出「${'$'}studyScopeLabel」", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenMap() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("剪藏网页…", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenClip() },
                             )
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("局域网极速同步…", fontSize = 13.sp) },

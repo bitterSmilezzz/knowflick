@@ -187,24 +187,111 @@ class AiService(
             .apply { if (needsKey && apiKey.isNotEmpty()) header("Authorization", "Bearer $apiKey") }
             .build()
 
+        return executeForPayloads(request, wanted = batchCount, onDelta = onDelta)
+    }
+
+    /**
+     * 把外部材料（网页剪藏 / 粘贴的长笔记）提炼成卡片。移植自 macOS
+     * `AIService.transformNoteToCards`，提示词与 mac 逐字一致（见 [AiTextUtils.transformPrompt]）。
+     *
+     * 与 [generateCards] 的差别：不注入分类白名单、不排除历史标题（提炼要忠于原文而不是创作），
+     * 但保留「详情 ≥80 字」质量门槛，并把来源链接排在最前以便回溯原文。
+     */
+    suspend fun transformNoteToCards(
+        settings: AiSettings,
+        apiKey: String,
+        note: String,
+        sourceLinks: List<ScienceLink> = emptyList(),
+    ): List<KnowledgeCard> {
+        val trimmed = note.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val key = apiKey.trim()
+        val needsKey = requiresKey(settings.baseURL)
+        if (needsKey && key.isEmpty()) throw AiError.MissingKey()
+        if (settings.baseURL.isBlank()) throw AiError.BadRequest("baseURL 为空")
+        if (settings.model.isBlank()) throw AiError.BadRequest("模型为空，请先在设置里选择或填写模型")
+
+        val body = buildJsonObject {
+            put("model", settings.model)
+            put("messages", buildJsonArray {
+                add(buildJsonObject {
+                    put("role", "system")
+                    put(
+                        "content",
+                        "你是一位博学敏锐的知识架构师。你的任务是将用户提供的非结构化笔记、长文或书摘，" +
+                            "提炼提纯为 1 到 5 张结构精炼、具有深刻洞察力的 KnowFlick 知识卡片，必须且仅输出标准 JSON 数组。"
+                    )
+                })
+                add(buildJsonObject {
+                    put("role", "user")
+                    put("content", AiTextUtils.transformPrompt(trimmed))
+                })
+            })
+            put("temperature", 0.7)
+            put("max_tokens", 3200)
+            put("stream", true)
+        }
+        val request = Request.Builder()
+            .url(completionURL(settings.baseURL))
+            .post(body.toString().toRequestBody(jsonMedia))
+            .header("Content-Type", "application/json")
+            .header("User-Agent", userAgent())
+            .apply { if (needsKey && key.isNotEmpty()) header("Authorization", "Bearer $key") }
+            .build()
+
+        val payloads = executeForPayloads(request, wanted = MAX_TRANSFORM_CARDS, onDelta = null)
+        val now = System.currentTimeMillis()
+        val seen = HashSet<String>()
+        val cards = ArrayList<KnowledgeCard>(payloads.size)
+        for (payload in payloads) {
+            if (payload.details.length < 80) continue
+            val headlineKey = AiTextUtils.normalizeHeadline(payload.headline)
+            if (headlineKey.isEmpty() || !seen.add(headlineKey)) continue
+            val links = AiTextUtils.buildSearchLinks(
+                keywords = payload.searchKeywords,
+                preferred = emptyList(),
+                aiSources = payload.sources,
+            )
+            cards += KnowledgeCard(
+                id = newId(),
+                category = com.knowflick.app.domain.CategoryRegistry.normalize(payload.category, custom = emptyList()),
+                headline = payload.headline,
+                summary = payload.summary,
+                details = payload.details,
+                // 来源链接放最前：详情页一眼能回到原文，而不是只看到一堆检索链接
+                links = sourceLinks.filter { candidate -> links.none { it.url == candidate.url } } + links,
+                source = CardSource.IMPORTED,
+                createdAt = now,
+            )
+        }
+        if (cards.isEmpty()) throw AiError.NoUsableCards()
+        return cards
+    }
+
+    /** 发一次流式请求并收够 `wanted` 个完整 JSON 对象；429/5xx 指数退避重试 */
+    private suspend fun executeForPayloads(
+        request: Request,
+        wanted: Int,
+        onDelta: ((String) -> Unit)?,
+    ): List<AiCardPayload> {
         for (attempt in 0 until 3) {
             try {
                 return client.executeCancellable(request) { response ->
-                        if (!response.isSuccessful) throw AiError.HttpStatus(response.code, errorMessage(response.body?.string().orEmpty()))
-                        val source = response.body?.source() ?: throw AiError.Network("无响应体")
-                        val scanner = AiObjectScanner()
-                        while (true) {
-                            val line = source.readUtf8Line() ?: break
-                            if (line.trim() == "data: [DONE]") break
-                            val delta = sseContentDelta(line)
-                            if (delta.isNullOrEmpty()) continue
-                            scanner.append(delta)
-                            onDelta?.invoke(delta)
-                            if (scanner.objects.size >= batchCount) break
-                        }
-                        val found = scanner.objects
-                        if (found.isEmpty()) throw AiError.Parse("AI 未返回可用回复，请重试")
-                        found
+                    if (!response.isSuccessful) throw AiError.HttpStatus(response.code, errorMessage(response.body?.string().orEmpty()))
+                    val source = response.body?.source() ?: throw AiError.Network("无响应体")
+                    val scanner = AiObjectScanner()
+                    while (true) {
+                        val line = source.readUtf8Line() ?: break
+                        if (line.trim() == "data: [DONE]") break
+                        val delta = sseContentDelta(line)
+                        if (delta.isNullOrEmpty()) continue
+                        scanner.append(delta)
+                        onDelta?.invoke(delta)
+                        if (scanner.objects.size >= wanted) break
+                    }
+                    val found = scanner.objects
+                    if (found.isEmpty()) throw AiError.Parse("AI 未返回可用回复，请重试")
+                    found
                 }
             } catch (e: AiError.HttpStatus) {
                 if ((e.code == 429 || e.code in 500..599) && attempt < 2) {
@@ -339,6 +426,8 @@ class AiService(
         }
 
         private const val MAX_CARDS_PER_REQUEST = 6
+        /** 提炼提示词让模型产出 1–5 张，收够 5 张就停流 */
+        private const val MAX_TRANSFORM_CARDS = 5
 
         /** 排除标题随请求发送的条数上限（服务端上下文，单点决定） */
         private const val EXCLUDE_HEADLINE_LIMIT = 100
