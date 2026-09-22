@@ -4,10 +4,17 @@
 > 覆盖范围：当前词条只描述 mac 端（`apps/mac`）的领域词汇；Android 端（`apps/android`）尚未收录，其语言以该端源码与发布记录为准。
 
 ## 卡片（Card）
-一条领域知识（不限冷知识）：`category` / `headline` / `summary` / `details` / `links`，来源 `source`（seed 预置 / ai 生成）。内容与浏览状态在同一结构上（`KnowledgeCard`），浏览状态字段见下。
+一条领域知识（不限冷知识）：`category` / `headline` / `summary` / `details` / `links`，来源 `source`（seed 预置 / ai 生成）；学科坐标 `subject` / `branch` / `level` / `track` / `orderKey` / `prereq` 全部可选（见「学科体系」）。内容与浏览状态在同一结构上（`KnowledgeCard`），浏览状态字段见下。
 
 ## 分类体系（CategoryRegistry）
 **内置「冷知识」分类（不可删改，收纳 160 张预置卡）+ 用户自定义分类（可增删改，默认预置：AI / AI 开发 / AI Agent / 中级会计 / 投资理财，各带内容方向描述）**。`resolve(_:custom:)` 解析到有效分类（别名映射仅在目标分类存在时生效）；`normalize` 无法识别时兜底到第一个自定义分类（无自定义则冷知识）——偏好解析用 resolve（剔除未知），AI 生成用 normalize。AI 生成白名单 = `allCategoryNames`（内置+自定义），每类按描述定制内容方向。
+
+## 学科体系（SubjectRegistry）
+**学科 → 分支 → 难度** 三级：`subject`（如 english）/ `branch`（如 grammar）/ `level` 1..5（内容难度，**与 FSRS 的 `difficulty`「记忆难度」是两个概念，不得混用**），另有 `track`（应试标尺：高中英语 / 大学英语四级 / 大学英语六级、初级 / 中级会计 / 注册会计师）、`orderKey`（分支内序号，决定「一点点看」的推进顺序）与 `prereq`（前置卡 id，学习路径的边）。
+
+六个字段**全部可选且只在有值时写盘**：历史卡与旧同步包缺字段时解出 null/nil，行为与升级前完全一致；`category` 仍是界面展示用的叶子名（全仓数百处引用），学科能力一律读 `taxonomy(of:)` 的派生结果——**显式字段优先，缺失时按 `legacyCategoryMap` 从 category 派生，未列入映射表的分类保持「未分级」，不臆测**。
+
+三处事实来源必须同源：`shared/assets/taxonomy_map.json`（契约）、mac `SubjectRegistry.swift`、Android `SubjectRegistry.kt`（各自内嵌，运行时不读文件以避开 SwiftPM bundle / APK 资产的历史坑）。一致性分两层守：两端各自的 parity 测试逐字段比对契约（`SubjectRegistryTests` / `SubjectRegistryTest`），`tools/check_taxonomy.py` 在 CI 做契约自洽 + 种子内容合法 + 三处条目集合一致。
 
 ## 刷卡（Swipe）
 用户把当前卡片划走的行为，记录为 `seenAt` + `swiped`。
@@ -18,6 +25,21 @@
 规则：对 `seenAt`/`swiped` 的任何写入都必须经由 AppStore 的意图化方法（`swipe` / `undoLastSwipe` / `clearHistory` / `refreshDeck`），视图不得直接改字段。
 
 **收藏（isFavorite）与喜好（swiped）解耦**：`isFavorite` 是独立布尔字段，取消收藏**不会**改写 `swiped`（避免把「感兴趣」污染成 `skip`、或抹掉「不喜欢」）。两条写入路径：① `toggleFavorite` 只翻转 `isFavorite`（不写 `seenAt`，收藏未读卡不等于已浏览）；② `swipe` 在写喜好意图的同时同步收藏态——`right` 加入收藏、`left` 移出收藏、`skip` 不动收藏。旧数据无该字段时按 `swiped == .right` 回填，保证老用户收藏阁内容不丢。
+
+## 学习范围与学习地图（StudyScope / StudyMap）
+**「专学一条支线，一点点看」与「多选混合」是同一个模型的两面**。`StudyScope(subjects, branches, levels, sequential)`：三个维度都是**空集 = 不限**；`branches` 用 `subject/branch` 复合键，避免不同学科下的同名分支互相串（`trivia/assets` ≠ `accounting/assets`）。`sequential = true` 表示按 `orderKey` 顺序推进。
+两条硬契约：① **范围生效时接管分类维度**（`preferredCategories` 让位），否则用户看不出"现在到底在学什么"；② **顺序模式跳过背景图防重打散**——推进顺序就是产品语义，打散会把它冲掉。作为代价，专学模式下撤销一张卡是回到它在 orderKey 上的原位，而不是队首。
+学习地图（Android `LearningMapScreen`）是它的选择器：学科 → 分支 → 难度阶梯，动作只有「专学这条支线」和「加入混合」两个。范围**只在本次会话内生效、不落盘**（重启后卡堆"莫名变窄"很难排查）。mac 端视图待补，Core 侧同一模型可平移。
+
+## 听书档位与睡前淡出（SpeechPreset / SleepFade）
+**档位不落盘，由「语速 + 音调 + 翻卡停顿」三个数值反推**（`SpeechPreset.match`）。存 `presetID` 迟早和滑块打架——用户手调后界面还顶着「睡前轻缓」的名字；改成反推后手调任一旋钮自然回落到「自定义」，且冷启动、换设备仍然认得。四档数值双端逐条相同（`SpeechPreset.swift` ↔ `SpeechPreset.kt`）：精读标准 1.00/1.00/1.5、温和真人 0.92/0.95/2.0、通勤清醒 1.18/1.00/0.8、睡前轻缓 0.85/0.90/2.5（后者额外挂 20 分钟睡眠定时并开启淡出）。档位**不改音色通道**（那涉及密钥与服务配置），依赖真人音色的档在系统音色下要显示实话提示。
+**淡出只对做得到的路径承诺**：音量在 `MediaPlayer` / `AVAudioPlayer` / `AVSpeechUtterance` 上都能实时或按句生效；语速对系统合成路径按句生效，而**云端通道的语速是请求时烘进音频的**，那一路只有音量在淡。系统 TTS 无音量接口，`setSpeechRate` 只影响之后排队的 utterance，所以是「下一张开始变轻变慢」而不是当前这张平滑淡出。曲线是纯函数 `SleepFade.plan(remaining, window)`：窗口外满音量，窗口内线性收到 0.15 音量 / 0.9 语速（留余声，避免突然安静把人弄醒）。
+
+## 网页剪藏（WebClipEngine / WebClipFetcher）
+**「抽正文」和「提炼成卡片」是两步，中间必须让人看一眼**：抽取是无损的、提炼是有损且花额度的，所以面板先给正文预览，点「AI 提炼成卡片并置顶入堆」才写库（`source = IMPORTED`，来源链接排在 `links` 最前以便回到原文）。
+内核是**双端逐条对齐的规则表**（Swift `KnowFlickCore/Models/WebClipEngine.swift` ↔ Kotlin `domain/WebClipEngine.kt`，夹具 HTML 与期望值两边逐字相同）：UTF-8 字节扫描、丢脚本/导航/页眉页脚/表单/评论子树、`<article>`/`<main>`/id-class 候选挑正文（否决词优先，占整页不足一半则退回整页）、实体解码、样板行过滤、**按行截断 4000 字**（与提炼提示词既有预算同档，不单开 token 档）、charset 按「HTTP 头 → `<meta charset>` → UTF-8」解析（中文站 GBK/Big5 不能出 ``）。
+三条边界：① 链接只收 http/https，带 `user:pass@` 的**直接拒**（否则凭据会被写进卡片来源链接）；② 抓取是匿名只读（不收不发 Cookie、不落盘缓存、4 MB 上限、15 s 超时），并**沿用 App 既有的明文策略**（只对回环放开 HTTP），不为剪藏放宽；③ 所有判定下沉成纯函数（`digest(fromBytes:contentType:)`），网络层只搬字节。
+Android 入口是 `ACTION_SEND text/plain`（**不注册 `ACTION_VIEW`**，否则本 App 会被列成系统默认浏览器候选）+ 卡堆 ⋮ 菜单；分享进来直接开面板并自动抽取。
 
 ## 卡堆 / 队列（Deck）
 未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关（enableSeed/enableAI）在偏好过滤前生效**：只开其一则只看该来源，**全关则队列为空（含导入卡片）**。**卡堆输出前统一经 `CardThemeResolver.arrangeWithMinDistance(minDistance: 5)` 处理**：先按确定性盐值哈希全局打散，再贪心排布保证同背景图 key 间隔 ≥ 5 张（key 多样性充足时成立；候选不足时退化为「最大化间隔」的贪心选择，不保证严格间隔），杜绝日常刷卡连续撞图，并有性质测试护栏（CardThemeResolverTests）。

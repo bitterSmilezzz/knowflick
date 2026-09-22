@@ -22,6 +22,12 @@ KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 ma
 
 Android 端是同仓库内的独立原生应用（Kotlin + Jetpack Compose），构建、安装与发版见 [Android 端说明](apps/android/README.md)。
 
+## 当前版本
+
+- [macOS v4.3.0](https://github.com/bitterSmilezzz/knowflick/releases/tag/v4.3.0)：听书控制台、场景预设、学科图谱与本地 Agent 接入。[发布说明](docs/MAC_RELEASE_4.3.0.md)
+- [Android v0.10.0](https://github.com/bitterSmilezzz/knowflick/releases/tag/android-v0.10.0)：知识地图、网页剪藏、图谱优化与睡前听书。[发布说明](docs/ANDROID_RELEASE_0.10.0.md)
+- [本地 MCP / CLI 使用说明](tools/knowflick-mcp/README.md)：检索、地图、学习路径与人工确认暂存；自动刷新卡库并保护并发写入。
+
 ## 功能
 
 - **今日学习**：可调整每日目标、进度、下一篇阅读与主题掌握情况。
@@ -57,6 +63,7 @@ Android 端是同仓库内的独立原生应用（Kotlin + Jetpack Compose），
 | `⌘F` | 全局智能搜索与全文检索（支持拼音） |
 | `⌘J` | 向卡片追问（AI 伴学导师深入探讨） |
 | `⌘P` | 语音朗读 / 暂停（当前卡片） |
+| `⌥⌘P` | 打开听书控制台 |
 | `⇧⌘P` | 开启 / 退出磨耳朵连续播报 |
 | `⌘K` | 开启沉浸式知识测验 |
 | `⌘G` | 探索全景知识星图与引力链 |
