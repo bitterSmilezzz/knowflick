@@ -21,6 +21,8 @@ struct KnowFlickApp: App {
                 .preferredColorScheme(store.settings.appearance.colorScheme)
                 .task {
                     await store.bootstrap()
+                    // 控制中心与媒体键：关窗后台听时，不必回到 App 也能暂停/切卡/快退 10 秒
+                    store.speechService.enableNowPlaying()
                 }
         }
         .windowStyle(.hiddenTitleBar)

@@ -108,6 +108,19 @@ public final class AppStore {
             }
             return self.topCard
         }
+
+        // 媒体键 / 触控栏的「下一张、上一张」与控制台按钮同一套语义：
+        // 切卡必须写划卡记录，否则控制中心跳过一张后卡堆还对不上
+        self.speechService.onTransportNext = { [weak self] in
+            guard let self = self else { return }
+            if let current = self.topCard { self.swipe(current, direction: .skip) }
+            if let next = self.topCard { self.speechService.speak(card: next, part: .full) }
+        }
+        self.speechService.onTransportPrevious = { [weak self] in
+            guard let self = self else { return }
+            self.undoLastSwipe()
+            if let top = self.topCard { self.speechService.speak(card: top, part: .full) }
+        }
     }
 
     /// 设置里的朗读参数灌进语音服务：init 与 `settings.didSet` 共用，避免两处各自维护漏掉新字段。
@@ -263,6 +276,10 @@ public final class AppStore {
         speechService.setSleepTimer(minutes: 0)
         speechService.stopAmbientMode()
         speechService.onAmbientAdvanceRequest = nil
+        speechService.onTransportNext = nil
+        speechService.onTransportPrevious = nil
+        // 摘掉媒体键并清空控制中心，否则退出过程中系统还会把按键打到已释放的播放器
+        speechService.teardownNowPlaying()
         persistence.cancelPendingThrottles()
         flushPersistence()
     }

@@ -58,7 +58,11 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     private var remotePlayer: AVAudioPlayer?
     private var playbackID = UUID()
 
-    public private(set) var state: SpeechPlaybackState = .idle
+    public private(set) var state: SpeechPlaybackState = .idle {
+        // 单点同步控制中心：状态有十几处赋值点（暂停/恢复/seek/到点停/切卡），
+        // 逐处补调用一定会漏；进度交给系统按 playbackRate 自行推进，所以不需要按帧回写。
+        didSet { if state != oldValue { syncNowPlaying() } }
+    }
     public private(set) var currentWordRange: NSRange? = nil
     public private(set) var currentSpeakingText: String = ""
     public private(set) var isAmbientMode: Bool = false
@@ -114,6 +118,13 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
 
     /// 当前（或最近一次）朗读的卡片
     public private(set) var currentCard: KnowledgeCard?
+
+    /// 控制中心 / 媒体键出口：mac 端"后台轻量运行"的可见面（此前只有 Android 有等价物）
+    public let nowPlaying = NowPlayingController()
+
+    /// 媒体键「下一张 / 上一张」由视图层注入：切卡要带动画并写划卡记录，那是卡堆的职责
+    public var onTransportNext: (() -> Void)?
+    public var onTransportPrevious: (() -> Void)?
 
     // MARK: - 私有属性
 
@@ -194,30 +205,30 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     }
 
     public func pause() {
+        // 状态机优先：state 说是播放中就一定能停下来。以前只在引擎确实正在发声时才改状态，
+        // 于是"引擎与状态不一致"的场合（合成器回调丢失、云端分句间隙）会让 UI 与控制中心永远显示播放中。
+        if case .playing(let cardId, let text, let progress) = state {
+            state = .paused(cardId: cardId, text: text, progress: progress)
+        }
         if remoteTask != nil {
             remotePlayer?.pause()
-            if case .playing(let id, let text, let progress) = state { state = .paused(cardId: id, text: text, progress: progress) }
             return
         }
         if synthesizer.isSpeaking {
             synthesizer.pauseSpeaking(at: .immediate)
-            if case .playing(let cardId, let text, let progress) = state {
-                state = .paused(cardId: cardId, text: text, progress: progress)
-            }
         }
     }
 
     public func resume() {
+        if case .paused(let cardId, let text, let progress) = state {
+            state = .playing(cardId: cardId, text: text, progress: progress)
+        }
         if remoteTask != nil {
             remotePlayer?.play()
-            if case .paused(let id, let text, let progress) = state { state = .playing(cardId: id, text: text, progress: progress) }
             return
         }
         if synthesizer.isPaused {
             synthesizer.continueSpeaking()
-            if case .paused(let cardId, let text, let progress) = state {
-                state = .playing(cardId: cardId, text: text, progress: progress)
-            }
         }
     }
 
@@ -291,6 +302,53 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     /// 从头重新朗读当前会话
     public func restart() {
         seek(toProgress: 0)
+    }
+
+    // MARK: - 控制中心 / 媒体键
+
+    /// 把当前播放状态发布到系统控制中心。`state` 的 didSet 调用它，也可由外部在进度跳变后补一次。
+    func syncNowPlaying() {
+        nowPlaying.publish(NowPlayingMapper.snapshot(
+            card: currentCard,
+            state: state,
+            positionMs: currentPositionMs,
+            durationMs: durationMs,
+            rate: Double(effectiveSpeedMultiplier)
+        ))
+    }
+
+    /// App 启动后调用一次：打开系统接入并挂上媒体键/触控栏指令（重复调用不会重复挂接）。
+    ///
+    /// 之所以要显式打开而不是在朗读时自动接：控制中心与媒体键是**进程级**资源，
+    /// 只有真正的 App 进程该拥有它，Core 单测与任何嵌入式调用方都不该顺手抢走。
+    public func enableNowPlaying() {
+        nowPlaying.suppressesSystemIntegration = false
+        installNowPlayingCommands()
+    }
+
+    /// 注册媒体键与触控栏指令。
+    func installNowPlayingCommands() {
+        nowPlaying.installCommands { [weak self] in
+            guard let self else {
+                return NowPlayingCommands(play: {}, pause: {}, next: {}, previous: {}, skip: { _ in })
+            }
+            let service = self
+            return NowPlayingCommands(
+                play: { service.resume() },
+                // 暂停与"切换播放/暂停"共用一个出口：系统两条指令都可能被客户端发过来
+                pause: {
+                    if service.state.isPlaying { service.pause() } else { service.resume() }
+                },
+                next: { service.onTransportNext?() },
+                previous: { service.onTransportPrevious?() },
+                skip: { seconds in service.seekRelative(seconds: seconds) }
+            )
+        }
+    }
+
+    /// 退出时收口：摘掉指令并清空控制中心，避免媒体键打到已释放的播放器。
+    public func teardownNowPlaying() {
+        nowPlaying.teardown()
     }
 
     /// 设定睡眠定时器（分钟，<= 0 表示关闭）；到点后停止朗读并退出磨耳朵
