@@ -19,6 +19,7 @@ enum ActiveSheet: Identifiable {
     case plannedReview([KnowledgeCard])
     case editCard(KnowledgeCard)
     case sync
+    case speechConsole
 
     var id: String {
         switch self {
@@ -38,6 +39,7 @@ enum ActiveSheet: Identifiable {
         case .plannedReview: return "plannedReview"
         case .editCard(let card): return "edit_\(card.id)"
         case .sync: return "sync"
+        case .speechConsole: return "speechConsole"
         }
     }
 }
@@ -142,7 +144,8 @@ struct CardDeckView: View {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                                 store.speechService.stopAmbientMode()
                             }
-                        }
+                        },
+                        onOpenConsole: { activeSheet = .speechConsole }
                     )
                     .padding(.bottom, 10)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -297,6 +300,25 @@ struct CardDeckView: View {
                     CardEditorView(card: card, store: store) { activeSheet = nil }
                 case .sync:
                     SyncSheetView(store: store) { activeSheet = nil }
+                case .speechConsole:
+                    SpeechConsoleView(
+                        store: store,
+                        onPrevious: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                store.undoLastSwipe()
+                                if let top = store.topCard {
+                                    store.speechService.speak(card: top, part: .full)
+                                }
+                            }
+                        },
+                        onNext: {
+                            performSwipe(.skip)
+                            if let next = store.topCard {
+                                store.speechService.speak(card: next, part: .full)
+                            }
+                        },
+                        onClose: { activeSheet = nil }
+                    )
                 }
             }
         }
@@ -754,6 +776,8 @@ struct CardDeckView: View {
                         }
                         .keyboardShortcut("p", modifiers: [.command, .shift])
                         .disabled(store.topCard == nil)
+                        Button("语音听书控制台…", systemImage: "slider.horizontal.3") { activeSheet = .speechConsole }
+                            .keyboardShortcut("p", modifiers: [.command, .option])
                         Button("知识收藏阁", systemImage: "bookmark") { activeSheet = .favorites }
                         Button("学习统计", systemImage: "chart.bar") { activeSheet = .stats }
                         Button("历史记录", systemImage: "clock") { activeSheet = .history }

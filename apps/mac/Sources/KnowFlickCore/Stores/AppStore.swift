@@ -15,10 +15,7 @@ public final class AppStore {
     public var settings: AISettings = .default {
         didSet {
             recomputeDeckAndHistory()
-            speechService.configuration = settings.speech
-            speechService.speedMultiplier = settings.speechRate
-            speechService.preferredVoiceIdentifier = settings.speechVoiceIdentifier
-            speechService.ambientGapSeconds = settings.ambientGapSeconds
+            syncSpeechService()
         }
     }
     public var isGenerating = false
@@ -99,9 +96,7 @@ public final class AppStore {
         self.searchHistory = storage.loadSearchHistory()
         recomputeDeckAndHistory()
 
-        self.speechService.speedMultiplier = settings.speechRate
-        self.speechService.preferredVoiceIdentifier = settings.speechVoiceIdentifier
-        self.speechService.ambientGapSeconds = settings.ambientGapSeconds
+        syncSpeechService()
 
         self.speechService.onAmbientAdvanceRequest = { [weak self] in
             guard let self = self else { return nil }
@@ -109,6 +104,42 @@ public final class AppStore {
                 self.swipe(current, direction: .skip)
             }
             return self.topCard
+        }
+    }
+
+    /// 设置里的朗读参数灌进语音服务：init 与 `settings.didSet` 共用，避免两处各自维护漏掉新字段。
+    private func syncSpeechService() {
+        speechService.configuration = settings.speech
+        speechService.speedMultiplier = settings.speechRate
+        speechService.pitchMultiplier = settings.speechPitch
+        speechService.preferredVoiceIdentifier = settings.speechVoiceIdentifier
+        speechService.ambientGapSeconds = settings.ambientGapSeconds
+    }
+
+    /// 当前听书档位：由「语速 + 音调 + 切卡停顿」三个数值反推。
+    /// **档位不落盘**——手调过任一滑块就返回 nil，UI 显示「自定义」，不会出现
+    /// 「顶着睡前档的名字、数值却是手调的」这种撒谎状态。
+    public var activeSpeechPreset: SpeechPreset? {
+        SpeechPreset.match(
+            speed: Double(settings.speechRate),
+            pitch: settings.speechPitch,
+            gapSeconds: settings.ambientGapSeconds
+        )
+    }
+
+    /// 应用一档：只改可听参数（经 `settings.didSet` 单点同步到语音服务），
+    /// 带定时的档位（睡前轻缓）顺手挂上睡眠定时与淡出窗口。
+    public func applySpeechPreset(_ preset: SpeechPreset) {
+        applySettingsChange {
+            $0.speechRate = Float(preset.speed)
+            $0.speechPitch = preset.pitch
+            $0.ambientGapSeconds = preset.gapSeconds
+        }
+        if preset.sleepMinutes > 0 {
+            speechService.setSleepTimer(
+                minutes: preset.sleepMinutes,
+                fadeSeconds: preset.fadesOut ? SleepFade.defaultWindowSeconds : 0
+            )
         }
     }
 
@@ -226,6 +257,7 @@ public final class AppStore {
     /// 进入后台或应用退出前释放异步任务和音频资源，避免窗口关闭后仍继续播报或持有状态。
     public func shutdown() {
         closeChat()
+        speechService.setSleepTimer(minutes: 0)
         speechService.stopAmbientMode()
         speechService.onAmbientAdvanceRequest = nil
         persistence.cancelPendingThrottles()

@@ -81,6 +81,7 @@ public struct AISettings: Codable, Equatable, Sendable {
     public var paperTheme: PaperTheme   // 纸质人文主题
     public var customCategories: [CategoryConfig]   // 用户自定义分类（可增删改）
     public var speechRate: Float = 1.0              // 默认朗读语速倍率 (0.75x ~ 1.5x)
+    public var speechPitch: Float = 1.0             // 默认朗读音调倍率 (0.5x ~ 2.0x，作用于系统合成器)
     public var speechVoiceIdentifier: String = "auto" // 默认朗读声音标识符 ("auto" 自动探测)
     public var ambientGapSeconds: Double = 1.5      // 磨耳朵切换下一张缓冲秒数
     public var speech: SpeechSettings = SpeechSettings()
@@ -100,6 +101,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         paperTheme: PaperTheme = .xuanzhiWhite,
         customCategories: [CategoryConfig] = AISettings.defaultCustomCategories,
         speechRate: Float = 1.0,
+        speechPitch: Float = 1.0,
         speechVoiceIdentifier: String = "auto",
         ambientGapSeconds: Double = 1.5,
         autoSpeakOnDetailOpen: Bool = false
@@ -117,6 +119,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         self.paperTheme = paperTheme
         self.customCategories = customCategories
         self.speechRate = speechRate
+        self.speechPitch = speechPitch
         self.speechVoiceIdentifier = speechVoiceIdentifier
         self.ambientGapSeconds = ambientGapSeconds
         self.autoSpeakOnDetailOpen = autoSpeakOnDetailOpen
@@ -206,6 +209,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         try c.encode(paperTheme, forKey: .paperTheme)
         try c.encode(customCategories, forKey: .customCategories)
         try c.encode(speechRate, forKey: .speechRate)
+        try c.encode(speechPitch, forKey: .speechPitch)
         try c.encode(speechVoiceIdentifier, forKey: .speechVoiceIdentifier)
         try c.encode(ambientGapSeconds, forKey: .ambientGapSeconds)
         try c.encode(autoSpeakOnDetailOpen, forKey: .autoSpeakOnDetailOpen)
@@ -215,7 +219,7 @@ public struct AISettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case baseURL, model, apiKey, autoGenerate, categoryFilter, speech
         case enableSeed, enableAI, aiSources, showAIMark, appearance, paperTheme, customCategories
-        case speechRate, speechVoiceIdentifier, ambientGapSeconds, autoSpeakOnDetailOpen
+        case speechRate, speechPitch, speechVoiceIdentifier, ambientGapSeconds, autoSpeakOnDetailOpen
     }
 
     public init(from decoder: Decoder) throws {
@@ -234,6 +238,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         paperTheme = try c.decodeIfPresent(PaperTheme.self, forKey: .paperTheme) ?? .xuanzhiWhite
         customCategories = try c.decodeIfPresent([CategoryConfig].self, forKey: .customCategories) ?? AISettings.defaultCustomCategories
         speechRate = try c.decodeIfPresent(Float.self, forKey: .speechRate) ?? 1.0
+        speechPitch = try c.decodeIfPresent(Float.self, forKey: .speechPitch) ?? 1.0
         speechVoiceIdentifier = try c.decodeIfPresent(String.self, forKey: .speechVoiceIdentifier) ?? "auto"
         ambientGapSeconds = try c.decodeIfPresent(Double.self, forKey: .ambientGapSeconds) ?? 1.5
         autoSpeakOnDetailOpen = try c.decodeIfPresent(Bool.self, forKey: .autoSpeakOnDetailOpen) ?? false

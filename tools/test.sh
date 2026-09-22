@@ -30,6 +30,11 @@ if ! DEVELOPER_ROOT="$(xcode-select -p 2>/dev/null)"; then
 fi
 TEST_FRAMEWORKS="$DEVELOPER_ROOT/Library/Developer/Frameworks"
 TEST_ARGS=(--disable-xctest)
+# 串行跑测试：Core 用例几乎都是 @MainActor，且多处用墙钟轮询等待异步落盘 / 流式回包
+# （ChatStream 10s、图冷构建 12s 预算）。全量并发时主线程队列被排满，这些预算会被无关
+# 用例拖爆，出现「同一份代码本机偶发红、超时本身还要空等 10s」。实测 267 项：
+# 并发 23.1s 且 4 个套件误报，串行 9.2s 全绿。
+RUN_ARGS=(--no-parallel)
 if [[ "$DEVELOPER_ROOT" == */CommandLineTools && -d "$TEST_FRAMEWORKS/Testing.framework" ]]; then
     TEST_ARGS+=(-Xswiftc "-F$TEST_FRAMEWORKS" -Xlinker -rpath -Xlinker "$TEST_FRAMEWORKS" -Xlinker -rpath -Xlinker "$DEVELOPER_ROOT/Library/Developer/usr/lib")
     # CommandLineTools 把 Swift Testing 的宏实现放在 plugins/testing/ 下，且不在默认插件
@@ -67,7 +72,7 @@ if [[ $CORE_ONLY -eq 1 ]]; then
     # 先只构建测试目标，再用 --skip-build 运行，避免连带构建依赖 SwiftUI 宏的执行文件
     swift build --target KnowFlickCoreTests "${TEST_ARGS[@]:1}" \
         || { echo "错误: KnowFlickCoreTests 构建失败" >&2; exit 1; }
-    swift test --skip-build "${TEST_ARGS[@]}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
+    swift test --skip-build "${TEST_ARGS[@]}" "${RUN_ARGS[@]}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
     exit $?
 fi
 
@@ -80,4 +85,4 @@ if [[ $MISSING_SWIFTUI_MACROS -eq 1 ]]; then
     exit 1
 fi
 
-swift test "${TEST_ARGS[@]}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
+swift test "${TEST_ARGS[@]}" "${RUN_ARGS[@]}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"

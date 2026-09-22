@@ -24,6 +24,7 @@ struct DetailView: View {
     @Environment(\.openURL) private var openURL
     @State private var showPosterSheet = false
     @State private var showChatSheet = false
+    @State private var showConsoleSheet = false
     private var isFavorited: Bool { store?.isFavorite(card) ?? card.isFavorite }
 
     init(
@@ -320,6 +321,13 @@ struct DetailView: View {
                 CardFollowUpChatView(card: card, store: store) {
                     showChatSheet = false
                 }
+            }
+        }
+        .sheet(isPresented: $showConsoleSheet) {
+            if let store {
+                SpeechConsoleView(store: store, onClose: {
+                    showConsoleSheet = false
+                })
             }
         }
         .onChange(of: card.id, initial: true) { _, _ in
@@ -724,10 +732,12 @@ struct DetailView: View {
 
                 // 语速切换
                 Menu {
-                    Button("0.75x 慢速精听") { service.speedMultiplier = 0.75 }
-                    Button("1.0x 正常标准") { service.speedMultiplier = 1.0 }
-                    Button("1.25x 高效快读") { service.speedMultiplier = 1.25 }
-                    Button("1.5x 极速浏览") { service.speedMultiplier = 1.5 }
+                    // 走设置通道：既即时灌进语音服务（settings.didSet），也能跨重启保留
+                    ForEach(Self.speedTiers, id: \.rate) { tier in
+                        Button(tier.label) {
+                            store?.applySettingsChange { $0.speechRate = tier.rate }
+                        }
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "waveform")
@@ -743,6 +753,22 @@ struct DetailView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+
+                // 语音听书控制台
+                Button {
+                    showConsoleSheet = true
+                    HapticFeedbackHelper.shared.cardSnapBack()
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(EditorialColor.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(EditorialColor.glassSurface, in: Circle())
+                        .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .help("语音听书控制台：进度定位、语速音调与睡眠定时")
+                .accessibilityLabel("语音听书控制台")
 
                 // 重新朗读
                 Button {
@@ -788,11 +814,21 @@ struct DetailView: View {
         .padding(.top, 18)
     }
 
+    /// 语速档位与展示名（与 Android 端 AudioConsoleSheet 同档）
+    static let speedTiers: [(label: String, rate: Float)] = [
+        ("0.75x 慢速精听", 0.75),
+        ("1.0x 正常标准", 1.0),
+        ("1.25x 高效快读", 1.25),
+        ("1.5x 快速浏览", 1.5),
+        ("2.0x 极速浏览", 2.0),
+    ]
+
     private func speedLabel(for rate: Float) -> String {
         if abs(rate - 0.75) < 0.05 { return "0.75x" }
         if abs(rate - 1.0) < 0.05 { return "1.0x" }
         if abs(rate - 1.25) < 0.05 { return "1.25x" }
         if abs(rate - 1.5) < 0.05 { return "1.5x" }
+        if abs(rate - 2.0) < 0.05 { return "2.0x" }
         return String(format: "%.1fx", rate)
     }
 

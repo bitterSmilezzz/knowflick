@@ -50,7 +50,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.speech.SpeechChannel
 import com.knowflick.app.speech.SpeechController
+import com.knowflick.app.speech.SpeechPreset
 import java.util.Locale
 
 /**
@@ -59,10 +61,11 @@ import java.util.Locale
  * 1. 当前卡片大字标题、分类与金句摘要；
  * 2. 毫秒级进度条拖拽定位与时长显示；
  * 3. 大尺寸中央播控区：快退 5 秒、上一张、主播放/暂停、下一张、快进 5 秒；
- * 4. 语速多档调节（0.75x ~ 2.0x）；
- * 5. 语调微调（低沉 0.85x / 标准 1.0x / 清亮 1.15x）；
- * 6. 磨耳朵自动翻卡停顿间隔设置（0.8s / 1.5s / 3.0s）；
- * 7. 睡眠定时器倒计时关停（15/30/60 分钟）。
+ * 4. 听书档位（精读标准 / 温和真人 / 通勤清醒 / 睡前轻缓）一键改语速+音调+停顿；
+ * 5. 语速多档调节（0.75x ~ 2.0x）；
+ * 6. 语调微调（低沉 0.85x / 标准 1.0x / 清亮 1.15x）；
+ * 7. 磨耳朵自动翻卡停顿间隔设置（0.8s / 1.5s / 3.0s）；
+ * 8. 睡眠定时器倒计时关停（15/30/60 分钟），结束前 30 秒音量与语速一起淡出。
  */
 @Composable
 fun AudioConsoleSheet(
@@ -81,6 +84,9 @@ fun AudioConsoleSheet(
     val gap = controller.ambientGapSeconds
     val sleepSeconds = controller.sleepTimerRemainingSeconds
     val isAmbient = controller.isAmbientMode
+    val activePreset = controller.activePreset
+    // 只有走真人音色（云端/本地网关）时，「温和真人」「睡前轻缓」才名副其实
+    val usesRealVoice = controller.settings.channelEnum != SpeechChannel.SYSTEM
 
     BackHandler(onBack = onClose)
 
@@ -200,6 +206,10 @@ fun AudioConsoleSheet(
                     ambientGap = gap,
                     sleepSeconds = sleepSeconds,
                     isAmbient = isAmbient,
+                    activePreset = activePreset,
+                    usesRealVoice = usesRealVoice,
+                    fadeVolume = controller.sleepFadeVolume,
+                    onPresetChange = { controller.applyPreset(it) },
                     onSpeedChange = { controller.setSpeed(it) },
                     onPitchChange = { controller.setPitch(it) },
                     onGapChange = { controller.setAmbientGap(it) },
@@ -457,6 +467,10 @@ private fun AudioTuningSection(
     ambientGap: Double,
     sleepSeconds: Int?,
     isAmbient: Boolean,
+    activePreset: SpeechPreset?,
+    usesRealVoice: Boolean,
+    fadeVolume: Float,
+    onPresetChange: (SpeechPreset) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onPitchChange: (Float) -> Unit,
     onGapChange: (Double) -> Unit,
@@ -511,7 +525,55 @@ private fun AudioTuningSection(
 
             Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
 
-            // 2. 朗读语速快捷调节
+            // 2. 听书档位：一键把语速/音调/停顿（睡前档还含睡眠定时）调到某个场景
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("听书档位", color = Color.White, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        activePreset?.label ?: "自定义",
+                        color = EditorialColor.aiAmber,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    SpeechPreset.entries.forEach { preset ->
+                        PillButton(
+                            text = preset.label,
+                            isSelected = activePreset?.id == preset.id,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onPresetChange(preset) },
+                        )
+                    }
+                }
+
+                Text(
+                    text = activePreset?.scene?.takeIf { !it.isBlank() }
+                        ?: "手调过语速或音调后的自定义组合",
+                    color = Color.White.copy(alpha = 0.45f),
+                    fontSize = 11.5.sp,
+                )
+                if (activePreset?.prefersRealVoice == true && !usesRealVoice) {
+                    Text(
+                        text = "当前是系统音色，这一档只能近似；在设置里接上云端真人语音（如 CosyVoice）才更像真人朗读。",
+                        color = EditorialColor.warningOrange,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                    )
+                }
+            }
+
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+
+            // 3. 朗读语速快捷调节
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -547,7 +609,7 @@ private fun AudioTuningSection(
 
             Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
 
-            // 3. 语调微调
+            // 4. 语调微调
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -595,7 +657,7 @@ private fun AudioTuningSection(
 
             Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
 
-            // 4. 磨耳朵自动翻卡停顿间隔
+            // 5. 磨耳朵自动翻卡停顿间隔
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -638,7 +700,7 @@ private fun AudioTuningSection(
 
             Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
 
-            // 5. 睡眠定时器
+            // 6. 睡眠定时器
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -647,7 +709,10 @@ private fun AudioTuningSection(
                 ) {
                     Text("睡眠定时", color = Color.White, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
                     Text(
-                        if (sleepSeconds != null && sleepSeconds > 0) "剩余 ${formatDuration(sleepSeconds * 1000L)}" else "未开启",
+                        if (sleepSeconds != null && sleepSeconds > 0) {
+                            "剩余 ${formatDuration(sleepSeconds * 1000L)}" +
+                                if (fadeVolume < 0.99f) " · 淡出中" else ""
+                        } else "未开启",
                         color = if (sleepSeconds != null) EditorialColor.aiAmber else Color.White.copy(alpha = 0.45f),
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Bold,

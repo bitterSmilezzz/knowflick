@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var customCategories: [CategoryConfig] = []   // 自定义分类（编辑副本）
     @State private var speech = SpeechSettings()
     @State private var speechRate: Float = 1.0
+    @State private var speechPitch: Float = 1.0
     @State private var speechVoiceIdentifier: String = "auto"
     /// 系统音色列表：枚举 + 排序是重活，若写在 body 里会在任意输入框每次击键时重算，故 onAppear 取一次
     @State private var voiceOptions: [AVSpeechSynthesisVoice] = []
@@ -105,6 +106,7 @@ struct SettingsView: View {
             customCategories = store.settings.customCategories
             speech = store.settings.speech
             speechRate = store.settings.speechRate
+            speechPitch = store.settings.speechPitch
             speechVoiceIdentifier = store.settings.speechVoiceIdentifier
             ambientGapSeconds = store.settings.ambientGapSeconds
             autoSpeakOnDetailOpen = store.settings.autoSpeakOnDetailOpen
@@ -681,11 +683,11 @@ struct SettingsView: View {
 
             fieldRow(label: "默认朗读语速 (当前: \(String(format: "%.2fx", speechRate)))") {
                 HStack(spacing: 12) {
-                    Slider(value: $speechRate, in: 0.75...1.5, step: 0.25)
+                    Slider(value: $speechRate, in: 0.75...2.0, step: 0.25)
                         .tint(EditorialColor.likeGreen)
 
                     HStack(spacing: 6) {
-                        ForEach([0.75, 1.0, 1.25, 1.5], id: \.self) { rate in
+                        ForEach([0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { rate in
                             Button("\(String(format: "%.2f", rate))x") {
                                 speechRate = Float(rate)
                             }
@@ -694,6 +696,28 @@ struct SettingsView: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(abs(speechRate - Float(rate)) < 0.05 ? EditorialColor.likeGreen.opacity(0.3) : EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 4))
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            // 默认音调倍率（仅系统合成器生效）
+            fieldRow(label: "默认朗读音调 (当前: \(String(format: "%.2fx", speechPitch)))") {
+                HStack(spacing: 12) {
+                    Slider(value: $speechPitch, in: 0.5...2.0, step: 0.05)
+                        .tint(EditorialColor.aiAmber)
+
+                    HStack(spacing: 6) {
+                        ForEach([("低沉", 0.85), ("自然", 1.0), ("清亮", 1.15)], id: \.1) { name, value in
+                            Button(name) {
+                                speechPitch = Float(value)
+                            }
+                            .font(EditorialFont.captionSmall.weight(.medium))
+                            .foregroundStyle(abs(speechPitch - Float(value)) < 0.05 ? EditorialColor.textPrimary : EditorialColor.textTertiary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(abs(speechPitch - Float(value)) < 0.05 ? EditorialColor.aiAmber.opacity(0.28) : EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 4))
                             .buttonStyle(.plain)
                         }
                     }
@@ -739,7 +763,7 @@ struct SettingsView: View {
                 Spacer()
 
                 Button {
-                    store.speechService.preview(configuration: speech, voice: speechVoiceIdentifier, speed: speechRate)
+                    store.speechService.preview(configuration: speech, voice: speechVoiceIdentifier, speed: speechRate, pitch: speechPitch)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "speaker.wave.2")
@@ -1019,6 +1043,7 @@ struct SettingsView: View {
         updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.speech = speech
         updated.speechRate = speechRate
+        updated.speechPitch = speechPitch
         updated.speechVoiceIdentifier = speechVoiceIdentifier
         updated.ambientGapSeconds = ambientGapSeconds
         updated.autoSpeakOnDetailOpen = autoSpeakOnDetailOpen

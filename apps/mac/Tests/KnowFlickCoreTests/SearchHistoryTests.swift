@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import KnowFlickCore
 
+@MainActor
 final class SearchHistoryTests {
     private var tempDir: URL!
     private var storage: Storage!

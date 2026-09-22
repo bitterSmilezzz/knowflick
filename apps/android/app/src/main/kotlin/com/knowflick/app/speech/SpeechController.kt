@@ -99,6 +99,16 @@ class SpeechController(
     var sleepTimerRemainingSeconds by mutableStateOf<Int?>(null)
         private set
 
+    /** 睡眠定时结束前的淡出窗口（秒）；0 表示到点直接停，不淡出 */
+    private var sleepFadeWindowSeconds = 0
+
+    /** 当前淡出计划（音量 + 语速系数），换卡与新加载的 MediaPlayer 都要按它恢复状态 */
+    private var sleepFadePlan = SleepFade.full
+
+    /** 淡出中的实际音量（1.0 = 未淡出）。暴露给 UI 显示「淡出中」，也便于设备侧核对 */
+    var sleepFadeVolume by mutableFloatStateOf(1f)
+        private set
+
     /** 最近一次播放错误（UI 展示后由调用方清空） */
     var lastError by mutableStateOf<String?>(null)
 
@@ -358,28 +368,78 @@ class SpeechController(
         onSettingsChanged?.invoke(settings)
     }
 
-    /** 设定睡眠定时器（分钟，<= 0 表示关闭） */
-    fun setSleepTimer(minutes: Int) {
+    /** 设定睡眠定时器（分钟，<= 0 表示关闭）；`fadeSeconds > 0` 时最后这段做淡出 */
+    fun setSleepTimer(minutes: Int, fadeSeconds: Int = SleepFade.DEFAULT_WINDOW_SECONDS) {
         sleepTimerJob?.cancel()
         if (minutes <= 0) {
             sleepTimerRemainingSeconds = null
+            sleepFadeWindowSeconds = 0
+            applyFadePlan(SleepFade.full)
             return
         }
-        val totalSeconds = minutes * 60
-        sleepTimerRemainingSeconds = totalSeconds
+        sleepFadeWindowSeconds = fadeSeconds
+        sleepTimerRemainingSeconds = minutes * 60
+        applyFadePlan(SleepFade.full)
         sleepTimerJob = activeScope.launch {
-            var rem = totalSeconds
-            while (isActive && rem > 0) {
+            while (isActive && sleepTimerRemainingSeconds != null) {
                 delay(1000L)
-                rem--
-                sleepTimerRemainingSeconds = rem
-            }
-            if (isActive && rem <= 0) {
-                sleepTimerRemainingSeconds = null
-                stop()
+                if (advanceSleepTimer()) return@launch
             }
         }
     }
+
+    /**
+     * 定时前进一秒：更新剩余时间、按剩余秒数套用淡出计划；走到终点停播并返回 true。
+     *
+     * 与 mac 端 `tickSleepTimer()` 同一形状（协程只负责节拍，状态推进与副作用都在这里），
+     * 这样「到点硬停」与「提前淡出」两条路径只有一处实现。
+     */
+    internal fun advanceSleepTimer(): Boolean {
+        val remaining = sleepTimerRemainingSeconds ?: return true
+        if (remaining <= 1) {
+            sleepTimerRemainingSeconds = null
+            applyFadePlan(SleepFade.full)
+            stop()
+            return true
+        }
+        sleepTimerRemainingSeconds = remaining - 1
+        applyFadePlan(SleepFade.plan(remaining - 1, sleepFadeWindowSeconds))
+        return false
+    }
+
+    /**
+     * 把淡出结果搬到播放器上。
+     *
+     * 远程音频（MediaPlayer）音量与倍速都能**实时**改；系统 TTS 没有音量接口，
+     * `setSpeechRate` 只对**之后排队**的 utterance 生效，所以这一路是「下一张开始变轻变慢」，
+     * 而不是当前这张平滑淡出——不假装做不到的事。
+     */
+    private fun applyFadePlan(plan: SleepFade.Plan) {
+        sleepFadePlan = plan
+        sleepFadeVolume = plan.volume
+        mediaPlayer?.let { player ->
+            runCatching { player.setVolume(plan.volume, plan.volume) }
+            applyMediaPlayerSpeed(player, effectiveSpeed())
+        }
+        runCatching { tts?.setSpeechRate(effectiveSpeed()) }
+    }
+
+    /** 实际下发给引擎的语速 = 用户语速 × 淡出系数 */
+    private fun effectiveSpeed(): Float = (playbackSpeed * sleepFadePlan.speedScale).coerceIn(0.5f, 3.0f)
+
+    /** 应用一档听书预设：只改可听参数；带定时的档位顺手把睡眠定时挂上 */
+    fun applyPreset(preset: SpeechPreset) {
+        setSpeed(preset.speed)
+        setPitch(preset.pitch)
+        setAmbientGap(preset.gapSeconds)
+        if (preset.sleepMinutes > 0) {
+            setSleepTimer(preset.sleepMinutes, if (preset.fadesOut) SleepFade.DEFAULT_WINDOW_SECONDS else 0)
+        }
+    }
+
+    /** 当前数值落在哪一档上；手调过任何一个滑块就是 null（UI 显示「自定义」） */
+    val activePreset: SpeechPreset?
+        get() = SpeechPreset.match(playbackSpeed, playbackPitch, ambientGapSeconds)
 
     /** 切到下一张卡片 */
     fun advanceNext() {
@@ -516,7 +576,9 @@ class SpeechController(
                         }
                         setOnPreparedListener { player ->
                             durationMs = player.duration.toLong()
-                            applyMediaPlayerSpeed(player, playbackSpeed)
+                            // 新建的 MediaPlayer 默认满音量：淡出进行中换卡时要把当前计划搬过来，
+                            // 否则「越讲越轻」会在每张新卡上被打回满音量
+                            applyFadePlan(sleepFadePlan)
                             if (isSpeaking) {
                                 player.start()
                                 startProgressTracker()
@@ -576,11 +638,11 @@ class SpeechController(
 
     private fun updateEngineSpeedAndPitch() {
         runCatching {
-            tts?.setSpeechRate(playbackSpeed)
+            tts?.setSpeechRate(effectiveSpeed())
             tts?.setPitch(playbackPitch)
         }
         mediaPlayer?.let { player ->
-            applyMediaPlayerSpeed(player, playbackSpeed)
+            applyMediaPlayerSpeed(player, effectiveSpeed())
         }
     }
 

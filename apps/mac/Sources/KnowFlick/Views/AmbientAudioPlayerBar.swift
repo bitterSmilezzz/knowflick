@@ -12,6 +12,8 @@ struct AmbientAudioPlayerBar: View {
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onClose: () -> Void
+    /// 展开全功能语音听书控制台（进度定位、语速音调、睡眠定时）
+    var onOpenConsole: () -> Void = {}
 
     /// 连点守卫：切卡动画窗口内的重复点击不应重播当前卡
     @State private var nextRequestInFlight = false
@@ -135,13 +137,33 @@ struct AmbientAudioPlayerBar: View {
                 .help("切换朗读语速 (当前 \(speedText))")
                 .accessibilityLabel("切换朗读语速")
                 .accessibilityValue(speedText)
+
+                // 全功能语音控制台
+                Button(action: onOpenConsole) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(EditorialColor.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(Color.white.opacity(0.06), in: Circle())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .help("语音听书控制台 ⌥⌘P")
+                .accessibilityLabel("语音听书控制台")
             }
 
             Divider()
                 .frame(height: 18)
                 .overlay(Color.white.opacity(0.15))
 
-            // 4. 退出磨耳朵模式
+            // 4. 睡眠定时剩余与退出磨耳朵模式
+            if let seconds = speechService.sleepTimerRemainingSeconds {
+                Text(clock(seconds: seconds))
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(EditorialColor.aiAmber)
+                    .help("睡眠定时器剩余时间")
+                    .accessibilityLabel("睡眠定时器剩余 \(clock(seconds: seconds))")
+            }
+
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
@@ -166,12 +188,17 @@ struct AmbientAudioPlayerBar: View {
         )
     }
 
+    private func clock(seconds: Int) -> String {
+        String(format: "%02d:%02d", max(0, seconds) / 60, max(0, seconds) % 60)
+    }
+
     private var speedText: String {
         let val = speechService.speedMultiplier
         if abs(val - 0.75) < 0.05 { return "0.75x" }
         if abs(val - 1.0) < 0.05 { return "1.0x" }
         if abs(val - 1.25) < 0.05 { return "1.25x" }
         if abs(val - 1.5) < 0.05 { return "1.5x" }
+        if abs(val - 2.0) < 0.05 { return "2.0x" }
         return String(format: "%.1fx", val)
     }
 
@@ -189,7 +216,7 @@ struct AmbientAudioPlayerBar: View {
     }
 
     private func cycleSpeed() {
-        let speeds: [Float] = [0.75, 1.0, 1.25, 1.5]
+        let speeds: [Float] = [0.75, 1.0, 1.25, 1.5, 2.0]
         let current = speechService.speedMultiplier
         if let idx = speeds.firstIndex(where: { abs($0 - current) < 0.05 }) {
             let next = speeds[(idx + 1) % speeds.count]

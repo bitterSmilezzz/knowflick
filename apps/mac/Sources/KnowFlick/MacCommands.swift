@@ -79,6 +79,9 @@ struct MacCommands: Commands {
             Button("磨耳朵连续朗读") { actions?.toggleAmbient() }
                 .keyboardShortcut("p", modifiers: [.shift, .command])
                 .disabled(actions?.hasCard != true || actions?.canOpen != true)
+            Button("语音听书控制台…") { actions?.open(.speechConsole) }
+                .keyboardShortcut("p", modifiers: [.option, .command])
+                .disabled(actions?.canOpen != true)
             Button("分享当前卡片海报…") { actions?.sharePoster() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(actions?.hasCard != true || actions?.canOpen != true)
