@@ -7,8 +7,8 @@ name: KVM probe
 # runner，标准 runner 上到底有没有可用的 /dev/kvm 目前没有权威结论——这是仪器测试
 # CI 化唯一的硬前提，所以先用探针取事实，再动主管线。
 #
-# 因此这里只做事实采集，刻意不接入推送 / PR 主管线，也不让任何人的构建变红；拿到结论
-# 后再决定是否在 android.yml 里落地 GMD（ATD 镜像）。
+# 本探针仍只做手动事实采集，不接入推送 / PR 主管线；当前结论已用于 android.yml 的
+# instrumented-tests job。runner 镜像或 KVM 权限变化后可重跑，诊断 GMD 是否仍可用。
 #
 # 用法：Actions → KVM probe → Run workflow，看日志末尾的结论与 Job summary。
 on:
@@ -76,5 +76,5 @@ jobs:
             echo "- 处理前 / 处理后当前用户可写 /dev/kvm：$BEFORE / $AFTER"
             echo "- 结论：$VERDICT"
             echo ""
-            echo "下一步：可用则在 android.yml 里落地 GMD（ATD 镜像）为独立 job；不可用则评估 larger runner 或 Firebase Test Lab。"
+            echo "下一步：若 runner 配置变化导致 GMD 不可用，修复 KVM 配置或评估 larger runner / Firebase Test Lab。"
           } >> "$GITHUB_STEP_SUMMARY"

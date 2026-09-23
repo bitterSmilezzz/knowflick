@@ -152,6 +152,8 @@ tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是�
 | android | JDK 17、Android SDK（Platform 35 + Build Tools 35.0.0） | ✅ 可用 |
 | mac | **完整 Xcode**（SwiftUI 宏需要 Xcode 的工具链插件） | ⚠️ 本机只有 CommandLineTools，`Sources/KnowFlick/**` 无法编译，`KnowFlickCore` 可构建 |
 
+Android 的 push-main 与 pull-request workflow 除 JVM 单测、Lint 和 APK 构建外，还会在 Gradle Managed Device 上运行仪器测试。设备为 Pixel 2 / API 30 / AOSP ATD；Ubuntu runner 需要先应用 KVM udev 规则，探针确认该配置可用。该 CI 覆盖不代表真实设备或 API 30 以上系统均已验证。
+
 #### 只有 CommandLineTools 时如何验证 mac 端
 
 ```sh
