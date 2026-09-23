@@ -24,7 +24,7 @@ Android 端是同仓库内的独立原生应用（Kotlin + Jetpack Compose），
 
 ## 当前版本
 
-- [macOS v4.3.0](https://github.com/bitterSmilezzz/knowflick/releases/tag/v4.3.0)：听书控制台、场景预设、学科图谱与本地 Agent 接入。[发布说明](docs/MAC_RELEASE_4.3.0.md)
+- [macOS v4.4.0](https://github.com/bitterSmilezzz/knowflick/releases/tag/v4.4.0)：听书接入控制中心与媒体键，支持系统播放控制。[发布说明](docs/MAC_RELEASE_4.4.0.md)
 - [Android v0.10.0](https://github.com/bitterSmilezzz/knowflick/releases/tag/android-v0.10.0)：知识地图、网页剪藏、图谱优化与睡前听书。[发布说明](docs/ANDROID_RELEASE_0.10.0.md)
 - [本地 MCP / CLI 使用说明](tools/knowflick-mcp/README.md)：检索、地图、学习路径与人工确认暂存；自动刷新卡库并保护并发写入。
 
