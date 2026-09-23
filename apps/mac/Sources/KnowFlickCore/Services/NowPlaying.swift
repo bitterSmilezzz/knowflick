@@ -65,6 +65,7 @@ public enum NowPlayingMapper {
 public struct NowPlayingCommands {
     public var play: () -> Void
     public var pause: () -> Void
+    public var togglePlayPause: () -> Void
     public var next: () -> Void
     public var previous: () -> Void
     /// 快退/快进给定秒数
@@ -73,12 +74,14 @@ public struct NowPlayingCommands {
     public init(
         play: @escaping () -> Void,
         pause: @escaping () -> Void,
+        togglePlayPause: @escaping () -> Void,
         next: @escaping () -> Void,
         previous: @escaping () -> Void,
         skip: @escaping (_ seconds: Int) -> Void
     ) {
         self.play = play
         self.pause = pause
+        self.togglePlayPause = togglePlayPause
         self.next = next
         self.previous = previous
         self.skip = skip
@@ -142,7 +145,7 @@ public final class NowPlayingController {
         }
         center.togglePlayPauseCommand.isEnabled = true
         center.togglePlayPauseCommand.addTarget { _ in
-            Task { @MainActor in commands().pause() }
+            Task { @MainActor in commands().togglePlayPause() }
             return .success
         }
         center.nextTrackCommand.isEnabled = true
