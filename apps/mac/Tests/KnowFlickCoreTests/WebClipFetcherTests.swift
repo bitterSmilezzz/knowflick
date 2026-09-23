@@ -3,6 +3,33 @@ import Testing
 
 @testable import KnowFlickCore
 
+private actor CountingByteSource {
+    private let bytes: [UInt8]
+    private var nextIndex = 0
+
+    init(_ bytes: [UInt8]) { self.bytes = bytes }
+
+    var readCount: Int { nextIndex }
+
+    func next() -> UInt8? {
+        defer { nextIndex += 1 }
+        guard nextIndex < bytes.count else { return nil }
+        return bytes[nextIndex]
+    }
+}
+
+private struct CountingByteSequence: AsyncSequence {
+    typealias Element = UInt8
+    let source: CountingByteSource
+
+    struct Iterator: AsyncIteratorProtocol {
+        let source: CountingByteSource
+        mutating func next() async -> UInt8? { await source.next() }
+    }
+
+    func makeAsyncIterator() -> Iterator { Iterator(source: source) }
+}
+
 /// 剪藏网络层的**判定逻辑**（不碰网络）：内容类型闸门、超限截断、字符集直通、请求头。
 /// Android 端 `WebClipFetcherTest.kt` 是同一批断言，两端口径必须一致。
 struct WebClipFetcherTests {
@@ -41,6 +68,35 @@ struct WebClipFetcherTests {
         let digest = try WebClipFetcher.digest(fromBytes: bytes, contentType: "text/html", url: url("https://b.test/long"))
         #expect(digest.truncated)
         #expect(digest.text.contains("商誉只有在被收购方"))
+    }
+
+    @Test("流式读取在上限后一字节停止，并能区分刚好到限")
+    func readsOnlyThroughOverflowSentinel() async throws {
+        let oversizedSource = CountingByteSource([0, 1, 2, 3, 4, 5, 6, 7])
+        var cancelled = false
+        let oversized = try await WebClipFetcher.readCapped(
+            CountingByteSequence(source: oversizedSource),
+            maxByteCount: 4,
+            onLimit: { cancelled = true }
+        )
+        let oversizedReadCount = await oversizedSource.readCount
+        #expect(oversized.bytes == [0, 1, 2, 3, 4])
+        #expect(oversized.truncated)
+        #expect(oversizedReadCount == 5)
+        #expect(cancelled)
+
+        let exactSource = CountingByteSource([1, 2, 3, 4])
+        var exactCancelled = false
+        let exact = try await WebClipFetcher.readCapped(
+            CountingByteSequence(source: exactSource),
+            maxByteCount: 4,
+            onLimit: { exactCancelled = true }
+        )
+        let exactReadCount = await exactSource.readCount
+        #expect(exact.bytes == [1, 2, 3, 4])
+        #expect(!exact.truncated)
+        #expect(exactReadCount == 5) // 最后一轮只确认 EOF，没有额外缓存正文。
+        #expect(!exactCancelled)
     }
 
     @Test("GBK 页面先按 charset 解码再抽取")

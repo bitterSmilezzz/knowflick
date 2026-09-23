@@ -3,8 +3,8 @@ import Foundation
 /// 剪藏的网络出口：只发 GET、不带任何本地凭据、限大小限时长。
 ///
 /// 与 Android `data/WebClipFetcher.kt` 同一口径（同一 URL 双端应得到同一 digest）。
-/// 抓取本身不进单测（依赖外网可达性），因此把**所有判定**下沉到
-/// `digest(fromBytes:contentType:url:)` 这个纯函数里离线测，网络层只负责搬运字节。
+/// 抓取本身不进单测（依赖外网可达性），因此把内容判断下沉到
+/// `digest(fromBytes:contentType:url:)` 这个纯函数里离线测，网络层只负责限量搬运字节。
 public enum WebClipFetcher {
     /// 与真实浏览器同族 UA：不少站点会对无 UA 或纯 App UA 的请求返回精简页甚至直接拦截
     public static let userAgent =
@@ -56,13 +56,42 @@ public enum WebClipFetcher {
         let ownsSession = session == nil
         let client = session ?? anonymousSession()
         defer { if ownsSession { client.invalidateAndCancel() } }
-        let (data, response) = try await client.data(for: makeRequest(for: url))
+        let (bytes, response) = try await client.bytes(for: makeRequest(for: url))
         guard let http = response as? HTTPURLResponse else { throw WebClipError.network("非 HTTP 响应") }
         guard (200...299).contains(http.statusCode) else {
             // 3xx 由 URLSession 自动跟随；走到这里说明是 4xx/5xx 或重定向环
+            bytes.task.cancel()
             throw WebClipError.status(http.statusCode)
         }
-        return try digest(fromBytes: Array(data), contentType: http.value(forHTTPHeaderField: "Content-Type"), url: url)
+        let contentType = http.value(forHTTPHeaderField: "Content-Type")
+        guard isHTMLContent(contentType) else {
+            bytes.task.cancel()
+            throw WebClipError.notHTML
+        }
+
+        let (prefix, _) = try await readCapped(bytes) {
+            bytes.task.cancel()
+        }
+        return try digest(fromBytes: prefix, contentType: contentType, url: url)
+    }
+
+    /// 增量读取至多上限 + 1 字节。多出的哨兵字节证明正文超限，也让调用方可立即取消网络任务。
+    static func readCapped<S: AsyncSequence>(
+        _ bytes: S,
+        maxByteCount: Int = WebClipEngine.maxHTMLBytes,
+        onLimit: () -> Void = {}
+    ) async throws -> (bytes: [UInt8], truncated: Bool) where S.Element == UInt8 {
+        precondition(maxByteCount >= 0)
+        var prefix: [UInt8] = []
+        prefix.reserveCapacity(maxByteCount + 1)
+        for try await byte in bytes {
+            prefix.append(byte)
+            if prefix.count > maxByteCount {
+                onLimit()
+                return (prefix, true)
+            }
+        }
+        return (prefix, false)
     }
 
     /// 纯函数：字节 → digest。大小上限、内容类型、抽不到正文都在这里判定，可离线测试。
