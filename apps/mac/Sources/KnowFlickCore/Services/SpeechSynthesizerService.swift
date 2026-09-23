@@ -330,20 +330,27 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
     func installNowPlayingCommands() {
         nowPlaying.installCommands { [weak self] in
             guard let self else {
-                return NowPlayingCommands(play: {}, pause: {}, next: {}, previous: {}, skip: { _ in })
+                return NowPlayingCommands(
+                    play: {}, pause: {}, togglePlayPause: {}, next: {}, previous: {}, skip: { _ in }
+                )
             }
-            let service = self
-            return NowPlayingCommands(
-                play: { service.resume() },
-                // 暂停与"切换播放/暂停"共用一个出口：系统两条指令都可能被客户端发过来
-                pause: {
-                    if service.state.isPlaying { service.pause() } else { service.resume() }
-                },
-                next: { service.onTransportNext?() },
-                previous: { service.onTransportPrevious?() },
-                skip: { seconds in service.seekRelative(seconds: seconds) }
-            )
+            return self.makeNowPlayingCommands()
         }
+    }
+
+    /// 供系统指令与单元测试共用，明确区分单向暂停和播放/暂停切换。
+    func makeNowPlayingCommands() -> NowPlayingCommands {
+        let service = self
+        return NowPlayingCommands(
+            play: { service.resume() },
+            pause: { service.pause() },
+            togglePlayPause: {
+                if service.state.isPlaying { service.pause() } else { service.resume() }
+            },
+            next: { service.onTransportNext?() },
+            previous: { service.onTransportPrevious?() },
+            skip: { seconds in service.seekRelative(seconds: seconds) }
+        )
     }
 
     /// 退出时收口：摘掉指令并清空控制中心，避免媒体键打到已释放的播放器。

@@ -135,6 +135,30 @@ struct NowPlayingTests {
         #expect(abs(snapshot.playbackRate - 0.9) < 0.001)
     }
 
+    @Test("系统暂停命令是单向且可重复调用")
+    func pauseCommandDoesNotResumePlayback() {
+        let service = makeService()
+        service.speak(card: card())
+        let commands = service.makeNowPlayingCommands()
+
+        commands.pause()
+        #expect(service.state.isPaused)
+        commands.pause()
+        #expect(service.state.isPaused)
+    }
+
+    @Test("系统切换命令在播放与暂停之间双向切换")
+    func toggleCommandSwitchesBetweenPlayingAndPaused() {
+        let service = makeService()
+        service.speak(card: card())
+        let commands = service.makeNowPlayingCommands()
+
+        commands.togglePlayPause()
+        #expect(service.state.isPaused)
+        commands.togglePlayPause()
+        #expect(service.state.isPlaying)
+    }
+
     @Test("媒体键指令接回播放器：下一张会划走当前卡，上一张把它放回顶位")
     func transportCommandsDriveTheStore() {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
