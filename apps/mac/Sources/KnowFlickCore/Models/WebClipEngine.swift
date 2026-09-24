@@ -64,10 +64,11 @@ public struct WebClipDigest: Equatable, Sendable {
 
     /// Mark AI-extracted cards as imported and keep the clipped page as their first source.
     public func attributing(_ cards: [KnowledgeCard]) -> [KnowledgeCard] {
-        cards.map { card in
+        let sourceURLs = Set([sourceURL, sourceLink.url])
+        return cards.map { card in
             var attributed = card
             attributed.source = .imported
-            attributed.links.removeAll { $0.url == sourceLink.url }
+            attributed.links.removeAll { sourceURLs.contains($0.url) }
             attributed.links.insert(sourceLink, at: 0)
             return attributed
         }
