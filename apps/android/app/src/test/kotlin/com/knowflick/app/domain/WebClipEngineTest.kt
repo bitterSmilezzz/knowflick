@@ -111,6 +111,37 @@ class WebClipEngineTest {
     }
 
     @Test
+    fun attributionKeepsCanonicalSourceFirstAndRemovesSourceAliases() {
+        val digest = WebClipDigest(
+            sourceURL = "https://example.test/article?from=share",
+            pageURL = "https://example.test/canonical",
+            title = "A useful article",
+            siteName = "Example",
+            description = "Summary",
+            text = "Article body",
+            truncated = false,
+        )
+        val articleLink = ScienceLink(title = "Original address", url = digest.sourceURL)
+        val canonicalLink = ScienceLink(title = "Canonical address", url = digest.pageURL)
+        val researchLink = ScienceLink(title = "Research paper", url = "https://papers.test/1")
+        val card = KnowledgeCard(
+            id = "clip-test",
+            category = "AI",
+            headline = "A useful idea",
+            summary = "Summary",
+            details = "Details",
+            links = listOf(articleLink, canonicalLink, researchLink),
+            source = CardSource.AI,
+            createdAt = 0L,
+        )
+
+        val attributed = digest.attributing(listOf(card)).single()
+
+        assertEquals(CardSource.IMPORTED, attributed.source)
+        assertEquals(listOf(digest.sourceLink, researchLink), attributed.links)
+    }
+
+    @Test
     fun onlyArticleParagraphsSurvive() {
         val digest = WebClipEngine.digest(articleHTML, articleLink) ?: return fail("应能抽到正文")
         assertTrue(digest.text.contains("七十天后总量翻倍"))

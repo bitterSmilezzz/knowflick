@@ -2,7 +2,6 @@ package com.knowflick.app.ai
 
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.KnowledgeCard
-import com.knowflick.app.domain.ScienceLink
 import com.knowflick.app.net.executeCancellable
 import java.net.URL
 import java.net.URLEncoder
@@ -195,13 +194,12 @@ class AiService(
      * `AIService.transformNoteToCards`，提示词与 mac 逐字一致（见 [AiTextUtils.transformPrompt]）。
      *
      * 与 [generateCards] 的差别：不注入分类白名单、不排除历史标题（提炼要忠于原文而不是创作），
-     * 但保留「详情 ≥80 字」质量门槛，并把来源链接排在最前以便回溯原文。
+     * 但保留「详情 ≥80 字」质量门槛；网页来源由调用方结合剪藏摘要统一归因。
      */
     suspend fun transformNoteToCards(
         settings: AiSettings,
         apiKey: String,
         note: String,
-        sourceLinks: List<ScienceLink> = emptyList(),
     ): List<KnowledgeCard> {
         val trimmed = note.trim()
         if (trimmed.isEmpty()) return emptyList()
@@ -258,8 +256,7 @@ class AiService(
                 headline = payload.headline,
                 summary = payload.summary,
                 details = payload.details,
-                // 来源链接放最前：详情页一眼能回到原文，而不是只看到一堆检索链接
-                links = sourceLinks.filter { candidate -> links.none { it.url == candidate.url } } + links,
+                links = links,
                 source = CardSource.IMPORTED,
                 createdAt = now,
             )
