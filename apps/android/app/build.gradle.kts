@@ -26,8 +26,8 @@ android {
         applicationId = "com.knowflick.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.10.1"
+        versionCode = 22
+        versionName = "0.10.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -100,7 +100,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // 凭据持久化：EncryptedSharedPreferences（Android Keystore 支撑）。
     // 1.1.0 起 EncryptedSharedPreferences / MasterKey 已被 androidx 标记弃用
-    //（改用 AndroidKeyStore + KeyGenerator），代码侧以 @Suppress("DEPRECATION") + TODO 承接；
+    //（改用 AndroidKeyStore + KeyGenerator），代码侧以 @Suppress("DEPRECATION") 承接；
     // TODO(技术债)：凭据存储迁移到 DataStore + Tink 或原生 AndroidKeyStore（见 SystemCredentialStore.kt）。
     implementation("androidx.security:security-crypto:1.1.0")
 
