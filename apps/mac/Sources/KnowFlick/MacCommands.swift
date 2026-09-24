@@ -45,6 +45,10 @@ struct MacCommands: Commands {
                 .keyboardShortcut("i", modifiers: [.shift, .command])
                 .disabled(actions?.canOpen != true)
 
+            Button("从网页剪藏…") { actions?.open(.webClip) }
+                .keyboardShortcut("i", modifiers: [.option, .command])
+                .disabled(actions?.canOpen != true)
+
             Button("导出知识卡片…") { actions?.open(.exportCards(nil)) }
                 .keyboardShortcut("e", modifiers: [.shift, .command])
                 .disabled(actions?.canOpen != true)

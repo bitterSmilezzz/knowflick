@@ -24,7 +24,7 @@ Android 端是同仓库内的独立原生应用（Kotlin + Jetpack Compose），
 
 ## 当前版本
 
-- [macOS v4.4.2](https://github.com/bitterSmilezzz/knowflick/releases/tag/v4.4.2)：网页剪藏限制响应读取量，大页面超限后及时停止抓取。[发布说明](docs/MAC_RELEASE_4.4.2.md)
+- [macOS v4.4.3](https://github.com/bitterSmilezzz/knowflick/releases/tag/v4.4.3)：新增网页剪藏入口，先预览正文，再由用户发起 AI 提炼并确认入库。[发布说明](docs/MAC_RELEASE_4.4.3.md)
 - [Android v0.10.0](https://github.com/bitterSmilezzz/knowflick/releases/tag/android-v0.10.0)：知识地图、网页剪藏、图谱优化与睡前听书。[发布说明](docs/ANDROID_RELEASE_0.10.0.md)
 - [本地 MCP / CLI 使用说明](tools/knowflick-mcp/README.md)：检索、地图、学习路径与人工确认暂存；自动刷新卡库并保护并发写入。
 
