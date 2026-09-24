@@ -641,12 +641,12 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         clipError = null
         clipJob = viewModelScope.launch {
             try {
-                val cards = aiService.transformNoteToCards(
+                val transformedCards = aiService.transformNoteToCards(
                     settings = settings,
                     apiKey = currentApiKey(),
                     note = digest.aiNote,
-                    sourceLinks = listOf(digest.sourceLink),
                 )
+                val cards = digest.attributing(transformedCards)
                 mutate { model.store.addCards(cards, insertAtTop = true) }
                 generateNotice = "已剪藏《${digest.siteName}》并生成 ${cards.size} 张卡片 ✓"
                 showClipSheet = false

@@ -87,6 +87,7 @@ struct WebClipFetcherTests {
             summary: "Summary",
             details: "Details",
             links: [
+                ScienceLink(title: "Example", url: digest.sourceURL),
                 ScienceLink(title: "Example", url: digest.pageURL),
                 ScienceLink(title: "Research paper", url: "https://papers.test/1")
             ],
@@ -99,6 +100,7 @@ struct WebClipFetcherTests {
         #expect(attributed[0].source == .imported)
         #expect(attributed[0].links.first == digest.sourceLink)
         #expect(attributed[0].links.filter { $0.url == digest.pageURL }.count == 1)
+        #expect(!attributed[0].links.contains { $0.url == digest.sourceURL })
         #expect(attributed[0].links.last?.url == "https://papers.test/1")
     }
 
