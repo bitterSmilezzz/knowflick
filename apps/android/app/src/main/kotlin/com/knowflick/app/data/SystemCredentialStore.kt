@@ -11,16 +11,23 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
- * 生产凭据存储：EncryptedSharedPreferences（Android Keystore 主密钥加密）。
+ * 生产凭据存储：EncryptedSharedPreferences（Android Keystore 主密钥加密）。写入与删除在 IO
+ * dispatcher 上执行同步落盘，继续把结果交给设置页，同时避免 Keystore 加密和 fsync 卡住主线程。
  * 初始化失败（极少数设备 Keystore 异常）时回退普通 SharedPreferences 并标记降级，
  * 保证功能可用且不静默丢数据。
  *
  * 该降级标记（[isEncrypted]）由设置页消费，降级时显示橙色提示条——静默把 API Key
  * 写成明文是不可接受的。
  */
-class SystemCredentialStore(context: Context) : CredentialStore {
+class SystemCredentialStore internal constructor(
+    context: Context,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : CredentialStore {
 
     private val prefs: SharedPreferences
     private val encrypted: Boolean
@@ -37,33 +44,36 @@ class SystemCredentialStore(context: Context) : CredentialStore {
     override fun read(account: String): String? = prefs.getString(account, null)
 
     /**
-     * 凭据写入必须**同步**落盘并把结果回传给设置页的成功/失败提示，因此保留 `commit()`：
+     * 凭据写入必须落盘并把结果回传给设置页的成功/失败提示，因此保留 `commit()`：
      * - 返回值是 [CredentialStore.save] 的接口契约（`MainActivity` → `SettingsScreen`
      *   据此显示「已保存并生效 ✓」还是「写入设备失败，请重试」）；`apply()` 返回 void，
      *   改用它会让失败分支变成不可达的静默假成功；
      * - 凭据是「丢了就必须回服务商重新复制一次」的数据，不能容忍 `apply()` 的后台排队
      *   在进程被杀时丢写。
      *
-     * 已知代价：`commit()` 在主线程执行（Compose 点击回调），含 Keystore 加解密 + fsync，
-     * 可能带来数十毫秒卡顿。要同时保住「返回值可上报」与「不阻塞主线程」需要把
-     * save/delete 改成 suspend（API 变更），已登记为独立技术债。
+     * `save` / `delete` 是 suspend API，`commit()` 在 IO dispatcher 执行，避免 Keystore 加解密
+     * 与 fsync 阻塞主线程，同时保留可上报的落盘结果。
      *
      * TODO(技术债)：凭据存储迁移到 DataStore + Tink（或直接用 AndroidKeyStore + KeyGenerator）
-     * 以摆脱已被 androidx 弃用的 `EncryptedSharedPreferences`/`MasterKey`，届时同步改 suspend。
+     * 以摆脱已被 androidx 弃用的 `EncryptedSharedPreferences`/`MasterKey`。
      */
     @SuppressLint("ApplySharedPref")
-    override fun save(value: String, account: String): Boolean = try {
-        prefs.edit().putString(account, value).commit()
-    } catch (_: Exception) {
-        false
+    override suspend fun save(value: String, account: String): Boolean = withContext(ioDispatcher) {
+        try {
+            prefs.edit().putString(account, value).commit()
+        } catch (_: Exception) {
+            false
+        }
     }
 
-    /** 同 [save]：返回值驱动设置页提示，故保留 `commit()`。 */
+    /** 同 [save]：返回值驱动设置页提示，故保留 `commit()`，由 IO dispatcher 执行。 */
     @SuppressLint("ApplySharedPref")
-    override fun delete(account: String): Boolean = try {
-        prefs.edit().remove(account).commit()
-    } catch (_: Exception) {
-        false
+    override suspend fun delete(account: String): Boolean = withContext(ioDispatcher) {
+        try {
+            prefs.edit().remove(account).commit()
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun createStore(context: Context): Pair<SharedPreferences, Boolean> {

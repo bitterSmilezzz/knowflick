@@ -1,6 +1,6 @@
 # KnowFlick Android
 
-原生 Kotlin + Jetpack Compose 应用。当前版本 **0.10.1**（versionCode 21），最低 Android 8.0 / API 26，target/compile SDK 35。
+原生 Kotlin + Jetpack Compose 应用。当前版本 **0.10.2**（versionCode 22），最低 Android 8.0 / API 26，target/compile SDK 35。
 
 已实现刷卡、详情、收藏与历史、学习统计、知识测验、撤销上一张、AI 流式生成与服务商配置、卡片 JSON 导入，以及 JSON/Markdown/Anki 文本导出。语音支持系统 TTS、云端 OpenAI 兼容接口与本地回环网关。背景图使用 WebP 与领域多图池（42 张，计算机与 AI / 自然宇宙科学 / 人文心智 / 商业财会金融四池），发布包内置 baseline profile。
 
@@ -67,7 +67,7 @@ Keystore 不可用时 `SystemCredentialStore` 会回退到普通 `SharedPreferen
 - `androidx.activity:activity-compose` 停在 1.9.3：1.13.0 要求 `minCompileSdk=36` + AGP ≥ 8.9.1。
 - `androidx.lifecycle:lifecycle-runtime-ktx` 停在 2.8.7：升 2.11.0 会因组内版本对齐把 `lifecycle-runtime-compose` 一起升级，其 AAR 元数据要求 `minCompileSdk=37` + AGP 9.1.0，`checkDebugAarMetadata` 直接失败；升 2.10.0 / 2.9.4 的 AAR 元数据虽可通过，但它们的 lint 检测器在 AGP 8.7.3 自带 lint 下抛 `IncompatibleClassChangeError`，会让 `lintDebug` 崩溃。不为此 disable 正确性检查。
 - `androidx.test` 三件套不升：`robolectric:4.14.1` 依赖 `androidx.test:monitor:1.7.2`（1.6.x 线），把 `core` 单独升到 1.7.0（monitor 1.8.0 线）会让单元测试类路径混装。
-- `androidx.security:security-crypto` 已升 1.1.0（摆脱 alpha）；其 `EncryptedSharedPreferences` / `MasterKey` 自 1.1.0 起被 androidx 弃用，代码以文件级 `@Suppress("DEPRECATION")` + TODO 承接，迁移到 DataStore + Tink 或原生 AndroidKeyStore 登记为独立技术债。
+- `androidx.security:security-crypto` 已升 1.1.0（摆脱 alpha）；其 `EncryptedSharedPreferences` / `MasterKey` 自 1.1.0 起被 androidx 弃用，代码以文件级 `@Suppress("DEPRECATION")` + TODO 承接，迁移到 DataStore + Tink 或原生 AndroidKeyStore 登记为独立技术债。当前凭据写入与删除使用 suspend API，在 IO dispatcher 执行 `commit()` 并保留成功/失败结果；读取与存储初始化仍是同步操作。
 
 以上四项对应 Lint 中剩余 5 条 `GradleDependency` 警告（另含 activity-compose），均为有意保留。
 

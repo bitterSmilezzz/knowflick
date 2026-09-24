@@ -1,5 +1,6 @@
 package com.knowflick.app
 
+import kotlinx.coroutines.runBlocking
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.knowflick.app.data.SystemCredentialStore
@@ -22,8 +23,8 @@ class CredentialPersistenceTest {
         val store = SystemCredentialStore(context)
         assertTrue("设备应支持 Keystore 加密存储", store.isEncrypted)
 
-        assertTrue(store.save("sk-persist-test", "apiKey"))
-        assertTrue(store.save("tts-secret", "tts.key"))
+        assertTrue(runBlocking { store.save("sk-persist-test", "apiKey") })
+        assertTrue(runBlocking { store.save("tts-secret", "tts.key") })
 
         // 新实例（模拟进程重启）应能读到
         val reopened = SystemCredentialStore(context)
@@ -31,8 +32,8 @@ class CredentialPersistenceTest {
         assertEquals("tts-secret", reopened.read("tts.key"))
 
         // 清理
-        assertTrue(reopened.delete("apiKey"))
-        assertTrue(reopened.delete("tts.key"))
+        assertTrue(runBlocking { reopened.delete("apiKey") })
+        assertTrue(runBlocking { reopened.delete("tts.key") })
         assertNull(SystemCredentialStore(context).read("apiKey"))
     }
 
@@ -40,7 +41,7 @@ class CredentialPersistenceTest {
     fun settingsJsonNeverContainsCredentials() {
         // 回归护栏：密钥只进 Keystore，不进 settings.json / speech.json（通过 UiAutomator 层验证文件）
         val store = SystemCredentialStore(context)
-        store.save("sk-should-not-leak", "apiKey")
+        runBlocking { store.save("sk-should-not-leak", "apiKey") }
         val filesDir = context.filesDir
         val storeDir = java.io.File(filesDir, "store")
         listOf("settings.json", "speech.json").forEach { name ->
@@ -49,6 +50,6 @@ class CredentialPersistenceTest {
                 assertTrue("$name 不应包含密钥明文", !file.readText().contains("sk-should-not-leak"))
             }
         }
-        store.delete("apiKey")
+        runBlocking { store.delete("apiKey") }
     }
 }

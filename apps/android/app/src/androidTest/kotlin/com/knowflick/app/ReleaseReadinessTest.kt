@@ -1,5 +1,6 @@
 package com.knowflick.app
 
+import kotlinx.coroutines.runBlocking
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -113,19 +114,25 @@ class ReleaseReadinessTest {
 
     @Test fun switchingToLocalServicesDeletesStaleCloudCredentials() {
         val credentials = SystemCredentialStore(rule.activity)
-        assertTrue(credentials.save("old-ai-cloud-key", "apiKey"))
-        assertTrue(credentials.save("old-tts-cloud-key", "tts.key"))
+        assertTrue(runBlocking { credentials.save("old-ai-cloud-key", "apiKey") })
+        assertTrue(runBlocking { credentials.save("old-tts-cloud-key", "tts.key") })
 
+        lateinit var viewModel: KnowFlickViewModel
         rule.runOnIdle {
-            model().saveSettings(
+            viewModel = model()
+            viewModel.saveSettings(
                 AiSettings(providerId = "ollama", baseURL = "http://127.0.0.1:11434/v1", model = "qwen2.5:7b"),
                 apiKey = "old-ai-cloud-key",
             )
-            model().saveSpeechSettings(
+        }
+        rule.waitUntil(5_000) { !viewModel.isSavingSettings }
+        rule.runOnIdle {
+            viewModel.saveSpeechSettings(
                 SpeechSettings(channel = SpeechChannel.LOCAL.name, baseURL = "http://127.0.0.1:8880", model = "kokoro"),
                 apiKey = "old-tts-cloud-key",
             )
         }
+        rule.waitUntil(5_000) { !viewModel.isSavingSettings }
 
         assertNull(SystemCredentialStore(rule.activity).read("apiKey"))
         assertNull(SystemCredentialStore(rule.activity).read("tts.key"))

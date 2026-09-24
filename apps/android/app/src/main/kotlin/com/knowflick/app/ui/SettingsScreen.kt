@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,8 +67,17 @@ fun SettingsScreen(
     initialSpeechKey: String,
     onBack: () -> Unit,
     onTestConnection: suspend (AiSettings, String) -> String,
-    onSave: (AiSettings, String) -> Boolean,
-    onSaveSpeech: (com.knowflick.app.speech.SpeechSettings, String) -> Boolean,
+    onSave: (AiSettings, String) -> Unit,
+    onSaveSpeech: (com.knowflick.app.speech.SpeechSettings, String) -> Unit,
+    isSavingSettings: Boolean,
+    isSavingAiSettings: Boolean,
+    isSavingSpeechSettings: Boolean,
+    aiSaveNotice: String,
+    aiSaveSucceeded: Boolean,
+    speechSaveNotice: String,
+    speechSaveSucceeded: Boolean,
+    onClearAiSaveNotice: () -> Unit,
+    onClearSpeechSaveNotice: () -> Unit,
     /** 凭据是否运行在 Keystore 加密存储上；false 表示已降级为明文存储，必须让用户知情 */
     credentialsEncrypted: Boolean = true,
     currentPaperTheme: PaperTheme = PaperTheme.SYSTEM,
@@ -85,8 +95,6 @@ fun SettingsScreen(
     // 否则 rememberSaveable 会恢复 isTesting=true，让按钮永久停在“测试中”。
     var testStatus by remember { mutableStateOf("") }
     var isTesting by remember { mutableStateOf(false) }
-    var saveNotice by rememberSaveable { mutableStateOf("") }
-    var saveSucceeded by rememberSaveable { mutableStateOf(true) }
     var speechChannel by rememberSaveable { mutableStateOf(initialSpeech.channel) }
     var speechBaseURL by rememberSaveable { mutableStateOf(initialSpeech.baseURL) }
     var speechModel by rememberSaveable { mutableStateOf(initialSpeech.model) }
@@ -94,6 +102,11 @@ fun SettingsScreen(
     var speechKey by rememberSaveable { mutableStateOf(initialSpeechKey) }
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.35f
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(providerId, baseURL, model, apiKey) { onClearAiSaveNotice() }
+    LaunchedEffect(speechChannel, speechBaseURL, speechModel, speechVoice, speechKey) {
+        onClearSpeechSaveNotice()
+    }
 
     val currentPreset = AiProviderPresets.presets.firstOrNull { it.id == providerId } ?: AiProviderPresets.fallback()
 
@@ -243,15 +256,14 @@ fun SettingsScreen(
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (isDarkTheme) EditorialColor.likeGreenPastelDark else EditorialColor.likeGreenPastel)
                         .border(1.dp, if (isDarkTheme) EditorialColor.likeGreenBorderDark else EditorialColor.likeGreenBorder, RoundedCornerShape(10.dp))
-                        .clickable {
-                            saveSucceeded = onSave(currentSettings(), apiKey.trim())
-                            saveNotice = if (saveSucceeded) "已保存并生效 ✓" else "当前会话已生效，但写入设备失败，请重试"
+                        .clickable(enabled = !isSavingSettings) {
+                            onSave(currentSettings(), apiKey.trim())
                             testStatus = ""
                         }
                         .padding(horizontal = 18.dp, vertical = 9.dp),
                 ) {
                     Text(
-                        "保存配置",
+                        if (isSavingAiSettings) "保存中…" else "保存配置",
                         color = if (isDarkTheme) EditorialColor.likeGreen else Color(0xFF1E3A24),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
@@ -268,9 +280,14 @@ fun SettingsScreen(
                     fontSize = 12.sp,
                 )
             }
-            if (saveNotice.isNotBlank()) {
+            if (aiSaveNotice.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text(saveNotice, color = if (saveSucceeded) EditorialColor.likeGreen else EditorialColor.dislikeRed, fontSize = 12.sp)
+                val noticeColor = when {
+                    isSavingAiSettings -> EditorialColor.aiAmber
+                    aiSaveSucceeded -> EditorialColor.likeGreen
+                    else -> EditorialColor.dislikeRed
+                }
+                Text(aiSaveNotice, color = noticeColor, fontSize = 12.sp)
             }
             if (currentPreset.id in AiProviderPresets.keylessIds && currentPreset.id != "custom") {
                 Spacer(Modifier.height(6.dp))
@@ -325,8 +342,8 @@ fun SettingsScreen(
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (isDarkTheme) EditorialColor.likeGreenPastelDark else EditorialColor.likeGreenPastel)
                     .border(1.dp, if (isDarkTheme) EditorialColor.likeGreenBorderDark else EditorialColor.likeGreenBorder, RoundedCornerShape(10.dp))
-                    .clickable {
-                        saveSucceeded = onSaveSpeech(
+                    .clickable(enabled = !isSavingSettings) {
+                        onSaveSpeech(
                             com.knowflick.app.speech.SpeechSettings(
                                 channel = speechChannel,
                                 baseURL = speechBaseURL.trim(),
@@ -336,16 +353,24 @@ fun SettingsScreen(
                             ),
                             speechKey.trim(),
                         )
-                        saveNotice = if (saveSucceeded) "语音配置已保存 ✓" else "当前会话已生效，但写入设备失败，请重试"
                     }
                     .padding(horizontal = 18.dp, vertical = 9.dp),
             ) {
                 Text(
-                    "保存语音配置",
+                    if (isSavingSpeechSettings) "保存中…" else "保存语音配置",
                     color = if (isDarkTheme) EditorialColor.likeGreen else Color(0xFF1E3A24),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                 )
+            }
+            if (speechSaveNotice.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                val noticeColor = when {
+                    isSavingSpeechSettings -> EditorialColor.aiAmber
+                    speechSaveSucceeded -> EditorialColor.likeGreen
+                    else -> EditorialColor.dislikeRed
+                }
+                Text(speechSaveNotice, color = noticeColor, fontSize = 12.sp)
             }
             Spacer(Modifier.height(24.dp))
             androidx.compose.material3.HorizontalDivider(
