@@ -70,6 +70,38 @@ struct WebClipFetcherTests {
         #expect(digest.text.contains("商誉只有在被收购方"))
     }
 
+    @Test("网页来源排在 AI 提炼卡片的第一条链接")
+    func attributesClippedCardsWithSource() {
+        let digest = WebClipDigest(
+            sourceURL: "https://example.test/article?from=share",
+            pageURL: "https://example.test/canonical",
+            title: "A useful article",
+            siteName: "Example",
+            description: "Summary",
+            text: "Article body",
+            truncated: false
+        )
+        let card = KnowledgeCard(
+            category: "AI",
+            headline: "A useful idea",
+            summary: "Summary",
+            details: "Details",
+            links: [
+                ScienceLink(title: "Example", url: digest.pageURL),
+                ScienceLink(title: "Research paper", url: "https://papers.test/1")
+            ],
+            source: .ai
+        )
+
+        let attributed = digest.attributing([card])
+
+        #expect(attributed.count == 1)
+        #expect(attributed[0].source == .imported)
+        #expect(attributed[0].links.first == digest.sourceLink)
+        #expect(attributed[0].links.filter { $0.url == digest.pageURL }.count == 1)
+        #expect(attributed[0].links.last?.url == "https://papers.test/1")
+    }
+
     @Test("流式读取在上限后一字节停止，并能区分刚好到限")
     func readsOnlyThroughOverflowSentinel() async throws {
         let oversizedSource = CountingByteSource([0, 1, 2, 3, 4, 5, 6, 7])

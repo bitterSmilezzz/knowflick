@@ -39,7 +39,7 @@
 **「抽正文」和「提炼成卡片」是两步，中间必须让人看一眼**：抽取是无损的、提炼是有损且花额度的，所以面板先给正文预览，点「AI 提炼成卡片并置顶入堆」才写库（`source = IMPORTED`，来源链接排在 `links` 最前以便回到原文）。
 内核是**双端逐条对齐的规则表**（Swift `KnowFlickCore/Models/WebClipEngine.swift` ↔ Kotlin `domain/WebClipEngine.kt`，夹具 HTML 与期望值两边逐字相同）：UTF-8 字节扫描、丢脚本/导航/页眉页脚/表单/评论子树、`<article>`/`<main>`/id-class 候选挑正文（否决词优先，占整页不足一半则退回整页）、实体解码、样板行过滤、**按行截断 4000 字**（与提炼提示词既有预算同档，不单开 token 档）、charset 按「HTTP 头 → `<meta charset>` → UTF-8」解析（中文站 GBK/Big5 不能出 ``）。
 三条边界：① 链接只收 http/https，带 `user:pass@` 的**直接拒**（否则凭据会被写进卡片来源链接）；② 抓取是匿名只读（不收不发 Cookie、不落盘缓存、4 MB 上限、15 s 超时），并**沿用 App 既有的明文策略**（只对回环放开 HTTP），不为剪藏放宽；③ 所有判定下沉成纯函数（`digest(fromBytes:contentType:)`），网络层只搬字节。
-Android 入口是 `ACTION_SEND text/plain`（**不注册 `ACTION_VIEW`**，否则本 App 会被列成系统默认浏览器候选）+ 卡堆 ⋮ 菜单；分享进来直接开面板并自动抽取。
+macOS 入口在学习工作台、知识库和「文件 → 从网页剪藏…」，抓取后先展示正文预览，用户显式点击 AI 提炼后才发送正文；Android 入口是 `ACTION_SEND text/plain`（**不注册 `ACTION_VIEW`**，否则本 App 会被列成系统默认浏览器候选）+ 卡堆 ⋮ 菜单，分享进来直接开面板并自动抽取。两端提炼后的卡片都把原文链接放在 `links` 首位。
 
 ## 卡堆 / 队列（Deck）
 未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关（enableSeed/enableAI）在偏好过滤前生效**：只开其一则只看该来源，**全关则队列为空（含导入卡片）**。**卡堆输出前统一经 `CardThemeResolver.arrangeWithMinDistance(minDistance: 5)` 处理**：先按确定性盐值哈希全局打散，再贪心排布保证同背景图 key 间隔 ≥ 5 张（key 多样性充足时成立；候选不足时退化为「最大化间隔」的贪心选择，不保证严格间隔），杜绝日常刷卡连续撞图，并有性质测试护栏（CardThemeResolverTests）。

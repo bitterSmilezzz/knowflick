@@ -16,6 +16,7 @@ enum ActiveSheet: Identifiable {
     case search
     case exportCards([KnowledgeCard]?)
     case importNotes
+    case webClip
     case plannedReview([KnowledgeCard])
     case editCard(KnowledgeCard)
     case sync
@@ -36,6 +37,7 @@ enum ActiveSheet: Identifiable {
         case .search: return "search"
         case .exportCards: return "exportCards"
         case .importNotes: return "importNotes"
+        case .webClip: return "webClip"
         case .plannedReview: return "plannedReview"
         case .editCard(let card): return "edit_\(card.id)"
         case .sync: return "sync"
@@ -294,6 +296,8 @@ struct CardDeckView: View {
                     ImportNotesModalView(store: store) {
                         activeSheet = nil
                     }
+                case .webClip:
+                    WebClipModalView(store: store, onClose: { activeSheet = nil })
                 case .plannedReview(let cards):
                     QuizView(store: store, plannedCards: cards) { activeSheet = nil }
                 case .editCard(let card):

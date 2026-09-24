@@ -107,6 +107,7 @@ struct LearningWorkspaceView: View {
             Divider()
             sideAction("沉浸刷卡", icon: "rectangle.stack", expanded: expanded, action: explore)
             sideAction("导入笔记", icon: "square.and.arrow.down", expanded: expanded) { open(.importNotes) }
+            sideAction("网页剪藏", icon: "link", expanded: expanded) { open(.webClip) }
             sideAction("知识星图", icon: "point.3.connected.trianglepath.dotted", expanded: expanded) { open(.graph) }
             Spacer(minLength: 16)
             if expanded {
@@ -364,6 +365,8 @@ struct LearningWorkspaceView: View {
             HStack {
                 sectionHeading("知识，是自己的。", subtitle: "\(store.cards.count) 张卡片，按主题、来源和学习状态整理")
                 Spacer()
+                Button { open(.webClip) } label: { Label("剪藏网页", systemImage: "link") }
+                    .buttonStyle(.bordered)
                 Button { open(.importNotes) } label: { Label("导入笔记", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).tint(EditorialColor.aiAmber)
             }
