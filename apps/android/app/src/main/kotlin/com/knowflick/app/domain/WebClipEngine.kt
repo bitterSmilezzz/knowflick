@@ -51,6 +51,17 @@ data class WebClipDigest(
 
     val sourceLink: ScienceLink
         get() = ScienceLink(title = siteName.ifEmpty { pageURL }, url = pageURL)
+
+    /** Keep the canonical page first and remove AI links that repeat either known clip URL. */
+    fun attributing(cards: List<KnowledgeCard>): List<KnowledgeCard> {
+        val sourceURLs = setOf(sourceURL, sourceLink.url)
+        return cards.map { card ->
+            card.copy(
+                links = listOf(sourceLink) + card.links.filterNot { it.url in sourceURLs },
+                source = CardSource.IMPORTED,
+            )
+        }
+    }
 }
 
 object WebClipEngine {
