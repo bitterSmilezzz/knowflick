@@ -61,6 +61,17 @@ public struct WebClipDigest: Equatable, Sendable {
     public var sourceLink: ScienceLink {
         ScienceLink(title: siteName.isEmpty ? pageURL : siteName, url: pageURL)
     }
+
+    /// Mark AI-extracted cards as imported and keep the clipped page as their first source.
+    public func attributing(_ cards: [KnowledgeCard]) -> [KnowledgeCard] {
+        cards.map { card in
+            var attributed = card
+            attributed.source = .imported
+            attributed.links.removeAll { $0.url == sourceLink.url }
+            attributed.links.insert(sourceLink, at: 0)
+            return attributed
+        }
+    }
 }
 
 public enum WebClipEngine {

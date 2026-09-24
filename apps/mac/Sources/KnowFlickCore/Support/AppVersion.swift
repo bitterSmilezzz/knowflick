@@ -7,5 +7,5 @@ import Foundation
 /// 历史遗留：4.1.1–4.1.8 曾被 Android 里程碑占用，CHANGELOG 中已更名为对应的
 /// android-v0.1.0–v0.7.0；mac 端自 4.2.0 起继续。
 public enum AppVersion {
-    public static let current = "4.4.2"
+    public static let current = "4.4.3"
 }
