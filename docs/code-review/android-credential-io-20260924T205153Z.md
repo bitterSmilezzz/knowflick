@@ -12,7 +12,7 @@
 - 隔离 worktree：`/tmp/knowflick-20260924T205153Z`
 - 最终审查补丁：`/tmp/knowflick-20260924T205153Z-final-review-v2.patch`
 - 审查范围：相对 base 的全部 Android 产品实现、关联单元与仪器测试、版本配置、CHANGELOG、README 和 Android 发布说明。
-- 审查方式：Agent 只读静态审查，没有修改文件、运行构建/测试、提交或推送。最终补丁与暂存 diff 逐行一致。本报告在复审通过后加入；之后没有再改动产品代码。
+- 审查方式：Agent 只读静态审查，没有修改文件、运行构建/测试、提交或推送。最终补丁与暂存 diff 逐行一致。本报告在复审通过后加入；原审查结论对应上述最终产品候选。CI 后续发现的测试适配修复记录见文末。
 
 ## 首轮确认问题及处理
 
@@ -43,3 +43,10 @@
 - `adb devices`：没有连接的 Android 设备；因此仪器测试未运行，但仪器测试 Kotlin 源码已单独编译。
 - `git diff --cached --check`：通过。
 - 敏感信息扫描：最终暂存补丁、APK、SHA-256 sidecar、mapping 和 JVM 测试 XML 无 gitleaks findings。构建日志的 3 个 generic-api-key 命中均来自签名校验程序输出的公开证书/公钥摘要；扫描报告已脱敏，未读取或复制签名私钥/密码。邮箱格式检查无命中。
+
+## CI 失败后的测试适配（2026-09-25）
+
+- GitHub Actions run `36066203037` 的单测失败是测试断言问题：Kotlin 协程调试模式会把 `@coroutine#<编号>` 附加到线程名，导致对执行器线程名做全等比较失败。
+- `SystemCredentialStoreTest` 现在捕获测试执行器工厂创建的线程对象，并对保存与删除分别断言执行线程与该对象为同一实例。这样继续验证注入的 dispatcher 生效，同时不依赖运行时修改的线程名。生产实现未改动。
+- 此测试适配发生在上方独立审查之后；上方审查记录未覆盖该后续测试差异。
+- 修复后以 `-Dkotlinx.coroutines.debug=on` 运行 265 项 JVM 单测、`lintDebug`、`assembleDebug` 与 `assembleRelease`，全部通过。

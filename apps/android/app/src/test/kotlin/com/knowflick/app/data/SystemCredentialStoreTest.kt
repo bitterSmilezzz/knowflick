@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -25,8 +26,9 @@ class SystemCredentialStoreTest {
     @Test
     fun saveAndDeleteRunOnTheConfiguredIoDispatcher() = runBlocking {
         val callerThread = Thread.currentThread()
+        val configuredIoThread = AtomicReference<Thread?>()
         val executorDispatcher = Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "credential-store-test-io")
+            Thread(runnable, "credential-store-test-io").also { configuredIoThread.set(it) }
         }.asCoroutineDispatcher()
         val recordingDispatcher = RecordingDispatcher(executorDispatcher)
         val store = SystemCredentialStore(
@@ -39,14 +41,14 @@ class SystemCredentialStoreTest {
             assertTrue(store.save("test-value", account))
             val saveThread = assertNotNull(recordingDispatcher.lastDispatchedThread.get())
             assertNotSame(callerThread, saveThread)
-            assertEquals("credential-store-test-io", saveThread.name)
+            assertSame(assertNotNull(configuredIoThread.get()), saveThread)
             assertEquals("test-value", store.read(account))
 
             recordingDispatcher.lastDispatchedThread.set(null)
             assertTrue(store.delete(account))
             val deleteThread = assertNotNull(recordingDispatcher.lastDispatchedThread.get())
             assertNotSame(callerThread, deleteThread)
-            assertEquals("credential-store-test-io", deleteThread.name)
+            assertSame(assertNotNull(configuredIoThread.get()), deleteThread)
             assertNull(store.read(account))
         } finally {
             try {
