@@ -174,14 +174,14 @@ struct KnowledgeGraphView: View {
             HStack(spacing: 9) {
                 Image(systemName: "point.3.filled.connected.trianglepath.dotted")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
 
                 Text("全景知识星图")
-                    .font(EditorialFont.modalTitle)
+                    .font(InsightFont.title)
                     .foregroundStyle(Color.white)
 
                 Text("\(graphData.nodes.count) 颗星宿 · \(graphData.edges.count) 条引力线")
-                    .font(EditorialFont.captionSmall.weight(.medium))
+                    .font(InsightFont.captionSmall.weight(.medium))
                     .foregroundStyle(Color.white.opacity(0.55))
                     .padding(.horizontal, 9)
                     .padding(.vertical, 3.5)
@@ -228,7 +228,7 @@ struct KnowledgeGraphView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 categoryFilterChip(title: "全部星系", isSelected: selectedShard == .all) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(InsightMotion.shell) {
                         selectedShard = .all
                     }
                 }
@@ -239,7 +239,7 @@ struct KnowledgeGraphView: View {
                         title: "\(summary.name) (\(summary.count))",
                         isSelected: selectedShard == option
                     ) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        withAnimation(InsightMotion.shell) {
                             // 再点一次回到全景，与 Android 端一致
                             selectedShard = (selectedShard == option) ? .all : option
                         }
@@ -255,17 +255,17 @@ struct KnowledgeGraphView: View {
     private func categoryFilterChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(EditorialFont.captionSmall.weight(isSelected ? .bold : .medium))
+                .font(InsightFont.captionSmall.weight(isSelected ? .bold : .medium))
                 .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.65))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background(
-                    isSelected ? EditorialColor.aiAmber.opacity(0.85) : Color.white.opacity(0.06),
+                    isSelected ? InsightColor.warning.opacity(0.85) : Color.white.opacity(0.06),
                     in: Capsule()
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        isSelected ? EditorialColor.aiAmber : Color.white.opacity(0.1),
+                        isSelected ? InsightColor.warning : Color.white.opacity(0.1),
                         lineWidth: 1
                     )
                 )
@@ -279,7 +279,7 @@ struct KnowledgeGraphView: View {
         HStack(spacing: 14) {
             HStack(spacing: 6) {
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(InsightMotion.pill) {
                         zoomScale = max(0.3, zoomScale - 0.2)
                     }
                 } label: {
@@ -296,7 +296,7 @@ struct KnowledgeGraphView: View {
                     .frame(width: 44)
 
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(InsightMotion.pill) {
                         zoomScale = min(3.2, zoomScale + 0.2)
                     }
                 } label: {
@@ -313,7 +313,7 @@ struct KnowledgeGraphView: View {
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
 
             Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                withAnimation(InsightMotion.page) {
                     applyFit()   // 复位 = 重新自适应，而不是回到看不见的 1:1
                     currentDragTranslation = .zero
                 }
@@ -322,7 +322,7 @@ struct KnowledgeGraphView: View {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.system(size: 10, weight: .bold))
                     Text("重置视野")
-                        .font(EditorialFont.captionSmall)
+                        .font(InsightFont.captionSmall)
                 }
                 .foregroundStyle(Color.white.opacity(0.8))
                 .padding(.horizontal, 12)
@@ -337,7 +337,7 @@ struct KnowledgeGraphView: View {
             Spacer()
 
             Text("拖拽平移 · 滚轮/捏合缩放 · 点击星宿探秘知识灵感")
-                .font(EditorialFont.captionSmall)
+                .font(InsightFont.captionSmall)
                 .foregroundStyle(Color.white.opacity(0.45))
         }
         .padding(.horizontal, 24)
@@ -426,7 +426,7 @@ struct KnowledgeGraphView: View {
                 let ringRect = CGRect(x: center.x - radius * 1.5, y: center.y - radius * 1.5, width: radius * 3.0, height: radius * 3.0)
                 context.stroke(
                     Path(ellipseIn: ringRect),
-                    with: .color(EditorialColor.likeGreen.opacity(0.6 * dimOpacity)),
+                    with: .color(InsightColor.success.opacity(0.6 * dimOpacity)),
                     lineWidth: 1.0
                 )
             }
@@ -451,7 +451,7 @@ struct KnowledgeGraphView: View {
                         }
                     }
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        withAnimation(InsightMotion.shell) {
                             if selectedNode?.id == node.id {
                                 selectedNode = nil
                             } else {
@@ -473,7 +473,7 @@ struct KnowledgeGraphView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text(card.category)
-                            .font(EditorialFont.badge)
+                            .font(InsightFont.callout)
                             .foregroundStyle(nodeColor(for: card.category))
                             .padding(.horizontal, 9)
                             .padding(.vertical, 4)
@@ -481,7 +481,7 @@ struct KnowledgeGraphView: View {
                             .overlay(Capsule().strokeBorder(nodeColor(for: card.category).opacity(0.35), lineWidth: 1))
 
                         Text("\(node.connectionsCount) 条关联引力线")
-                            .font(EditorialFont.captionSmall)
+                            .font(InsightFont.captionSmall)
                             .foregroundStyle(Color.white.opacity(0.6))
 
                         Spacer()
@@ -503,7 +503,7 @@ struct KnowledgeGraphView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(card.summary)
-                        .font(EditorialFont.caption)
+                        .font(InsightFont.caption)
                         .foregroundStyle(Color.white.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(3)
@@ -512,7 +512,7 @@ struct KnowledgeGraphView: View {
 
                     HStack {
                         Button {
-                            // 只回调选中卡片：宿主 CardDeckView 会把它映射成 activeSheet = .detail(card)。
+                            // 只回调选中卡片：宿主 InsightMainView 会把它映射成 activeSheet = .detail(card)。
                             // 若同时调用 onClose()，宿主会把同一个 activeSheet 覆盖为 nil，详情页永不呈现。
                             onSelectCard?(card)
                         } label: {
@@ -520,7 +520,7 @@ struct KnowledgeGraphView: View {
                                 Image(systemName: "arrow.up.left.and.arrow.down.right")
                                     .font(.system(size: 11, weight: .bold))
                                 Text("查看完整卡片")
-                                    .font(EditorialFont.labelSmall)
+                                    .font(InsightFont.callout)
                             }
                             .foregroundStyle(Color.black)
                             .padding(.horizontal, 14)
@@ -538,13 +538,13 @@ struct KnowledgeGraphView: View {
                                 Image(systemName: "arrow.up.to.line.compact")
                                     .font(.system(size: 11, weight: .bold))
                                 Text("置顶进入卡堆")
-                                    .font(EditorialFont.labelSmall)
+                                    .font(InsightFont.callout)
                             }
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .foregroundStyle(InsightColor.warning)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 7)
                             .background(Color.white.opacity(0.08), in: Capsule())
-                            .overlay(Capsule().strokeBorder(EditorialColor.aiAmber.opacity(0.5), lineWidth: 1))
+                            .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.5), lineWidth: 1))
                         }
                         .buttonStyle(PressableButtonStyle())
                         .help("把这张卡片提到卡堆顶部，接着就能刷到它")
@@ -552,7 +552,7 @@ struct KnowledgeGraphView: View {
                         Spacer()
 
                         Text("点击 ✕ 或再次点击该星宿关闭")
-                            .font(EditorialFont.captionSmall)
+                            .font(InsightFont.captionSmall)
                             .foregroundStyle(Color.white.opacity(0.4))
                     }
                     .padding(.top, 4)
@@ -673,7 +673,7 @@ struct KnowledgeGraphView: View {
         case "生物": return Color(red: 0.35, green: 0.85, blue: 0.55)
         case "脑科学", "心理": return Color(red: 0.95, green: 0.45, blue: 0.65)
         case "历史": return Color(red: 0.85, green: 0.60, blue: 0.40)
-        case "AI", "AI Agent", "AI 开发": return EditorialColor.aiAmber
+        case "AI", "AI Agent", "AI 开发": return InsightColor.warning
         case "编程", "Rust", "Python": return Color(red: 0.30, green: 0.80, blue: 0.95)
         case "投资理财", "中级会计": return Color(red: 0.95, green: 0.80, blue: 0.30)
         default: return Color(red: 0.65, green: 0.70, blue: 0.80)
@@ -683,8 +683,8 @@ struct KnowledgeGraphView: View {
     private func edgeColor(for kind: RelationKind) -> Color {
         switch kind {
         case .disciplineDeepen: return Color(red: 0.45, green: 0.75, blue: 0.95)
-        case .crossDiscipline: return EditorialColor.aiAmber
-        case .conceptBridge: return EditorialColor.likeGreen
+        case .crossDiscipline: return InsightColor.warning
+        case .conceptBridge: return InsightColor.success
         case .serendipity: return Color(red: 0.85, green: 0.45, blue: 0.85)
         }
     }

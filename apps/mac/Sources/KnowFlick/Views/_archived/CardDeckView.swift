@@ -127,7 +127,7 @@ struct CardDeckView: View {
                         store: store,
                         isTransitioning: swipingCard != nil,
                         onPrevious: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            withAnimation(EditorialSpring.content) {
                                 store.undoLastSwipe()
                                 if let top = store.topCard {
                                     store.speechService.speak(card: top, part: .full)
@@ -143,7 +143,7 @@ struct CardDeckView: View {
                             }
                         },
                         onClose: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            withAnimation(EditorialSpring.content) {
                                 store.speechService.stopAmbientMode()
                             }
                         },
@@ -227,7 +227,7 @@ struct CardDeckView: View {
                             activeSheet = nil
                         } : nil,
                         onUndo: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            withAnimation(EditorialSpring.content) {
                                 store.undoLastSwipe()
                             }
                             // 撤销后详情页跟随回到新的顶卡，避免停留在已撤销的卡片上
@@ -308,7 +308,7 @@ struct CardDeckView: View {
                     SpeechConsoleView(
                         store: store,
                         onPrevious: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            withAnimation(EditorialSpring.content) {
                                 store.undoLastSwipe()
                                 if let top = store.topCard {
                                     store.speechService.speak(card: top, part: .full)
@@ -358,9 +358,8 @@ struct CardDeckView: View {
         }
 
         .overlay(alignment: .top) {
-            EditorialToast(center: toast)
+            EditorialToast(center: toast, edge: .top)
                 .padding(.top, 14)
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
     }
 
@@ -523,7 +522,7 @@ struct CardDeckView: View {
                     performSwipe(.left)
                 } else {
                     HapticFeedbackHelper.shared.cardSnapBack()
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.72)) {
+                    withAnimation(EditorialSpring.state) {
                         dragOffset = .zero
                         swipeDirection = nil
                     }
@@ -763,7 +762,7 @@ struct CardDeckView: View {
                     let currentIndex = all.firstIndex(of: store.settings.appearance) ?? 0
                     let nextIndex = (currentIndex + 1) % all.count
                     let nextMode = all[nextIndex]
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    withAnimation(EditorialSpring.content) {
                         // 高频开关走轻量通道：内存即时生效，落盘异步节流，不阻塞主线程
                         store.applySettingsChange { $0.appearance = nextMode }
                     }
@@ -792,7 +791,7 @@ struct CardDeckView: View {
                         }
                         .disabled(store.isGenerating)
                         Button("重新探索全部卡片", systemImage: "arrow.counterclockwise") {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            withAnimation(EditorialSpring.content) {
                                 store.clearHistory()
                             }
                         }
@@ -836,7 +835,7 @@ struct CardDeckView: View {
     private var bottomBar: some View {
         HStack(spacing: 24) {
             roundButton("arrow.uturn.backward", size: 42, tint: EditorialColor.textSecondary, help: "撤销上一张 ⌘Z") {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                withAnimation(EditorialSpring.content) {
                     store.undoLastSwipe()
                 }
             }
@@ -965,7 +964,7 @@ struct CardDeckView: View {
                     .foregroundStyle(EditorialColor.textPrimary)
                 } else {
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        withAnimation(EditorialSpring.content) {
                             store.clearHistory()
                         }
                     } label: {
