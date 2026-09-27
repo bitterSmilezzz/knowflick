@@ -39,10 +39,24 @@ error: external macro implementation type 'SwiftUIMacros.StateMacro' could not b
 
 ## 本机能做与不能做
 
-- ✅ `swiftc -parse` 语法级检查（用 swift.org 工具链，无需 SDK）
-- ✅ KnowFlickCoreTests 之外的逻辑排查、符号级交叉校验
-- ❌ `swift build` / `swift test`（KnowFlickCore 的 `@Observable` 同样依赖宏插件路径，触到重编译即失败）
-- ✅ 完整构建 + 测试：推送 main 由 CI 完成；本机验证需装 Xcode 26+
+- ✅ `swiftc -parse` 全量语法检查（无需 SDK）
+- ✅ **KnowFlickCore 整模块 typecheck / KnowFlickCoreTests 测试目标编译**：Core 只依赖工具链自带的
+  `libObservationMacros.dylib`（swift.org 工具链的插件 rpath 正常），绕开了缺失的 SwiftUI 宏。
+  2026-09-28 实测：Core 37 文件 + 全部测试代码以 `-swift-version 6` 严格并发**整模块编译通过**；
+  注意 `swift test` 默认会连带构建 app 可执行目标而失败，需先 `swift build --target KnowFlickCoreTests`
+  再 `swift test --skip-build`；测试执行进程在本机有挂起现象（CI 环境正常），执行结果以 CI 为准：
+  ```bash
+  TC=~/Downloads/knowflick-toolchain/extracted/swift-6.4.0-RELEASE-osx-package.pkg/Payload
+  # 整模块严格并发 typecheck（Core 全部 37 文件）
+  $TC/usr/bin/swiftc -typecheck -swift-version 6 \
+    -sdk /Library/Developer/CommandLineTools/SDKs/MacOSX27.0.sdk \
+    apps/mac/Sources/KnowFlickCore/**/*.swift
+  # Core 单测（测试目标不依赖 SwiftUI app target，不会触宏缺失）
+  SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX27.0.sdk \
+    $TC/usr/bin/swift test --scratch-path /tmp/kf-test-build   # 在 apps/mac 下执行
+  ```
+- ❌ `swift build` / app target 编译（`@State` 等 SwiftUI 宏展开失败，触到 KnowFlick target 即失败）
+- ✅ 完整 app 构建 + 全量验证：推送 main 由 CI 完成；本机验证需装 Xcode 26+
 
 ## 本机遗留的临时文件
 
