@@ -8,7 +8,7 @@
 
 ## [未发布]
 
-- macOS：界面改版第一批——刷卡主视图迁移到新的 Cutline 风 Insight 体系（浮动侧栏外壳 + 深色 surface 卡片 + 1pt 描边，刷卡手势 / 飞出层 / 全部模态路由与快捷键 1:1 保留），收藏 / 历史 / 统计换 Cutline 化框架，全部面板完成视觉 token 迁移；旧 `CardView` / `CardDeckView` 归档至 `Views/_archived/`。构建验证依赖完整 Xcode（本机 CLT 无法展开 SwiftUI 宏，见 `docs/MAC_TOOLCHAIN_2026-09-27.md`），合并前以 CI 为准。
+- macOS：界面改版第一批——刷卡主视图迁移到新的 Cutline 风 Insight 体系（浮动侧栏外壳 + 深色 surface 卡片 + 1pt 描边，刷卡手势 / 飞出层 / 全部模态路由与快捷键 1:1 保留），收藏 / 历史 / 统计换 Cutline 化框架，全部面板完成视觉 token 迁移；卡片面恢复朗读胶囊按键；旧 `CardView` / `CardDeckView` / `CardSheenOverlay` 归档至 `Views/_archived/`。双审计（逻辑保真逐字节比对 + API 存在性交叉核对）P0 为零；KnowFlickCore 整模块 Swift 6 严格并发编译通过；UI 层编译验证依赖完整 Xcode（本机 CLT 无法展开 SwiftUI 宏，见 `docs/MAC_TOOLCHAIN_2026-09-27.md`），合并前以 CI 为准。
 - macOS：`Package.swift` 将 `Views/_archived` 排除出编译目标；打包脚本支持固定开发签名身份（`KNOWFLICK_CODESIGN_IDENTITY` 或自签名 "KnowFlick Dev"），避免 adhoc 签名变动导致每次启动重复请求钥匙串授权。
 
 ## [v4.4.4] - 2026-09-25

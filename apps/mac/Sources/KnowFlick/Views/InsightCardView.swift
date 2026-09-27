@@ -34,11 +34,13 @@ private struct InsightCardMeta: View {
 }
 
 /// 单张知识卡片：徽章 + 粗体标题 + 摘要 + 元信息行。
-/// `isTop` 时显示来源/状态徽章行，供刷卡视图复用。
+/// `isTop` 时显示来源/状态徽章行，供刷卡视图复用；
+/// 传入 `speechService` 时在徽章行提供朗读胶囊按键（旧 CardView 的等价物）。
 struct InsightCardView: View {
     let card: KnowledgeCard
     var showAIMark: Bool = true
     var isTop: Bool = false
+    var speechService: SpeechSynthesizerService? = nil
 
     private var theme: CategoryTheme {
         CategoryTheme.theme(for: card, cache: .shared)
@@ -54,13 +56,14 @@ struct InsightCardView: View {
                 .frame(height: 152)
                 .clipShape(RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous))
 
-            // 徽章行：分类（实底 accent）+ AI 标记 + 领域代码
+            // 徽章行：分类（实底 accent）+ AI 标记 + 朗读胶囊 + 领域代码
             HStack(spacing: InsightSpacing.small) {
                 InsightPill(text: card.category, tone: .accent, icon: spec.icon)
                 if card.source == .ai && showAIMark {
                     InsightPill(text: "AI", tone: .warning, icon: "sparkles")
                 }
                 Spacer(minLength: 0)
+                speechPill
                 Text(spec.domainCode)
                     .font(InsightFont.monoSmall)
                     .tracking(0.8)
@@ -110,6 +113,37 @@ struct InsightCardView: View {
                 .strokeBorder(InsightColor.border, lineWidth: 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
+    }
+
+    /// 语音朗读胶囊按键（旧 CardView.speechButton 的 Cutline 等价物）：
+    /// 播放中实显 success 色与进度百分比，暂停显斜杠图标，空闲为低调入口
+    @ViewBuilder
+    private var speechPill: some View {
+        if let service = speechService {
+            let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
+            let isPausedThis = service.state.activeCardId == card.id && service.state.isPaused
+            Button {
+                service.togglePlayPause(for: card)
+                HapticFeedbackHelper.shared.cardSnapBack()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: isSpeakingThis ? "speaker.wave.3.fill" : (isPausedThis ? "speaker.slash.fill" : "speaker.wave.2"))
+                        .font(.system(size: 9.5, weight: .bold))
+                    if isSpeakingThis {
+                        Text("\(Int(service.state.progress * 100))%")
+                            .font(InsightFont.monoSmall)
+                            .monospacedDigit()
+                    }
+                }
+                .foregroundStyle(isSpeakingThis ? InsightColor.success : InsightColor.textTertiary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3.5)
+                .background(InsightColor.surfaceSunken, in: Capsule())
+                .overlay(Capsule().strokeBorder(isSpeakingThis ? InsightColor.success.opacity(0.4) : InsightColor.border, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .help(isSpeakingThis ? "暂停朗读" : (isPausedThis ? "继续朗读" : "朗读卡片"))
+        }
     }
 
     private var categoryImage: some View {

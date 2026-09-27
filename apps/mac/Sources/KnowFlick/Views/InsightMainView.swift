@@ -521,9 +521,14 @@ struct InsightMainView: View {
     @ViewBuilder
     private func stackedCard(card: KnowledgeCard, index: Int, top: KnowledgeCard) -> some View {
         let isTop = (index == 0)
-        let base = InsightCardView(card: card, showAIMark: store.settings.showAIMark, isTop: isTop)
-            .scaleEffect(scaleFor(index: index))
-            .offset(y: offsetYFor(index: index))
+        let base = InsightCardView(
+            card: card,
+            showAIMark: store.settings.showAIMark,
+            isTop: isTop,
+            speechService: store.speechService
+        )
+        .scaleEffect(scaleFor(index: index))
+        .offset(y: offsetYFor(index: index))
 
         if isTop {
             base
@@ -606,8 +611,13 @@ struct InsightMainView: View {
         let degrees = Double(swipingOffset.width / 18)
         let clampedDegrees = min(max(degrees, -20), 20)
 
-        InsightCardView(card: card, showAIMark: store.settings.showAIMark, isTop: true)
-            .offset(swipingOffset)
+        InsightCardView(
+            card: card,
+            showAIMark: store.settings.showAIMark,
+            isTop: true,
+            speechService: store.speechService
+        )
+        .offset(swipingOffset)
             .rotationEffect(.degrees(clampedDegrees))
             .overlay(flyingSwipeBadge)
             .opacity(max(0.0, 1.0 - (Double(abs(swipingOffset.width)) - 180.0) / 450.0))
