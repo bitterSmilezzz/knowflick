@@ -43,36 +43,36 @@ struct AmbientAudioPlayerBar: View {
 
                 Text("磨耳朵")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(EditorialColor.aiAmber.opacity(0.15), in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmber.opacity(0.3), lineWidth: 1))
+                    .background(InsightColor.warning.opacity(0.15), in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.3), lineWidth: 1))
             }
 
             // 2. 当前正在朗读的卡片标题与进度
             if let card = currentCard {
                 HStack(spacing: 8) {
                     Text(card.category)
-                        .font(EditorialFont.badge)
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .font(InsightFont.callout)
+                        .foregroundStyle(InsightColor.textSecondary)
 
                     Text(card.headline)
                         .font(.system(size: 13, weight: .semibold, design: .serif))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .foregroundStyle(InsightColor.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: 240, alignment: .leading)
 
                     Text("\(Int(progress * 100))%")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 32, alignment: .trailing)
                 }
             } else {
                 Text("暂无卡片")
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textSecondary)
             }
 
             // 3. 控制按钮组 (上一张、播放/暂停、下一张、语速)
@@ -81,7 +81,7 @@ struct AmbientAudioPlayerBar: View {
                 Button(action: onPrevious) {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 28, height: 28)
                         .background(Color.white.opacity(0.06), in: Circle())
                 }
@@ -100,8 +100,8 @@ struct AmbientAudioPlayerBar: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Color.black)
                         .frame(width: 34, height: 34)
-                        .background(EditorialColor.likeGreen, in: Circle())
-                        .shadow(color: EditorialColor.likeGreen.opacity(0.4), radius: 6, y: 1)
+                        .background(InsightColor.success, in: Circle())
+                        .shadow(color: InsightColor.success.opacity(0.4), radius: 6, y: 1)
                 }
                 .buttonStyle(PressableButtonStyle())
                 .disabled(currentCard == nil)
@@ -112,7 +112,7 @@ struct AmbientAudioPlayerBar: View {
                 Button(action: handleNext) {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 28, height: 28)
                         .background(Color.white.opacity(0.06), in: Circle())
                 }
@@ -127,7 +127,7 @@ struct AmbientAudioPlayerBar: View {
                 } label: {
                     Text(speedText)
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .foregroundStyle(InsightColor.textSecondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(Color.white.opacity(0.06), in: Capsule())
@@ -142,7 +142,7 @@ struct AmbientAudioPlayerBar: View {
                 Button(action: onOpenConsole) {
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 28, height: 28)
                         .background(Color.white.opacity(0.06), in: Circle())
                 }
@@ -159,7 +159,7 @@ struct AmbientAudioPlayerBar: View {
             if let seconds = speechService.sleepTimerRemainingSeconds {
                 Text(clock(seconds: seconds))
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                     .help("睡眠定时器剩余时间")
                     .accessibilityLabel("睡眠定时器剩余 \(clock(seconds: seconds))")
             }
@@ -167,7 +167,7 @@ struct AmbientAudioPlayerBar: View {
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(PressableButtonStyle())
@@ -176,10 +176,10 @@ struct AmbientAudioPlayerBar: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
-        .background(EditorialColor.glassSurface, in: Capsule())
-        .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1.2))
+        .background(InsightColor.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1.2))
         .shadow(
-            color: EditorialColor.dynamic(
+            color: InsightColor.dynamic(
                 light: NSColor.black.withAlphaComponent(0.14),
                 dark: NSColor.black.withAlphaComponent(0.55)
             ),
@@ -241,7 +241,7 @@ struct AudioWaveformBars: View {
                 ForEach(0..<5) { index in
                     let heightRatio: CGFloat = isPlaying ? barHeight(for: index, date: timeline.date) : 0.25
                     RoundedRectangle(cornerRadius: 1.5)
-                        .fill(EditorialColor.likeGreen)
+                        .fill(InsightColor.success)
                         .frame(width: 2.5, height: max(3.5, 16.0 * heightRatio))
                 }
             }

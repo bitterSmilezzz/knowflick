@@ -81,22 +81,19 @@ struct GlobalSearchModalView: View {
         VStack(spacing: 0) {
             searchHeader
             filterBar
-            Divider().overlay(EditorialColor.glassDivider)
+            Divider().overlay(InsightColor.divider)
             resultsArea
-            Divider().overlay(EditorialColor.glassDivider)
+            Divider().overlay(InsightColor.divider)
             footerBar
         }
         .frame(minWidth: 700, idealWidth: 720, minHeight: 520, idealHeight: 550)
         .background(
             ZStack {
-                EditorialColor.dynamic(
-                    light: NSColor.windowBackgroundColor.withAlphaComponent(0.96),
-                    dark: NSColor(white: 0.11, alpha: 0.96)
-                )
+                InsightColor.surfaceRaised
                 // 柔和微光渐变
                 RadialGradient(
                     colors: [
-                        EditorialColor.aiAmber.opacity(0.08),
+                        InsightColor.warning.opacity(0.08),
                         Color.clear
                     ],
                     center: .top,
@@ -108,7 +105,7 @@ struct GlobalSearchModalView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(EditorialColor.glassBorder, lineWidth: 1.2)
+                .strokeBorder(InsightColor.border, lineWidth: 1.2)
         )
         .shadow(color: Color.black.opacity(0.35), radius: 28, y: 12)
         .onAppear {
@@ -165,7 +162,7 @@ struct GlobalSearchModalView: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(EditorialColor.aiAmber)
+                .foregroundStyle(InsightColor.warning)
 
             TextField("搜索知识库… (支持关键词、学科分类、拼音首字母或全文检索)", text: $query)
                 .font(.system(size: 16, weight: .medium, design: .serif))
@@ -182,7 +179,7 @@ struct GlobalSearchModalView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 14))
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .foregroundStyle(InsightColor.textTertiary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("清除搜索")
@@ -194,9 +191,9 @@ struct GlobalSearchModalView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .padding(6)
-                    .background(EditorialColor.glassSurface, in: Circle())
+                    .background(InsightColor.surface, in: Circle())
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.escape, modifiers: [])
@@ -226,27 +223,27 @@ struct GlobalSearchModalView: View {
                                     .font(.system(size: 10))
                             }
                             Text(filter.rawValue)
-                                .font(EditorialFont.labelSmall)
+                                .font(InsightFont.callout)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(
-                            isSelected ? EditorialColor.aiAmber.opacity(0.22) : EditorialColor.glassSurface,
+                            isSelected ? InsightColor.warning.opacity(0.22) : InsightColor.surface,
                             in: Capsule()
                         )
                         .overlay(
                             Capsule().strokeBorder(
-                                isSelected ? EditorialColor.aiAmber.opacity(0.8) : EditorialColor.glassBorder,
+                                isSelected ? InsightColor.warning.opacity(0.8) : InsightColor.border,
                                 lineWidth: 1
                             )
                         )
-                        .foregroundStyle(isSelected ? EditorialColor.textPrimary : EditorialColor.textSecondary)
+                        .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textSecondary)
                     }
                     .buttonStyle(.plain)
                 }
 
                 Rectangle()
-                    .fill(EditorialColor.glassDivider)
+                    .fill(InsightColor.divider)
                     .frame(width: 1, height: 16)
                     .padding(.horizontal, 4)
 
@@ -266,20 +263,20 @@ struct GlobalSearchModalView: View {
                         }
                     } label: {
                         Text("\(cat) (\(count))")
-                            .font(EditorialFont.labelSmall)
+                            .font(InsightFont.callout)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(
-                                isSelected ? EditorialColor.textPrimary.opacity(0.18) : EditorialColor.glassSurface,
+                                isSelected ? InsightColor.textPrimary.opacity(0.18) : InsightColor.surface,
                                 in: Capsule()
                             )
                             .overlay(
                                 Capsule().strokeBorder(
-                                    isSelected ? EditorialColor.textPrimary.opacity(0.6) : EditorialColor.glassBorder,
+                                    isSelected ? InsightColor.textPrimary.opacity(0.6) : InsightColor.border,
                                     lineWidth: 1
                                 )
                             )
-                            .foregroundStyle(isSelected ? EditorialColor.textPrimary : EditorialColor.textTertiary)
+                            .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textTertiary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -335,7 +332,7 @@ struct GlobalSearchModalView: View {
                         .frame(width: 7, height: 7)
                     Text(item.card.category)
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .foregroundStyle(InsightColor.textSecondary)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2.5)
@@ -344,7 +341,7 @@ struct GlobalSearchModalView: View {
                 if item.matchedField != .browse {
                     Text("命中\(item.matchedField.rawValue)")
                         .font(.system(size: 9.5, weight: .medium))
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .foregroundStyle(InsightColor.textMuted)
                         .padding(.leading, 2)
                 }
             }
@@ -356,17 +353,17 @@ struct GlobalSearchModalView: View {
                     text: item.card.headline,
                     query: query,
                     font: .system(size: 14, weight: .semibold, design: .serif),
-                    textColor: EditorialColor.textPrimary,
-                    highlightColor: EditorialColor.aiAmber
+                    textColor: InsightColor.textPrimary,
+                    highlightColor: InsightColor.warning
                 )
                 .fixedSize(horizontal: false, vertical: true)
 
                 HighlightedText(
                     text: item.matchedExcerpt,
                     query: query,
-                    font: EditorialFont.caption,
-                    textColor: EditorialColor.textSecondary,
-                    highlightColor: EditorialColor.aiAmber
+                    font: InsightFont.caption,
+                    textColor: InsightColor.textSecondary,
+                    highlightColor: InsightColor.warning
                 )
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -379,14 +376,14 @@ struct GlobalSearchModalView: View {
                 if item.isFavorite {
                     Image(systemName: "heart.fill")
                         .font(.system(size: 11))
-                        .foregroundStyle(EditorialColor.likeGreen)
+                        .foregroundStyle(InsightColor.success)
                         .help("已收藏")
                 }
 
                 if item.card.source == .ai {
                     Image(systemName: "sparkles")
                         .font(.system(size: 10))
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                 }
 
                 // 快捷操作按钮组
@@ -398,7 +395,7 @@ struct GlobalSearchModalView: View {
                             .font(.system(size: 11, weight: .medium))
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3.5)
-                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 4))
+                            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                     }
                     .buttonStyle(.plain)
                     .help("置于卡堆顶部 ⌘⏎")
@@ -409,7 +406,7 @@ struct GlobalSearchModalView: View {
                         Image(systemName: "bubble.left.and.text.bubble.right")
                             .font(.system(size: 11))
                             .padding(4.5)
-                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 4))
+                            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                     }
                     .buttonStyle(.plain)
                     .help("向卡片追问 ⌘J")
@@ -422,11 +419,11 @@ struct GlobalSearchModalView: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isSelected ? EditorialColor.aiAmber.opacity(0.14) : Color.clear)
+                .fill(isSelected ? InsightColor.warning.opacity(0.14) : Color.clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? EditorialColor.aiAmber.opacity(0.55) : Color.clear, lineWidth: 1)
+                .strokeBorder(isSelected ? InsightColor.warning.opacity(0.55) : Color.clear, lineWidth: 1)
         )
         .contentShape(Rectangle())
     }
@@ -438,15 +435,15 @@ struct GlobalSearchModalView: View {
             Spacer(minLength: 24)
             Image(systemName: query.isEmpty ? "sparkles.magnifyingglass" : "magnifyingglass")
                 .font(.system(size: 38))
-                .foregroundStyle(EditorialColor.textTertiary)
+                .foregroundStyle(InsightColor.textTertiary)
 
             if query.isEmpty {
                 Text("输入任意关键词探索知识库")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Text("支持中文拼音首字母（如 xzl 搜租赁）、学科领域、作者文献或正文细节")
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textTertiary)
 
                 recentSearchHistoryView
 
@@ -457,12 +454,12 @@ struct GlobalSearchModalView: View {
                             query = tip
                         } label: {
                             Text(tip)
-                                .font(EditorialFont.labelSmall)
+                                .font(InsightFont.callout)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background(EditorialColor.glassSurface, in: Capsule())
-                                .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                                .foregroundStyle(EditorialColor.textSecondary)
+                                .background(InsightColor.surface, in: Capsule())
+                                .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
+                                .foregroundStyle(InsightColor.textSecondary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -470,11 +467,11 @@ struct GlobalSearchModalView: View {
                 .padding(.top, 4)
             } else {
                 Text("未找到与「\(query)」相关的卡片")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Text("尝试精简搜索词，或切换来源与分类范围")
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textTertiary)
 
                 if store.settings.isAIConfigured {
                     Button {
@@ -488,12 +485,12 @@ struct GlobalSearchModalView: View {
                             Image(systemName: "sparkles")
                             Text("让 AI 围绕「\(query)」生成新卡片")
                         }
-                        .font(EditorialFont.label)
+                        .font(InsightFont.bodyStrong)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 9)
-                        .background(EditorialColor.aiAmber.opacity(0.24), in: Capsule())
-                        .overlay(Capsule().strokeBorder(EditorialColor.aiAmber.opacity(0.7), lineWidth: 1))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .background(InsightColor.warning.opacity(0.24), in: Capsule())
+                        .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.7), lineWidth: 1))
+                        .foregroundStyle(InsightColor.textPrimary)
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 6)
@@ -513,10 +510,10 @@ struct GlobalSearchModalView: View {
                     HStack(spacing: 5) {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .foregroundStyle(InsightColor.warning)
                         Text("最近搜索")
-                            .font(EditorialFont.captionSmall.weight(.semibold))
-                            .foregroundStyle(EditorialColor.textSecondary)
+                            .font(InsightFont.captionSmall.weight(.semibold))
+                            .foregroundStyle(InsightColor.textSecondary)
                     }
                     Spacer()
                     Button("清空") {
@@ -524,8 +521,8 @@ struct GlobalSearchModalView: View {
                             store.clearSearchHistory()
                         }
                     }
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textTertiary)
                     .buttonStyle(.plain)
                     .help("清空搜索历史")
                 }
@@ -539,8 +536,8 @@ struct GlobalSearchModalView: View {
                                     query = historyItem
                                 } label: {
                                     Text(historyItem)
-                                        .font(EditorialFont.labelSmall)
-                                        .foregroundStyle(EditorialColor.textPrimary)
+                                        .font(InsightFont.callout)
+                                        .foregroundStyle(InsightColor.textPrimary)
                                 }
                                 .buttonStyle(.plain)
 
@@ -551,15 +548,15 @@ struct GlobalSearchModalView: View {
                                 } label: {
                                     Image(systemName: "xmark")
                                         .font(.system(size: 8, weight: .bold))
-                                        .foregroundStyle(EditorialColor.textTertiary)
+                                        .foregroundStyle(InsightColor.textTertiary)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("删除搜索历史：\(historyItem)")
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(EditorialColor.glassSurface, in: Capsule())
-                            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                            .background(InsightColor.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                         }
                     }
                     .padding(.vertical, 2)
@@ -575,8 +572,8 @@ struct GlobalSearchModalView: View {
     private var footerBar: some View {
         HStack {
             Text("共找到 \(results.count) 张卡片")
-                .font(EditorialFont.caption)
-                .foregroundStyle(EditorialColor.textTertiary)
+                .font(InsightFont.caption)
+                .foregroundStyle(InsightColor.textTertiary)
 
             Spacer()
 
@@ -590,7 +587,7 @@ struct GlobalSearchModalView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 11)
-        .background(EditorialColor.glassSurface.opacity(0.5))
+        .background(InsightColor.surface.opacity(0.5))
     }
 
     private func footerShortcutTip(key: String, desc: String) -> some View {
@@ -599,11 +596,11 @@ struct GlobalSearchModalView: View {
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1.5)
-                .background(EditorialColor.glassBorder.opacity(0.6), in: RoundedRectangle(cornerRadius: 3))
-                .foregroundStyle(EditorialColor.textPrimary)
+                .background(InsightColor.border.opacity(0.6), in: RoundedRectangle(cornerRadius: 3))
+                .foregroundStyle(InsightColor.textPrimary)
             Text(desc)
                 .font(.system(size: 11))
-                .foregroundStyle(EditorialColor.textTertiary)
+                .foregroundStyle(InsightColor.textTertiary)
         }
     }
 }
@@ -613,9 +610,9 @@ struct GlobalSearchModalView: View {
 struct HighlightedText: View {
     let text: String
     let query: String
-    var font: Font = EditorialFont.label
-    var textColor: Color = EditorialColor.textPrimary
-    var highlightColor: Color = EditorialColor.aiAmber
+    var font: Font = InsightFont.bodyStrong
+    var textColor: Color = InsightColor.textPrimary
+    var highlightColor: Color = InsightColor.warning
 
     var body: some View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)

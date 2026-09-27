@@ -36,15 +36,12 @@ struct SyncSheetView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.dynamic(
-                light: NSColor.windowBackgroundColor.withAlphaComponent(0.97),
-                dark: NSColor(white: 0.12, alpha: 0.97)
-            )
-            .ignoresSafeArea()
+            InsightColor.surfaceRaised
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 headerBar
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 Picker("", selection: $selectedTab) {
                     Text("当前设备作为接收端").tag(0)
@@ -66,16 +63,15 @@ struct SyncSheetView: View {
                     .padding(22)
                 }
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
                 bottomBar
             }
 
             VStack {
                 Spacer()
-                EditorialToast(center: toast)
+                EditorialToast(center: toast, edge: .bottom)
                     .padding(.bottom, 64)
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
         .frame(minWidth: 580, idealWidth: 620, minHeight: 480, idealHeight: 560)
         .onAppear {
@@ -93,10 +89,10 @@ struct SyncSheetView: View {
             HStack(spacing: 10) {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 Text("局域网极速双向同步")
-                    .font(EditorialFont.modalTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.title)
+                    .foregroundStyle(InsightColor.textPrimary)
             }
             Spacer()
             GlassIconButton(icon: "xmark", help: "关闭 (Esc)") {
@@ -113,22 +109,22 @@ struct SyncSheetView: View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("等待同一 Wi-Fi 下的 Android 或其他设备发起同步")
-                    .font(EditorialFont.label)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.bodyStrong)
+                    .foregroundStyle(InsightColor.textSecondary)
                 Text("启动服务后，在手机端输入下方配对地址，即可一键双向合并卡库与复习进度。")
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textMuted)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textMuted)
             }
 
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("同步服务状态")
-                            .font(EditorialFont.label)
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .font(InsightFont.bodyStrong)
+                            .foregroundStyle(InsightColor.textPrimary)
                         Text(isServerRunning ? "正在局域网监听端口 \(serverPort)" : "服务已停止")
-                            .font(EditorialFont.caption)
-                            .foregroundStyle(isServerRunning ? EditorialColor.likeGreen : EditorialColor.textMuted)
+                            .font(InsightFont.caption)
+                            .foregroundStyle(isServerRunning ? InsightColor.success : InsightColor.textMuted)
                     }
                     Spacer()
                     Toggle("", isOn: Binding(
@@ -141,17 +137,17 @@ struct SyncSheetView: View {
                 }
 
                 if isServerRunning {
-                    Divider().overlay(EditorialColor.glassDivider)
+                    Divider().overlay(InsightColor.divider)
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("配对同步地址")
-                            .font(EditorialFont.labelSmall)
-                            .foregroundStyle(EditorialColor.textSecondary)
+                            .font(InsightFont.callout)
+                            .foregroundStyle(InsightColor.textSecondary)
 
                         HStack {
                             Text(syncAddressString.isEmpty ? "正在获取 IP 地址…" : syncAddressString)
                                 .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(EditorialColor.textPrimary)
+                                .foregroundStyle(InsightColor.textPrimary)
                                 .textSelection(.enabled)
                             Spacer()
                             Button {
@@ -164,35 +160,35 @@ struct SyncSheetView: View {
                                     Image(systemName: "doc.on.doc")
                                     Text("复制")
                                 }
-                                .font(EditorialFont.caption)
-                                .foregroundStyle(EditorialColor.aiAmber)
+                                .font(InsightFont.caption)
+                                .foregroundStyle(InsightColor.warning)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background(EditorialColor.aiAmberBg, in: RoundedRectangle(cornerRadius: 6))
+                                .background(InsightColor.warningSoft, in: RoundedRectangle(cornerRadius: 6))
                             }
                             .buttonStyle(.plain)
                         }
                         .padding(12)
-                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: EditorialRadius.control))
-                        .overlay(RoundedRectangle(cornerRadius: EditorialRadius.control).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control))
+                        .overlay(RoundedRectangle(cornerRadius: InsightRadius.control).strokeBorder(InsightColor.border, lineWidth: 1))
                     }
 
                     HStack(spacing: 24) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("本机卡片总数")
-                                .font(EditorialFont.captionSmall)
-                                .foregroundStyle(EditorialColor.textMuted)
+                                .font(InsightFont.captionSmall)
+                                .foregroundStyle(InsightColor.textMuted)
                             Text("\(store.cards.count) 张")
-                                .font(EditorialFont.label)
-                                .foregroundStyle(EditorialColor.textPrimary)
+                                .font(InsightFont.bodyStrong)
+                                .foregroundStyle(InsightColor.textPrimary)
                         }
                         VStack(alignment: .leading, spacing: 2) {
                             Text("6 位动态配对码")
-                                .font(EditorialFont.captionSmall)
-                                .foregroundStyle(EditorialColor.textMuted)
+                                .font(InsightFont.captionSmall)
+                                .foregroundStyle(InsightColor.textMuted)
                             Text(pairingCode)
                                 .font(.system(size: 14, weight: .bold, design: .monospaced))
-                                .foregroundStyle(EditorialColor.aiAmber)
+                                .foregroundStyle(InsightColor.warning)
                         }
                     }
                 }
@@ -208,23 +204,23 @@ struct SyncSheetView: View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("主动连接对端设备")
-                    .font(EditorialFont.label)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.bodyStrong)
+                    .foregroundStyle(InsightColor.textSecondary)
                 Text("输入手机端或另一台 Mac 上显示的局域网同步地址（包含 6 位配对码）。")
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textMuted)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textMuted)
             }
 
             VStack(alignment: .leading, spacing: 14) {
                 Text("目标设备地址")
-                    .font(EditorialFont.labelSmall)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.callout)
+                    .foregroundStyle(InsightColor.textSecondary)
 
                 HStack {
                     TextField("例如: 192.168.1.5:8998#829143", text: $targetInput)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .foregroundStyle(InsightColor.textPrimary)
 
                     if !targetInput.isEmpty {
                         Button {
@@ -234,7 +230,7 @@ struct SyncSheetView: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 13))
-                                .foregroundStyle(EditorialColor.textMuted)
+                                .foregroundStyle(InsightColor.textMuted)
                         }
                         .buttonStyle(.plain)
                     }
@@ -251,26 +247,26 @@ struct SyncSheetView: View {
                             }
                             Text("检测连接")
                         }
-                        .font(EditorialFont.caption)
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .font(InsightFont.caption)
+                        .foregroundStyle(InsightColor.warning)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(EditorialColor.aiAmberBg, in: RoundedRectangle(cornerRadius: 6))
+                        .background(InsightColor.warningSoft, in: RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
                     .disabled(targetInput.isEmpty || isChecking)
                 }
                 .padding(10)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: EditorialRadius.control))
-                .overlay(RoundedRectangle(cornerRadius: EditorialRadius.control).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control))
+                .overlay(RoundedRectangle(cornerRadius: InsightRadius.control).strokeBorder(InsightColor.border, lineWidth: 1))
 
                 if let err = errorMessage {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(EditorialColor.dislikeRed)
+                            .foregroundStyle(InsightColor.danger)
                         Text(err)
-                            .font(EditorialFont.caption)
-                            .foregroundStyle(EditorialColor.dislikeRed)
+                            .font(InsightFont.caption)
+                            .foregroundStyle(InsightColor.danger)
                     }
                 }
 
@@ -278,14 +274,14 @@ struct SyncSheetView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(EditorialColor.likeGreen)
+                                .foregroundStyle(InsightColor.success)
                             Text("已发现设备：\(info.deviceName)")
-                                .font(EditorialFont.label)
-                                .foregroundStyle(EditorialColor.textPrimary)
+                                .font(InsightFont.bodyStrong)
+                                .foregroundStyle(InsightColor.textPrimary)
                             Spacer()
                             Text("\(info.cardCount) 张卡片 · \(info.favoriteCount) 收藏")
-                                .font(EditorialFont.caption)
-                                .foregroundStyle(EditorialColor.textMuted)
+                                .font(InsightFont.caption)
+                                .foregroundStyle(InsightColor.textMuted)
                         }
 
                         Button {
@@ -303,33 +299,33 @@ struct SyncSheetView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(EditorialColor.aiAmber, in: RoundedRectangle(cornerRadius: EditorialRadius.control))
+                            .background(InsightColor.warning, in: RoundedRectangle(cornerRadius: InsightRadius.control))
                             .foregroundStyle(Color.black)
-                            .font(EditorialFont.label)
+                            .font(InsightFont.bodyStrong)
                         }
                         .buttonStyle(PressableButtonStyle())
                         .disabled(isSyncing)
                     }
                     .padding(14)
-                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: EditorialRadius.control))
-                    .overlay(RoundedRectangle(cornerRadius: EditorialRadius.control).strokeBorder(EditorialColor.likeGreen.opacity(0.4), lineWidth: 1))
+                    .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control))
+                    .overlay(RoundedRectangle(cornerRadius: InsightRadius.control).strokeBorder(InsightColor.success.opacity(0.4), lineWidth: 1))
                 }
 
                 if let res = syncResult {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(EditorialColor.likeGreen)
+                                .foregroundStyle(InsightColor.success)
                             Text("双向极速同步完成！")
-                                .font(EditorialFont.label)
-                                .foregroundStyle(EditorialColor.likeGreen)
+                                .font(InsightFont.bodyStrong)
+                                .foregroundStyle(InsightColor.success)
                         }
                         Text("向对端推送 \(res.pushedCount) 张，从对端拉取 \(res.pulledCount) 张（本机新增 \(res.addedCount) 张，更新学习进度 \(res.restoredCount) 张）。")
-                            .font(EditorialFont.caption)
-                            .foregroundStyle(EditorialColor.textSecondary)
+                            .font(InsightFont.caption)
+                            .foregroundStyle(InsightColor.textSecondary)
                     }
                     .padding(12)
-                    .background(EditorialColor.likeGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: EditorialRadius.control))
+                    .background(InsightColor.success.opacity(0.12), in: RoundedRectangle(cornerRadius: InsightRadius.control))
                 }
             }
             .padding(16)
@@ -342,14 +338,14 @@ struct SyncSheetView: View {
     private var bottomBar: some View {
         HStack {
             Text("KnowFlick 局域网协议 · 严格本地加密验证 · 0 外部依赖")
-                .font(EditorialFont.captionSmall)
-                .foregroundStyle(EditorialColor.textMuted)
+                .font(InsightFont.captionSmall)
+                .foregroundStyle(InsightColor.textMuted)
             Spacer()
             Button("关闭") {
                 onClose()
             }
             .buttonStyle(BorderedProminentButtonStyle())
-            .tint(EditorialColor.aiAmber)
+            .tint(InsightColor.warning)
             .foregroundStyle(Color.black)
         }
         .padding(.top, 4)

@@ -6,6 +6,11 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [未发布]
+
+- macOS：界面改版第一批——刷卡主视图迁移到新的 Cutline 风 Insight 体系（浮动侧栏外壳 + 深色 surface 卡片 + 1pt 描边，刷卡手势 / 飞出层 / 全部模态路由与快捷键 1:1 保留），收藏 / 历史 / 统计换 Cutline 化框架，全部面板完成视觉 token 迁移；旧 `CardView` / `CardDeckView` 归档至 `Views/_archived/`。构建验证依赖完整 Xcode（本机 CLT 无法展开 SwiftUI 宏，见 `docs/MAC_TOOLCHAIN_2026-09-27.md`），合并前以 CI 为准。
+- macOS：`Package.swift` 将 `Views/_archived` 排除出编译目标；打包脚本支持固定开发签名身份（`KNOWFLICK_CODESIGN_IDENTITY` 或自签名 "KnowFlick Dev"），避免 adhoc 签名变动导致每次启动重复请求钥匙串授权。
+
 ## [v4.4.4] - 2026-09-25
 
 - macOS：剪藏卡片现在会同时去掉 AI 返回的原始提交网址和规范网址重复项，规范来源链接仍置顶。
