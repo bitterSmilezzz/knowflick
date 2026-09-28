@@ -1,13 +1,14 @@
 import SwiftUI
 import KnowFlickCore
 
+/// 语音引擎设置编辑器（Insight 体系字阶/间距/语义色；引擎增删与绑定逻辑原样）
 struct SpeechSettingsEditor: View {
     @Binding var settings: SpeechSettings
 
     private var selectedIndex: Int? { settings.profiles.firstIndex { $0.id == settings.selectedID } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: InsightSpacing.default) {
             Picker("朗读引擎", selection: $settings.selectedID) {
                 Text("系统语音 · 离线").tag("system")
                 ForEach(settings.profiles) { profile in
@@ -15,6 +16,7 @@ struct SpeechSettingsEditor: View {
                 }
             }
             .pickerStyle(.menu)
+            .font(InsightFont.body)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if let index = selectedIndex {
@@ -26,6 +28,7 @@ struct SpeechSettingsEditor: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Link("在系统设置中下载更高质量声音", destination: URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent")!)
                     .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.accent)
             }
 
             Button("添加另一套云端 / 本地语音配置", systemImage: "plus") {
@@ -44,12 +47,12 @@ struct SpeechSettingsEditor: View {
     }
 
     private func profileFields(index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: InsightSpacing.default) {
             field("配置名称", value: $settings.profiles[index].name)
             field("API Base URL", value: $settings.profiles[index].baseURL)
             field("语音模型 Model", value: $settings.profiles[index].model)
             field("音色 Voice", value: $settings.profiles[index].voice)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: InsightSpacing.tiny) {
                 Text("此语音服务的 API Key").font(InsightFont.caption)
                 SecureField("本机服务可留空；云端填写独立密钥", text: $settings.profiles[index].apiKey)
             }
@@ -69,8 +72,10 @@ struct SpeechSettingsEditor: View {
     }
 
     private func field(_ title: String, value: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(InsightFont.caption)
+        VStack(alignment: .leading, spacing: InsightSpacing.tiny) {
+            Text(title)
+                .font(InsightFont.caption)
+                .foregroundStyle(InsightColor.textSecondary)
             TextField(title, text: value)
                 .labelsHidden()
         }
