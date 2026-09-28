@@ -15,12 +15,21 @@ import KnowFlickCore
 //   · Ambience/PaperTheme 底图路径不再由刷卡视图铺设，画布交给 InsightShell
 
 /// 模态弹窗类型（统一入口，彻底杜绝 macOS SwiftUI 多 sheet 链式挂载相互覆盖失效）
+//
+// 收藏 / 统计 / 历史已统一为侧栏目的地导航（InsightDestination）。
+// `.favorites` / `.stats` / `.history` 三个 case 保留为**纯路由信号**：
+// menubar（MacCommands.swift，按约定不改动）仍发送这三个 case，由 `route(_:)` 拦截
+// 重定向到目的地导航，因此它们不会到达 sheetContent——favorites/stats 在 sheetContent
+// 中只保留穷举所需的不可达空分支，HistoryView 只从统计页分类下钻以局部 sheet 打开。
 enum ActiveSheet: Identifiable {
     case detail(KnowledgeCard)
     case sharePoster(KnowledgeCard)
+    /// 路由信号：menubar「知识收藏阁」→ 重定向到收藏目的地
     case favorites
     case settings
+    /// 路由信号：menubar「学习统计分析」→ 重定向到统计目的地
     case stats
+    /// 路由信号：menubar「浏览历史足迹」→ 重定向到历史目的地
     case history
     case help
     case quiz(category: String?)
@@ -88,14 +97,14 @@ struct InsightMainView: View {
             selection: $destination,
             sidebarExpanded: sidebarExpanded,
             onToggleSidebar: { withAnimation(InsightMotion.shell) { sidebarExpanded.toggle() } },
-            onOpenSheet: { sheet in activeSheet = sheet }
+            onOpenSheet: { route($0) }
         ) {
             destinationContent
         }
         .focusedSceneValue(\.macActions, MacActions(
             canOpen: activeSheet == nil,
             hasCard: store.topCard != nil,
-            open: { activeSheet = $0 },
+            open: { route($0) },
             toggleSpeech: {
                 if let card = store.topCard { store.speechService.togglePlayPause(for: card) }
             },
@@ -155,6 +164,23 @@ struct InsightMainView: View {
         }
     }
 
+    // MARK: - 路由
+
+    /// 面板路由统一入口：收藏 / 统计 / 历史已是侧栏目的地，拦截对应 case 重定向到目的地导航；
+    /// 其余 case 照旧走 ActiveSheet sheet。menubar 的三个条目（MacCommands，不改）也经此归一。
+    private func route(_ sheet: ActiveSheet) {
+        switch sheet {
+        case .favorites: navigate(to: .favorites)
+        case .stats: navigate(to: .stats)
+        case .history: navigate(to: .history)
+        default: activeSheet = sheet
+        }
+    }
+
+    private func navigate(to target: InsightDestination) {
+        withAnimation(InsightMotion.shell) { destination = target }
+    }
+
     // MARK: - 内容区
 
     @ViewBuilder
@@ -169,17 +195,17 @@ struct InsightMainView: View {
         case .today, .review, .library:
             LearningWorkspaceView(
                 store: store,
-                open: { activeSheet = $0 },
+                open: { route($0) },
                 explore: { destination = .swipe },
                 destination: destination,
                 navigate: { destination = $0 }
             )
         case .favorites:
-            InsightFavoritesPlaceholder(store: store, onOpenSheet: { activeSheet = $0 })
+            InsightFavoritesPlaceholder(store: store, onOpenSheet: { route($0) })
         case .history:
-            InsightHistoryPlaceholder(store: store, onOpenSheet: { activeSheet = $0 })
+            InsightHistoryPlaceholder(store: store, onOpenSheet: { route($0) })
         case .stats:
-            InsightStatsPlaceholder(store: store, onOpenSheet: { activeSheet = $0 })
+            InsightStatsPlaceholder(store: store)
         case .graph:
             KnowledgeGraphView(
                 store: store,
@@ -195,7 +221,10 @@ struct InsightMainView: View {
         }
     }
 
-    /// 面板仍走 sheet（沿用 ActiveSheet 路由），与旧 CardDeckView 一致
+    /// 面板 sheet（沿用 ActiveSheet 路由）。
+    /// 收藏 / 统计 / 历史三个面板已统一为侧栏目的地，不再在此挂载：
+    /// favorites/stats 被 route(_:) 重定向，分支仅保留穷举所需（不可达）；
+    /// HistoryView 只从统计页分类下钻以局部 sheet 打开（InsightStatsPlaceholder）。
     @ViewBuilder
     private func sheetContent(for sheet: ActiveSheet) -> some View {
         switch sheet {
@@ -247,16 +276,13 @@ struct InsightMainView: View {
             CardPosterExportSheet(card: card) {
                 activeSheet = nil
             }
-        case .favorites:
-            FavoritesView(store: store, showAIMark: store.settings.showAIMark, onClose: {
-                activeSheet = nil
-            })
+        case .favorites, .stats:
+            // 收藏 / 统计已升级为侧栏目的地（InsightFavoritesPlaceholder / InsightStatsPlaceholder），
+            // 旧面板 FavoritesView / StatsView 已归档至 Views/_archived/。
+            // 这两个 case 只作为 menubar 路由信号被 route(_:) 重定向，永远不会到达这里。
+            EmptyView()
         case .settings:
             SettingsView(store: store)
-        case .stats:
-            StatsView(store: store) {
-                activeSheet = nil
-            }
         case .history:
             HistoryView(store: store, showAIMark: store.settings.showAIMark, categoryFilter: nil) {
                 activeSheet = nil
@@ -492,9 +518,9 @@ struct InsightMainView: View {
                         .disabled(store.topCard == nil)
                         Button("语音听书控制台…", systemImage: "slider.horizontal.3") { activeSheet = .speechConsole }
                             .keyboardShortcut("p", modifiers: [.command, .option])
-                        Button("知识收藏阁", systemImage: "bookmark") { activeSheet = .favorites }
-                        Button("学习统计", systemImage: "chart.bar") { activeSheet = .stats }
-                        Button("历史记录", systemImage: "clock") { activeSheet = .history }
+                        Button("知识收藏阁", systemImage: "bookmark") { navigate(to: .favorites) }
+                        Button("学习统计", systemImage: "chart.bar") { navigate(to: .stats) }
+                        Button("历史记录", systemImage: "clock") { navigate(to: .history) }
                     }
                     Section("卡库管理") {
                         Button("换一批新知识", systemImage: "arrow.clockwise") {
