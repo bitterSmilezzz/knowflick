@@ -18,7 +18,7 @@ public struct CardPosterExportSheet: View {
     public var body: some View {
         ZStack {
             // 背景底色
-            EditorialColor.canvasGradient
+            InsightColor.canvas
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -28,13 +28,13 @@ public struct CardPosterExportSheet: View {
                     .padding(.top, 20)
                     .padding(.bottom, 12)
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 // 中间海报实时缩放预览区
                 previewArea
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 // 底部动作按钮栏
                 bottomActionBar
@@ -45,11 +45,10 @@ public struct CardPosterExportSheet: View {
             // 浮动 HUD Toast 反馈
             VStack {
                 Spacer()
-                EditorialToast(center: toast)
+                EditorialToast(center: toast, edge: .bottom)
                     .padding(.bottom, 80)
             }
             .zIndex(200)
-            .animation(.spring(response: 0.28, dampingFraction: 0.8), value: toast.message)
         }
         .frame(minWidth: 700, idealWidth: 760, minHeight: 680, idealHeight: 720)
     }
@@ -61,14 +60,14 @@ public struct CardPosterExportSheet: View {
             HStack(spacing: 10) {
                 Image(systemName: "square.and.arrow.up.on.square.fill")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("导出分享海报")
-                        .font(EditorialFont.modalTitle)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.title)
+                        .foregroundStyle(InsightColor.textPrimary)
                     Text("生成出版物级排版长图或文艺相纸，可直接复制粘贴到社交平台")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textSecondary)
                 }
             }
 
@@ -88,10 +87,10 @@ public struct CardPosterExportSheet: View {
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .frame(width: 30, height: 30)
-                    .background(EditorialColor.glassSurface, in: Circle())
-                    .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .background(InsightColor.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
@@ -121,7 +120,7 @@ public struct CardPosterExportSheet: View {
                     )
                     // 复合柔光立体阴影
                     .shadow(
-                        color: EditorialColor.dynamic(
+                        color: InsightColor.dynamic(
                             light: NSColor.black.withAlphaComponent(0.16),
                             dark: NSColor.black.withAlphaComponent(0.65)
                         ),
@@ -129,7 +128,7 @@ public struct CardPosterExportSheet: View {
                         y: 14
                     )
                     .scaleEffect(fitScale)
-                    .animation(.spring(response: 0.38, dampingFraction: 0.8), value: selectedStyle)
+                    .animation(InsightMotion.shell, value: selectedStyle)
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
@@ -143,10 +142,10 @@ public struct CardPosterExportSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: selectedStyle.icon)
                     .font(.system(size: 12))
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .foregroundStyle(InsightColor.textTertiary)
                 Text(selectedStyle.description)
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textTertiary)
             }
 
             Spacer()
@@ -157,17 +156,17 @@ public struct CardPosterExportSheet: View {
                     Image(systemName: "doc.on.doc.fill")
                         .font(.system(size: 13, weight: .bold))
                     Text("复制图片 ⌘C")
-                        .font(EditorialFont.label)
+                        .font(InsightFont.bodyStrong)
                 }
                 .foregroundStyle(Color.black.opacity(0.9))
                 .padding(.horizontal, 18)
                 .padding(.vertical, 10)
-                .background(EditorialColor.aiAmber, in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous))
+                .background(InsightColor.warning, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                    RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.8)
                 )
-                .shadow(color: EditorialColor.aiAmber.opacity(0.35), radius: 8, y: 2)
+                .shadow(color: InsightColor.warning.opacity(0.35), radius: 8, y: 2)
             }
             .buttonStyle(PressableButtonStyle(scale: 0.97))
             .keyboardShortcut("c", modifiers: .command)
@@ -178,15 +177,15 @@ public struct CardPosterExportSheet: View {
                     Image(systemName: "arrow.down.to.line.compact")
                         .font(.system(size: 13, weight: .semibold))
                     Text("保存图片 ⌘S")
-                        .font(EditorialFont.label)
+                        .font(InsightFont.bodyStrong)
                 }
-                .foregroundStyle(EditorialColor.textPrimary)
+                .foregroundStyle(InsightColor.textPrimary)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 10)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous))
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
-                        .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
+                        .strokeBorder(InsightColor.border, lineWidth: 1)
                 )
             }
             .buttonStyle(PressableButtonStyle(scale: 0.97))
@@ -253,12 +252,12 @@ private struct NativeShareButton: View {
         Button(action: triggerShare) {
             Image(systemName: "square.and.arrow.up")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(EditorialColor.textSecondary)
+                .foregroundStyle(InsightColor.textSecondary)
                 .frame(width: 36, height: 36)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous))
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
-                        .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
+                        .strokeBorder(InsightColor.border, lineWidth: 1)
                 )
         }
         .buttonStyle(PressableButtonStyle(scale: 0.97))

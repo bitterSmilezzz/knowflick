@@ -8,8 +8,8 @@ struct KnowFlickApp: App {
 
     var body: some Scene {
         WindowGroup {
-            CardDeckView(store: store)
-                .frame(minWidth: 760, minHeight: 560)
+            InsightMainView(store: store)
+                .frame(minWidth: InsightLayout.defaultWindow.width, minHeight: InsightLayout.defaultWindow.height)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     store.shutdown()
                 }
@@ -27,7 +27,7 @@ struct KnowFlickApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 1120, height: 780)
+        .defaultSize(width: InsightLayout.defaultWindow.width, height: InsightLayout.defaultWindow.height)
         .commands { MacCommands() }
     }
 }

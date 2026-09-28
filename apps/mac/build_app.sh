@@ -136,7 +136,30 @@ fi
 # ---------- 校验与刷新 ----------
 sed -i '' "s/__APP_VERSION__/$APP_VERSION/g" "$CONTENTS_DIR/Info.plist"
 plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
-codesign --force --deep --sign - "$APP_DIR"
+
+# 签名：优先用仓库内**固定**的开发签名，回退 adhoc。
+#
+# 为什么不能用 adhoc（`--sign -`）：adhoc 没有稳定身份，每次重新打包 CDHash 都不同。
+# Keychain 的访问控制（ACL）按「可执行文件的 CDHash / 签名身份」授权，签名一变
+# 就拒绝访问 —— 表现为每次启动都弹「KnowFlick 想要使用钥匙串」，必须重新点
+# 「始终允许」，而 bootstrap 停在读 Keychain 那一步，卡片库加载不进去（侧栏计数 0）。
+#
+# 固定证书的初始化是一次性人工步骤（自签名证书无法由脚本可靠创建，macOS 要求
+# codeSigning 扩展 + add-trusted-cert，见 README「打包与签名」）。证书已在 login
+# keychain 后，本脚本每次都复用它，CDHash 稳定，Keychain 不再反复弹窗。
+#
+# 优先顺序：
+#   1. $KNOWFLICK_CODESIGN_IDENTITY  显式指定（开发者自备 Apple 证书）
+#   2. 已信任的自签名证书 "KnowFlick Dev"
+#   3. adhoc（干净环境；接受每次重启弹一次钥匙串）
+SIGN_IDENTITY="${KNOWFLICK_CODESIGN_IDENTITY:-KnowFlick Dev}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"${SIGN_IDENTITY}\""; then
+    echo "    签名身份: ${SIGN_IDENTITY} (固定，Keychain ACL 稳定)"
+    codesign --force --deep --sign "${SIGN_IDENTITY}" "${APP_DIR}"
+else
+    echo "    签名身份: adhoc（未找到固定证书，每次重启会弹一次钥匙串）" >&2
+    codesign --force --deep --sign - "${APP_DIR}"
+fi
 codesign --verify --deep --strict "$APP_DIR"
 
 # 启动自检：确认 Bundle.module 真的能找到资源。

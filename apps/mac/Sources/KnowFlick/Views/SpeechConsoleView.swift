@@ -26,15 +26,12 @@ struct SpeechConsoleView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.dynamic(
-                light: NSColor.windowBackgroundColor.withAlphaComponent(0.97),
-                dark: NSColor(white: 0.12, alpha: 0.97)
-            )
-            .ignoresSafeArea()
+            InsightColor.surfaceRaised
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 headerBar
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
@@ -56,19 +53,19 @@ struct SpeechConsoleView: View {
         HStack {
             Image(systemName: "headphones")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(EditorialColor.aiAmber)
+                .foregroundStyle(InsightColor.warning)
             Text("语音听书控制台")
-                .font(EditorialFont.modalTitle)
-                .foregroundStyle(EditorialColor.textPrimary)
+                .font(InsightFont.title)
+                .foregroundStyle(InsightColor.textPrimary)
             Spacer()
             if let seconds = sleepSeconds {
                 Label("睡眠 \(clock(seconds: seconds))", systemImage: "moon.zzz.fill")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(EditorialColor.aiAmberBg, in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                    .background(InsightColor.warningSoft, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
             }
             GlassIconButton(icon: "xmark", help: "关闭 (Esc)") {
                 onClose()
@@ -85,43 +82,43 @@ struct SpeechConsoleView: View {
             if let card {
                 HStack {
                     Text(card.category)
-                        .font(EditorialFont.badge)
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .font(InsightFont.callout)
+                        .foregroundStyle(InsightColor.warning)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(EditorialColor.aiAmberBg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(InsightColor.warningSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1)
+                                .strokeBorder(InsightColor.warning, lineWidth: 1)
                         )
                     Spacer()
                     HStack(spacing: 6) {
                         AudioWaveformBars(isPlaying: isSpeaking)
                             .frame(width: 22, height: 16)
                         Text(statusText)
-                            .font(EditorialFont.caption)
-                            .foregroundStyle(isSpeaking ? EditorialColor.likeGreen : EditorialColor.textMuted)
+                            .font(InsightFont.caption)
+                            .foregroundStyle(isSpeaking ? InsightColor.success : InsightColor.textMuted)
                     }
                 }
 
                 Text(card.headline)
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if !card.summary.isEmpty {
                     Text(card.summary)
-                        .font(EditorialFont.labelSmall)
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .font(InsightFont.callout)
+                        .foregroundStyle(InsightColor.textMuted)
                         .lineLimit(2)
                 }
             } else {
                 Text("尚未开始朗读")
-                    .font(EditorialFont.label)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.bodyStrong)
+                    .foregroundStyle(InsightColor.textSecondary)
                 Text("点下方播放键朗读当前卡片，或回到卡堆按 ⌘P 开始听书。")
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textMuted)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textMuted)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,11 +160,11 @@ struct SpeechConsoleView: View {
             HStack {
                 Text(clock(ms: Int(shown * Double(totalMs))))
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                 Spacer()
                 Text(clock(ms: totalMs))
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(EditorialColor.textMuted)
+                    .foregroundStyle(InsightColor.textMuted)
             }
             .padding(.horizontal, 2)
         }
@@ -212,11 +209,11 @@ struct SpeechConsoleView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("磨耳朵连续听书")
-                        .font(EditorialFont.label)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.bodyStrong)
+                        .foregroundStyle(InsightColor.textPrimary)
                     Text("单张播完后自动朗读下一张卡片")
-                        .font(EditorialFont.caption)
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .font(InsightFont.caption)
+                        .foregroundStyle(InsightColor.textMuted)
                 }
                 Spacer(minLength: 12)
                 Toggle("磨耳朵连续听书", isOn: Binding(
@@ -317,27 +314,27 @@ struct SpeechConsoleView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
-                    .font(EditorialFont.label)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.bodyStrong)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Spacer()
                 Text(detail)
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.warning)
             }
             ConsolePillRow(options: options, selected: selected, pick: pick)
             Text(note)
-                .font(EditorialFont.captionSmall)
-                .foregroundStyle(EditorialColor.textMuted)
+                .font(InsightFont.captionSmall)
+                .foregroundStyle(InsightColor.textMuted)
         }
     }
 
     private var sectionBackground: Color {
-        EditorialColor.glassSurface
+        InsightColor.surface
     }
 
     private var hairline: some View {
         Rectangle()
-            .fill(EditorialColor.glassDivider)
+            .fill(InsightColor.divider)
             .frame(height: 1)
     }
 
@@ -391,10 +388,10 @@ private struct ConsoleIconButton: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: size * 0.4, weight: .semibold))
-                .foregroundStyle(EditorialColor.textSecondary)
+                .foregroundStyle(InsightColor.textSecondary)
                 .frame(width: size, height: size)
-                .background(EditorialColor.glassSurface, in: Circle())
-                .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                .background(InsightColor.surface, in: Circle())
+                .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
         }
         .buttonStyle(PressableButtonStyle())
         .help(help)
@@ -413,8 +410,8 @@ private struct ConsolePlayButton: View {
                 .font(.system(size: 19, weight: .bold))
                 .foregroundStyle(Color.white)
                 .frame(width: 58, height: 58)
-                .background(EditorialColor.likeGreen, in: Circle())
-                .shadow(color: EditorialColor.likeGreen.opacity(0.35), radius: 10, y: 3)
+                .background(InsightColor.success, in: Circle())
+                .shadow(color: InsightColor.success.opacity(0.35), radius: 10, y: 3)
         }
         .buttonStyle(PressableButtonStyle())
         .help(isPlaying ? "暂停朗读 (⌘P)" : "继续朗读 (⌘P)")
@@ -436,19 +433,19 @@ private struct ConsolePillRow: View {
                     pick(option.value)
                 } label: {
                     Text(option.label)
-                        .font(EditorialFont.caption)
+                        .font(InsightFont.caption)
                         .fontWeight(isSelected ? .bold : .regular)
-                        .foregroundStyle(isSelected ? Color.white : EditorialColor.textSecondary)
+                        .foregroundStyle(isSelected ? Color.white : InsightColor.textSecondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(
-                            isSelected ? EditorialColor.aiAmber : EditorialColor.glassSurfaceHover,
-                            in: RoundedRectangle(cornerRadius: EditorialRadius.pill, style: .continuous)
+                            isSelected ? InsightColor.warning : InsightColor.surfaceRaised,
+                            in: RoundedRectangle(cornerRadius: InsightRadius.pill, style: .continuous)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: EditorialRadius.pill, style: .continuous)
+                            RoundedRectangle(cornerRadius: InsightRadius.pill, style: .continuous)
                                 .strokeBorder(
-                                    isSelected ? EditorialColor.aiAmber : EditorialColor.glassBorder,
+                                    isSelected ? InsightColor.warning : InsightColor.border,
                                     lineWidth: 1
                                 )
                         )
