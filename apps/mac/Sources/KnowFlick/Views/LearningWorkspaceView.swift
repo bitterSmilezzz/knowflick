@@ -200,7 +200,7 @@ struct LearningWorkspaceView: View {
                     }
                     .buttonStyle(PressableButtonStyle())
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(name)，\(cards.count) 张卡片，打开主题")
+                    .accessibilityLabel("\(name)，\(summary.total) 张卡片，打开主题")
                 }
             }
         }
