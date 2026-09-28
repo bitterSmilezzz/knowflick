@@ -21,6 +21,8 @@ enum DeckDeriver {
     ///   - currentDeck: 当前卡堆：日常刷卡要 100% 保序，新卡只追加到尾部，都不能靠重算
     ///   - enableSeed / enableAI: 来源开关（全关则队列为空，含导入卡片，口径见 CONTEXT.md）
     ///   - preferredCategories: 偏好分类（`CategoryRegistry.resolve` 解析后的结果，空 = 全部）
+    ///   - studyScope: 学习范围（学习地图下发）。生效时**接管分类维度**——preferredCategories 让位，
+    ///     与 Android `CardStore` 同一语义；顺序模式跳过防重打散，保证按 orderKey 一级一级推进
     ///   - lastSwipedCardId: 上一张划走的卡：用于识别「撤销插回」这一唯一需要置顶的场景
     ///   - lastSwipedKey: 上一张划走卡的图 key：全量重排时避开它，杜绝划走后立刻撞图
     static func derive(
@@ -29,6 +31,7 @@ enum DeckDeriver {
         enableSeed: Bool,
         enableAI: Bool,
         preferredCategories: [String],
+        studyScope: StudyScope = .none,
         lastSwipedCardId: UUID?,
         lastSwipedKey: String?
     ) -> Derived {
@@ -51,7 +54,10 @@ enum DeckDeriver {
             }
         }
         let filtered: [KnowledgeCard]
-        if preferredCategories.isEmpty {
+        if studyScope.isActive {
+            // 学习范围接管分类维度：preferredCategories 让位（与 Android CardStore 同语义）
+            filtered = studyScope.filter(unseen)
+        } else if preferredCategories.isEmpty {
             filtered = unseen
         } else {
             let preferred = unseen.filter { preferredCategories.contains($0.category) }
@@ -64,7 +70,12 @@ enum DeckDeriver {
         let newCards = filtered.filter { !existingDeckIds.contains($0.id) }
 
         let deck: [KnowledgeCard]
-        if !remainingInDeck.isEmpty && newCards.isEmpty {
+        if studyScope.isActive && studyScope.sequential {
+            // 专学模式：「按导入顺序一级一级往前推」就是产品语义，必须跳过背景图防重打散
+            // 与增量拼接——打散会把学习顺序冲掉。划走即 seenAt != nil，自然离开队列，
+            // 撤销则回到它在 orderKey 上的原位（比"插回队首"更符合路径语义）。
+            deck = studyScope.orderForDeck(filtered)
+        } else if !remainingInDeck.isEmpty && newCards.isEmpty {
             // 绝大多数日常划卡出队场景：直接移除划走卡片，100% 保留排好的无碰撞队列顺序，杜绝重排抖动
             deck = remainingInDeck
         } else if !remainingInDeck.isEmpty && newCards.count == 1 && newCards.first?.id == lastSwipedCardId {

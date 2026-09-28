@@ -6,6 +6,10 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [v4.6.0] - 2026-09-28
+
+- macOS：学习地图上线（P2 主线 UI 的 mac 侧补齐）——侧栏新增「学习地图」：学科 → 分支 → 难度三级选择器，分支卡支持「专学这条支线」（按 orderKey 顺序推进）与「加入混合」，另有整学科按难度选的阶梯芯片；范围生效时接管卡堆的分类维度（偏好分类让位），刷卡页顶栏显示范围徽标与剩余张数、一键退出；范围只在本次会话内生效。`StudyScope` / `StudyMap` 纯逻辑入 Core，与 Android `StudyScope.kt` 逐条对齐，11 个新用例。详见 [macOS 发布记录](docs/MAC_RELEASE_4.6.0.md)。
+
 ## [v4.5.0] - 2026-09-28
 
 - macOS：界面改版——刷卡主视图迁移到新的 Cutline 风 Insight 体系（浮动侧栏外壳 + 深色 surface 卡片 + 1pt 描边，刷卡手势 / 飞出层 / 全部模态路由与快捷键 1:1 保留），卡片面恢复朗读胶囊按键；学习工作台 Cutline 原生化（无衬线字阶 + 选中蓝，交互原样保留）；收藏 / 历史 / 统计换 Cutline 化框架，全部面板完成视觉 token 迁移；旧 `CardView` / `CardDeckView` / `CardSheenOverlay` 归档至 `Views/_archived/`。详见 [macOS 发布记录](docs/MAC_RELEASE_4.5.0.md)。

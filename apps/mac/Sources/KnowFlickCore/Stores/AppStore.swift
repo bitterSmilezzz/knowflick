@@ -18,6 +18,14 @@ public final class AppStore {
             syncSpeechService()
         }
     }
+    /// 学习范围（学习地图下发）：生效时接管卡堆的分类维度。
+    /// **只在本次会话内生效，不落盘**——重启回到全景，与 Android 侧同一产品口径。
+    public var studyScope: StudyScope = .none {
+        didSet {
+            guard studyScope != oldValue else { return }
+            recomputeDeckAndHistory()
+        }
+    }
     public var isGenerating = false
     public var lastError: String?
     /// 落盘告警（顶栏横幅）：由 `PersistenceCoordinator` 持有，这里转发。
@@ -168,6 +176,7 @@ public final class AppStore {
             enableSeed: settings.enableSeed,
             enableAI: settings.enableAI,
             preferredCategories: settings.preferredCategories,
+            studyScope: studyScope,
             lastSwipedCardId: lastSwipedCardId,
             lastSwipedKey: lastSwipedKey
         )
