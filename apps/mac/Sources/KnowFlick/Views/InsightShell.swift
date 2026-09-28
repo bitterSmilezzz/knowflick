@@ -16,6 +16,7 @@ import KnowFlickCore
 enum InsightDestination: String, CaseIterable, Identifiable {
     case today      = "今日"
     case swipe      = "刷卡"
+    case map        = "学习地图"
     case review     = "复习"
     case library    = "知识库"
     case favorites  = "收藏"
@@ -31,6 +32,7 @@ enum InsightDestination: String, CaseIterable, Identifiable {
         switch self {
         case .swipe: return "rectangle.stack"
         case .today: return "sun.max"
+        case .map: return "map"
         case .review: return "clock.arrow.circlepath"
         case .library: return "square.grid.2x2"
         case .favorites: return "heart"
@@ -45,7 +47,7 @@ enum InsightDestination: String, CaseIterable, Identifiable {
     /// 分区：false = 主导航，true = 工具区（渲染时分组）
     var isUtility: Bool {
         switch self {
-        case .swipe, .today, .review, .library: return false
+        case .swipe, .today, .map, .review, .library: return false
         case .favorites, .stats, .history, .graph, .quiz, .console: return true
         }
     }
@@ -56,6 +58,7 @@ enum InsightDestination: String, CaseIterable, Identifiable {
         switch destination {
         case .swipe: return store.deck.count
         case .today: return LearningPlan(cards: store.cards).completedToday
+        case .map: return store.studyScope.isActive ? StudyMap.remaining(store.cards, scope: store.studyScope) : nil
         case .review: return LearningPlan(cards: store.cards).due.count
         case .library: return store.cards.count
         case .favorites: return store.favorites.count

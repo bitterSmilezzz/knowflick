@@ -162,6 +162,10 @@ struct InsightMainView: View {
         switch destination {
         case .swipe:
             swipeView
+        case .map:
+            LearningMapView(store: store) {
+                destination = .swipe
+            }
         case .today, .review, .library:
             LearningWorkspaceView(
                 store: store,
@@ -401,6 +405,34 @@ struct InsightMainView: View {
             Spacer(minLength: InsightSpacing.large)
 
             HStack(spacing: InsightSpacing.compact) {
+                // 学习范围徽标：地图下发的范围在刷卡页一目了然，一键退出
+                if store.studyScope.isActive {
+                    Button {
+                        withAnimation(InsightMotion.shell) { store.studyScope = .none }
+                    } label: {
+                        HStack(spacing: InsightSpacing.small) {
+                            Image(systemName: "map.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(store.studyScope.describe())
+                                .font(InsightFont.caption)
+                            Text("还剩 \(StudyMap.remaining(store.cards, scope: store.studyScope)) 张")
+                                .font(InsightFont.captionSmall)
+                                .foregroundStyle(InsightColor.textTertiary)
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(InsightColor.textTertiary)
+                        }
+                        .foregroundStyle(InsightColor.accent)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(InsightColor.accentSoft, in: Capsule())
+                        .overlay(Capsule().strokeBorder(InsightColor.accent.opacity(0.3), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .help("当前学习范围（点击退出，回到全景卡堆）")
+                    .accessibilityLabel("退出学习范围 \(store.studyScope.describe())")
+                }
+
                 if store.isGenerating {
                     HStack(spacing: InsightSpacing.small) {
                         ProgressView().controlSize(.small).tint(InsightColor.warning)
@@ -448,6 +480,7 @@ struct InsightMainView: View {
 
                 Menu {
                     Section("探索与学习") {
+                        Button("学习地图", systemImage: "map") { destination = .map }
                         Button("全局搜索", systemImage: "magnifyingglass") { activeSheet = .search }
                             .keyboardShortcut("f", modifiers: .command)
                         Button("知识测验", systemImage: "graduationcap") { activeSheet = .quiz(category: nil) }
@@ -497,6 +530,11 @@ struct InsightMainView: View {
     }
 
     private var subtitleText: String {
+        if store.studyScope.isActive {
+            var parts = [store.studyScope.describe()]
+            parts.append("还剩 \(StudyMap.remaining(store.cards, scope: store.studyScope)) 张")
+            return parts.joined(separator: " · ")
+        }
         var parts: [String] = []
         parts.append("今天也想学点新东西")
         if store.deck.count > 0 {
