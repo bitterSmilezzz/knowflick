@@ -69,7 +69,7 @@ OpenAI 兼容端点客户端，**流式生成**：SSE 逐行接收 + 增量对�
 **AI 内容标记（showAIMark）**：AI 卡片正面显示橙色徽章、详情页显示「由 AI 生成，请核实」提示条、历史列表标注 AI；关闭开关后全部隐藏。
 
 ## 设计系统（InsightDesignSystem / ThemeTokens）
-全局统一的语义化视觉规范。2026-09 起从「暗色人文画报风（Dark Editorial，宋体 + 摄影底图）」整体迁移到 **Cutline 风（Insight 体系）**：深色 surface 卡片 + 1pt 描边 + 纯排版驱动，圆角浮动侧栏外壳（`InsightShell`）+ 内容区顶栏（标题/描述/右侧操作）+ 底部悬浮操作条；主刷卡视图不再铺设摄影底图，`CategoryTheme` 的底图池仍服务网格缩略图与详情页。
+全局统一的语义化视觉规范。2026-09 起从「暗色人文画报风（Dark Editorial，宋体 + 摄影底图）」整体迁移到 **Cutline 风（Insight 体系）**：圆角浮动侧栏外壳（`InsightShell`，品牌标直接用真实 App 图标）+ 内容区顶栏（标题/描述/右侧操作）+ 底部悬浮操作条 + 1pt 描边的深色 surface 卡片。**摄影底图是产品个性，保留**：刷卡主卡片为整张分类摄影底图 + 多阶暗化 scrim + 白字排版（无图分类退化为 accent 渐变），`CategoryTheme` 的底图池同时服务收藏缩略图、知识库列表行与工作台「接下来读」横幅。
 
 命名规约：新体系全部以 `Insight` 前缀成套出现——`InsightColor` / `InsightFont` / `InsightRadius` / `InsightSpacing` / `InsightLayout` / `InsightMotion`（token 全集在 `InsightDesignSystem.swift`）与组件（`InsightCard` / `InsightPill` / `InsightSectionLabel` / `InsightButton` 等）。旧的 `EditorialColor` / `EditorialFont` / `EditorialSpring` 只作为过渡桥保留在 `ThemeTokens.swift`，新代码一律引用 Insight token。刷卡主视图为 `InsightMainView`（侧栏外壳 + 刷卡合一，手势/飞出层/sheet 路由与旧 `CardDeckView` 1:1 对齐，旧视图归档于 `Views/_archived/` 供对照）；收藏 / 历史 / 统计已换 Cutline 化框架（`InsightPlaceholderViews.swift`），学习工作台 / 星图 / 测验 / 听书面板待下一批深化。
 
