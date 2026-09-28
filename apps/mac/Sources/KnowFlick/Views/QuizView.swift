@@ -96,93 +96,75 @@ struct QuizView: View {
     // MARK: - 顶栏
 
     private var topBar: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: InsightSpacing.medium) {
             GlassIconButton(icon: "xmark", iconSize: 12, help: "退出测验 (Esc)", action: onClose)
                 .keyboardShortcut(.escape, modifiers: [])
 
-            HStack(spacing: 8) {
+            HStack(spacing: InsightSpacing.compact) {
                 Image(systemName: "graduationcap.fill")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
 
                 Text(plannedCards != nil ? "到期复习" : category.map { "\($0) · 专项测验" } ?? "沉浸式知识测验")
                     .font(InsightFont.title)
                     .foregroundStyle(InsightColor.textPrimary)
 
                 if !quizCards.isEmpty && !isCompleted {
-                    Text("\(currentIndex + 1) / \(quizCards.count)")
-                        .font(InsightFont.captionSmall.weight(.bold))
-                        .foregroundStyle(InsightColor.warning)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(InsightColor.warningSoft, in: Capsule())
-                        .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
+                    InsightPill(text: "\(currentIndex + 1) / \(quizCards.count)", tone: .accent)
                 }
             }
 
             Spacer()
 
             if !isCompleted && !quizCards.isEmpty {
-                // 实时掌握度微缩计数
-                HStack(spacing: 10) {
-                    HStack(spacing: 4) {
+                // 实时掌握度微缩计数（对错反馈语义色 success/warning/danger 原样）
+                HStack(spacing: InsightSpacing.compact) {
+                    HStack(spacing: InsightSpacing.tiny) {
                         Circle().fill(InsightColor.success).frame(width: 7, height: 7)
                         Text("\(countMastered)")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(InsightFont.mono)
+                            .monospacedDigit()
                             .foregroundStyle(InsightColor.textSecondary)
                     }
-                    HStack(spacing: 4) {
+                    HStack(spacing: InsightSpacing.tiny) {
                         Circle().fill(InsightColor.warning).frame(width: 7, height: 7)
                         Text("\(countHesitant)")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(InsightFont.mono)
+                            .monospacedDigit()
                             .foregroundStyle(InsightColor.textSecondary)
                     }
-                    HStack(spacing: 4) {
+                    HStack(spacing: InsightSpacing.tiny) {
                         Circle().fill(InsightColor.danger).frame(width: 7, height: 7)
                         Text("\(countForgot)")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(InsightFont.mono)
+                            .monospacedDigit()
                             .foregroundStyle(InsightColor.textSecondary)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, InsightSpacing.default)
+                .padding(.vertical, InsightSpacing.small)
                 .background(InsightColor.surface, in: Capsule())
                 .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
+        .padding(.horizontal, InsightLayout.contentPadding)
+        .padding(.vertical, InsightSpacing.medium)
     }
 
     // MARK: - 测验答题区
 
     private var activeQuizArea: some View {
-        VStack(spacing: 16) {
-            // 平滑进度指示条
-            GeometryReader { geo in
-                let progress = quizCards.isEmpty ? 0 : CGFloat(currentIndex + 1) / CGFloat(quizCards.count)
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(InsightColor.border)
-                        .frame(height: 4)
+        VStack(spacing: InsightSpacing.medium) {
+            // 平滑进度指示条（Cutline 单色进度条，替代旧琥珀→绿渐变）
+            InsightProgressBar(
+                value: quizCards.isEmpty ? 0 : Double(currentIndex + 1) / Double(quizCards.count),
+                tint: InsightColor.accent,
+                height: 4
+            )
+            .padding(.horizontal, InsightSpacing.xl)
+            .padding(.top, InsightSpacing.compact)
 
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [InsightColor.warning, InsightColor.success],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: max(8, geo.size.width * progress), height: 4)
-                        .animation(InsightMotion.page, value: progress)
-                }
-            }
-            .frame(height: 4)
-            .padding(.horizontal, 40)
-            .padding(.top, 8)
-
-            Spacer(minLength: 8)
+            Spacer(minLength: InsightSpacing.compact)
 
             // 卡片主体
             if let card = currentCard {
@@ -208,13 +190,13 @@ struct QuizView: View {
                 ))
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: InsightSpacing.compact)
 
             // 底部提示
             Text("按 空格键/回车 翻看背面答案 · ⌘1 没想起来 · ⌘2 犹豫想起 · ⌘3 熟练掌握")
                 .font(InsightFont.captionSmall)
                 .foregroundStyle(InsightColor.textMuted)
-                .padding(.bottom, 16)
+                .padding(.bottom, InsightSpacing.medium)
         }
     }
 
@@ -222,14 +204,14 @@ struct QuizView: View {
 
     private var summaryView: some View {
         ScrollView {
-            VStack(spacing: 28) {
+            VStack(spacing: InsightSpacing.xl) {
                 Spacer(minLength: 10)
 
                 // 顶端奖章与标题
-                VStack(spacing: 8) {
+                VStack(spacing: InsightSpacing.compact) {
                     Image(systemName: retentionRate >= 80 ? "medal.fill" : "sparkles")
                         .font(.system(size: 38))
-                        .foregroundStyle(InsightColor.warning)
+                        .foregroundStyle(InsightColor.accent)
 
                     Text("本轮记忆测验已完成")
                         .font(InsightFont.title)
@@ -240,7 +222,7 @@ struct QuizView: View {
                         .foregroundStyle(InsightColor.textSecondary)
                 }
 
-                // 留存率圆环展示
+                // 留存率圆环展示（Cutline 单色强调，替代旧琥珀→绿渐变）
                 ZStack {
                     Circle()
                         .stroke(InsightColor.border, lineWidth: 14)
@@ -249,18 +231,14 @@ struct QuizView: View {
                     Circle()
                         .trim(from: 0, to: animateRing ? CGFloat(retentionRate) / 100.0 : 0)
                         .stroke(
-                            LinearGradient(
-                                colors: [InsightColor.warning, InsightColor.success],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
+                            InsightColor.accent,
                             style: StrokeStyle(lineWidth: 14, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
                         .frame(width: 140, height: 140)
                         .animation(.easeOut(duration: 1.0), value: animateRing)
 
-                    VStack(spacing: 2) {
+                    VStack(spacing: InsightSpacing.tiny) {
                         Text("\(retentionRate)%")
                             .font(InsightFont.statLarge)
                             .foregroundStyle(InsightColor.textPrimary)
@@ -269,15 +247,15 @@ struct QuizView: View {
                             .foregroundStyle(InsightColor.textTertiary)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, InsightSpacing.compact)
                 .onAppear {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         animateRing = true
                     }
                 }
 
-                // 三分项指标卡片
-                HStack(spacing: 16) {
+                // 三分项指标卡片（对错反馈语义色原样）
+                HStack(spacing: InsightSpacing.medium) {
                     statCard(
                         title: "熟练掌握",
                         count: countMastered,
@@ -310,10 +288,10 @@ struct QuizView: View {
                 }.sorted { $0.1 == .forgot && $1.1 != .forgot }
 
                 if !weakCards.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: InsightSpacing.default) {
                         HStack {
                             Text("本轮待强化卡片 (\(weakCards.count) 张)")
-                                .font(InsightFont.title)
+                                .font(InsightFont.headline)
                                 .foregroundStyle(InsightColor.textPrimary)
                             Spacer()
                             Text("点击就地复盘")
@@ -321,7 +299,7 @@ struct QuizView: View {
                                 .foregroundStyle(InsightColor.textTertiary)
                         }
 
-                        VStack(spacing: 8) {
+                        VStack(spacing: InsightSpacing.compact) {
                             ForEach(weakCards, id: \.0.id) { (weakCard, rating) in
                                 WeakCardRowView(
                                     card: weakCard,
@@ -342,52 +320,32 @@ struct QuizView: View {
                 }
 
                 // 底部行动按键组
-                HStack(spacing: 16) {
+                HStack(spacing: InsightSpacing.medium) {
                     if countForgot > 0 || countHesitant > 0 {
-                        Button {
+                        InsightButton(
+                            title: "针对性重测弱项 (\(countForgot + countHesitant) 题)",
+                            icon: "arrow.triangle.2.circlepath",
+                            style: .primary
+                        ) {
                             reviewWeakCards()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                                Text("针对性重测弱项 (\(countForgot + countHesitant) 题)")
-                            }
-                            .font(InsightFont.bodyStrong)
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .background(InsightColor.warning, in: Capsule())
                         }
-                        .buttonStyle(PressableButtonStyle())
                     }
 
                     // 题源在进入结算时算好（nextRoundCards），文案题量随实际张数变化；
                     // 到期复习场景重新拉取到期队列后可能已无到期卡片，此时不展示该按钮。
                     if !nextRoundCards.isEmpty {
-                        Button {
+                        InsightButton(
+                            title: "再测一组 (\(nextRoundCards.count) 题)",
+                            icon: "play.fill",
+                            style: .secondary
+                        ) {
                             startNextRound()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "play.fill")
-                                Text("再测一组 (\(nextRoundCards.count) 题)")
-                            }
-                            .font(InsightFont.bodyStrong)
-                            .foregroundStyle(InsightColor.textPrimary)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .background(InsightColor.surface, in: Capsule())
-                            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                         }
-                        .buttonStyle(PressableButtonStyle())
                     }
 
-                    Button(action: onClose) {
-                        Text("完成并返回")
-                            .font(InsightFont.bodyStrong)
-                            .foregroundStyle(InsightColor.textSecondary)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
+                    InsightButton(title: "完成并返回", style: .plain) {
+                        onClose()
                     }
-                    .buttonStyle(PressableButtonStyle())
                 }
                 .padding(.top, 10)
                 .padding(.bottom, 30)
@@ -398,13 +356,14 @@ struct QuizView: View {
     }
 
     private func statCard(title: String, count: Int, total: Int, color: Color, icon: String) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: InsightSpacing.small) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(color)
 
             Text("\(count)")
                 .font(InsightFont.statMedium)
+                .monospacedDigit()
                 .foregroundStyle(InsightColor.textPrimary)
 
             Text(title)
@@ -413,13 +372,14 @@ struct QuizView: View {
 
             Text(total > 0 ? "\(Int(Double(count) / Double(total) * 100))%" : "0%")
                 .font(InsightFont.captionSmall)
+                .monospacedDigit()
                 .foregroundStyle(InsightColor.textMuted)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.vertical, InsightSpacing.medium)
+        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
                 .strokeBorder(color.opacity(0.3), lineWidth: 1)
         )
     }
@@ -427,7 +387,7 @@ struct QuizView: View {
     // MARK: - 空状态
 
     private var emptyView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: InsightSpacing.medium) {
             Spacer()
             Image(systemName: "tray")
                 .font(.system(size: 40))
@@ -438,15 +398,9 @@ struct QuizView: View {
             Text("请先在主界面多浏览几张知识卡片，或将感兴趣的冷知识加入收藏阁。")
                 .font(InsightFont.caption)
                 .foregroundStyle(InsightColor.textSecondary)
-            Button(action: onClose) {
-                Text("返回主界面")
-                    .font(InsightFont.bodyStrong)
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 10)
-                    .background(InsightColor.warning, in: Capsule())
+            InsightButton(title: "返回主界面", style: .primary) {
+                onClose()
             }
-            .buttonStyle(PressableButtonStyle())
             .padding(.top, 10)
             Spacer()
         }
@@ -565,14 +519,14 @@ private struct WeakCardRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: InsightSpacing.compact) {
                 Text(card.category)
                     .font(InsightFont.callout)
                     .foregroundStyle(theme.accent)
-                    .padding(.horizontal, 7)
+                    .padding(.horizontal, InsightSpacing.small)
                     .padding(.vertical, 3)
                     .background(theme.accent.opacity(0.12), in: Capsule())
-                    .overlay(Capsule().strokeBorder(theme.accent.opacity(0.3), lineWidth: 0.8))
+                    .overlay(Capsule().strokeBorder(theme.accent.opacity(0.3), lineWidth: 1))
 
                 Text(card.headline)
                     .font(InsightFont.bodyStrong)
@@ -581,14 +535,9 @@ private struct WeakCardRowView: View {
 
                 Spacer()
 
+                // 评分回显胶囊（对错反馈语义色 danger/warning 原样）
                 let isForgot = (rating == .forgot)
-                Text(isForgot ? "没想起来" : "犹豫想起")
-                    .font(InsightFont.captionSmall.weight(.bold))
-                    .foregroundStyle(isForgot ? InsightColor.danger : InsightColor.warning)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2.5)
-                    .background(isForgot ? InsightColor.danger.opacity(0.12) : InsightColor.warningSoft, in: Capsule())
-                    .overlay(Capsule().strokeBorder(isForgot ? InsightColor.danger.opacity(0.4) : InsightColor.warning, lineWidth: 0.8))
+                InsightPill(text: isForgot ? "没想起来" : "犹豫想起", tone: isForgot ? .danger : .warning)
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 10, weight: .bold))
@@ -602,62 +551,68 @@ private struct WeakCardRowView: View {
             }
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: InsightSpacing.small) {
                     Text(card.summary)
                         .font(InsightFont.body)
                         .foregroundStyle(InsightColor.textSecondary)
                         .lineSpacing(4)
-                        .padding(.top, 8)
+                        .padding(.top, InsightSpacing.compact)
 
                     Text("解析：" + card.details)
                         .font(InsightFont.body)
                         .foregroundStyle(InsightColor.textTertiary)
                         .lineSpacing(4)
                         .lineLimit(4)
-                        .padding(.top, 4)
+                        .padding(.top, InsightSpacing.tiny)
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: InsightSpacing.compact) {
                 Spacer()
 
                 Button(action: onPromote) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: InsightSpacing.tiny) {
                         Image(systemName: isPromoted ? "checkmark" : "arrow.up.to.line")
                             .font(.system(size: 10, weight: .bold))
                         Text(isPromoted ? "已置顶卡堆" : "置顶卡堆")
                             .font(InsightFont.captionSmall.weight(.medium))
                     }
-                    .foregroundStyle(isPromoted ? InsightColor.success : InsightColor.warning)
-                    .padding(.horizontal, 10)
+                    .foregroundStyle(isPromoted ? InsightColor.success : InsightColor.accent)
+                    .padding(.horizontal, InsightSpacing.default)
                     .padding(.vertical, 4.5)
-                    .background(isPromoted ? InsightColor.success.opacity(0.12) : InsightColor.warningSoft, in: Capsule())
-                    .overlay(Capsule().strokeBorder(isPromoted ? InsightColor.success.opacity(0.4) : InsightColor.warning, lineWidth: 0.8))
+                    .background(isPromoted ? InsightColor.successSoft : InsightColor.accentSoft, in: Capsule())
+                    .overlay(
+                        Capsule().strokeBorder(
+                            (isPromoted ? InsightColor.success : InsightColor.accent).opacity(0.35),
+                            lineWidth: 1
+                        )
+                    )
                 }
                 .buttonStyle(PressableButtonStyle())
                 .disabled(isPromoted)
 
+                // AI 相关入口保留 warning 语义
                 Button(action: onChat) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: InsightSpacing.tiny) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 10, weight: .bold))
                         Text("AI 追问")
                             .font(InsightFont.captionSmall.weight(.semibold))
                     }
                     .foregroundStyle(InsightColor.warning)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, InsightSpacing.default)
                     .padding(.vertical, 4.5)
                     .background(InsightColor.warningSoft, in: Capsule())
-                    .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 0.8))
+                    .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.35), lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
             }
             .padding(.top, 10)
         }
-        .padding(14)
-        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(InsightSpacing.medium)
+        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous)
                 .strokeBorder(InsightColor.border, lineWidth: 1)
         )
     }
