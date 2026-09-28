@@ -6,6 +6,11 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [v4.5.0] - 2026-09-28
+
+- macOS：界面改版——刷卡主视图迁移到新的 Cutline 风 Insight 体系（浮动侧栏外壳 + 深色 surface 卡片 + 1pt 描边，刷卡手势 / 飞出层 / 全部模态路由与快捷键 1:1 保留），卡片面恢复朗读胶囊按键；学习工作台 Cutline 原生化（无衬线字阶 + 选中蓝，交互原样保留）；收藏 / 历史 / 统计换 Cutline 化框架，全部面板完成视觉 token 迁移；旧 `CardView` / `CardDeckView` / `CardSheenOverlay` 归档至 `Views/_archived/`。详见 [macOS 发布记录](docs/MAC_RELEASE_4.5.0.md)。
+- macOS：`Package.swift` 将 `Views/_archived` 排除出编译目标；打包脚本支持固定开发签名身份（`KNOWFLICK_CODESIGN_IDENTITY` 或自签名 "KnowFlick Dev"），避免 adhoc 签名变动导致每次启动重复请求钥匙串授权。
+
 ## [android-v0.10.2] - 2026-09-25
 
 - Android：AI 与语音凭据的保存、删除移至 IO 协程执行；保留同步落盘结果提示，避免 Keystore 加密与文件同步阻塞界面线程。versionCode 升至 22。详见 [Android 发布记录](docs/ANDROID_RELEASE_0.10.2.md)。

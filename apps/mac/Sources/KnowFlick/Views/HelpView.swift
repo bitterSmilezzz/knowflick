@@ -64,23 +64,23 @@ struct HelpView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.canvasGradient.ignoresSafeArea()
+            InsightColor.canvas.ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HStack {
                     Text("快捷键")
-                        .font(EditorialFont.modalTitle)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.title)
+                        .foregroundStyle(InsightColor.textPrimary)
                     Spacer()
                     Button(action: onClose) {
                         Text("完成")
-                            .font(EditorialFont.label)
-                            .foregroundStyle(EditorialColor.textSecondary)
+                            .font(InsightFont.bodyStrong)
+                            .foregroundStyle(InsightColor.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 7)
-                            .background(EditorialColor.glassSurface, in: Capsule())
-                            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                            .background(InsightColor.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                     }
                     .buttonStyle(PressableButtonStyle())
                     .keyboardShortcut(.escape, modifiers: [])
@@ -88,7 +88,7 @@ struct HelpView: View {
                 .padding(.horizontal, 22)
                 .padding(.vertical, 18)
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -98,11 +98,11 @@ struct HelpView: View {
                         shortcutSection(title: "详情页", rows: detailShortcuts)
                         shortcutSection(title: "弹窗内", rows: sheetShortcuts)
                         Text("提示：需要当前卡片的命令（⌘J / ⌘P / ⇧⌘P / ⌘S）在卡堆为空时不可用。")
-                            .font(EditorialFont.caption)
-                            .foregroundStyle(EditorialColor.textMuted)
+                            .font(InsightFont.caption)
+                            .foregroundStyle(InsightColor.textMuted)
                         Text("提示：测验支持全键盘盲操，按空格翻转卡片，按 ⌘1/⌘2/⌘3 快速自评并推进下一题。")
-                            .font(EditorialFont.caption)
-                            .foregroundStyle(EditorialColor.textMuted)
+                            .font(InsightFont.caption)
+                            .foregroundStyle(InsightColor.textMuted)
                     }
                     .padding(24)
                 }
@@ -114,27 +114,27 @@ struct HelpView: View {
     private func shortcutSection(title: String, rows: [ShortcutRow]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(EditorialFont.label)
-                .foregroundStyle(EditorialColor.textTertiary)
+                .font(InsightFont.bodyStrong)
+                .foregroundStyle(InsightColor.textTertiary)
             VStack(spacing: 8) {
                 ForEach(rows) { row in
                     HStack {
                         Text(row.keys)
                             .font(.system(size: 12.5, weight: .bold, design: .monospaced))
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .foregroundStyle(InsightColor.warning)
                             .frame(width: 96, alignment: .leading)
                         Text(row.action)
-                            .font(EditorialFont.bodySerif)
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .font(InsightFont.body)
+                            .foregroundStyle(InsightColor.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                            .strokeBorder(InsightColor.border, lineWidth: 1)
                     )
                 }
             }

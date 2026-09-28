@@ -48,15 +48,15 @@ struct FavoritesView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.canvasGradient
+            InsightColor.canvas
                 .ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
                 filterAndSearchBar
-                Divider().overlay(EditorialColor.glassDivider.opacity(0.6))
+                Divider().overlay(InsightColor.divider.opacity(0.6))
 
                 if store.favorites.isEmpty {
                     emptyFavoritesView
@@ -69,7 +69,7 @@ struct FavoritesView: View {
 
             // 悬浮反馈 Toast
             VStack {
-                EditorialToast(center: toast)
+                EditorialToast(center: toast, edge: .top)
                     .padding(.top, 24)
                 Spacer()
             }
@@ -107,7 +107,6 @@ struct FavoritesView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         .frame(minWidth: 840, minHeight: 600)
     }
 
@@ -131,19 +130,19 @@ struct FavoritesView: View {
             HStack(spacing: 9) {
                 Image(systemName: "bookmark.fill")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
 
                 Text("知识收藏阁")
-                    .font(EditorialFont.modalTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.title)
+                    .foregroundStyle(InsightColor.textPrimary)
 
                 Text("\(store.favorites.count)")
-                    .font(EditorialFont.captionSmall.weight(.bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .font(InsightFont.captionSmall.weight(.bold))
+                    .foregroundStyle(InsightColor.warning)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(EditorialColor.aiAmberBg, in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                    .background(InsightColor.warningSoft, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
             }
 
             Spacer()
@@ -157,13 +156,13 @@ struct FavoritesView: View {
                     Image(systemName: "graduationcap.fill")
                         .font(.system(size: 11.5, weight: .bold))
                     Text(selectedCategory != nil ? "\(selectedCategory!)测验" : "开启测验")
-                        .font(EditorialFont.labelSmall)
+                        .font(InsightFont.callout)
                 }
                 .foregroundStyle(Color.white)
                 .padding(.horizontal, 13)
                 .padding(.vertical, 7)
-                .background(EditorialColor.aiAmber, in: Capsule())
-                .shadow(color: EditorialColor.aiAmber.opacity(0.32), radius: 6, y: 2)
+                .background(InsightColor.warning, in: Capsule())
+                .shadow(color: InsightColor.warning.opacity(0.32), radius: 6, y: 2)
             }
             .buttonStyle(PressableButtonStyle())
             .help(selectedCategory != nil ? "针对 \(selectedCategory!) 分类抽题（收藏优先）" : "优先从收藏阁抽题，不足时并入历史与全库")
@@ -215,16 +214,16 @@ struct FavoritesView: View {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 12, weight: .bold))
                     Text("导出笔记")
-                        .font(EditorialFont.labelSmall)
+                        .font(InsightFont.callout)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
                         .opacity(0.7)
                 }
-                .foregroundStyle(EditorialColor.textPrimary)
+                .foregroundStyle(InsightColor.textPrimary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .background(EditorialColor.glassSurface, in: Capsule())
-                .overlay(Capsule().strokeBorder(EditorialColor.glassBorderHover, lineWidth: 1))
+                .background(InsightColor.surface, in: Capsule())
+                .overlay(Capsule().strokeBorder(InsightColor.borderStrong, lineWidth: 1))
             }
             .menuStyle(.borderlessButton)
             // 收藏阁为空时菜单内四个动作全部静默返回（无 toast、无面板）：直接禁用入口，避免空点击
@@ -244,12 +243,12 @@ struct FavoritesView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .foregroundStyle(InsightColor.textMuted)
 
                     TextField("搜索知识标题、观点或内容...", text: $searchText)
                         .textFieldStyle(.plain)
-                        .font(EditorialFont.label)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.bodyStrong)
+                        .foregroundStyle(InsightColor.textPrimary)
 
                     if !searchText.isEmpty {
                         Button {
@@ -257,25 +256,25 @@ struct FavoritesView: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 12))
-                                .foregroundStyle(EditorialColor.textMuted)
+                                .foregroundStyle(InsightColor.textMuted)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                        .strokeBorder(InsightColor.border, lineWidth: 1)
                 )
 
                 Spacer()
 
                 if !filteredCards.isEmpty {
                     Text("共 \(filteredCards.count) 条笔记")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textTertiary)
                 }
             }
 
@@ -284,7 +283,7 @@ struct FavoritesView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         categoryFilterPill(title: "全部", count: store.favorites.count, isSelected: selectedCategory == nil) {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            withAnimation(InsightMotion.card) {
                                 selectedCategory = nil
                             }
                         }
@@ -294,7 +293,7 @@ struct FavoritesView: View {
                             let theme = CategoryTheme.visualSpec(for: item.category)
 
                             Button {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                withAnimation(InsightMotion.card) {
                                     if selectedCategory == item.category {
                                         selectedCategory = nil
                                     } else {
@@ -308,17 +307,17 @@ struct FavoritesView: View {
                                         .foregroundStyle(isSelected ? Color.black.opacity(0.88) : theme.accent)
 
                                     Text(item.category)
-                                        .font(EditorialFont.caption.weight(isSelected ? .bold : .medium))
-                                        .foregroundStyle(isSelected ? Color.black.opacity(0.88) : EditorialColor.textPrimary)
+                                        .font(InsightFont.caption.weight(isSelected ? .bold : .medium))
+                                        .foregroundStyle(isSelected ? Color.black.opacity(0.88) : InsightColor.textPrimary)
 
                                     Text("\(item.count)")
-                                        .font(EditorialFont.captionSmall.weight(.semibold))
-                                        .foregroundStyle(isSelected ? Color.black.opacity(0.65) : EditorialColor.textMuted)
+                                        .font(InsightFont.captionSmall.weight(.semibold))
+                                        .foregroundStyle(isSelected ? Color.black.opacity(0.65) : InsightColor.textMuted)
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
                                 .background(
-                                    isSelected ? theme.accent : EditorialColor.glassSurface,
+                                    isSelected ? theme.accent : InsightColor.surface,
                                     in: Capsule()
                                 )
                                 .overlay(
@@ -345,23 +344,23 @@ struct FavoritesView: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Text(title)
-                    .font(EditorialFont.caption.weight(isSelected ? .bold : .medium))
-                    .foregroundStyle(isSelected ? Color.black.opacity(0.88) : EditorialColor.textPrimary)
+                    .font(InsightFont.caption.weight(isSelected ? .bold : .medium))
+                    .foregroundStyle(isSelected ? Color.black.opacity(0.88) : InsightColor.textPrimary)
 
                 Text("\(count)")
-                    .font(EditorialFont.captionSmall.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.black.opacity(0.65) : EditorialColor.textMuted)
+                    .font(InsightFont.captionSmall.weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.black.opacity(0.65) : InsightColor.textMuted)
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
             .background(
-                isSelected ? EditorialColor.textPrimary : EditorialColor.glassSurface,
+                isSelected ? InsightColor.textPrimary : InsightColor.surface,
                 in: Capsule()
             )
             .overlay(
                 Capsule()
                     .strokeBorder(
-                        isSelected ? Color.clear : EditorialColor.glassBorder,
+                        isSelected ? Color.clear : InsightColor.border,
                         lineWidth: 1
                     )
             )
@@ -398,7 +397,7 @@ struct FavoritesView: View {
                     Image(systemName: theme.iconName)
                         .font(.system(size: 9.5, weight: .bold))
                     Text(card.category)
-                        .font(EditorialFont.captionSmall.weight(.bold))
+                        .font(InsightFont.captionSmall.weight(.bold))
                     Text("·")
                         .font(.system(size: 8, weight: .heavy))
                     Text(theme.domainCode)
@@ -413,11 +412,11 @@ struct FavoritesView: View {
                 if card.source == .ai && showAIMark {
                     Text("AI")
                         .font(.system(size: 9, weight: .heavy))
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
-                        .background(EditorialColor.aiAmberBg, in: Capsule())
-                        .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 0.8))
+                        .background(InsightColor.warningSoft, in: Capsule())
+                        .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 0.8))
                 }
 
                 Spacer()
@@ -426,21 +425,21 @@ struct FavoritesView: View {
                 // 此前取 seenAt 导致「收藏但未读过」的卡片完全没有日期，且显示的是浏览时间。
                 if let favoritedAt = card.favoritedAt ?? card.seenAt {
                     Text("收藏于 \(favoritedAt.formatted(date: .abbreviated, time: .omitted))")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textMuted)
                         .help("收藏时间")
                 }
 
                 // 取消收藏快捷心形
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    withAnimation(InsightMotion.pill) {
                         store.toggleFavorite(card)
                         toast.show("已将《\(card.headline)》移出收藏阁")
                     }
                 } label: {
                     Image(systemName: "heart.fill")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(EditorialColor.likeGreen)
+                        .foregroundStyle(InsightColor.success)
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(PressableButtonStyle(scale: 0.9))
@@ -449,8 +448,8 @@ struct FavoritesView: View {
 
             // 标题
             Text(card.headline)
-                .font(EditorialFont.sectionTitle)
-                .foregroundStyle(EditorialColor.textPrimary)
+                .font(InsightFont.headline)
+                .foregroundStyle(InsightColor.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -463,8 +462,8 @@ struct FavoritesView: View {
                     .cornerRadius(1.5)
 
                 Text(card.summary)
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -482,13 +481,13 @@ struct FavoritesView: View {
                         Image(systemName: "book.pages")
                             .font(.system(size: 11, weight: .semibold))
                         Text("卡片详情")
-                            .font(EditorialFont.labelSmall)
+                            .font(InsightFont.callout)
                     }
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .foregroundStyle(InsightColor.textPrimary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(EditorialColor.glassSurface, in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .background(InsightColor.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle(scale: 0.96))
 
@@ -499,7 +498,7 @@ struct FavoritesView: View {
                         Image(systemName: "photo.on.rectangle.angled")
                             .font(.system(size: 11, weight: .semibold))
                         Text("分享海报")
-                            .font(EditorialFont.labelSmall)
+                            .font(InsightFont.callout)
                     }
                     .foregroundStyle(theme.accent)
                     .padding(.horizontal, 12)
@@ -513,9 +512,9 @@ struct FavoritesView: View {
             }
         }
         .padding(18)
-        .editorialGlassCard(cornerRadius: EditorialRadius.card)
+        .editorialGlassCard(cornerRadius: InsightRadius.card)
         .overlay(
-            RoundedRectangle(cornerRadius: EditorialRadius.card, style: .continuous)
+            RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
                 .strokeBorder(theme.accent.opacity(0.22), lineWidth: 1)
         )
     }
@@ -527,15 +526,15 @@ struct FavoritesView: View {
             Spacer()
             Image(systemName: "bookmark")
                 .font(.system(size: 48, weight: .light))
-                .foregroundStyle(EditorialColor.aiAmber.opacity(0.7))
+                .foregroundStyle(InsightColor.warning.opacity(0.7))
 
             Text("收藏阁还是空的")
-                .font(EditorialFont.modalTitle)
-                .foregroundStyle(EditorialColor.textPrimary)
+                .font(InsightFont.title)
+                .foregroundStyle(InsightColor.textPrimary)
 
             Text("在主界面刷卡时向右轻划、或在卡片详情中点击「收藏」心形，\n将令你心动的知识精粹沉淀于此。")
-                .font(EditorialFont.bodySerif)
-                .foregroundStyle(EditorialColor.textTertiary)
+                .font(InsightFont.body)
+                .foregroundStyle(InsightColor.textTertiary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(5)
 
@@ -549,11 +548,11 @@ struct FavoritesView: View {
             Spacer()
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 42, weight: .light))
-                .foregroundStyle(EditorialColor.textMuted)
+                .foregroundStyle(InsightColor.textMuted)
 
             Text("未找到相关知识笔记")
-                .font(EditorialFont.bodySerif)
-                .foregroundStyle(EditorialColor.textSecondary)
+                .font(InsightFont.body)
+                .foregroundStyle(InsightColor.textSecondary)
 
             Button("清空搜索筛选") {
                 withAnimation {
@@ -562,8 +561,8 @@ struct FavoritesView: View {
                 }
             }
             .buttonStyle(PressableButtonStyle())
-            .font(EditorialFont.labelSmall)
-            .foregroundStyle(EditorialColor.aiAmber)
+            .font(InsightFont.callout)
+            .foregroundStyle(InsightColor.warning)
             .padding(.top, 6)
 
             Spacer()
@@ -621,7 +620,7 @@ struct FavoritesView: View {
                 }
             )
             .frame(maxWidth: 620, maxHeight: 720)
-            .clipShape(RoundedRectangle(cornerRadius: EditorialRadius.modal, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
             .shadow(color: Color.black.opacity(0.4), radius: 30, y: 12)
         }
         .transition(.opacity.combined(with: .scale(scale: 0.98)))
