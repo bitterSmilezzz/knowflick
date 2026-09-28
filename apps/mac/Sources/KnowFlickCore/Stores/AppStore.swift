@@ -218,6 +218,13 @@ public final class AppStore {
             cards = loaded.seeds
             persist()
         }
+        // 首次渲染窗口：上面的卡片赋值此刻还只是「脏状态」——bootstrap 从赋值到返回
+        // 之间若没有任何挂起点，SwiftUI 没机会画一帧。而下面的钥匙串读取会弹安全授权
+        // 对话框并阻塞主线程直到用户响应（CI 每次构建签名不同，用户装新版必弹）。
+        // 不先渲染，弹窗期间用户看到的就是空库（实测「0 张未读卡片」）。
+        // 挂起一小段时间让卡片库先上屏，再进入钥匙串读取。
+        try? await Task.sleep(for: .milliseconds(120))
+
         var migratedSettings = loaded.settings
         // 迁移旧版本可能写入 JSON 的密钥；成功进入 Keychain 后再清除明文。
         let legacyKey = migratedSettings.apiKey
