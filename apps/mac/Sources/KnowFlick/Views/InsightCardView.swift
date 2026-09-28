@@ -219,3 +219,141 @@ struct InsightCardView: View {
         .padding(.top, InsightSpacing.tiny)
     }
 }
+
+/// 卡片网格单元（收藏/知识库用）：紧凑排版，缩略图换成 accent 色块。
+struct InsightCardTile: View {
+    let card: KnowledgeCard
+    var action: () -> Void
+
+    @State private var hovering = false
+
+    private var theme: CategoryTheme {
+        CategoryTheme.theme(for: card, cache: .shared)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: InsightSpacing.compact) {
+                GeometryReader { geometry in
+                    if let image = theme.image {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                    } else {
+                        theme.accent.opacity(0.22)
+                    }
+                }
+                .frame(height: 92)
+                .clipShape(RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous))
+
+                HStack(spacing: InsightSpacing.small) {
+                    Image(systemName: theme.iconName)
+                        .font(.system(size: 9.5, weight: .bold))
+                        .foregroundStyle(theme.accent)
+                    Text(card.category)
+                        .font(InsightFont.caption)
+                        .foregroundStyle(InsightColor.textTertiary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if card.source == .ai {
+                        InsightPill(text: "AI", tone: .warning)
+                    }
+                }
+
+                Text(card.headline)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(card.summary)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(InsightSpacing.default)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(
+                hovering ? InsightColor.surfaceRaised : InsightColor.surface,
+                in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
+                    .strokeBorder(hovering ? InsightColor.borderStrong : InsightColor.border, lineWidth: 1)
+            )
+            .scaleEffect(hovering ? 1.012 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(InsightMotion.card, value: hovering)
+    }
+}
+
+/// 列表行（历史/收藏/知识库列表用）
+struct InsightListRow: View {
+    let card: KnowledgeCard
+    var trailing: String? = nil
+    var action: () -> Void
+
+    @State private var hovering = false
+
+    private var theme: CategoryTheme {
+        CategoryTheme.theme(for: card, cache: .shared)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: InsightSpacing.default) {
+                Group {
+                    if let image = theme.image {
+                        Image(nsImage: image).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: theme.iconName)
+                            .resizable().scaledToFit().padding(12)
+                            .foregroundStyle(theme.accent)
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .background(theme.accent.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(card.headline)
+                        .font(InsightFont.bodyStrong)
+                        .foregroundStyle(InsightColor.textPrimary)
+                        .lineLimit(1)
+                    Text(card.summary)
+                        .font(InsightFont.caption)
+                        .foregroundStyle(InsightColor.textTertiary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                if let trailing {
+                    Text(trailing)
+                        .font(InsightFont.monoSmall)
+                        .foregroundStyle(InsightColor.textMuted)
+                }
+            }
+            .padding(.horizontal, InsightSpacing.default)
+            .padding(.vertical, 10)
+            .background(
+                hovering ? InsightColor.surfaceRaised : InsightColor.surface,
+                in: RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous)
+                    .strokeBorder(hovering ? InsightColor.borderStrong : .clear, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(InsightMotion.card, value: hovering)
+    }
+}
