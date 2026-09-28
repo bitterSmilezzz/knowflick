@@ -38,6 +38,11 @@ import com.knowflick.app.sync.SyncResult
 import com.knowflick.app.sync.SyncServer
 import java.security.SecureRandom
 
+private data class SettingsSaveResult(
+    val settingsSaved: Boolean,
+    val credentialsSaved: Boolean,
+)
+
 /**
  * 应用级状态持有者：卡库持久化 + 卡堆状态机 + AI 服务。
  * version 自增驱动 Compose 重组；落盘经串行 IO 队列 350ms 节流合并；onPause 非阻塞 flush。
@@ -82,6 +87,21 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     /** 已保存的设置与密钥 */
     var settings: AiSettings by mutableStateOf(AiSettings())
         private set
+    var isSavingSettings by mutableStateOf(false)
+        private set
+    var isSavingAiSettings by mutableStateOf(false)
+        private set
+    var isSavingSpeechSettings by mutableStateOf(false)
+        private set
+    var aiSaveNotice by mutableStateOf("")
+        private set
+    var aiSaveSucceeded by mutableStateOf(true)
+        private set
+    var speechSaveNotice by mutableStateOf("")
+        private set
+    var speechSaveSucceeded by mutableStateOf(true)
+        private set
+    private var apiKeySessionOverride by mutableStateOf<String?>(null)
 
     /** 测验会话（null = 未在测验） */
     var quizSession: com.knowflick.app.domain.QuizSession? by mutableStateOf(null)
@@ -166,17 +186,39 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         speech.apiKey = credentials.read("tts.key").orEmpty()
     }
 
-    fun saveSpeechSettings(updated: com.knowflick.app.speech.SpeechSettings, apiKey: String): Boolean {
-        val settingsSaved = model.storage.saveSpeechJson(updated.toJson())
-        val credentialSaved = if (updated.channelEnum == com.knowflick.app.speech.SpeechChannel.CLOUD && apiKey.isNotBlank()) {
-            credentials.save(apiKey, "tts.key")
-        } else {
-            credentials.delete("tts.key")
+    fun saveSpeechSettings(updated: com.knowflick.app.speech.SpeechSettings, apiKey: String) {
+        if (isSavingSettings) return
+        isSavingSettings = true
+        isSavingSpeechSettings = true
+        speechSaveNotice = "正在保存语音配置…"
+
+        viewModelScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    val settingsSaved = model.storage.saveSpeechJson(updated.toJson())
+                    val credentialSaved = if (
+                        updated.channelEnum == com.knowflick.app.speech.SpeechChannel.CLOUD && apiKey.isNotBlank()
+                    ) {
+                        credentials.save(apiKey, "tts.key")
+                    } else {
+                        credentials.delete("tts.key")
+                    }
+                    SettingsSaveResult(settingsSaved, credentialSaved)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SettingsSaveResult(settingsSaved = false, credentialsSaved = false)
+            }
+
+            speechSettings = updated
+            speech.settings = updated
+            speech.apiKey = apiKey.takeIf {
+                updated.channelEnum == com.knowflick.app.speech.SpeechChannel.CLOUD && it.isNotBlank()
+            }.orEmpty()
+            version++
+            finishSpeechSettingsSave(result)
         }
-        speechSettings = updated
-        applySpeechConfig()
-        version++
-        return settingsSaved && credentialSaved
     }
 
     fun currentSpeechApiKey(): String = credentials.read("tts.key").orEmpty()
@@ -196,20 +238,74 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         model.store.recompute()
     }
 
-    fun currentApiKey(): String = credentials.read("apiKey").orEmpty()
+    fun currentApiKey(): String = apiKeySessionOverride ?: credentials.read("apiKey").orEmpty()
 
-    fun saveSettings(updated: AiSettings, apiKey: String): Boolean {
-        val settingsSaved = model.storage.saveSettingsJson(updated.toJson())
-        val credentialSaved = if (AiService.requiresKey(updated.baseURL) && apiKey.isNotBlank()) {
-            credentials.save(apiKey, "apiKey")
-        } else {
-            credentials.delete("apiKey")
+    fun saveSettings(updated: AiSettings, apiKey: String) {
+        if (isSavingSettings) return
+        isSavingSettings = true
+        isSavingAiSettings = true
+        aiSaveNotice = "正在保存配置…"
+
+        viewModelScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    val settingsSaved = model.storage.saveSettingsJson(updated.toJson())
+                    val credentialSaved = if (AiService.requiresKey(updated.baseURL) && apiKey.isNotBlank()) {
+                        credentials.save(apiKey, "apiKey")
+                    } else {
+                        credentials.delete("apiKey")
+                    }
+                    SettingsSaveResult(settingsSaved, credentialSaved)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SettingsSaveResult(settingsSaved = false, credentialsSaved = false)
+            }
+
+            settings = updated
+            applySettings(updated)
+            apiKeySessionOverride = if (result.credentialsSaved) {
+                null
+            } else {
+                apiKey.takeIf { AiService.requiresKey(updated.baseURL) && it.isNotBlank() }.orEmpty()
+            }
+            version++
+            schedulePersist()
+            finishAiSettingsSave(result)
         }
-        settings = updated
-        applySettings(updated)
-        version++
-        schedulePersist()
-        return settingsSaved && credentialSaved
+    }
+
+    fun clearAiSaveNotice() {
+        aiSaveNotice = ""
+    }
+
+    fun clearSpeechSaveNotice() {
+        speechSaveNotice = ""
+    }
+
+    private fun finishAiSettingsSave(result: SettingsSaveResult) {
+        val succeeded = result.settingsSaved && result.credentialsSaved
+        aiSaveSucceeded = succeeded
+        aiSaveNotice = when {
+            succeeded -> "配置已保存并生效 ✓"
+            !result.credentialsSaved -> "配置已应用于当前会话，但凭据未能写入设备；重启后请检查服务密钥"
+            else -> "配置已应用于当前会话，但设置未写入设备，请重试"
+        }
+        isSavingAiSettings = false
+        isSavingSettings = false
+    }
+
+    private fun finishSpeechSettingsSave(result: SettingsSaveResult) {
+        val succeeded = result.settingsSaved && result.credentialsSaved
+        speechSaveSucceeded = succeeded
+        speechSaveNotice = when {
+            succeeded -> "语音配置已保存 ✓"
+            !result.credentialsSaved -> "语音配置已应用于当前会话，但凭据未能写入设备；重启后请检查服务密钥"
+            else -> "语音配置已应用于当前会话，但设置未写入设备，请重试"
+        }
+        isSavingSpeechSettings = false
+        isSavingSettings = false
     }
 
     val currentPaperTheme: com.knowflick.app.ui.PaperTheme
