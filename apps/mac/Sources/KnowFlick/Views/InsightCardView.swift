@@ -73,22 +73,27 @@ struct InsightCardView: View {
 
     // MARK: 底图与暗化
 
-    /// 整卡摄影底图；无图分类退化为 accent 渐变（观感与照片底一致，白字规则不变）
+    /// 整卡摄影底图；无图分类退化为 accent 渐变（观感与照片底一致，白字规则不变）。
+    /// GeometryReader 把填充约束在父级提议的卡片区域内——直接 scaledToFill 会以
+    /// 图片原生尺寸撑爆布局，把文字层顶出窗口。
     private var photoBackground: some View {
-        Group {
-            if let image = theme.image {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                LinearGradient(
-                    colors: [spec.accent.opacity(0.92), spec.accent.opacity(0.55)],
-                    startPoint: .top, endPoint: .bottom
-                )
+        GeometryReader { geo in
+            Group {
+                if let image = theme.image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                } else {
+                    LinearGradient(
+                        colors: [spec.accent.opacity(0.92), spec.accent.opacity(0.55)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                    .frame(width: geo.size.width, height: geo.size.height)
+                }
             }
+            .clipped()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
         .accessibilityLabel("\(card.category)主题配图")
     }
 
