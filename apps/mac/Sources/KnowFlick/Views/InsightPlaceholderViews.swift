@@ -488,8 +488,26 @@ struct InsightFavoritesPlaceholder: View {
 
     private func favoriteCardItem(_ card: KnowledgeCard) -> some View {
         let spec = CategoryTheme.visualSpec(for: card)
+        let theme = CategoryTheme.theme(for: card, cache: .shared)
         return InsightCard(padding: InsightSpacing.default) {
             VStack(alignment: .leading, spacing: InsightSpacing.small) {
+                // 缩略图：与刷卡 / 知识库同源的分类摄影底图
+                GeometryReader { geo in
+                    Group {
+                        if let image = theme.image {
+                            Image(nsImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .clipped()
+                        } else {
+                            spec.accent.opacity(0.22)
+                        }
+                    }
+                }
+                .frame(height: 84)
+                .clipShape(RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous))
+
                 // 头部行：分类 + AI 标记 + 收藏时间 + 取消收藏心形
                 HStack(spacing: InsightSpacing.small) {
                     HStack(spacing: InsightSpacing.tiny) {
