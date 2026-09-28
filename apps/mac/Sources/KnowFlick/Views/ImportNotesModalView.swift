@@ -62,15 +62,12 @@ struct ImportNotesModalView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.dynamic(
-                light: NSColor.windowBackgroundColor.withAlphaComponent(0.97),
-                dark: NSColor(white: 0.12, alpha: 0.97)
-            )
-            .ignoresSafeArea()
+            InsightColor.surfaceRaised
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 headerBar
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
@@ -84,16 +81,15 @@ struct ImportNotesModalView: View {
                     .padding(22)
                 }
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
                 bottomActionBar
             }
 
             VStack {
                 Spacer()
-                EditorialToast(center: toast)
+                EditorialToast(center: toast, edge: .bottom)
                     .padding(.bottom, 68)
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
         .frame(minWidth: 740, idealWidth: 780, minHeight: 580, idealHeight: 660)
         .onChange(of: noteText) { _, _ in invalidatePreview() }
@@ -115,15 +111,15 @@ struct ImportNotesModalView: View {
         HStack(spacing: 12) {
             Image(systemName: "square.and.arrow.down.fill")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(EditorialColor.aiAmber)
+                .foregroundStyle(InsightColor.warning)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("笔记导入与智能提炼")
-                    .font(EditorialFont.modalTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.title)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Text("支持 Markdown 规则提取、JSON 备份还原及 AI 长文笔记深度解构")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textTertiary)
             }
 
             Spacer()
@@ -133,10 +129,10 @@ struct ImportNotesModalView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .frame(width: 28, height: 28)
-                    .background(EditorialColor.glassSurface, in: Circle())
-                    .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .background(InsightColor.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
@@ -153,10 +149,10 @@ struct ImportNotesModalView: View {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "pencil.and.list.clipboard")
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                     Text("1. 笔记输入与解析方式")
-                        .font(EditorialFont.sectionTitle)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.headline)
+                        .foregroundStyle(InsightColor.textPrimary)
                 }
 
                 Spacer()
@@ -170,13 +166,13 @@ struct ImportNotesModalView: View {
                         Image(systemName: "lightbulb.fill")
                             .font(.system(size: 11))
                         Text("填入示例笔记")
-                            .font(EditorialFont.captionSmall)
+                            .font(InsightFont.captionSmall)
                     }
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
-                    .background(EditorialColor.aiAmberBg, in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                    .background(InsightColor.warningSoft, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
             }
@@ -211,23 +207,23 @@ struct ImportNotesModalView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "doc.badge.plus")
                             Text("选取本地笔记文件 (.md / .txt / .json)...")
-                                .font(EditorialFont.label)
+                                .font(InsightFont.bodyStrong)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                        .foregroundStyle(InsightColor.textPrimary)
                     }
                     .buttonStyle(PressableButtonStyle())
 
                     if let name = selectedFileName {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(EditorialColor.likeGreen)
+                                .foregroundStyle(InsightColor.success)
                             Text(name)
-                                .font(EditorialFont.captionSmall)
-                                .foregroundStyle(EditorialColor.textSecondary)
+                                .font(InsightFont.captionSmall)
+                                .foregroundStyle(InsightColor.textSecondary)
                         }
                     }
 
@@ -242,36 +238,36 @@ struct ImportNotesModalView: View {
                     .frame(height: 120)
                     .padding(8)
                     .background(
-                        EditorialColor.dynamic(
+                        InsightColor.dynamic(
                             light: NSColor.black.withAlphaComponent(0.03),
                             dark: NSColor.black.withAlphaComponent(0.25)
                         ),
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                     )
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
 
                 HStack {
                     Text(extractionMethod == .rules
                         ? "提示：支持识别以 --- 分隔的卡片、# 标题、YAML 元数据或标准 JSON 数组。"
                         : "提示：AI 引擎将自动理解随笔或长文重点，解构提纯为 1~5 张标准核心闪卡。")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textTertiary)
 
                     Spacer()
 
                     Text("\(noteText.count) 字符")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textMuted)
                 }
             }
 
             if let err = errorMessage {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                     Text(err)
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.warning)
                 }
                 .padding(.top, 2)
             }
@@ -287,8 +283,8 @@ struct ImportNotesModalView: View {
             ProgressView()
                 .controlSize(.regular)
             Text(extractionMethod == .ai ? "AI 正在解构长文并提纯知识闪卡，请稍候..." : "正在解析笔记内容...")
-                .font(EditorialFont.label)
-                .foregroundStyle(EditorialColor.textSecondary)
+                .font(InsightFont.bodyStrong)
+                .foregroundStyle(InsightColor.textSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(30)
@@ -302,10 +298,10 @@ struct ImportNotesModalView: View {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "checklist")
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                     Text("2. 提炼预览与勾选 (\(selectedCardIds.count)/\(parsedCards.count) 张)")
-                        .font(EditorialFont.sectionTitle)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.headline)
+                        .foregroundStyle(InsightColor.textPrimary)
                 }
 
                 Spacer()
@@ -317,8 +313,8 @@ struct ImportNotesModalView: View {
                         selectedCardIds = Set(parsedCards.map(\.id))
                     }
                 }
-                .font(EditorialFont.captionSmall)
-                .foregroundStyle(EditorialColor.aiAmber)
+                .font(InsightFont.captionSmall)
+                .foregroundStyle(InsightColor.warning)
                 .buttonStyle(.plain)
             }
 
@@ -345,11 +341,11 @@ struct ImportNotesModalView: View {
                 Toggle(isOn: $insertAtTop) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("插队置顶到待刷卡堆最前方")
-                            .font(EditorialFont.labelSmall.weight(.semibold))
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .font(InsightFont.callout.weight(.semibold))
+                            .foregroundStyle(InsightColor.textPrimary)
                         Text("未读卡片按来源与分类筛选后优先排列；备份中的浏览和复习记录保持原样")
-                            .font(EditorialFont.captionSmall)
-                            .foregroundStyle(EditorialColor.textTertiary)
+                            .font(InsightFont.captionSmall)
+                            .foregroundStyle(InsightColor.textTertiary)
                     }
                 }
                 .toggleStyle(.checkbox)
@@ -367,8 +363,8 @@ struct ImportNotesModalView: View {
             Button("取消") {
                 onClose()
             }
-            .font(EditorialFont.label)
-            .foregroundStyle(EditorialColor.textSecondary)
+            .font(InsightFont.bodyStrong)
+            .foregroundStyle(InsightColor.textSecondary)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .buttonStyle(PressableButtonStyle())
@@ -387,13 +383,13 @@ struct ImportNotesModalView: View {
                                 .font(.system(size: 12, weight: .semibold))
                         }
                         Text(extractionMethod == .ai ? "AI 深度提炼卡片" : "开始解析笔记")
-                            .font(EditorialFont.label.weight(.semibold))
+                            .font(InsightFont.bodyStrong.weight(.semibold))
                     }
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 8)
-                    .background(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isProcessing ? Color.gray.opacity(0.4) : EditorialColor.aiAmber, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .shadow(color: noteText.isEmpty ? Color.clear : EditorialColor.aiAmber.opacity(0.3), radius: 6, y: 2)
+                    .background(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isProcessing ? Color.gray.opacity(0.4) : InsightColor.warning, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .shadow(color: noteText.isEmpty ? Color.clear : InsightColor.warning.opacity(0.3), radius: 6, y: 2)
                 }
                 .buttonStyle(PressableButtonStyle())
                 .keyboardShortcut(.return, modifiers: .command)
@@ -403,8 +399,8 @@ struct ImportNotesModalView: View {
                     parseContent()
                 } label: {
                     Text("重新解析")
-                        .font(EditorialFont.label)
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .font(InsightFont.bodyStrong)
+                        .foregroundStyle(InsightColor.textSecondary)
                 }
                 .buttonStyle(PressableButtonStyle())
                 // 解析中禁止重复触发：否则会反复 cancel/restart 解析任务
@@ -417,13 +413,13 @@ struct ImportNotesModalView: View {
                         Image(systemName: "checkmark")
                             .font(.system(size: 12, weight: .bold))
                         Text("确认导入 (\(selectedCardIds.count) 张)")
-                            .font(EditorialFont.label.weight(.semibold))
+                            .font(InsightFont.bodyStrong.weight(.semibold))
                     }
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 22)
                     .padding(.vertical, 8)
-                    .background(selectedCardIds.isEmpty ? Color.gray.opacity(0.4) : EditorialColor.aiAmber, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .shadow(color: selectedCardIds.isEmpty ? Color.clear : EditorialColor.aiAmber.opacity(0.3), radius: 6, y: 2)
+                    .background(selectedCardIds.isEmpty ? Color.gray.opacity(0.4) : InsightColor.warning, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .shadow(color: selectedCardIds.isEmpty ? Color.clear : InsightColor.warning.opacity(0.3), radius: 6, y: 2)
                 }
                 .buttonStyle(PressableButtonStyle())
                 .keyboardShortcut(.return, modifiers: .command)
@@ -565,7 +561,7 @@ private struct ParsedCardRowView: View {
             Button(action: onToggle) {
                 Image(systemName: isChecked ? "checkmark.square.fill" : "square")
                     .font(.system(size: 16))
-                    .foregroundStyle(isChecked ? EditorialColor.aiAmber : EditorialColor.textTertiary)
+                    .foregroundStyle(isChecked ? InsightColor.warning : InsightColor.textTertiary)
             }
             .buttonStyle(.plain)
             .padding(.top, 2)
@@ -573,50 +569,50 @@ private struct ParsedCardRowView: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
                     Text(card.category)
-                        .font(EditorialFont.captionSmall.weight(.bold))
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .font(InsightFont.captionSmall.weight(.bold))
+                        .foregroundStyle(InsightColor.warning)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(EditorialColor.aiAmberBg, in: Capsule())
-                        .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                        .background(InsightColor.warningSoft, in: Capsule())
+                        .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
 
                     Text(card.headline)
-                        .font(EditorialFont.label.weight(.semibold))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.bodyStrong.weight(.semibold))
+                        .foregroundStyle(InsightColor.textPrimary)
 
                     if isDuplicate {
                         Text("已在库中")
-                            .font(EditorialFont.captionSmall)
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .font(InsightFont.captionSmall)
+                            .foregroundStyle(InsightColor.warning)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(EditorialColor.aiAmberBg, in: Capsule())
+                            .background(InsightColor.warningSoft, in: Capsule())
                     }
 
                     Spacer()
                 }
 
                 Text(card.summary)
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .lineLimit(2)
 
                 if !card.details.isEmpty {
                     Text(card.details)
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textTertiary)
                         .lineLimit(2)
                 }
             }
         }
         .padding(12)
         .background(
-            isChecked ? EditorialColor.glassSurface : EditorialColor.glassSurface.opacity(0.4),
-            in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+            isChecked ? InsightColor.surface : InsightColor.surface.opacity(0.4),
+            in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
-                .strokeBorder(isChecked ? EditorialColor.glassBorder : Color.clear, lineWidth: 1)
+            RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
+                .strokeBorder(isChecked ? InsightColor.border : Color.clear, lineWidth: 1)
         )
     }
 }

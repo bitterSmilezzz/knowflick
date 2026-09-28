@@ -64,15 +64,12 @@ struct ExportCardsModalView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.dynamic(
-                light: NSColor.windowBackgroundColor.withAlphaComponent(0.97),
-                dark: NSColor(white: 0.12, alpha: 0.97)
-            )
-            .ignoresSafeArea()
+            InsightColor.surfaceRaised
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 headerBar
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
@@ -85,16 +82,15 @@ struct ExportCardsModalView: View {
                     .padding(22)
                 }
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
                 bottomActionBar
             }
 
             VStack {
                 Spacer()
-                EditorialToast(center: toast)
+                EditorialToast(center: toast, edge: .bottom)
                     .padding(.bottom, 68)
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
         .frame(minWidth: 720, idealWidth: 760, minHeight: 560, idealHeight: 640)
         .onAppear {
@@ -126,15 +122,15 @@ struct ExportCardsModalView: View {
         HStack(spacing: 12) {
             Image(systemName: "square.and.arrow.up.fill")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(EditorialColor.aiAmber)
+                .foregroundStyle(InsightColor.warning)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("卡片批量导出中心")
-                    .font(EditorialFont.modalTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.title)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Text("支持 Markdown、Obsidian 双链、Anki 记忆牌组及 JSON 全量备份")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textTertiary)
             }
 
             Spacer()
@@ -144,10 +140,10 @@ struct ExportCardsModalView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .frame(width: 28, height: 28)
-                    .background(EditorialColor.glassSurface, in: Circle())
-                    .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .background(InsightColor.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
@@ -165,21 +161,21 @@ struct ExportCardsModalView: View {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "target")
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                     Text("1. 选择导出范围")
-                        .font(EditorialFont.sectionTitle)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.headline)
+                        .foregroundStyle(InsightColor.textPrimary)
                 }
 
                 Spacer()
 
                 Text("准备导出 \(exportCards.count) 张卡片")
-                    .font(EditorialFont.captionSmall.weight(.semibold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .font(InsightFont.captionSmall.weight(.semibold))
+                    .foregroundStyle(InsightColor.warning)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 3)
-                    .background(EditorialColor.aiAmberBg, in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                    .background(InsightColor.warningSoft, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
             }
 
             HStack(spacing: 10) {
@@ -190,31 +186,31 @@ struct ExportCardsModalView: View {
                 ForEach(scopes) { scope in
                     let isSelected = selectedScope == scope
                     Button {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        withAnimation(InsightMotion.card) {
                             selectedScope = scope
                         }
                     } label: {
                         HStack(spacing: 6) {
                             Circle()
-                                .fill(isSelected ? EditorialColor.aiAmber : Color.clear)
+                                .fill(isSelected ? InsightColor.warning : Color.clear)
                                 .frame(width: 6, height: 6)
                             Text(scopeTitle(scope))
-                                .font(EditorialFont.label)
+                                .font(InsightFont.bodyStrong)
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(
-                            isSelected ? EditorialColor.aiAmberBg : EditorialColor.glassSurface,
-                            in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                            isSelected ? InsightColor.warningSoft : InsightColor.surface,
+                            in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                            RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                                 .strokeBorder(
-                                    isSelected ? EditorialColor.aiAmberBorder : EditorialColor.glassBorder,
+                                    isSelected ? InsightColor.warning : InsightColor.border,
                                     lineWidth: isSelected ? 1.5 : 1
                                 )
                         )
-                        .foregroundStyle(isSelected ? EditorialColor.aiAmber : EditorialColor.textSecondary)
+                        .foregroundStyle(isSelected ? InsightColor.warning : InsightColor.textSecondary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -223,8 +219,8 @@ struct ExportCardsModalView: View {
             if selectedScope == .category {
                 HStack(spacing: 8) {
                     Text("选择分类：")
-                        .font(EditorialFont.labelSmall)
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .font(InsightFont.callout)
+                        .foregroundStyle(InsightColor.textSecondary)
 
                     Picker("", selection: $selectedCategory) {
                         ForEach(availableCategories, id: \.self) { cat in
@@ -256,10 +252,10 @@ struct ExportCardsModalView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 Image(systemName: "doc.badge.gearshape")
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 Text("2. 选择导出格式")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
             }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -299,7 +295,7 @@ struct ExportCardsModalView: View {
     private func formatCard(format: CardExportFormat, icon: String, title: String, desc: String) -> some View {
         let isSelected = selectedFormat == format
         return Button {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            withAnimation(InsightMotion.card) {
                 selectedFormat = format
             }
         } label: {
@@ -307,36 +303,36 @@ struct ExportCardsModalView: View {
                 HStack(spacing: 8) {
                     Image(systemName: icon)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(isSelected ? EditorialColor.aiAmber : EditorialColor.textSecondary)
+                        .foregroundStyle(isSelected ? InsightColor.warning : InsightColor.textSecondary)
 
                     Text(title)
-                        .font(EditorialFont.label.weight(.semibold))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.bodyStrong.weight(.semibold))
+                        .foregroundStyle(InsightColor.textPrimary)
 
                     Spacer()
 
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 13))
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .foregroundStyle(InsightColor.warning)
                     }
                 }
 
                 Text(desc)
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textTertiary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
             }
             .padding(12)
             .background(
-                isSelected ? EditorialColor.aiAmberBg : EditorialColor.glassSurface,
-                in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                isSelected ? InsightColor.warningSoft : InsightColor.surface,
+                in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                     .strokeBorder(
-                        isSelected ? EditorialColor.aiAmberBorder : EditorialColor.glassBorder,
+                        isSelected ? InsightColor.warning : InsightColor.border,
                         lineWidth: isSelected ? 1.5 : 1
                     )
             )
@@ -351,10 +347,10 @@ struct ExportCardsModalView: View {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "eye.fill")
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                     Text("3. 导出内容预览")
-                        .font(EditorialFont.sectionTitle)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.headline)
+                        .foregroundStyle(InsightColor.textPrimary)
                 }
 
                 Spacer()
@@ -368,13 +364,13 @@ struct ExportCardsModalView: View {
                         Image(systemName: "doc.on.doc")
                             .font(.system(size: 11))
                         Text("复制预览内容")
-                            .font(EditorialFont.captionSmall)
+                            .font(InsightFont.captionSmall)
                     }
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
-                    .background(EditorialColor.aiAmberBg, in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.aiAmberBorder, lineWidth: 1))
+                    .background(InsightColor.warningSoft, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
                 .disabled(!previewReady || isExporting)
@@ -383,19 +379,19 @@ struct ExportCardsModalView: View {
             ScrollView([.horizontal, .vertical]) {
                 Text(previewContent)
                     .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             }
             .frame(height: 150)
             .background(
-                EditorialColor.dynamic(
+                InsightColor.dynamic(
                     light: NSColor.black.withAlphaComponent(0.04),
                     dark: NSColor.black.withAlphaComponent(0.3)
                 ),
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
         }
         .padding(16)
         .editorialGlassCard()
@@ -412,13 +408,13 @@ struct ExportCardsModalView: View {
                     Image(systemName: "doc.on.doc")
                         .font(.system(size: 12, weight: .semibold))
                     Text("拷贝至剪贴板")
-                        .font(EditorialFont.label)
+                        .font(InsightFont.bodyStrong)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                .foregroundStyle(EditorialColor.textPrimary)
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                .foregroundStyle(InsightColor.textPrimary)
             }
             .buttonStyle(PressableButtonStyle())
             .disabled(exportCards.isEmpty || isExporting)
@@ -429,8 +425,8 @@ struct ExportCardsModalView: View {
                 onClose()
             }
             .disabled(isExporting)
-            .font(EditorialFont.label)
-            .foregroundStyle(EditorialColor.textSecondary)
+            .font(InsightFont.bodyStrong)
+            .foregroundStyle(InsightColor.textSecondary)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .buttonStyle(PressableButtonStyle())
@@ -446,13 +442,13 @@ struct ExportCardsModalView: View {
                             .font(.system(size: 12, weight: .semibold))
                     }
                     Text(isExporting ? "正在处理…" : selectedFormat == .obsidianVault ? "导出至文件夹..." : "导出并保存文件...")
-                        .font(EditorialFont.label.weight(.semibold))
+                        .font(InsightFont.bodyStrong.weight(.semibold))
                 }
                 .foregroundStyle(Color.white)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 8)
-                .background(exportCards.isEmpty ? Color.gray.opacity(0.4) : EditorialColor.aiAmber, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .shadow(color: exportCards.isEmpty ? Color.clear : EditorialColor.aiAmber.opacity(0.3), radius: 6, y: 2)
+                .background(exportCards.isEmpty ? Color.gray.opacity(0.4) : InsightColor.warning, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .shadow(color: exportCards.isEmpty ? Color.clear : InsightColor.warning.opacity(0.3), radius: 6, y: 2)
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.return, modifiers: .command)

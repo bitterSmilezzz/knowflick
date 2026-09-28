@@ -22,6 +22,9 @@ let package = Package(
             name: "KnowFlick",
             dependencies: ["KnowFlickCore"],
             path: "Sources/KnowFlick",
+            exclude: [
+                "Views/_archived"
+            ],
             swiftSettings: [
                 // Swift 6 严格并发（v4.0.0 起与 Core 一致）
                 .swiftLanguageMode(.v6)

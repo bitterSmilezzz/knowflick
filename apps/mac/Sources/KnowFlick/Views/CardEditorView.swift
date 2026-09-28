@@ -11,6 +11,8 @@ struct CardEditorView: View {
     @State private var details: String
     @State private var saveError: String?
     @State private var confirmDiscard = false
+    /// 正文编辑器聚焦态：聚焦时输入框描边加深（`InsightColor.textPrimary`）
+    @FocusState private var isDetailsFocused: Bool
 
     init(card: KnowledgeCard, store: AppStore, onClose: @escaping () -> Void) {
         self.card = card; self.store = store; self.onClose = onClose
@@ -38,9 +40,9 @@ struct CardEditorView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("整理这张知识卡片").font(EditorialFont.modalTitle)
+                    Text("整理这张知识卡片").font(InsightFont.title)
                     Text("用自己的语言补充理解，收藏与复习记录会保留。")
-                        .font(EditorialFont.labelSmall).foregroundStyle(EditorialColor.textSecondary)
+                        .font(InsightFont.callout).foregroundStyle(InsightColor.textSecondary)
                 }
                 Spacer()
                 Button { close() } label: { Image(systemName: "xmark").padding(8) }
@@ -53,32 +55,34 @@ struct CardEditorView: View {
                     categoryField
                     field("摘要", text: $summary)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("正文 · 支持 Markdown").font(EditorialFont.label)
+                        Text("正文 · 支持 Markdown").font(InsightFont.bodyStrong)
                         TextEditor(text: $details)
                             .font(.system(size: 14)).scrollContentBackground(.hidden)
+                            .focused($isDetailsFocused)
                             .padding(10).frame(minHeight: 230)
-                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 9))
+                            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control))
+                            .editorialFieldBorder(cornerRadius: InsightRadius.control, isFocused: isDetailsFocused)
                             .accessibilityLabel("卡片正文")
                     }
                 }.padding(24)
             }
             Divider()
             HStack {
-                if let saveError { Text(saveError).font(EditorialFont.caption).foregroundStyle(EditorialColor.dislikeRed) }
+                if let saveError { Text(saveError).font(InsightFont.caption).foregroundStyle(InsightColor.danger) }
                 else { Text(isValid ? "更改仅保存在本机知识库。" : "标题、主题、摘要和正文都不能为空。")
-                    .font(EditorialFont.caption).foregroundStyle(EditorialColor.textSecondary) }
+                    .font(InsightFont.caption).foregroundStyle(InsightColor.textSecondary) }
                 Spacer()
                 Button("取消") { close() }.buttonStyle(.bordered)
                 Button("保存更改") {
                     if store.updateCardContent(id: card.id, headline: headline, category: category, summary: summary, details: details) {
                         onClose()
                     } else { saveError = "卡片已不存在，或内容为空，无法更新。" }
-                }.buttonStyle(.borderedProminent).tint(EditorialColor.aiAmber)
+                }.buttonStyle(.borderedProminent).tint(InsightColor.warning)
                     .disabled(!isValid || !isChanged).keyboardShortcut("s", modifiers: .command)
             }.padding(20)
         }
         .frame(minWidth: 640, idealWidth: 720, minHeight: 540, idealHeight: 680)
-        .background(EditorialColor.canvasDark).foregroundStyle(EditorialColor.textPrimary)
+        .background(InsightColor.canvas).foregroundStyle(InsightColor.textPrimary)
         .interactiveDismissDisabled(isChanged)
         .confirmationDialog("放弃尚未保存的更改？", isPresented: $confirmDiscard) {
             Button("放弃更改", role: .destructive, action: onClose)
@@ -88,7 +92,7 @@ struct CardEditorView: View {
     /// 主题必须是分类体系内的受控值，避免写入「物理系」等脏分类污染筛选/统计/AI 白名单。
     private var categoryField: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("主题").font(EditorialFont.label)
+            Text("主题").font(InsightFont.bodyStrong)
             Picker("主题", selection: $category) {
                 ForEach(selectableCategories, id: \.self) { name in
                     Text(name).tag(name)
@@ -99,18 +103,20 @@ struct CardEditorView: View {
             .font(.system(size: 14))
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 9))
+            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control))
+            .editorialFieldBorder(cornerRadius: InsightRadius.control)
             .accessibilityLabel("主题")
             Text("主题只能从分类体系中选择，可在设置中增删自定义分类。")
-                .font(EditorialFont.captionSmall).foregroundStyle(EditorialColor.textTertiary)
+                .font(InsightFont.captionSmall).foregroundStyle(InsightColor.textTertiary)
         }
     }
     private func field(_ title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(EditorialFont.label)
+            Text(title).font(InsightFont.bodyStrong)
             TextField(title, text: text, axis: .vertical)
                 .textFieldStyle(.plain).font(.system(size: 14)).padding(12)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 9))
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control))
+                .editorialFieldBorder(cornerRadius: InsightRadius.control)
                 .accessibilityLabel(title)
         }
     }

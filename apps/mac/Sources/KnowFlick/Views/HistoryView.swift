@@ -22,7 +22,7 @@ struct HistoryView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.canvasGradient
+            InsightColor.canvas
                 .ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
 
@@ -42,42 +42,57 @@ struct HistoryView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(EditorialColor.textSecondary)
+                            .foregroundStyle(InsightColor.textSecondary)
                         Text("历史足迹")
-                            .font(EditorialFont.modalTitle)
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .font(InsightFont.title)
+                            .foregroundStyle(InsightColor.textPrimary)
                     }
 
                     if let cat = categoryFilter {
                         let catAccent = CategoryTheme.visualSpec(for: cat).accent
                         Text(cat)
-                            .font(EditorialFont.caption.weight(.semibold))
+                            .font(InsightFont.caption.weight(.semibold))
                             .foregroundStyle(catAccent)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
-                            .background(EditorialColor.glassSurface, in: Capsule())
+                            .background(InsightColor.surface, in: Capsule())
                             .overlay(Capsule().strokeBorder(catAccent.opacity(0.4), lineWidth: 1))
                     }
 
                     Spacer()
 
-                    Picker("筛选", selection: $filter) {
-                        Text("全部").tag(Optional<SwipeDirection>.none)
-                        Text("感兴趣").tag(Optional<SwipeDirection>.some(.right))
-                        Text("不喜欢").tag(Optional<SwipeDirection>.some(.left))
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 240)
+                    InsightSegmented(
+                        items: ["全部", "感兴趣", "不喜欢"],
+                        selection: Binding(
+                            get: {
+                                switch filter {
+                                case .none: return "全部"
+                                case .right: return "感兴趣"
+                                case .left, .skip: return "不喜欢"
+                                @unknown default: return "全部"
+                                }
+                            },
+                            set: { newValue in
+                                withAnimation(InsightMotion.pill) {
+                                    filter = switch newValue {
+                                    case "全部": Optional<SwipeDirection>.none
+                                    case "感兴趣": Optional<SwipeDirection>.some(.right)
+                                    default: Optional<SwipeDirection>.some(.left)
+                                    }
+                                }
+                            }
+                        )
+                    )
 
                     Button {
                         showConfirmClear = true
                     } label: {
                         Label("清空", systemImage: "trash")
-                            .font(EditorialFont.labelSmall)
-                            .foregroundStyle(store.history.isEmpty ? EditorialColor.textMuted : EditorialColor.dislikeRed.opacity(0.85))
+                            .font(InsightFont.callout)
+                            .foregroundStyle(store.history.isEmpty ? InsightColor.textMuted : InsightColor.danger.opacity(0.85))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     .buttonStyle(PressableButtonStyle())
                     .disabled(store.history.isEmpty)
@@ -85,7 +100,7 @@ struct HistoryView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 18)
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 // 列表
                 if items.isEmpty {
@@ -93,10 +108,10 @@ struct HistoryView: View {
                     VStack(spacing: 14) {
                         Image(systemName: "clock")
                             .font(.system(size: 42))
-                            .foregroundStyle(EditorialColor.textMuted)
+                            .foregroundStyle(InsightColor.textMuted)
                         Text(store.history.isEmpty ? "还没有刷过卡片" : "该筛选下暂无记录")
-                            .font(EditorialFont.bodySerif)
-                            .foregroundStyle(EditorialColor.textTertiary)
+                            .font(InsightFont.body)
+                            .foregroundStyle(InsightColor.textTertiary)
                     }
                     Spacer()
                 } else {
@@ -175,31 +190,31 @@ struct HistoryView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(card.headline)
-                        .font(EditorialFont.label)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.bodyStrong)
+                        .foregroundStyle(InsightColor.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Text(card.category)
-                            .font(EditorialFont.captionSmall.weight(.semibold))
+                            .font(InsightFont.captionSmall.weight(.semibold))
                             .foregroundStyle(catAccent)
                         dot
                         Text(card.seenAt?.formatted(date: .abbreviated, time: .shortened) ?? "")
-                            .font(EditorialFont.captionSmall)
-                            .foregroundStyle(EditorialColor.textTertiary)
+                            .font(InsightFont.captionSmall)
+                            .foregroundStyle(InsightColor.textTertiary)
                         if card.source == .ai {
                             if showAIMark {
                                 dot
                                 Text("AI")
-                                    .font(EditorialFont.captionSmall.weight(.bold))
-                                    .foregroundStyle(EditorialColor.aiAmber)
+                                    .font(InsightFont.captionSmall.weight(.bold))
+                                    .foregroundStyle(InsightColor.warning)
                             }
                         } else {
                             dot
                             // 三态来源：AI / 导入 / 预置精选。此前把导入笔记也标成「精选」，
                             // 与 DetailView、CardView 的「导入笔记」标注不一致。
                             Text(card.source == .imported ? "导入笔记" : "精选")
-                                .font(EditorialFont.captionSmall)
-                                .foregroundStyle(EditorialColor.textMuted)
+                                .font(InsightFont.captionSmall)
+                                .foregroundStyle(InsightColor.textMuted)
                         }
                     }
                 }
@@ -208,11 +223,11 @@ struct HistoryView: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(EditorialColor.textMuted)
+                    .foregroundStyle(InsightColor.textMuted)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .editorialGlassCard(cornerRadius: EditorialRadius.control)
+            .editorialGlassCard(cornerRadius: InsightRadius.control)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.99))
         .contextMenu {
@@ -241,15 +256,15 @@ struct HistoryView: View {
     private func directionMark(_ swiped: SwipeDirection?) -> (icon: String, color: Color) {
         switch swiped {
         case .right:
-            ("heart.fill", EditorialColor.likeGreen)
+            ("heart.fill", InsightColor.success)
         case .left:
-            ("xmark", EditorialColor.dislikeRed)
+            ("xmark", InsightColor.danger)
         case .skip, nil:
-            ("forward.fill", EditorialColor.skipGray)
+            ("forward.fill", InsightColor.neutral)
         }
     }
 
     private var dot: some View {
-        Circle().fill(EditorialColor.glassDivider.opacity(0.8)).frame(width: 3, height: 3)
+        Circle().fill(InsightColor.divider.opacity(0.8)).frame(width: 3, height: 3)
     }
 }

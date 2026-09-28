@@ -15,7 +15,7 @@ struct CategoryTheme {
         category: "",
         image: nil,
         accent: Color(red: 0.55, green: 0.58, blue: 0.65),
-        ambient: [EditorialColor.canvasGradientTop, EditorialColor.canvasGradientBottom],
+        ambient: [InsightColor.canvas, InsightColor.canvas.opacity(0.9)],
         iconName: "book.pages.fill",
         domainCode: "KNOW"
     )
@@ -163,7 +163,7 @@ struct CategoryTheme {
         "meteorology": spec("meteorology", icon: "cloud.sun.rain.fill", code: "METEO", r: 0.65, g: 0.80, b: 0.90, dtR: 0.10, dtG: 0.13, dtB: 0.18, dbR: 0.04, dbG: 0.06, dbB: 0.09),
         "geology": spec("geology", icon: "mountain.2.fill", code: "GEOL", r: 0.85, g: 0.65, b: 0.45, dtR: 0.16, dtG: 0.11, dtB: 0.07, dbR: 0.07, dbG: 0.05, dbB: 0.03),
         "spacecraft": spec("spacecraft", icon: "airplane.departure", code: "AERO", r: 0.82, g: 0.85, b: 0.95, dtR: 0.11, dtG: 0.12, dtB: 0.18, dbR: 0.04, dbG: 0.04, dbB: 0.07),
-        "genetics": spec("genetics", icon: "dials.fill", code: "GENE", r: 0.40, g: 0.85, b: 0.80, dtR: 0.06, dtG: 0.15, dtB: 0.16, dbR: 0.03, dbG: 0.07, dbB: 0.08),
+        "genetics": spec("genetics", icon: "slider.horizontal.3", code: "GENE", r: 0.40, g: 0.85, b: 0.80, dtR: 0.06, dtG: 0.15, dtB: 0.16, dbR: 0.03, dbG: 0.07, dbB: 0.08),
         "ecology": spec("ecology", icon: "tree.fill", code: "ECOL", r: 0.50, g: 0.82, b: 0.55, dtR: 0.08, dtG: 0.16, dtB: 0.10, dbR: 0.03, dbG: 0.07, dbB: 0.04),
         "robotics": spec("robotics", icon: "gearshape.arrow.triangle.2.circlepath", code: "ROBO", r: 0.92, g: 0.62, b: 0.35, dtR: 0.16, dtG: 0.11, dtB: 0.07, dbR: 0.07, dbG: 0.05, dbB: 0.03),
         "security": spec("security", icon: "shield.checkerboard", code: "SEC", r: 0.92, g: 0.45, b: 0.45, dtR: 0.18, dtG: 0.08, dtB: 0.08, dbR: 0.08, dbG: 0.04, dbB: 0.04),

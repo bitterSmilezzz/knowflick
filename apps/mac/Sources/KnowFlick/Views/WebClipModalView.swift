@@ -24,15 +24,12 @@ struct WebClipModalView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.dynamic(
-                light: NSColor.windowBackgroundColor.withAlphaComponent(0.97),
-                dark: NSColor(white: 0.12, alpha: 0.97)
-            )
-            .ignoresSafeArea()
+            InsightColor.surfaceRaised
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
@@ -42,8 +39,8 @@ struct WebClipModalView: View {
                         HStack(spacing: 12) {
                             ProgressView().controlSize(.regular)
                             Text(isFetching ? "正在匿名读取网页…" : "AI 正在提炼知识卡片…")
-                                .font(EditorialFont.label)
-                                .foregroundStyle(EditorialColor.textSecondary)
+                                .font(InsightFont.bodyStrong)
+                                .foregroundStyle(InsightColor.textSecondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(18)
@@ -60,22 +57,22 @@ struct WebClipModalView: View {
 
                     if let errorMessage {
                         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                            .font(EditorialFont.captionSmall)
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .font(InsightFont.captionSmall)
+                            .foregroundStyle(InsightColor.warning)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     if let importMessage {
                         Label(importMessage, systemImage: "checkmark.circle.fill")
-                            .font(EditorialFont.captionSmall)
-                            .foregroundStyle(EditorialColor.likeGreen)
+                            .font(InsightFont.captionSmall)
+                            .foregroundStyle(InsightColor.success)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(22)
             }
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
                 footer
             }
         }
@@ -91,15 +88,15 @@ struct WebClipModalView: View {
         HStack(spacing: 12) {
             Image(systemName: "link")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(EditorialColor.aiAmber)
+                .foregroundStyle(InsightColor.warning)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("网页剪藏")
-                    .font(EditorialFont.modalTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.title)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Text("先预览抽取的正文，再决定是否发送给 AI 提炼。")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textTertiary)
             }
 
             Spacer()
@@ -107,10 +104,10 @@ struct WebClipModalView: View {
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .frame(width: 28, height: 28)
-                    .background(EditorialColor.glassSurface, in: Circle())
-                    .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .background(InsightColor.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
@@ -123,8 +120,8 @@ struct WebClipModalView: View {
     private var urlCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("输入文章链接", systemImage: "safari")
-                .font(EditorialFont.sectionTitle)
-                .foregroundStyle(EditorialColor.textPrimary)
+                .font(InsightFont.headline)
+                .foregroundStyle(InsightColor.textPrimary)
 
             HStack(spacing: 10) {
                 TextField("https://example.com/article", text: $urlText)
@@ -140,14 +137,14 @@ struct WebClipModalView: View {
             }
 
             Text("请求不携带 Cookie。正文和原文链接不会自动入库；只有点击 AI 提炼后才会发送到已配置的 AI 服务。")
-                .font(EditorialFont.captionSmall)
-                .foregroundStyle(EditorialColor.textTertiary)
+                .font(InsightFont.captionSmall)
+                .foregroundStyle(InsightColor.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if !store.settings.isAIConfigured {
                 Text("预览无需配置 AI；提炼前请先在偏好设置中配置 AI 服务。")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -159,39 +156,39 @@ struct WebClipModalView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "doc.text.magnifyingglass")
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(digest.title.isEmpty ? digest.siteName : digest.title)
-                        .font(EditorialFont.sectionTitle)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.headline)
+                        .foregroundStyle(InsightColor.textPrimary)
                         .textSelection(.enabled)
                     Text(digest.pageURL)
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textTertiary)
                         .textSelection(.enabled)
                 }
             }
 
             if !digest.description.isEmpty {
                 Text(digest.description)
-                    .font(EditorialFont.labelSmall)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.callout)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Divider().overlay(EditorialColor.glassDivider)
+            Divider().overlay(InsightColor.divider)
 
             Text(digest.text)
                 .font(.system(size: 13))
-                .foregroundStyle(EditorialColor.textPrimary)
+                .foregroundStyle(InsightColor.textPrimary)
                 .lineSpacing(4)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
 
             if digest.truncated {
                 Label("页面超过 4 MB 抓取上限，以上正文可能不完整。", systemImage: "info.circle")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.warning)
             }
         }
         .padding(16)
@@ -202,14 +199,14 @@ struct WebClipModalView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("AI 提炼预览（\(selectedCardIDs.count)/\(cards.count)）", systemImage: "sparkles")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Spacer()
                 Button(selectedCardIDs.count == cards.count ? "取消全选" : "全选") {
                     selectedCardIDs = selectedCardIDs.count == cards.count ? [] : Set(cards.map(\.id))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(EditorialColor.aiAmber)
+                .foregroundStyle(InsightColor.warning)
             }
 
             ForEach(cards) { card in
@@ -222,33 +219,34 @@ struct WebClipModalView: View {
                         }
                     } label: {
                         Image(systemName: selectedCardIDs.contains(card.id) ? "checkmark.square.fill" : "square")
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .foregroundStyle(InsightColor.warning)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(selectedCardIDs.contains(card.id) ? "取消选择 \(card.headline)" : "选择 \(card.headline)")
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text(card.headline)
-                            .font(EditorialFont.label.weight(.semibold))
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .font(InsightFont.bodyStrong.weight(.semibold))
+                            .foregroundStyle(InsightColor.textPrimary)
                         Text(card.summary)
-                            .font(EditorialFont.captionSmall)
-                            .foregroundStyle(EditorialColor.textSecondary)
+                            .font(InsightFont.captionSmall)
+                            .foregroundStyle(InsightColor.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(12)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 9))
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control))
+                .editorialElevationShadow()
             }
 
             Toggle(isOn: $insertAtTop) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("置顶到待刷卡堆")
-                        .font(EditorialFont.labelSmall.weight(.semibold))
+                        .font(InsightFont.callout.weight(.semibold))
                     Text("新卡会优先出现在卡堆前方。")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textTertiary)
                 }
             }
             .toggleStyle(.checkbox)
@@ -268,7 +266,7 @@ struct WebClipModalView: View {
             if importMessage != nil {
                 Button("完成", action: onClose)
                     .buttonStyle(.borderedProminent)
-                    .tint(EditorialColor.aiAmber)
+                    .tint(InsightColor.warning)
                     .keyboardShortcut(.defaultAction)
             } else if !cards.isEmpty {
                 Button("重新提炼") { transformPage() }
@@ -277,19 +275,19 @@ struct WebClipModalView: View {
 
                 Button("确认导入（\(selectedCardIDs.count) 张）") { importSelectedCards() }
                     .buttonStyle(.borderedProminent)
-                    .tint(EditorialColor.aiAmber)
+                    .tint(InsightColor.warning)
                     .disabled(selectedCardIDs.isEmpty || isBusy)
                     .keyboardShortcut(.defaultAction)
             } else if digest != nil {
                 Button("AI 提炼成卡片") { transformPage() }
                     .buttonStyle(.borderedProminent)
-                    .tint(EditorialColor.aiAmber)
+                    .tint(InsightColor.warning)
                     .disabled(isBusy || !store.settings.isAIConfigured)
                     .keyboardShortcut(.defaultAction)
             } else {
                 Button(isFetching ? "正在抓取…" : "抓取并预览正文") { fetchPage() }
                     .buttonStyle(.borderedProminent)
-                    .tint(EditorialColor.aiAmber)
+                    .tint(InsightColor.warning)
                     .disabled(!canFetch || isBusy)
                     .keyboardShortcut(.defaultAction)
             }
