@@ -11,6 +11,9 @@ struct LearningWorkspaceView: View {
     var destination: InsightDestination? = nil
     var navigate: ((InsightDestination) -> Void)? = nil
     @AppStorage("learning.dailyGoal") private var dailyGoal = 5
+    /// 学习计划缓存：原来在 body 每次求值（含搜索框每个按键）都重建 LearningPlan
+    /// （O(n) 且带日历运算），现按卡库变化刷新
+    @State private var plan = LearningPlan(cards: [])
     @State private var section = Section.today
     @State private var query = ""
     @State private var category = "全部主题"
@@ -27,6 +30,18 @@ struct LearningWorkspaceView: View {
         case all = "全部", unread = "未读", saved = "收藏", imported = "笔记", mastered = "已掌握"
     }
     private var categories: [String] { Array(Set(store.cards.map(\.category))).sorted() }
+
+    /// 分类汇总（单次遍历）：今日版图 tile 原来每张做两次全库 filter（8 张 tile = 16 遍）
+    private var categorySummaries: [String: (total: Int, mastered: Int)] {
+        var summaries: [String: (total: Int, mastered: Int)] = [:]
+        for card in store.cards {
+            var summary = summaries[card.category] ?? (0, 0)
+            summary.total += 1
+            if card.masteryLevel >= 2 { summary.mastered += 1 }
+            summaries[card.category] = summary
+        }
+        return summaries
+    }
     private var filteredCards: [KnowledgeCard] {
         store.cards.filter { card in
             (category == "全部主题" || card.category == category) &&
@@ -43,8 +58,7 @@ struct LearningWorkspaceView: View {
 
     var body: some View {
         // 原 60 秒 TimelineView 包裹整页仅为刷新 LearningPlan 的「今天」，纯属周期性整页重算；
-        // plan 本就随 store.cards 变化重算（复习行为即变化源），无需定时器驱动
-        let plan = LearningPlan(cards: store.cards)
+        // plan 改为按 store.cards 变化缓存（见 refreshPlan），无需定时器驱动
         ScrollView {
             VStack(alignment: .leading, spacing: InsightSpacing.large) {
                 switch section {
@@ -67,8 +81,16 @@ struct LearningWorkspaceView: View {
         .id(section)
         .background(InsightColor.canvas)
         .foregroundStyle(InsightColor.textPrimary)
-        .onAppear(perform: syncSectionWithDestination)
+        .onAppear {
+            refreshPlan()
+            syncSectionWithDestination()
+        }
         .onChange(of: destination) { _, _ in syncSectionWithDestination() }
+        .onChange(of: store.cards) { _, _ in refreshPlan() }
+    }
+
+    private func refreshPlan() {
+        plan = LearningPlan(cards: store.cards)
     }
 
     private func syncSectionWithDestination() {
@@ -145,7 +167,7 @@ struct LearningWorkspaceView: View {
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: InsightSpacing.small)], spacing: InsightSpacing.small) {
                 ForEach(Array(categories.prefix(8)), id: \.self) { name in
-                    let cards = store.cards.filter { $0.category == name }
+                    let summary = categorySummaries[name] ?? (0, 0)
                     Button {
                         category = name; filter = .all; show(.library)
                     } label: {
@@ -155,7 +177,7 @@ struct LearningWorkspaceView: View {
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundStyle(InsightColor.accent)
                                 Spacer()
-                                Text("\(cards.count)")
+                                Text("\(summary.total)")
                                     .font(InsightFont.monoSmall)
                                     .monospacedDigit()
                                     .foregroundStyle(InsightColor.textTertiary)
@@ -164,10 +186,10 @@ struct LearningWorkspaceView: View {
                                 .font(InsightFont.headline)
                                 .fixedSize(horizontal: false, vertical: true)
                             InsightProgressBar(
-                                value: Double(cards.filter { $0.masteryLevel >= 2 }.count) / Double(max(1, cards.count)),
+                                value: Double(summary.mastered) / Double(max(1, summary.total)),
                                 tint: InsightColor.accent
                             )
-                            Text("已掌握 \(cards.filter { $0.masteryLevel >= 2 }.count) 张")
+                            Text("已掌握 \(summary.mastered) 张")
                                 .font(InsightFont.captionSmall)
                                 .foregroundStyle(InsightColor.textTertiary)
                         }
