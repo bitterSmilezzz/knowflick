@@ -53,20 +53,13 @@ enum InsightDestination: String, CaseIterable, Identifiable {
         }
     }
 
-    /// 计数来源：返回 nil 不显示计数
+    /// 计数来源：返回 nil 不显示计数。
+    /// 实际数值由 `InsightShell` 按卡库变化一次性缓存到 `badgeCounts`——
+    /// 这里不再按行重建 LearningPlan（O(n) 且带日历运算），否则侧栏每次
+    /// 重绘（含展开/折叠动画的每一帧）都会全量重算，导航点击就会卡顿。
     @MainActor
-    static func count(for destination: InsightDestination, store: AppStore) -> Int? {
-        switch destination {
-        case .swipe: return store.deck.count
-        case .today: return LearningPlan(cards: store.cards).completedToday
-        case .map: return store.studyScope.isActive ? StudyMap.remaining(store.cards, scope: store.studyScope) : nil
-        case .review: return LearningPlan(cards: store.cards).due.count
-        case .library: return store.cards.count
-        case .favorites: return store.favorites.count
-        case .stats: return nil
-        case .history: return store.history.count
-        default: return nil
-        }
+    static func count(for destination: InsightDestination, badgeCounts: [InsightDestination: Int]) -> Int? {
+        badgeCounts[destination]
     }
 }
 
@@ -86,6 +79,10 @@ struct InsightShell<Content: View>: View {
 
     @State private var hoveringSidebarToggle = false
 
+    /// 侧栏计数徽章缓存：仅在卡库或学习范围变化时重算一次，
+    /// 而不是每行每次渲染都重建 LearningPlan（侧栏动画逐帧重绘时的主要卡顿源）
+    @State private var badgeCounts: [InsightDestination: Int] = [:]
+
     var body: some View {
         HStack(spacing: 0) {
             sidebar
@@ -102,6 +99,23 @@ struct InsightShell<Content: View>: View {
                 .animation(InsightMotion.shell, value: sidebarExpanded)
         }
         .background(InsightColor.sidebar)
+        .onAppear(perform: refreshBadgeCounts)
+        .onChange(of: store.cards) { _, _ in refreshBadgeCounts() }
+        .onChange(of: store.studyScope) { _, _ in refreshBadgeCounts() }
+    }
+
+    /// 一次性重算全部侧栏计数（单次 LearningPlan 构造，服务所有行）
+    private func refreshBadgeCounts() {
+        let plan = LearningPlan(cards: store.cards)
+        var counts: [InsightDestination: Int] = [:]
+        counts[.swipe] = store.deck.count
+        counts[.today] = plan.completedToday
+        counts[.map] = store.studyScope.isActive ? StudyMap.remaining(store.cards, scope: store.studyScope) : nil
+        counts[.review] = plan.due.count
+        counts[.library] = store.cards.count
+        counts[.favorites] = store.favorites.count
+        counts[.history] = store.history.count
+        badgeCounts = counts
     }
 
     // MARK: 侧栏
@@ -248,7 +262,7 @@ struct InsightShell<Content: View>: View {
                 InsightSidebarRow(
                     icon: item.icon,
                     title: item.rawValue,
-                    count: InsightDestination.count(for: item, store: store),
+                    count: InsightDestination.count(for: item, badgeCounts: badgeCounts),
                     isSelected: selection == item,
                     isExpanded: sidebarExpanded
                 ) {

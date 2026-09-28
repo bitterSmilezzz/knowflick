@@ -702,10 +702,16 @@ struct InsightHistoryPlaceholder: View {
         }
     }
 
-    private func relativeTime(_ date: Date) -> String {
+    /// 相对时间格式化器（静态单例）：原实现每行都新建一个 RelativeDateTimeFormatter，
+    /// 80 行列表就是 80 次格式化器构造
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return formatter
+    }()
+
+    private func relativeTime(_ date: Date) -> String {
+        Self.relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
@@ -737,15 +743,13 @@ struct InsightStatsPlaceholder: View {
     /// 分类下钻载荷：点分类行 → 带筛选局部 sheet 打开 HistoryView（不经 ActiveSheet）
     @State private var historyCategory: CategoryNav?
 
-    private var stats: LearningStats {
-        StatsCalculator.compute(from: store.cards)
-    }
-
-    private var plan: LearningPlan {
-        LearningPlan(cards: store.cards)
-    }
-
     var body: some View {
+        // 单次计算后以值下发：原实现中 stats/plan 是计算属性、heatmap/trend 各自
+        // 调 dailyCounts，一次渲染里 LearningPlan 与 StatsCalculator 被重建 5+ 次
+        let stats = StatsCalculator.compute(from: store.cards)
+        let plan = LearningPlan(cards: store.cards)
+        let daily35 = StatsCalculator.dailyCounts(cards: store.cards, days: 35)
+        let daily7 = StatsCalculator.dailyCounts(cards: store.cards, days: 7)
         InsightContentScaffold(
             title: "统计",
             subtitle: "从刷卡记录派生的学习快照与记忆排程"
@@ -774,7 +778,7 @@ struct InsightStatsPlaceholder: View {
                                 statTile(value: "\(stats.streakDays)", label: "连续天数", tone: .violet, index: 3)
                                 statTile(value: "\(plan.mastered)", label: "熟练掌握", tone: .success, index: 4)
                             }
-                            StatsSections(store: store, onDrillDown: { category in
+                            StatsSections(plan: plan, stats: stats, daily35: daily35, daily7: daily7, onDrillDown: { category in
                                 historyCategory = CategoryNav(category: category)
                             })
                         }
@@ -813,14 +817,15 @@ private struct CategoryNav: Identifiable {
 
 /// 统计页的图表区：掌握度堆叠胶囊 / 艾宾浩斯概览 / 未来 7 天到期预测 / 35 天热力图 /
 /// 近 7 天趋势 / 分类分布（下钻回调）。
-/// 数据全部走 StatsCalculator / LearningPlan，与旧 StatsView 同源。
+/// 数据全部由宿主一次性算好后以值下发（与旧 StatsView 同源），此处不再触碰 store。
 private struct StatsSections: View {
-    @Bindable var store: AppStore
+    let plan: LearningPlan
+    let stats: LearningStats
+    let daily35: [LearningStats.DailyCount]
+    let daily7: [LearningStats.DailyCount]
     var onDrillDown: (String) -> Void
 
-    private var plan: LearningPlan { LearningPlan(cards: store.cards) }
     private var dist: MasteryDistribution { plan.masteryDistribution }
-    private var stats: LearningStats { StatsCalculator.compute(from: store.cards) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: InsightSpacing.compact) {
@@ -988,7 +993,7 @@ private struct StatsSections: View {
             VStack(alignment: .leading, spacing: InsightSpacing.default) {
                 Text("学习足迹").font(InsightFont.headline).foregroundStyle(InsightColor.textPrimary)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 5) {
-                    ForEach(daily(days: 35), id: \.day) { item in
+                    ForEach(daily35, id: \.day) { item in
                         let color: Color = {
                             if item.count == 0 { return InsightColor.surfaceSunken }
                             if item.count <= 2 { return InsightColor.success.opacity(0.35) }
@@ -1025,7 +1030,7 @@ private struct StatsSections: View {
             VStack(alignment: .leading, spacing: InsightSpacing.default) {
                 Text("近 7 天学习趋势").font(InsightFont.headline).foregroundStyle(InsightColor.textPrimary)
                 HStack(alignment: .bottom, spacing: InsightSpacing.small) {
-                    ForEach(daily(days: 7), id: \.day) { item in
+                    ForEach(daily7, id: \.day) { item in
                         VStack(spacing: InsightSpacing.tiny) {
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
                                 .fill(item.count > 0 ? InsightColor.accent : InsightColor.surfaceSunken)
@@ -1102,10 +1107,6 @@ private struct StatsSections: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func daily(days: Int) -> [LearningStats.DailyCount] {
-        StatsCalculator.dailyCounts(cards: store.cards, days: days)
     }
 
     private static let dateFormatter: DateFormatter = {
