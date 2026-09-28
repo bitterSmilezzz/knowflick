@@ -61,7 +61,7 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.canvasGradient
+            InsightColor.canvas
                 .ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
 
@@ -70,22 +70,29 @@ struct SettingsView: View {
                 if let message = saveErrorMessage {
                     saveErrorBanner(message)
                 }
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
+                        InsightSectionLabel(text: "外观")
                         appearanceCard
+                        InsightSectionLabel(text: "AI 服务")
                         aiServiceCard
+                        InsightSectionLabel(text: "分类")
                         categoryManagementCard
+                        InsightSectionLabel(text: "来源")
                         sourcesCard
+                        InsightSectionLabel(text: "语音")
                         speechSettingsCard
+                        InsightSectionLabel(text: "数据")
                         dataManagementCard
+                        InsightSectionLabel(text: "关于")
                         aboutCard
                     }
                     .padding(22)
                 }
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
                 bottomBar
             }
         }
@@ -113,9 +120,8 @@ struct SettingsView: View {
             voiceOptions = SpeechSynthesizerService.availableVoices()
         }
         .overlay(alignment: .bottom) {
-            EditorialToast(center: toast)
+            EditorialToast(center: toast, edge: .bottom)
                 .padding(.bottom, 64)
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast.message)
         }
         .overlay {
             if showExportModal {
@@ -140,22 +146,22 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                 Text("偏好设置")
-                    .font(EditorialFont.modalTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.title)
+                    .foregroundStyle(InsightColor.textPrimary)
             }
             Spacer()
             Button("完成") {
                 // 保存失败时不关闭：错误以顶部横幅呈现，用户可修正后重试或手动关闭
                 if save() { dismiss() }
             }
-            .font(EditorialFont.label)
-            .foregroundStyle(EditorialColor.textSecondary)
+            .font(InsightFont.bodyStrong)
+            .foregroundStyle(InsightColor.textSecondary)
             .padding(.horizontal, 18)
             .padding(.vertical, 6)
-            .background(EditorialColor.glassSurface, in: Capsule())
-            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+            .background(InsightColor.surface, in: Capsule())
+            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
         }
@@ -168,21 +174,21 @@ struct SettingsView: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(EditorialColor.dislikeRed)
+                .foregroundStyle(InsightColor.danger)
             Text("保存失败：\(message)")
-                .font(EditorialFont.caption)
-                .foregroundStyle(EditorialColor.textPrimary)
+                .font(InsightFont.caption)
+                .foregroundStyle(InsightColor.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("放弃修改并关闭") {
                 dismiss()
             }
-            .font(EditorialFont.captionSmall)
-            .foregroundStyle(EditorialColor.textSecondary)
+            .font(InsightFont.captionSmall)
+            .foregroundStyle(InsightColor.textSecondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(EditorialColor.glassSurface, in: Capsule())
-            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+            .background(InsightColor.surface, in: Capsule())
+            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
             .buttonStyle(PressableButtonStyle())
             .help("不保存本次修改，直接关闭设置页")
             Button {
@@ -190,7 +196,7 @@ struct SettingsView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .foregroundStyle(InsightColor.textTertiary)
             }
             .buttonStyle(PressableButtonStyle())
             .help("忽略此提示，继续修正")
@@ -198,10 +204,10 @@ struct SettingsView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EditorialColor.dislikeRed.opacity(0.12))
+        .background(InsightColor.danger.opacity(0.12))
         .overlay(alignment: .leading) {
             Rectangle()
-                .fill(EditorialColor.dislikeRed)
+                .fill(InsightColor.danger)
                 .frame(width: 3)
         }
     }
@@ -212,21 +218,21 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 Image(systemName: "circle.lefthalf.filled.inverse")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 Text("外观模式")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Spacer()
                 Text(appearance.title)
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textMuted)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textMuted)
             }
 
             HStack(spacing: 12) {
                 ForEach(AppearanceMode.allCases) { mode in
                     let isSelected = (appearance == mode)
                     Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        withAnimation(InsightMotion.pill) {
                             // 与其余 18 项一致：仅写入本地编辑态，点击「保存配置」统一生效，
                             // 保证「放弃修改并关闭」承诺可兑现
                             appearance = mode
@@ -236,46 +242,46 @@ struct SettingsView: View {
                             Image(systemName: mode.icon)
                                 .font(.system(size: 14, weight: .semibold))
                             Text(mode.title)
-                                .font(EditorialFont.label)
+                                .font(InsightFont.bodyStrong)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(
                             isSelected
-                                ? EditorialColor.aiAmberBg
-                                : EditorialColor.glassSurface,
-                            in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                                ? InsightColor.warningSoft
+                                : InsightColor.surface,
+                            in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                            RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                                 .strokeBorder(
                                     isSelected
-                                        ? EditorialColor.aiAmberBorder
-                                        : EditorialColor.glassBorder,
+                                        ? InsightColor.warning
+                                        : InsightColor.border,
                                     lineWidth: isSelected ? 1.5 : 1
                                 )
                         )
                         .foregroundStyle(
                             isSelected
-                                ? EditorialColor.aiAmber
-                                : EditorialColor.textSecondary
+                                ? InsightColor.warning
+                                : InsightColor.textSecondary
                         )
                     }
                     .buttonStyle(.plain)
                 }
             }
 
-            Divider().overlay(EditorialColor.glassDivider)
+            Divider().overlay(InsightColor.divider)
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("纸质人文主题")
-                        .font(EditorialFont.label)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.bodyStrong)
+                        .foregroundStyle(InsightColor.textPrimary)
                     Spacer()
                     Text(paperTheme.subtitle)
-                        .font(EditorialFont.caption)
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .font(InsightFont.caption)
+                        .foregroundStyle(InsightColor.textMuted)
                 }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -283,7 +289,7 @@ struct SettingsView: View {
                         let isSelected = (paperTheme == theme)
                         let palette = PaperThemePalette.colors(for: theme)
                         Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            withAnimation(InsightMotion.pill) {
                                 paperTheme = theme
                             }
                         } label: {
@@ -298,28 +304,28 @@ struct SettingsView: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(theme.title)
-                                        .font(EditorialFont.label)
-                                        .foregroundStyle(isSelected ? EditorialColor.aiAmber : EditorialColor.textPrimary)
+                                        .font(InsightFont.bodyStrong)
+                                        .foregroundStyle(isSelected ? InsightColor.warning : InsightColor.textPrimary)
                                     Text(theme.subtitle)
-                                        .font(EditorialFont.captionSmall)
-                                        .foregroundStyle(EditorialColor.textMuted)
+                                        .font(InsightFont.captionSmall)
+                                        .foregroundStyle(InsightColor.textMuted)
                                 }
                                 Spacer()
                                 if isSelected {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(EditorialColor.aiAmber)
+                                        .foregroundStyle(InsightColor.warning)
                                 }
                             }
                             .padding(10)
                             .background(
-                                isSelected ? EditorialColor.aiAmberBg : EditorialColor.glassSurface,
-                                in: RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                                isSelected ? InsightColor.warningSoft : InsightColor.surface,
+                                in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: EditorialRadius.control, style: .continuous)
+                                RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                                     .strokeBorder(
-                                        isSelected ? EditorialColor.aiAmberBorder : EditorialColor.glassBorder,
+                                        isSelected ? InsightColor.warning : InsightColor.border,
                                         lineWidth: isSelected ? 1.5 : 1
                                     )
                             )
@@ -339,10 +345,10 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 Text("AI 驱动服务")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -363,27 +369,27 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             Image(systemName: currentPreset.icon)
-                                .foregroundStyle(EditorialColor.aiAmber)
+                                .foregroundStyle(InsightColor.warning)
                                 .frame(width: 18)
                             Text(currentPreset.name)
-                                .font(EditorialFont.label)
-                                .foregroundStyle(EditorialColor.textPrimary)
+                                .font(InsightFont.bodyStrong)
+                                .foregroundStyle(InsightColor.textPrimary)
                             Spacer()
                             Image(systemName: "chevron.up.chevron.down")
                                 .font(.system(size: 11))
-                                .foregroundStyle(EditorialColor.textTertiary)
+                                .foregroundStyle(InsightColor.textTertiary)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
-                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
                     }
                 }
 
                 if !currentPreset.helpText.isEmpty {
                     Text(currentPreset.helpText)
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textTertiary)
                         .padding(.top, -3)
                 }
 
@@ -393,9 +399,9 @@ struct SettingsView: View {
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                        .foregroundStyle(InsightColor.textPrimary)
                 }
 
                 // 3. 模型选择
@@ -405,9 +411,9 @@ struct SettingsView: View {
                             .textFieldStyle(.plain)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                            .foregroundStyle(InsightColor.textPrimary)
                     } else {
                         HStack(spacing: 8) {
                             Menu {
@@ -425,18 +431,18 @@ struct SettingsView: View {
                             } label: {
                                 HStack {
                                     Text(currentPreset.models.contains(model) ? model : (model.isEmpty ? "选择模型…" : "自定义模型"))
-                                        .font(EditorialFont.labelSmall)
-                                        .foregroundStyle(EditorialColor.textPrimary)
+                                        .font(InsightFont.callout)
+                                        .foregroundStyle(InsightColor.textPrimary)
                                     Spacer()
                                     Image(systemName: "chevron.up.chevron.down")
                                         .font(.system(size: 11))
-                                        .foregroundStyle(EditorialColor.textTertiary)
+                                        .foregroundStyle(InsightColor.textTertiary)
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
                                 .frame(width: 190)
-                                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
                             }
 
                             if !currentPreset.models.contains(model) {
@@ -444,9 +450,9 @@ struct SettingsView: View {
                                     .textFieldStyle(.plain)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
-                                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                                    .foregroundStyle(EditorialColor.textPrimary)
+                                    .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                                    .foregroundStyle(InsightColor.textPrimary)
                             }
                         }
                     }
@@ -459,22 +465,22 @@ struct SettingsView: View {
                             .textFieldStyle(.plain)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                            .foregroundStyle(InsightColor.textPrimary)
 
                         if !currentPreset.requiresKey {
                             Text("本地离线模型（Ollama 等），无需在应用中配置 Key")
-                                .font(EditorialFont.captionSmall)
-                                .foregroundStyle(EditorialColor.textMuted)
+                                .font(InsightFont.captionSmall)
+                                .foregroundStyle(InsightColor.textMuted)
                         }
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("优先刷卡分类")
-                        .font(EditorialFont.captionSmall.weight(.semibold))
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall.weight(.semibold))
+                        .foregroundStyle(InsightColor.textTertiary)
 
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 6)], alignment: .leading, spacing: 6) {
@@ -487,19 +493,19 @@ struct SettingsView: View {
                     .frame(maxHeight: 95)
 
                     Text("选中的分类将优先排列在卡堆前列，未看卡刷完后自动回退全量；全部未选则均等浏览")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textMuted)
                 }
                 .padding(.top, 4)
 
                 Toggle("卡片不足时自动触发 AI 批量补充", isOn: $autoGenerate)
-                    .font(EditorialFont.labelSmall)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.callout)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .padding(.top, 2)
             }
         }
         .padding(18)
-        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+        .editorialGlassCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 卡片 2：分类体系管理
@@ -508,10 +514,10 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
                 Image(systemName: "square.grid.2x2")
-                    .foregroundStyle(EditorialColor.likeGreen)
+                    .foregroundStyle(InsightColor.success)
                 Text("分类体系与视觉主题")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -521,19 +527,19 @@ struct SettingsView: View {
                         .fill(CategoryTheme.visualSpec(for: CategoryRegistry.builtinCategory).accent)
                         .frame(width: 8, height: 8)
                     Text(CategoryRegistry.builtinCategory)
-                        .font(EditorialFont.labelSmall)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.callout)
+                        .foregroundStyle(InsightColor.textPrimary)
                     Text("（系统内置 · 160 张精选知识底库）")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textMuted)
                     Spacer()
                     Image(systemName: "lock.fill")
                         .font(.system(size: 10))
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .foregroundStyle(InsightColor.textMuted)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(EditorialColor.glassSurface.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(InsightColor.surface.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 // 自定义分类列表
                 ForEach(customCategories) { cat in
@@ -546,11 +552,11 @@ struct SettingsView: View {
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(cat.name)
-                                .font(EditorialFont.labelSmall)
-                                .foregroundStyle(EditorialColor.textPrimary)
+                                .font(InsightFont.callout)
+                                .foregroundStyle(InsightColor.textPrimary)
                             Text(cat.description.isEmpty ? "未指定方向" : cat.description)
-                                .font(EditorialFont.captionSmall)
-                                .foregroundStyle(EditorialColor.textTertiary)
+                                .font(InsightFont.captionSmall)
+                                .foregroundStyle(InsightColor.textTertiary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
@@ -560,14 +566,14 @@ struct SettingsView: View {
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 11))
-                                .foregroundStyle(EditorialColor.dislikeRed.opacity(0.75))
+                                .foregroundStyle(InsightColor.danger.opacity(0.75))
                         }
                         .buttonStyle(.plain)
                         .help("删除该分类")
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
 
                 // 添加分类
@@ -577,46 +583,46 @@ struct SettingsView: View {
                             .textFieldStyle(.plain)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                            .foregroundStyle(InsightColor.textPrimary)
                             .frame(width: 170)
 
                         TextField("内容方向（AI 生成参考，可留空）", text: $newCategoryDesc)
                             .textFieldStyle(.plain)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                            .foregroundStyle(InsightColor.textPrimary)
 
                         Button("添加") {
                             addCategory()
                         }
-                        .font(EditorialFont.labelSmall)
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .font(InsightFont.callout)
+                        .foregroundStyle(InsightColor.textPrimary)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
-                        .background(EditorialColor.glassSurfaceHover, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorderHover, lineWidth: 1))
+                        .background(InsightColor.surfaceRaised, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.borderStrong, lineWidth: 1))
                         .buttonStyle(PressableButtonStyle())
                         .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     Text("新增分类后，系统将自动映射唯一的摄影底图与主题色彩")
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textMuted)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textMuted)
 
                     if let notice = categoryNotice {
                         Label(notice, systemImage: "exclamationmark.circle.fill")
-                            .font(EditorialFont.captionSmall)
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .font(InsightFont.captionSmall)
+                            .foregroundStyle(InsightColor.warning)
                     }
                 }
                 .padding(.top, 4)
             }
         }
         .padding(18)
-        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+        .editorialGlassCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 卡片 3：信息来源与偏好
@@ -625,38 +631,38 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
                 Image(systemName: "newspaper")
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .foregroundStyle(InsightColor.textSecondary)
                 Text("内容来源与呈现")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
             }
 
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("启用预置精选知识库", isOn: $enableSeed)
-                    .font(EditorialFont.labelSmall)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.callout)
+                    .foregroundStyle(InsightColor.textPrimary)
 
                 Toggle("启用 AI 智能生成卡片", isOn: $enableAI)
-                    .font(EditorialFont.labelSmall)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.callout)
+                    .foregroundStyle(InsightColor.textPrimary)
 
                 fieldRow(label: "权威来源偏好") {
                     TextField("维基百科, 国家地理, NASA", text: $aiSources)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                        .foregroundStyle(InsightColor.textPrimary)
                 }
 
                 Toggle("在卡片与详情页标注「AI 生成」徽章", isOn: $showAIMark)
-                    .font(EditorialFont.labelSmall)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.callout)
+                    .foregroundStyle(InsightColor.textPrimary)
             }
         }
         .padding(18)
-        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+        .editorialGlassCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 卡片：智能语音与磨耳朵 (Smart TTS)
@@ -666,17 +672,17 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 Image(systemName: "headphones")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 Text("语音与连续朗读")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Spacer()
                 Text("系统 · 云端 · 本地服务")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.likeGreen)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.success)
             }
 
-            Divider().overlay(EditorialColor.glassDivider)
+            Divider().overlay(InsightColor.divider)
 
             // 默认语速倍率
             SpeechSettingsEditor(settings: $speech)
@@ -684,7 +690,7 @@ struct SettingsView: View {
             fieldRow(label: "默认朗读语速 (当前: \(String(format: "%.2fx", speechRate)))") {
                 HStack(spacing: 12) {
                     Slider(value: $speechRate, in: 0.75...2.0, step: 0.25)
-                        .tint(EditorialColor.likeGreen)
+                        .tint(InsightColor.success)
 
                     HStack(spacing: 6) {
                         ForEach([0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { rate in
@@ -692,10 +698,10 @@ struct SettingsView: View {
                                 speechRate = Float(rate)
                             }
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(abs(speechRate - Float(rate)) < 0.05 ? EditorialColor.textPrimary : EditorialColor.textTertiary)
+                            .foregroundStyle(abs(speechRate - Float(rate)) < 0.05 ? InsightColor.textPrimary : InsightColor.textTertiary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
-                            .background(abs(speechRate - Float(rate)) < 0.05 ? EditorialColor.likeGreen.opacity(0.3) : EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 4))
+                            .background(abs(speechRate - Float(rate)) < 0.05 ? InsightColor.success.opacity(0.3) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                             .buttonStyle(.plain)
                         }
                     }
@@ -706,18 +712,18 @@ struct SettingsView: View {
             fieldRow(label: "默认朗读音调 (当前: \(String(format: "%.2fx", speechPitch)))") {
                 HStack(spacing: 12) {
                     Slider(value: $speechPitch, in: 0.5...2.0, step: 0.05)
-                        .tint(EditorialColor.aiAmber)
+                        .tint(InsightColor.warning)
 
                     HStack(spacing: 6) {
                         ForEach([("低沉", 0.85), ("自然", 1.0), ("清亮", 1.15)], id: \.1) { name, value in
                             Button(name) {
                                 speechPitch = Float(value)
                             }
-                            .font(EditorialFont.captionSmall.weight(.medium))
-                            .foregroundStyle(abs(speechPitch - Float(value)) < 0.05 ? EditorialColor.textPrimary : EditorialColor.textTertiary)
+                            .font(InsightFont.captionSmall.weight(.medium))
+                            .foregroundStyle(abs(speechPitch - Float(value)) < 0.05 ? InsightColor.textPrimary : InsightColor.textTertiary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(abs(speechPitch - Float(value)) < 0.05 ? EditorialColor.aiAmber.opacity(0.28) : EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 4))
+                            .background(abs(speechPitch - Float(value)) < 0.05 ? InsightColor.warning.opacity(0.28) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                             .buttonStyle(.plain)
                         }
                     }
@@ -731,12 +737,12 @@ struct SettingsView: View {
                         Button("\(String(format: "%.1f", sec)) 秒") {
                             ambientGapSeconds = sec
                         }
-                        .font(EditorialFont.captionSmall.weight(.medium))
-                        .foregroundStyle(abs(ambientGapSeconds - sec) < 0.1 ? EditorialColor.textPrimary : EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall.weight(.medium))
+                        .foregroundStyle(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.textPrimary : InsightColor.textTertiary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(abs(ambientGapSeconds - sec) < 0.1 ? EditorialColor.aiAmber.opacity(0.25) : EditorialColor.glassSurface, in: Capsule())
-                        .overlay(Capsule().strokeBorder(abs(ambientGapSeconds - sec) < 0.1 ? EditorialColor.aiAmber.opacity(0.6) : EditorialColor.glassBorder, lineWidth: 1))
+                        .background(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.warning.opacity(0.25) : InsightColor.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.warning.opacity(0.6) : InsightColor.border, lineWidth: 1))
                         .buttonStyle(.plain)
                     }
                 }
@@ -756,9 +762,9 @@ struct SettingsView: View {
             // 试听与自动朗读
             HStack {
                 Toggle("进入详情页时自动开启语音导读", isOn: $autoSpeakOnDetailOpen)
-                    .toggleStyle(SwitchToggleStyle(tint: EditorialColor.likeGreen))
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .toggleStyle(SwitchToggleStyle(tint: InsightColor.success))
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textSecondary)
 
                 Spacer()
 
@@ -769,18 +775,18 @@ struct SettingsView: View {
                         Image(systemName: "speaker.wave.2")
                         Text("试听发音")
                     }
-                    .font(EditorialFont.captionSmall.weight(.semibold))
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.captionSmall.weight(.semibold))
+                    .foregroundStyle(InsightColor.textPrimary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(EditorialColor.glassSurface, in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .background(InsightColor.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
             }
             if store.speechService.isPreparing {
                 ProgressView("正在生成语音…")
-                    .font(EditorialFont.caption)
+                    .font(InsightFont.caption)
             }
             if store.speechService.state != .idle {
                 // 文案承诺「停止播放」：必须同时停常规朗读与磨耳朵连续播报（stopSpeech 内部两者都停），
@@ -789,13 +795,13 @@ struct SettingsView: View {
             }
             if let error = store.speechService.lastError {
                 Text(error)
-                    .font(EditorialFont.caption)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.caption)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(18)
-        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+        .editorialGlassCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 卡片 3.5：数据管理与迁移 (导入与导出)
@@ -804,19 +810,19 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 Text("数据管理与双向迁移")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Spacer()
                 Text("Markdown · Obsidian · Anki · JSON")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textSecondary)
             }
 
             Text("支持将卡库或收藏阁批量导出为多种笔记与闪卡格式；亦支持将个人 Markdown 笔记或长文通过规则与 AI 解构导入为知识闪卡。")
-                .font(EditorialFont.captionSmall)
-                .foregroundStyle(EditorialColor.textTertiary)
+                .font(InsightFont.captionSmall)
+                .foregroundStyle(InsightColor.textTertiary)
 
             HStack(spacing: 12) {
                 Button {
@@ -826,12 +832,12 @@ struct SettingsView: View {
                         Image(systemName: "square.and.arrow.up")
                         Text("批量导出知识卡片…")
                     }
-                    .font(EditorialFont.label)
+                    .font(InsightFont.bodyStrong)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                    .foregroundStyle(InsightColor.textPrimary)
                 }
                 .buttonStyle(PressableButtonStyle())
 
@@ -842,12 +848,12 @@ struct SettingsView: View {
                         Image(systemName: "square.and.arrow.down")
                         Text("导入笔记为卡片…")
                     }
-                    .font(EditorialFont.label)
+                    .font(InsightFont.bodyStrong)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
+                    .foregroundStyle(InsightColor.textPrimary)
                 }
                 .buttonStyle(PressableButtonStyle())
             }
@@ -862,54 +868,54 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "square.stack.3d.up.fill")
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 Text("知识库状态")
-                    .font(EditorialFont.sectionTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
                 Spacer()
                 Text("共 \(store.cards.count) 张 · 待探索 \(store.deck.count) 张")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textSecondary)
             }
 
             HStack {
                 Text("已刷完想再次回顾，或想重新体验全新的分类背景，可随时重置探索状态。")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textTertiary)
                 Spacer()
                 Button("重新探索全部卡片") {
                     store.clearHistory()
                 }
-                .font(EditorialFont.labelSmall)
-                .foregroundStyle(EditorialColor.textSecondary)
+                .font(InsightFont.callout)
+                .foregroundStyle(InsightColor.textSecondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
             }
 
-            Divider().overlay(EditorialColor.glassDivider)
+            Divider().overlay(InsightColor.divider)
 
             HStack(spacing: 10) {
                 Image(systemName: "shield.lefthalf.filled")
                     .font(.system(size: 14))
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .foregroundStyle(InsightColor.textTertiary)
                 Text("API Key 仅安全存储于 macOS 原生钥匙串（Keychain），绝不会明文保存在本地 JSON 或向外部泄露。")
-                    .font(EditorialFont.captionSmall)
-                    .foregroundStyle(EditorialColor.textMuted)
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Divider().overlay(EditorialColor.glassDivider)
+            Divider().overlay(InsightColor.divider)
 
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                     Text("KnowFlick v" + AppVersion.current)
-                        .font(EditorialFont.captionSmall)
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textTertiary)
                 }
                 Spacer()
                 Link(destination: URL(string: "https://github.com/bitterSmilezzz/knowflick")!) {
@@ -917,14 +923,14 @@ struct SettingsView: View {
                         Image(systemName: "arrow.up.right.square")
                             .font(.system(size: 11))
                         Text("版本与更新说明")
-                            .font(EditorialFont.captionSmall)
+                            .font(InsightFont.captionSmall)
                     }
-                    .foregroundStyle(EditorialColor.aiAmber.opacity(0.85))
+                    .foregroundStyle(InsightColor.warning.opacity(0.85))
                 }
             }
         }
         .padding(16)
-        .editorialGlassCard(cornerRadius: EditorialRadius.container)
+        .editorialGlassCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 底栏操作
@@ -938,24 +944,24 @@ struct SettingsView: View {
             Button("测试连通性") {
                 testConnection()
             }
-            .font(EditorialFont.labelSmall)
-            .foregroundStyle(EditorialColor.textPrimary)
+            .font(InsightFont.callout)
+            .foregroundStyle(InsightColor.textPrimary)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
-            .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
             .buttonStyle(PressableButtonStyle())
             .disabled(isTesting || (currentPreset.requiresKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
 
             Button("保存配置") {
                 save()
             }
-            .font(EditorialFont.label)
+            .font(InsightFont.bodyStrong)
             .foregroundStyle(Color.black.opacity(0.85))
             .padding(.horizontal, 20)
             .padding(.vertical, 7)
-            .background(EditorialColor.likeGreen, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .shadow(color: EditorialColor.likeGreen.opacity(0.35), radius: 8, y: 2)
+            .background(InsightColor.success, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .shadow(color: InsightColor.success.opacity(0.35), radius: 8, y: 2)
             .buttonStyle(PressableButtonStyle(scale: 0.97))
         }
         .padding(18)
@@ -970,27 +976,27 @@ struct SettingsView: View {
                         .controlSize(.small)
                     Text("正在测试连接…")
                 }
-                .foregroundStyle(EditorialColor.textSecondary)
+                .foregroundStyle(InsightColor.textSecondary)
             } else if let result = testResult {
                 let succeeded = result.hasPrefix("连接成功")
                 Label(result, systemImage: succeeded ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundStyle(succeeded ? EditorialColor.likeGreen : EditorialColor.dislikeRed)
+                    .foregroundStyle(succeeded ? InsightColor.success : InsightColor.danger)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel(succeeded ? "连接测试成功：\(result)" : "连接测试失败：\(result)")
             } else {
                 Text("测试连接会使用当前输入的配置")
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .foregroundStyle(InsightColor.textTertiary)
             }
         }
-        .font(EditorialFont.caption)
+        .font(InsightFont.caption)
         .lineLimit(2)
     }
 
     private func fieldRow<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(EditorialFont.captionSmall.weight(.semibold))
-                .foregroundStyle(EditorialColor.textTertiary)
+                .font(InsightFont.captionSmall.weight(.semibold))
+                .foregroundStyle(InsightColor.textTertiary)
             content()
         }
     }
@@ -1011,13 +1017,13 @@ struct SettingsView: View {
                     .fill(accent)
                     .frame(width: 6, height: 6)
                 Text(cat)
-                    .font(EditorialFont.captionSmall)
+                    .font(InsightFont.captionSmall)
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
-            .background(selected ? accent.opacity(0.2) : EditorialColor.glassSurface, in: Capsule())
-            .overlay(Capsule().strokeBorder(selected ? accent.opacity(0.7) : EditorialColor.glassBorder, lineWidth: 1))
-            .foregroundStyle(selected ? EditorialColor.textPrimary : EditorialColor.textSecondary)
+            .background(selected ? accent.opacity(0.2) : InsightColor.surface, in: Capsule())
+            .overlay(Capsule().strokeBorder(selected ? accent.opacity(0.7) : InsightColor.border, lineWidth: 1))
+            .foregroundStyle(selected ? InsightColor.textPrimary : InsightColor.textSecondary)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.96))
     }

@@ -46,6 +46,14 @@ public enum EditorialColor {
         endPoint: .bottom
     )
 
+    /// 面板（弹窗 / 次级窗口 / 双栏侧边）画布色：与主界面同色温，避免「进设置像换了 App」。
+    /// 此前六个面板各自复制一份 `dynamic(windowBackgroundColor / white)`，light 模式是系统灰白、
+    /// 与主界面暖白 #F5F1EE 色温断裂，且深浅两套值各自漂移。这里收敛为单一事实来源。
+    public static let panelBackground = dynamic(
+        light: NSColor(red: 0.957, green: 0.949, blue: 0.941, alpha: 1.0),
+        dark: NSColor(red: 0.086, green: 0.090, blue: 0.090, alpha: 1.0)
+    )
+
     // 半透明磨砂玻璃表面与边框
     public static let glassSurface = dynamic(
         light: NSColor(white: 1.0, alpha: 0.78),
@@ -70,6 +78,17 @@ public enum EditorialColor {
     public static let glassDivider = dynamic(
         light: NSColor(white: 0.0, alpha: 0.07),
         dark: NSColor.white.withAlphaComponent(0.08)
+    )
+
+    /// 输入框描边：比 `glassBorder` 更明确（浅色模式下 `glassBorder` 仅 0.09 黑，
+    /// 叠在 0.78 白玻璃上几乎不可见，导致用户找不到输入框在哪）。
+    public static let fieldBorder = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.20),
+        dark: NSColor.white.withAlphaComponent(0.22)
+    )
+    public static let fieldBorderFocused = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.38),
+        dark: NSColor.white.withAlphaComponent(0.46)
     )
 
     // 窗口与通用界面文字层级
@@ -127,6 +146,102 @@ public enum EditorialColor {
         light: NSColor(red: 0.290, green: 0.486, blue: 0.616, alpha: 1.0),
         dark: NSColor(red: 0.420, green: 0.612, blue: 0.741, alpha: 1.0)
     )
+}
+
+// MARK: - 间距（8pt 基网的语义化刻度）
+
+/// 全 App 的间距刻度。此前 padding / spacing 有 15+ 种裸值随机分布
+/// （2/3/4/5/6/7/8/9/10/12/14/16/18/24…），同一语义在不同文件取值不同：
+/// 「悬浮胶囊」的 padding 就有三套（卡堆 30/16、播放条 18/10、Toast 16/10）。
+/// 这里按 8pt 基网收敛，hair/tiny 用于图标与文字贴邻，lg/xl 用于区块呼吸。
+public enum EditorialSpacing {
+    public static let hair: CGFloat = 2          ///< 图标与文字贴邻、微型元素
+    public static let tiny: CGFloat = 4          ///< 紧凑元素组内
+    public static let small: CGFloat = 6         ///< 胶囊内边距、元素间小间隙
+    public static let compact: CGFloat = 8       ///< 紧凑胶囊横边距、列表行内
+    public static let `default`: CGFloat = 12    ///< VStack 默认行距
+    public static let medium: CGFloat = 16       ///< HStack 默认横边距、Toast 横边距
+    public static let large: CGFloat = 20        ///< 区块内呼吸
+    public static let xl: CGFloat = 28           ///< 区块之间
+    public static let xxl: CGFloat = 36          ///< 大区块之间
+}
+
+// MARK: - 阴影（层级即语义）
+
+/// 阴影的语义刻度。此前 33 处 `.shadow(` 有 7 套规格（radius 4→40），
+/// 且 9 个文件的玻璃卡干脆没有阴影——扁平贴纸感。
+/// 按使用场景取档：控件入 control 档、玻璃卡入 elevation 档、弹窗入 panel 档。
+public enum EditorialShadow {
+    /// 控件级：按钮、徽章、Toast。贴地、被环境光遮蔽，只有一道细影。
+    public static let controlColor: Color = EditorialColor.dynamic(
+        light: NSColor.black.withAlphaComponent(0.06),
+        dark: NSColor.black.withAlphaComponent(0.32)
+    )
+    public static let control = (radius: CGFloat(5), y: CGFloat(1.5))
+    /// 控件悬停态：仅加深，不改尺寸。
+    public static let controlHover = (radius: CGFloat(7), y: CGFloat(2))
+
+    /// 内容级：玻璃卡、列表容器、图表卡片。两道影叠出「抬起」感。
+    public static let elevationNearColor: Color = EditorialColor.dynamic(
+        light: NSColor.black.withAlphaComponent(0.07),
+        dark: NSColor.black.withAlphaComponent(0.38)
+    )
+    public static let elevationNear = (radius: CGFloat(9), y: CGFloat(3))
+    public static let elevationFarColor: Color = EditorialColor.dynamic(
+        light: NSColor.black.withAlphaComponent(0.12),
+        dark: NSColor.black.withAlphaComponent(0.52)
+    )
+    public static let elevationFar = (radius: CGFloat(22), y: CGFloat(8))
+
+    /// 面板级：弹窗、全局搜索、海报预览等悬浮于应用之上的内容。广域漫反射。
+    public static let panelNearColor: Color = EditorialColor.dynamic(
+        light: NSColor.black.withAlphaComponent(0.10),
+        dark: NSColor.black.withAlphaComponent(0.45)
+    )
+    public static let panelNear = (radius: CGFloat(12), y: CGFloat(4))
+    public static let panelFarColor: Color = EditorialColor.dynamic(
+        light: NSColor.black.withAlphaComponent(0.18),
+        dark: NSColor.black.withAlphaComponent(0.62)
+    )
+    public static let panelFar = (radius: CGFloat(32), y: CGFloat(14))
+
+    /// 写真卡片：摄影底图主视觉，三层复合软影（近距接触 + 广域纸张漫反射 + 深邃层次）。
+    /// 这是设计系统最佳实践（`CardView` 已在用），入库供其它卡片复刻。
+    public static let photoNearColor: Color = EditorialColor.dynamic(
+        light: NSColor.black.withAlphaComponent(0.05),
+        dark: NSColor.black.withAlphaComponent(0.38)
+    )
+    public static let photoNear = (radius: CGFloat(4), y: CGFloat(2))
+    public static let photoMidColor: Color = EditorialColor.dynamic(
+        light: NSColor.black.withAlphaComponent(0.12),
+        dark: NSColor.black.withAlphaComponent(0.60)
+    )
+    public static let photoMid = (radius: CGFloat(22), y: CGFloat(10))
+    public static let photoFarColor: Color = EditorialColor.dynamic(
+        light: NSColor.black.withAlphaComponent(0.04),
+        dark: NSColor.black.withAlphaComponent(0.24)
+    )
+    public static let photoFar = (radius: CGFloat(40), y: CGFloat(18))
+}
+
+// MARK: - 动效（语义即弹簧参数）
+
+/// 动效刻度。此前 38 处弹簧挤在 `response 0.25~0.5 / damping 0.6~0.8` 窄带，
+/// **14 组不同参数表达同一类语义**，且无一处有回弹感。
+/// 按「发生什么」而非「用哪个数」取档，消灭参数漂移。
+public enum EditorialSpring {
+    /// 微交互：按钮按压、开关、勾选。快、稳、几乎无回弹（避免抖动显廉价）。
+    public static let micro = Animation.spring(response: 0.22, dampingFraction: 0.82)
+    /// 状态切换：胶囊选中、分段控件、Tab、悬停着色。稍慢以显从容。
+    public static let state = Animation.spring(response: 0.32, dampingFraction: 0.82)
+    /// 内容出现：卡片堆叠就位、Toast 滑入、弹窗浮现。略带回弹。
+    public static let content = Animation.spring(response: 0.38, dampingFraction: 0.76)
+    /// 大位移：卡片飞出、面板整体换页。慢出，带回弹收尾。
+    public static let motion = Animation.spring(response: 0.48, dampingFraction: 0.72)
+
+    /// 显式曲线：进度条、扫光等有明确起止语义的非弹性动画。
+    public static let standard = Animation.easeInOut(duration: 0.28)
+    public static let exit = Animation.easeOut(duration: 0.22)
 }
 
 // MARK: - 纸质主题调色盘 (Paper Theme Palette)
@@ -305,6 +420,68 @@ public extension View {
     ) -> some View {
         modifier(EditorialGlassCardModifier(cornerRadius: cornerRadius, strokeColor: strokeColor, backgroundColor: backgroundColor))
     }
+
+    // MARK: 阴影便捷方法（按层级取档，消灭 7 套规格漂移）
+
+    /// 控件级阴影（按钮、徽章、Toast）
+    func editorialControlShadow() -> some View {
+        let s = EditorialShadow.control
+        return shadow(color: EditorialShadow.controlColor, radius: s.radius, y: s.y)
+    }
+
+    /// 内容级阴影（玻璃卡、列表容器、图表卡片）：近距接触 + 广域漫反射
+    func editorialElevationShadow() -> some View {
+        let near = EditorialShadow.elevationNear
+        let far = EditorialShadow.elevationFar
+        return shadow(color: EditorialShadow.elevationNearColor, radius: near.radius, y: near.y)
+            .shadow(color: EditorialShadow.elevationFarColor, radius: far.radius, y: far.y)
+    }
+
+    /// 面板级阴影（弹窗、全局搜索、预览层）：广域漫反射
+    func editorialPanelShadow() -> some View {
+        let near = EditorialShadow.panelNear
+        let far = EditorialShadow.panelFar
+        return shadow(color: EditorialShadow.panelNearColor, radius: near.radius, y: near.y)
+            .shadow(color: EditorialShadow.panelFarColor, radius: far.radius, y: far.y)
+    }
+
+    /// 写真卡片阴影（摄影底图主视觉）：三层复合软影
+    func editorialPhotoShadow() -> some View {
+        let near = EditorialShadow.photoNear
+        let mid = EditorialShadow.photoMid
+        let far = EditorialShadow.photoFar
+        return shadow(color: EditorialShadow.photoNearColor, radius: near.radius, y: near.y)
+            .shadow(color: EditorialShadow.photoMidColor, radius: mid.radius, y: mid.y)
+            .shadow(color: EditorialShadow.photoFarColor, radius: far.radius, y: far.y)
+    }
+
+    // MARK: 输入框描边
+
+    // MARK: 图表入场编排
+
+    /// 图表区块的 stagger 浮现：`index` 决定第几个入场（每个间隔 55ms），
+    /// `revealed` 由宿主在 `onAppear` 翻 true。
+    /// 只驱动 opacity + 位移，不改 frame —— 几何驱动的图表改 frame 会与 GeometryReader 打架。
+    func chartReveal(index: Int, revealed: Bool, stagger: Double = 0.055) -> some View {
+        opacity(revealed ? 1 : 0)
+            .offset(y: revealed ? 0 : 14)
+            .animation(
+                EditorialSpring.content.delay(Double(index) * stagger),
+                value: revealed
+            )
+    }
+
+    // MARK: 输入框描边
+
+    /// 输入框描边：浅色模式下 `glassBorder`（0.09 黑）叠 0.78 白玻璃几乎不可见，
+    /// 用 `fieldBorder`（0.20 黑）取代可保证边界可辨。`isFocused` 时进一步加深。
+    func editorialFieldBorder(cornerRadius: CGFloat = EditorialRadius.control, isFocused: Bool = false) -> some View {
+        let color = isFocused ? EditorialColor.fieldBorderFocused : EditorialColor.fieldBorder
+        return overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(color, lineWidth: isFocused ? 1.5 : 1)
+        )
+    }
 }
 
 // MARK: - 噪点纹理（空实现，避免全屏动态噪点导致主线程 CPU 飙高与远程桌面编码卡顿）
@@ -325,7 +502,7 @@ struct PressableButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? scale : 1.0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .animation(EditorialSpring.micro, value: configuration.isPressed)
             .onHover { hovering in
                 if hovering {
                     NSCursor.pointingHand.push()

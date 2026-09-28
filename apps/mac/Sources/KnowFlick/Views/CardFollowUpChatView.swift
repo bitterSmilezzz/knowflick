@@ -26,12 +26,12 @@ struct CardFollowUpChatView: View {
 
     var body: some View {
         ZStack {
-            EditorialColor.canvasGradient.ignoresSafeArea()
+            InsightColor.canvas.ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
 
             VStack(spacing: 0) {
                 headerBar
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
 
                 ZStack {
                     if let session = store.currentChatSession, !session.messages.isEmpty {
@@ -49,7 +49,7 @@ struct CardFollowUpChatView: View {
                     chatErrorBanner(message: error)
                 }
 
-                Divider().overlay(EditorialColor.glassDivider)
+                Divider().overlay(InsightColor.divider)
                 inputBar
             }
         }
@@ -70,11 +70,11 @@ struct CardFollowUpChatView: View {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
 
                 Text("AI 伴学追问")
-                    .font(EditorialFont.modalTitle)
-                    .foregroundStyle(EditorialColor.textPrimary)
+                    .font(InsightFont.title)
+                    .foregroundStyle(InsightColor.textPrimary)
 
                 Text(card.category)
                     .font(.system(size: 11, weight: .bold))
@@ -102,10 +102,10 @@ struct CardFollowUpChatView: View {
                 }) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .foregroundStyle(InsightColor.textTertiary)
                         .padding(7)
-                        .background(EditorialColor.glassSurface, in: Circle())
-                        .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        .background(InsightColor.surface, in: Circle())
+                        .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
                 .help("导出对话记录 (Markdown)")
@@ -113,10 +113,10 @@ struct CardFollowUpChatView: View {
                 Button(action: { showClearAlert = true }) {
                     Image(systemName: "trash")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .foregroundStyle(InsightColor.textTertiary)
                         .padding(7)
-                        .background(EditorialColor.glassSurface, in: Circle())
-                        .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                        .background(InsightColor.surface, in: Circle())
+                        .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
                 .help("清空当前对话")
@@ -130,12 +130,12 @@ struct CardFollowUpChatView: View {
 
             Button(action: onClose) {
                 Text("完成")
-                    .font(EditorialFont.label)
-                    .foregroundStyle(EditorialColor.textSecondary)
+                    .font(InsightFont.bodyStrong)
+                    .foregroundStyle(InsightColor.textSecondary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(EditorialColor.glassSurface, in: Capsule())
-                    .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                    .background(InsightColor.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
@@ -153,27 +153,27 @@ struct CardFollowUpChatView: View {
                     ZStack {
                         Circle()
                             .fill(RadialGradient(
-                                colors: [EditorialColor.aiAmber.opacity(0.25), .clear],
+                                colors: [InsightColor.warning.opacity(0.25), .clear],
                                 center: .center,
                                 startRadius: 0,
                                 endRadius: 36
                             ))
                             .frame(width: 72, height: 72)
 
-                        Image(systemName: "lightbulb.min.badge.magnifyingglass")
+                        Image(systemName: "lightbulb")
                             .font(.system(size: 28, weight: .medium))
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .foregroundStyle(InsightColor.warning)
                     }
 
                     Text("探讨《\(card.headline)》")
                         .font(.system(size: 16, weight: .bold, design: .serif))
-                        .foregroundStyle(EditorialColor.textPrimary)
+                        .foregroundStyle(InsightColor.textPrimary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
 
                     Text("知识卡片篇幅有限，而好奇心无限。\n选择下方启发性切入点，或直接在底部输入你的独特思考。")
-                        .font(EditorialFont.caption)
-                        .foregroundStyle(EditorialColor.textSecondary)
+                        .font(InsightFont.caption)
+                        .foregroundStyle(InsightColor.textSecondary)
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)
                         .padding(.horizontal, 28)
@@ -183,7 +183,7 @@ struct CardFollowUpChatView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("启发式追问 (Click to Ask)")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .foregroundStyle(InsightColor.textTertiary)
                         .padding(.horizontal, 4)
 
                     VStack(spacing: 9) {
@@ -196,8 +196,8 @@ struct CardFollowUpChatView: View {
                                         .font(.system(size: 16))
 
                                     Text(starter.text)
-                                        .font(EditorialFont.bodySerif)
-                                        .foregroundStyle(EditorialColor.textPrimary)
+                                        .font(InsightFont.body)
+                                        .foregroundStyle(InsightColor.textPrimary)
                                         .multilineTextAlignment(.leading)
                                         .lineSpacing(3)
 
@@ -205,14 +205,14 @@ struct CardFollowUpChatView: View {
 
                                     Image(systemName: "arrow.up.circle.fill")
                                         .font(.system(size: 14))
-                                        .foregroundStyle(EditorialColor.aiAmber.opacity(0.8))
+                                        .foregroundStyle(InsightColor.warning.opacity(0.8))
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 12)
-                                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                                        .strokeBorder(InsightColor.border, lineWidth: 1)
                                 )
                             }
                             .buttonStyle(PressableButtonStyle())
@@ -264,11 +264,11 @@ struct CardFollowUpChatView: View {
             if msg.sender == .assistant {
                 ZStack {
                     Circle()
-                        .fill(EditorialColor.aiAmber.opacity(0.16))
+                        .fill(InsightColor.warning.opacity(0.16))
                         .frame(width: 28, height: 28)
                     Image(systemName: "sparkles")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(EditorialColor.aiAmber)
+                        .foregroundStyle(InsightColor.warning)
                 }
                 .padding(.top, 2)
             } else {
@@ -282,23 +282,23 @@ struct CardFollowUpChatView: View {
                     }
                     Text(msg.sender == .user ? "你" : "KnowFlick 伴学导师")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(EditorialColor.textTertiary)
+                        .foregroundStyle(InsightColor.textTertiary)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
                     if msg.content.isEmpty && msg.isStreaming {
                         HStack(spacing: 4) {
                             Text("正在推演构思...")
-                                .font(EditorialFont.caption)
-                                .foregroundStyle(EditorialColor.textSecondary)
+                                .font(InsightFont.caption)
+                                .foregroundStyle(InsightColor.textSecondary)
                             ProgressView()
                                 .controlSize(.mini)
                         }
                         .padding(.vertical, 4)
                     } else {
                         Text(msg.content)
-                            .font(EditorialFont.bodySerif)
-                            .foregroundStyle(EditorialColor.textPrimary)
+                            .font(InsightFont.body)
+                            .foregroundStyle(InsightColor.textPrimary)
                             .lineSpacing(5)
                             .textSelection(.enabled)
                     }
@@ -306,7 +306,7 @@ struct CardFollowUpChatView: View {
                     if msg.isStreaming {
                         Text("▋")
                             .font(.system(size: 13, weight: .black))
-                            .foregroundStyle(EditorialColor.aiAmber)
+                            .foregroundStyle(InsightColor.warning)
                             .opacity(0.85)
                     }
                 }
@@ -314,16 +314,16 @@ struct CardFollowUpChatView: View {
                 .padding(.vertical, 11)
                 .background(
                     msg.sender == .user
-                        ? EditorialColor.aiAmber.opacity(0.12)
-                        : EditorialColor.glassSurface,
+                        ? InsightColor.warning.opacity(0.12)
+                        : InsightColor.surface,
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(
                             msg.sender == .user
-                                ? EditorialColor.aiAmber.opacity(0.3)
-                                : EditorialColor.glassBorder,
+                                ? InsightColor.warning.opacity(0.3)
+                                : InsightColor.border,
                             lineWidth: 1
                         )
                 )
@@ -348,16 +348,16 @@ struct CardFollowUpChatView: View {
                                 Text(isSaved ? "已沉淀为卡片" : "沉淀为卡片")
                                     .font(.system(size: 11, weight: .medium))
                             }
-                            .foregroundStyle(isSaved ? EditorialColor.likeGreen : EditorialColor.aiAmber)
+                            .foregroundStyle(isSaved ? InsightColor.success : InsightColor.warning)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 4)
                             .background(
-                                isSaved ? EditorialColor.likeGreen.opacity(0.12) : EditorialColor.aiAmber.opacity(0.12),
+                                isSaved ? InsightColor.success.opacity(0.12) : InsightColor.warning.opacity(0.12),
                                 in: Capsule()
                             )
                             .overlay(
                                 Capsule().strokeBorder(
-                                    isSaved ? EditorialColor.likeGreen.opacity(0.3) : EditorialColor.aiAmber.opacity(0.3),
+                                    isSaved ? InsightColor.success.opacity(0.3) : InsightColor.warning.opacity(0.3),
                                     lineWidth: 1
                                 )
                             )
@@ -374,11 +374,11 @@ struct CardFollowUpChatView: View {
                                 Text("朗读")
                                     .font(.system(size: 11, weight: .medium))
                             }
-                            .foregroundStyle(EditorialColor.textSecondary)
+                            .foregroundStyle(InsightColor.textSecondary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(EditorialColor.glassSurface, in: Capsule())
-                            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                            .background(InsightColor.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                         }
                         .buttonStyle(PressableButtonStyle())
 
@@ -398,11 +398,11 @@ struct CardFollowUpChatView: View {
                                 Text("复制")
                                     .font(.system(size: 11, weight: .medium))
                             }
-                            .foregroundStyle(EditorialColor.textSecondary)
+                            .foregroundStyle(InsightColor.textSecondary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(EditorialColor.glassSurface, in: Capsule())
-                            .overlay(Capsule().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
+                            .background(InsightColor.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                         }
                         .buttonStyle(PressableButtonStyle())
 
@@ -437,10 +437,10 @@ struct CardFollowUpChatView: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(EditorialColor.aiAmber)
+                    .foregroundStyle(InsightColor.warning)
                 Text("深度追问建议 (Click to Ask)")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(EditorialColor.textTertiary)
+                    .foregroundStyle(InsightColor.textTertiary)
             }
             .padding(.leading, 4)
 
@@ -451,20 +451,20 @@ struct CardFollowUpChatView: View {
                     }) {
                         HStack(spacing: 8) {
                             Text(suggestion)
-                                .font(EditorialFont.caption)
-                                .foregroundStyle(EditorialColor.textPrimary)
+                                .font(InsightFont.caption)
+                                .foregroundStyle(InsightColor.textPrimary)
                                 .multilineTextAlignment(.leading)
                             Spacer()
                             Image(systemName: "arrow.up.circle.fill")
                                 .font(.system(size: 12))
-                                .foregroundStyle(EditorialColor.aiAmber.opacity(0.8))
+                                .foregroundStyle(InsightColor.warning.opacity(0.8))
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                                .strokeBorder(InsightColor.border, lineWidth: 1)
                         )
                     }
                     .buttonStyle(PressableButtonStyle())
@@ -480,16 +480,16 @@ struct CardFollowUpChatView: View {
     private func chatToastBanner(message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(EditorialColor.likeGreen)
+                .foregroundStyle(InsightColor.success)
                 .font(.system(size: 12))
             Text(message)
-                .font(EditorialFont.caption)
-                .foregroundStyle(EditorialColor.textPrimary)
+                .font(InsightFont.caption)
+                .foregroundStyle(InsightColor.textPrimary)
             Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(EditorialColor.likeGreen.opacity(0.12))
+        .background(InsightColor.success.opacity(0.12))
     }
 
     // MARK: - 错误提示
@@ -498,11 +498,11 @@ struct CardFollowUpChatView: View {
     private func chatErrorBanner(message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(EditorialColor.dislikeRed)
+                .foregroundStyle(InsightColor.danger)
                 .font(.system(size: 12))
             Text(message)
-                .font(EditorialFont.caption)
-                .foregroundStyle(EditorialColor.textPrimary)
+                .font(InsightFont.caption)
+                .foregroundStyle(InsightColor.textPrimary)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -517,17 +517,17 @@ struct CardFollowUpChatView: View {
             TextField("追问此知识点... (按 ⏎ 发送)", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...4)
-                .font(EditorialFont.bodySerif)
+                .font(InsightFont.body)
                 .focused($isInputFocused)
                 .onSubmit {
                     handleSubmit()
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(EditorialColor.glassSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(EditorialColor.glassBorder, lineWidth: 1)
+                        .strokeBorder(InsightColor.border, lineWidth: 1)
                 )
 
             if store.isChatStreaming {
@@ -536,7 +536,7 @@ struct CardFollowUpChatView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(EditorialColor.dislikeRed.opacity(0.85))
+                            .fill(InsightColor.danger.opacity(0.85))
                             .frame(width: 36, height: 36)
                         Image(systemName: "stop.fill")
                             .font(.system(size: 13, weight: .bold))
@@ -549,7 +549,7 @@ struct CardFollowUpChatView: View {
                 Button(action: handleSubmit) {
                     ZStack {
                         Circle()
-                            .fill(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.3) : EditorialColor.aiAmber)
+                            .fill(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.3) : InsightColor.warning)
                             .frame(width: 36, height: 36)
                         Image(systemName: "arrow.up")
                             .font(.system(size: 14, weight: .bold))
@@ -563,7 +563,7 @@ struct CardFollowUpChatView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(EditorialColor.canvasDark.opacity(0.4))
+        .background(InsightColor.canvas.opacity(0.4))
     }
 
     private func handleSubmit() {
