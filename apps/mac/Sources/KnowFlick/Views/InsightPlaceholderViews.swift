@@ -940,7 +940,7 @@ private struct StatsSections: View {
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
                                 .fill(item.isToday ? InsightColor.warning : (item.count > 0 ? InsightColor.accent : InsightColor.surfaceSunken))
                                 .frame(height: max(6, CGFloat(item.count) / CGFloat(maxCount) * 64))
-                            Text(Self.dayLabel(item.date))
+                            Text(dayLabel(item.date))
                                 .font(InsightFont.captionSmall)
                                 .foregroundStyle(item.isToday ? InsightColor.warning : InsightColor.textTertiary)
                         }
