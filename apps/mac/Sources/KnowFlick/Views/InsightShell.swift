@@ -130,7 +130,8 @@ struct InsightShell<Content: View>: View {
                     )
                 }
             }
-            .padding(.leading, sidebarExpanded ? 14 : 0)
+            // 折叠态（72pt 宽）下品牌标与展开按钮共用 21pt 左边距，正好在侧栏内居中
+            .padding(.leading, sidebarExpanded ? 14 : 21)
             .padding(.trailing, sidebarExpanded ? 10 : 0)
 
             if !sidebarExpanded {
