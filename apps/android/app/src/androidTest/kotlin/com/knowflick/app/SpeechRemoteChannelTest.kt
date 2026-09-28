@@ -54,15 +54,18 @@ class SpeechRemoteChannelTest {
         server.enqueue(MockResponse().setBody(okio.Buffer().write(sineWav())))
         server.start()
         val vm = viewModel()
-        vm.saveSpeechSettings(
-            SpeechSettings(
-                channel = SpeechChannel.LOCAL.name,
-                baseURL = "http://127.0.0.1:${server.port}",
-                model = "kokoro",
-                voice = "zf_xiaobei",
-            ),
-            apiKey = "",
-        )
+        rule.runOnUiThread {
+            vm.saveSpeechSettings(
+                SpeechSettings(
+                    channel = SpeechChannel.LOCAL.name,
+                    baseURL = "http://127.0.0.1:${server.port}",
+                    model = "kokoro",
+                    voice = "zf_xiaobei",
+                ),
+                apiKey = "",
+            )
+        }
+        rule.waitUntil(5_000) { !vm.isSavingSettings }
 
         // 进入详情，确认朗读按钮存在（UI 契约）
         rule.onNodeWithContentDescription("详情").performClick()
@@ -94,15 +97,18 @@ class SpeechRemoteChannelTest {
         repeat(3) { server.enqueue(MockResponse().setBody(okio.Buffer().write(sineWav(seconds = 1.5)))) }
         server.start()
         val vm = viewModel()
-        vm.saveSpeechSettings(
-            SpeechSettings(
-                channel = SpeechChannel.LOCAL.name,
-                baseURL = "http://127.0.0.1:${server.port}",
-                model = "kokoro",
-                voice = "zf_xiaobei",
-            ),
-            apiKey = "",
-        )
+        rule.runOnUiThread {
+            vm.saveSpeechSettings(
+                SpeechSettings(
+                    channel = SpeechChannel.LOCAL.name,
+                    baseURL = "http://127.0.0.1:${server.port}",
+                    model = "kokoro",
+                    voice = "zf_xiaobei",
+                ),
+                apiKey = "",
+            )
+        }
+        rule.waitUntil(5_000) { !vm.isSavingSettings }
         vm.speech.ambientGapSeconds = 0.3
         val firstCardId = vm.model.store.topCard!!.id
 
@@ -126,15 +132,18 @@ class SpeechRemoteChannelTest {
         )
         server.start()
         val vm = viewModel()
-        vm.saveSpeechSettings(
-            SpeechSettings(
-                channel = SpeechChannel.LOCAL.name,
-                baseURL = "http://127.0.0.1:${server.port}",
-                model = "kokoro",
-                voice = "zf_xiaobei",
-            ),
-            apiKey = "",
-        )
+        rule.runOnUiThread {
+            vm.saveSpeechSettings(
+                SpeechSettings(
+                    channel = SpeechChannel.LOCAL.name,
+                    baseURL = "http://127.0.0.1:${server.port}",
+                    model = "kokoro",
+                    voice = "zf_xiaobei",
+                ),
+                apiKey = "",
+            )
+        }
+        rule.waitUntil(5_000) { !vm.isSavingSettings }
 
         try {
             val card = vm.model.store.topCard!!
