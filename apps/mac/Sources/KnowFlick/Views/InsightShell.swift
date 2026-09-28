@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import KnowFlickCore
 
 // MARK: - Cutline 式应用外壳（侧栏 + 内容区）
@@ -33,13 +34,13 @@ enum InsightDestination: String, CaseIterable, Identifiable {
         case .swipe: return "rectangle.stack"
         case .today: return "sun.max"
         case .map: return "map"
-        case .review: return "clock.arrow.circlepath"
+        case .review: return "arrow.triangle.2.circlepath"
         case .library: return "square.grid.2x2"
         case .favorites: return "heart"
         case .stats: return "chart.bar"
         case .history: return "clock"
         case .graph: return "point.3.connected.trianglepath.dotted"
-        case .quiz: return "questionmark.circle"
+        case .quiz: return "graduationcap.fill"
         case .console: return "headphones"
         }
     }
@@ -109,11 +110,7 @@ struct InsightShell<Content: View>: View {
         VStack(alignment: .leading, spacing: InsightSpacing.large) {
             // 品牌头 + 折叠开关
             HStack(spacing: InsightSpacing.compact) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(InsightColor.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                brandMark
                 if sidebarExpanded {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("KnowFlick")
@@ -179,7 +176,7 @@ struct InsightShell<Content: View>: View {
                     isExpanded: sidebarExpanded
                 ) { onOpenSheet(.settings) }
                 InsightSidebarRow(
-                    icon: "questionmark.circle",
+                    icon: "keyboard",
                     title: "快捷键帮助",
                     isSelected: false,
                     isExpanded: sidebarExpanded
@@ -189,6 +186,25 @@ struct InsightShell<Content: View>: View {
             .padding(.bottom, 14)
         }
         .padding(.top, 14)
+    }
+
+    // 品牌标：直接用真实 App 图标（icns），与 Dock / 访达一致，不另造符号
+    private var brandMark: some View {
+        Group {
+            if let icon = NSApp?.applicationIconImage, icon.size.width > 1 {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 30, height: 30)
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            } else {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(InsightColor.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
     }
 
     private var sidebarSearchButton: some View {
