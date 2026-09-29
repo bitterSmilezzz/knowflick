@@ -128,7 +128,7 @@ struct AppStoreTests {
         }
     }
 
-    @Test func cancelChatRemovesEmptyPlaceholderAndPersistsPartialReply() async throws {
+    @Test(.timeLimit(.minutes(1))) func cancelChatRemovesEmptyPlaceholderAndPersistsPartialReply() async throws {
         try await withStoreAsync { store, storage, _ in
             let first = card("一")
             store.openChat(for: first)
@@ -146,7 +146,7 @@ struct AppStoreTests {
         }
     }
 
-    @Test func switchingChatSavesPreviousCardAndClearKeepsOtherSessions() async throws {
+    @Test(.timeLimit(.minutes(1))) func switchingChatSavesPreviousCardAndClearKeepsOtherSessions() async throws {
         try await withStoreAsync { store, storage, _ in
             let first = card("一"), second = card("二")
             store.openChat(for: first)

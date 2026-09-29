@@ -46,7 +46,10 @@ struct ChatStreamTests {
         return store
     }
 
-    @Test func sendChatMessageStreamsReplyAndPersistsSession() async throws {
+    // timeLimit 是「兜住挂起」用的，不是「卡住轮询预算」：内层 deadline 已经 10s/6s，
+    // 超出 1 分钟说明真的没返回。串行跑时（tools/test.sh --no-parallel）一个挂起会卡死整个套件。
+    // 注意：Swift Testing 的 timeLimit 只接受分钟（.seconds 被标记为 unavailable）。
+    @Test(.timeLimit(.minutes(1))) func sendChatMessageStreamsReplyAndPersistsSession() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = makeStore(directory: directory)
@@ -81,7 +84,7 @@ struct ChatStreamTests {
         #expect(persisted?.messages.last?.content == "碳纤维比铝还轻")
     }
 
-    @Test func serverErrorSurfacesAndDropsEmptyPlaceholder() async throws {
+    @Test(.timeLimit(.minutes(1))) func serverErrorSurfacesAndDropsEmptyPlaceholder() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = makeStore(directory: directory, failing: true)

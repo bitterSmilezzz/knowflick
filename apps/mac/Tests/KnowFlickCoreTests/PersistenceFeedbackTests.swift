@@ -40,7 +40,7 @@ struct PersistenceFeedbackTests {
         #expect(storage.loadCards() == [subject])
     }
 
-    @Test @MainActor func failedSaveKeepsMemoryAndRetryClearsWarning() async throws {
+    @Test(.timeLimit(.minutes(1))) @MainActor func failedSaveKeepsMemoryAndRetryClearsWarning() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let storage = Storage(baseDir: directory)
         let store = AppStore(storage: storage)
@@ -65,7 +65,7 @@ struct PersistenceFeedbackTests {
         #expect(storage.loadCards() == [subject])
     }
 
-    @Test @MainActor func rapidMutationsPersistOnlyTheLatestSnapshot() async throws {
+    @Test(.timeLimit(.minutes(1))) @MainActor func rapidMutationsPersistOnlyTheLatestSnapshot() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let storage = Storage(baseDir: directory)
         let store = AppStore(storage: storage)
