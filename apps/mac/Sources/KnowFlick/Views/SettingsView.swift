@@ -218,7 +218,7 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 Image(systemName: "circle.lefthalf.filled.inverse")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
                 Text("外观模式")
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
@@ -248,7 +248,7 @@ struct SettingsView: View {
                         .padding(.vertical, 10)
                         .background(
                             isSelected
-                                ? InsightColor.warningSoft
+                                ? InsightColor.accentSoft
                                 : InsightColor.surface,
                             in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                         )
@@ -256,14 +256,14 @@ struct SettingsView: View {
                             RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                                 .strokeBorder(
                                     isSelected
-                                        ? InsightColor.warning
+                                        ? InsightColor.accent
                                         : InsightColor.border,
                                     lineWidth: isSelected ? 1.5 : 1
                                 )
                         )
                         .foregroundStyle(
                             isSelected
-                                ? InsightColor.warning
+                                ? InsightColor.accent
                                 : InsightColor.textSecondary
                         )
                     }
@@ -305,7 +305,7 @@ struct SettingsView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(theme.title)
                                         .font(InsightFont.bodyStrong)
-                                        .foregroundStyle(isSelected ? InsightColor.warning : InsightColor.textPrimary)
+                                        .foregroundStyle(isSelected ? InsightColor.accent : InsightColor.textPrimary)
                                     Text(theme.subtitle)
                                         .font(InsightFont.captionSmall)
                                         .foregroundStyle(InsightColor.textMuted)
@@ -314,18 +314,18 @@ struct SettingsView: View {
                                 if isSelected {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(InsightColor.warning)
+                                        .foregroundStyle(InsightColor.accent)
                                 }
                             }
                             .padding(10)
                             .background(
-                                isSelected ? InsightColor.warningSoft : InsightColor.surface,
+                                isSelected ? InsightColor.accentSoft : InsightColor.surface,
                                 in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                                     .strokeBorder(
-                                        isSelected ? InsightColor.warning : InsightColor.border,
+                                        isSelected ? InsightColor.accent : InsightColor.border,
                                         lineWidth: isSelected ? 1.5 : 1
                                     )
                             )
@@ -672,7 +672,7 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 Image(systemName: "headphones")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
                 Text("语音与连续朗读")
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
@@ -712,7 +712,7 @@ struct SettingsView: View {
             fieldRow(label: "默认朗读音调 (当前: \(String(format: "%.2fx", speechPitch)))") {
                 HStack(spacing: 12) {
                     Slider(value: $speechPitch, in: 0.5...2.0, step: 0.05)
-                        .tint(InsightColor.warning)
+                        .tint(InsightColor.accent)
 
                     HStack(spacing: 6) {
                         ForEach([("低沉", 0.85), ("自然", 1.0), ("清亮", 1.15)], id: \.1) { name, value in
@@ -723,7 +723,7 @@ struct SettingsView: View {
                             .foregroundStyle(abs(speechPitch - Float(value)) < 0.05 ? InsightColor.textPrimary : InsightColor.textTertiary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(abs(speechPitch - Float(value)) < 0.05 ? InsightColor.warning.opacity(0.28) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
+                            .background(abs(speechPitch - Float(value)) < 0.05 ? InsightColor.accent.opacity(0.28) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                             .buttonStyle(.plain)
                         }
                     }
@@ -741,8 +741,8 @@ struct SettingsView: View {
                         .foregroundStyle(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.textPrimary : InsightColor.textTertiary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.warning.opacity(0.25) : InsightColor.surface, in: Capsule())
-                        .overlay(Capsule().strokeBorder(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.warning.opacity(0.6) : InsightColor.border, lineWidth: 1))
+                        .background(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.accent.opacity(0.25) : InsightColor.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.accent.opacity(0.6) : InsightColor.border, lineWidth: 1))
                         .buttonStyle(.plain)
                     }
                 }
@@ -810,7 +810,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
                 Text("数据管理与双向迁移")
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
@@ -868,7 +868,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "square.stack.3d.up.fill")
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
                 Text("知识库状态")
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
@@ -912,7 +912,7 @@ struct SettingsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 13))
-                        .foregroundStyle(InsightColor.warning)
+                        .foregroundStyle(InsightColor.accent)
                     Text("KnowFlick v" + AppVersion.current)
                         .font(InsightFont.captionSmall)
                         .foregroundStyle(InsightColor.textTertiary)
@@ -925,7 +925,7 @@ struct SettingsView: View {
                         Text("版本与更新说明")
                             .font(InsightFont.captionSmall)
                     }
-                    .foregroundStyle(InsightColor.warning.opacity(0.85))
+                    .foregroundStyle(InsightColor.accent.opacity(0.85))
                 }
             }
         }

@@ -418,7 +418,7 @@ struct InsightMainView: View {
     // MARK: 顶栏（Cutline 的视图标题 + 右侧操作）
 
     private var swipeTopBar: some View {
-        HStack(alignment: .firstTextBaseline, spacing: InsightSpacing.medium) {
+        HStack(alignment: .center, spacing: InsightSpacing.medium) {
             VStack(alignment: .leading, spacing: InsightSpacing.hair) {
                 Text("刷卡")
                     .font(InsightFont.title)

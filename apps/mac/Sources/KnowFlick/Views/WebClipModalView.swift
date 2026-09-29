@@ -88,7 +88,7 @@ struct WebClipModalView: View {
         HStack(spacing: 12) {
             Image(systemName: "link")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(InsightColor.warning)
+                .foregroundStyle(InsightColor.accent)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("网页剪藏")
@@ -156,7 +156,7 @@ struct WebClipModalView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "doc.text.magnifyingglass")
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(digest.title.isEmpty ? digest.siteName : digest.title)
                         .font(InsightFont.headline)
@@ -206,7 +206,7 @@ struct WebClipModalView: View {
                     selectedCardIDs = selectedCardIDs.count == cards.count ? [] : Set(cards.map(\.id))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(InsightColor.warning)
+                .foregroundStyle(InsightColor.accent)
             }
 
             ForEach(cards) { card in
@@ -219,7 +219,7 @@ struct WebClipModalView: View {
                         }
                     } label: {
                         Image(systemName: selectedCardIDs.contains(card.id) ? "checkmark.square.fill" : "square")
-                            .foregroundStyle(InsightColor.warning)
+                            .foregroundStyle(InsightColor.accent)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(selectedCardIDs.contains(card.id) ? "取消选择 \(card.headline)" : "选择 \(card.headline)")
@@ -266,7 +266,7 @@ struct WebClipModalView: View {
             if importMessage != nil {
                 Button("完成", action: onClose)
                     .buttonStyle(.borderedProminent)
-                    .tint(InsightColor.warning)
+                    .tint(InsightColor.accent)
                     .keyboardShortcut(.defaultAction)
             } else if !cards.isEmpty {
                 Button("重新提炼") { transformPage() }
@@ -275,7 +275,7 @@ struct WebClipModalView: View {
 
                 Button("确认导入（\(selectedCardIDs.count) 张）") { importSelectedCards() }
                     .buttonStyle(.borderedProminent)
-                    .tint(InsightColor.warning)
+                    .tint(InsightColor.accent)
                     .disabled(selectedCardIDs.isEmpty || isBusy)
                     .keyboardShortcut(.defaultAction)
             } else if digest != nil {
@@ -287,7 +287,7 @@ struct WebClipModalView: View {
             } else {
                 Button(isFetching ? "正在抓取…" : "抓取并预览正文") { fetchPage() }
                     .buttonStyle(.borderedProminent)
-                    .tint(InsightColor.warning)
+                    .tint(InsightColor.accent)
                     .disabled(!canFetch || isBusy)
                     .keyboardShortcut(.defaultAction)
             }
