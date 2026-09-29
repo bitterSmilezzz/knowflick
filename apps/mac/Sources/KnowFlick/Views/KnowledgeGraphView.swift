@@ -174,7 +174,7 @@ struct KnowledgeGraphView: View {
             HStack(spacing: 9) {
                 Image(systemName: "point.3.filled.connected.trianglepath.dotted")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
 
                 Text("全景知识星图")
                     .font(InsightFont.title)
@@ -260,12 +260,12 @@ struct KnowledgeGraphView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background(
-                    isSelected ? InsightColor.warning.opacity(0.85) : Color.white.opacity(0.06),
+                    isSelected ? InsightColor.accent.opacity(0.85) : Color.white.opacity(0.06),
                     in: Capsule()
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        isSelected ? InsightColor.warning : Color.white.opacity(0.1),
+                        isSelected ? InsightColor.accent : Color.white.opacity(0.1),
                         lineWidth: 1
                     )
                 )
@@ -540,11 +540,11 @@ struct KnowledgeGraphView: View {
                                 Text("置顶进入卡堆")
                                     .font(InsightFont.callout)
                             }
-                            .foregroundStyle(InsightColor.warning)
+                            .foregroundStyle(InsightColor.accent)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 7)
                             .background(Color.white.opacity(0.08), in: Capsule())
-                            .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.5), lineWidth: 1))
+                            .overlay(Capsule().strokeBorder(InsightColor.accent.opacity(0.5), lineWidth: 1))
                         }
                         .buttonStyle(PressableButtonStyle())
                         .help("把这张卡片提到卡堆顶部，接着就能刷到它")

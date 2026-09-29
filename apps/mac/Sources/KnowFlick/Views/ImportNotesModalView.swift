@@ -111,7 +111,7 @@ struct ImportNotesModalView: View {
         HStack(spacing: 12) {
             Image(systemName: "square.and.arrow.down.fill")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(InsightColor.warning)
+                .foregroundStyle(InsightColor.accent)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("笔记导入与智能提炼")
@@ -149,7 +149,7 @@ struct ImportNotesModalView: View {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "pencil.and.list.clipboard")
-                        .foregroundStyle(InsightColor.warning)
+                        .foregroundStyle(InsightColor.accent)
                     Text("1. 笔记输入与解析方式")
                         .font(InsightFont.headline)
                         .foregroundStyle(InsightColor.textPrimary)
@@ -168,11 +168,11 @@ struct ImportNotesModalView: View {
                         Text("填入示例笔记")
                             .font(InsightFont.captionSmall)
                     }
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
-                    .background(InsightColor.warningSoft, in: Capsule())
-                    .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
+                    .background(InsightColor.accentSoft, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.accent, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
             }
@@ -300,7 +300,7 @@ struct ImportNotesModalView: View {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "checklist")
-                        .foregroundStyle(InsightColor.warning)
+                        .foregroundStyle(InsightColor.accent)
                     Text("2. 提炼预览与勾选 (\(selectedCardIds.count)/\(parsedCards.count) 张)")
                         .font(InsightFont.headline)
                         .foregroundStyle(InsightColor.textPrimary)
@@ -316,7 +316,7 @@ struct ImportNotesModalView: View {
                     }
                 }
                 .font(InsightFont.captionSmall)
-                .foregroundStyle(InsightColor.warning)
+                .foregroundStyle(InsightColor.accent)
                 .buttonStyle(.plain)
             }
 
@@ -420,8 +420,8 @@ struct ImportNotesModalView: View {
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 22)
                     .padding(.vertical, 8)
-                    .background(selectedCardIds.isEmpty ? Color.gray.opacity(0.4) : InsightColor.warning, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .shadow(color: selectedCardIds.isEmpty ? Color.clear : InsightColor.warning.opacity(0.3), radius: 6, y: 2)
+                    .background(selectedCardIds.isEmpty ? Color.gray.opacity(0.4) : InsightColor.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .shadow(color: selectedCardIds.isEmpty ? Color.clear : InsightColor.accent.opacity(0.3), radius: 6, y: 2)
                 }
                 .buttonStyle(PressableButtonStyle())
                 .keyboardShortcut(.return, modifiers: .command)
@@ -563,7 +563,7 @@ private struct ParsedCardRowView: View {
             Button(action: onToggle) {
                 Image(systemName: isChecked ? "checkmark.square.fill" : "square")
                     .font(.system(size: 16))
-                    .foregroundStyle(isChecked ? InsightColor.warning : InsightColor.textTertiary)
+                    .foregroundStyle(isChecked ? InsightColor.accent : InsightColor.textTertiary)
             }
             .buttonStyle(.plain)
             .padding(.top, 2)
@@ -572,11 +572,11 @@ private struct ParsedCardRowView: View {
                 HStack(spacing: 8) {
                     Text(card.category)
                         .font(InsightFont.captionSmall.weight(.bold))
-                        .foregroundStyle(InsightColor.warning)
+                        .foregroundStyle(InsightColor.accent)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(InsightColor.warningSoft, in: Capsule())
-                        .overlay(Capsule().strokeBorder(InsightColor.warning, lineWidth: 1))
+                        .background(InsightColor.accentSoft, in: Capsule())
+                        .overlay(Capsule().strokeBorder(InsightColor.accent, lineWidth: 1))
 
                     Text(card.headline)
                         .font(InsightFont.bodyStrong.weight(.semibold))
