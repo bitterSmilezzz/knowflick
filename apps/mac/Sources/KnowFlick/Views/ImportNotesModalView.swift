@@ -177,7 +177,8 @@ struct ImportNotesModalView: View {
                 .buttonStyle(PressableButtonStyle())
             }
 
-            // 输入方式切换
+            // 输入方式 + 解析引擎：两列均分（固定宽 260/300 在 minWidth 740 的 sheet 里
+            // 会把右侧 Picker 顶出卡片边界）
             HStack(spacing: 12) {
                 Picker("输入方式", selection: $inputMode) {
                     ForEach(InputMode.allCases) { mode in
@@ -185,18 +186,19 @@ struct ImportNotesModalView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 260)
+                .labelsHidden()
+                .accessibilityLabel("输入方式")
+                .frame(maxWidth: .infinity)
 
-                Spacer()
-
-                // 解析引擎切换
                 Picker("解析引擎", selection: $extractionMethod) {
                     ForEach(ExtractionMethod.allCases) { method in
                         Text(method.rawValue).tag(method)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 300)
+                .labelsHidden()
+                .accessibilityLabel("解析引擎")
+                .frame(maxWidth: .infinity)
             }
 
             if inputMode == .file {
