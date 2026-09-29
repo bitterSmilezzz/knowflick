@@ -12,7 +12,7 @@ struct SpeechTests {
         #expect(service.state == .idle)
     }
 
-    @Test @MainActor func ambientPlaybackFinishAdvancesAndStopsWhenQueueEmpty() async throws {
+    @Test(.timeLimit(.minutes(1))) @MainActor func ambientPlaybackFinishAdvancesAndStopsWhenQueueEmpty() async throws {
         let service = SpeechSynthesizerService()
         service.suppressesRealSynthesis = true   // 单测不驱动真实合成，避免系统 TextToSpeech 回调崩溃
         var advanceRequests = 0
