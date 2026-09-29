@@ -60,7 +60,7 @@ public struct CardPosterExportSheet: View {
             HStack(spacing: 10) {
                 Image(systemName: "square.and.arrow.up.on.square.fill")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("导出分享海报")
                         .font(InsightFont.title)
@@ -158,15 +158,15 @@ public struct CardPosterExportSheet: View {
                     Text("复制图片 ⌘C")
                         .font(InsightFont.bodyStrong)
                 }
-                .foregroundStyle(Color.black.opacity(0.9))
+                .foregroundStyle(Color.white.opacity(0.95))
                 .padding(.horizontal, 18)
                 .padding(.vertical, 10)
-                .background(InsightColor.warning, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
+                .background(InsightColor.accent, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.8)
                 )
-                .shadow(color: InsightColor.warning.opacity(0.35), radius: 8, y: 2)
+                .shadow(color: InsightColor.accent.opacity(0.35), radius: 8, y: 2)
             }
             .buttonStyle(PressableButtonStyle(scale: 0.97))
             .keyboardShortcut("c", modifiers: .command)

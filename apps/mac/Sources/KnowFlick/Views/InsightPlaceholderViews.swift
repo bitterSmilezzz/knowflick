@@ -30,7 +30,7 @@ struct InsightContentScaffold<Actions: View, Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: InsightSpacing.hair) {
                     Text(title)
                         .font(InsightFont.title)
@@ -304,7 +304,7 @@ struct InsightFavoritesPlaceholder: View {
                 .foregroundStyle(Color.white)
                 .padding(.horizontal, 13)
                 .padding(.vertical, 7)
-                .background(InsightColor.warning, in: Capsule())
+                .background(InsightColor.accent, in: Capsule())
             }
             .buttonStyle(PressableButtonStyle())
             .disabled(store.favorites.isEmpty)

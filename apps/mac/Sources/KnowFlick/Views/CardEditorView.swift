@@ -77,7 +77,7 @@ struct CardEditorView: View {
                     if store.updateCardContent(id: card.id, headline: headline, category: category, summary: summary, details: details) {
                         onClose()
                     } else { saveError = "卡片已不存在，或内容为空，无法更新。" }
-                }.buttonStyle(.borderedProminent).tint(InsightColor.warning)
+                }.buttonStyle(.borderedProminent).tint(InsightColor.accent)
                     .disabled(!isValid || !isChanged).keyboardShortcut("s", modifiers: .command)
             }.padding(20)
         }

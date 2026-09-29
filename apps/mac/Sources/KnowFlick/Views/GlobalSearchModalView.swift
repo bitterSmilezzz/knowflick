@@ -93,7 +93,7 @@ struct GlobalSearchModalView: View {
                 // 柔和微光渐变
                 RadialGradient(
                     colors: [
-                        InsightColor.warning.opacity(0.08),
+                        InsightColor.accent.opacity(0.08),
                         Color.clear
                     ],
                     center: .top,
@@ -162,7 +162,7 @@ struct GlobalSearchModalView: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(InsightColor.warning)
+                .foregroundStyle(InsightColor.accent)
 
             TextField("搜索知识库… (支持关键词、学科分类、拼音首字母或全文检索)", text: $query)
                 .font(.system(size: 16, weight: .medium, design: .serif))
@@ -228,12 +228,12 @@ struct GlobalSearchModalView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(
-                            isSelected ? InsightColor.warning.opacity(0.22) : InsightColor.surface,
+                            isSelected ? InsightColor.accent.opacity(0.22) : InsightColor.surface,
                             in: Capsule()
                         )
                         .overlay(
                             Capsule().strokeBorder(
-                                isSelected ? InsightColor.warning.opacity(0.8) : InsightColor.border,
+                                isSelected ? InsightColor.accent.opacity(0.8) : InsightColor.border,
                                 lineWidth: 1
                             )
                         )
@@ -354,7 +354,7 @@ struct GlobalSearchModalView: View {
                     query: query,
                     font: .system(size: 14, weight: .semibold, design: .serif),
                     textColor: InsightColor.textPrimary,
-                    highlightColor: InsightColor.warning
+                    highlightColor: InsightColor.accent
                 )
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -363,7 +363,7 @@ struct GlobalSearchModalView: View {
                     query: query,
                     font: InsightFont.caption,
                     textColor: InsightColor.textSecondary,
-                    highlightColor: InsightColor.warning
+                    highlightColor: InsightColor.accent
                 )
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -419,11 +419,11 @@ struct GlobalSearchModalView: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isSelected ? InsightColor.warning.opacity(0.14) : Color.clear)
+                .fill(isSelected ? InsightColor.accent.opacity(0.14) : Color.clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? InsightColor.warning.opacity(0.55) : Color.clear, lineWidth: 1)
+                .strokeBorder(isSelected ? InsightColor.accent.opacity(0.55) : Color.clear, lineWidth: 1)
         )
         .contentShape(Rectangle())
     }
@@ -510,7 +510,7 @@ struct GlobalSearchModalView: View {
                     HStack(spacing: 5) {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(InsightColor.warning)
+                            .foregroundStyle(InsightColor.accent)
                         Text("最近搜索")
                             .font(InsightFont.captionSmall.weight(.semibold))
                             .foregroundStyle(InsightColor.textSecondary)
@@ -612,7 +612,7 @@ struct HighlightedText: View {
     let query: String
     var font: Font = InsightFont.bodyStrong
     var textColor: Color = InsightColor.textPrimary
-    var highlightColor: Color = InsightColor.warning
+    var highlightColor: Color = InsightColor.accent
 
     var body: some View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
