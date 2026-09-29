@@ -390,8 +390,18 @@ struct ImportNotesModalView: View {
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 8)
-                    .background(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isProcessing ? Color.gray.opacity(0.4) : InsightColor.warning, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .shadow(color: noteText.isEmpty ? Color.clear : InsightColor.warning.opacity(0.3), radius: 6, y: 2)
+                    // AI 档保留琥珀（AI 提炼语义）；规则档归位选中蓝，与其余主 CTA 一致
+                    .background(
+                        noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isProcessing
+                            ? Color.gray.opacity(0.4)
+                            : (extractionMethod == .ai ? InsightColor.warning : InsightColor.accent),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                    .shadow(
+                        color: noteText.isEmpty ? Color.clear
+                            : (extractionMethod == .ai ? InsightColor.warning : InsightColor.accent).opacity(0.3),
+                        radius: 6, y: 2
+                    )
                 }
                 .buttonStyle(PressableButtonStyle())
                 .keyboardShortcut(.return, modifiers: .command)
