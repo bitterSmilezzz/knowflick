@@ -284,7 +284,7 @@ struct DetailView: View {
                     Spacer()
                     Button(action: onCompleteReading) {
                         Label("完成阅读", systemImage: "checkmark.circle").padding(.vertical, 6)
-                    }.buttonStyle(.borderedProminent).tint(InsightColor.warning)
+                    }.buttonStyle(.borderedProminent).tint(InsightColor.accent)
                 }.padding(.horizontal, 28).padding(.vertical, 16)
                     .background(.regularMaterial)
                     .overlay(alignment: .top) { Divider() }

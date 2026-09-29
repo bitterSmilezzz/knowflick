@@ -89,7 +89,7 @@ struct SyncSheetView: View {
             HStack(spacing: 10) {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(InsightColor.warning)
+                    .foregroundStyle(InsightColor.accent)
                 Text("局域网极速双向同步")
                     .font(InsightFont.title)
                     .foregroundStyle(InsightColor.textPrimary)
@@ -161,10 +161,10 @@ struct SyncSheetView: View {
                                     Text("复制")
                                 }
                                 .font(InsightFont.caption)
-                                .foregroundStyle(InsightColor.warning)
+                                .foregroundStyle(InsightColor.accent)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background(InsightColor.warningSoft, in: RoundedRectangle(cornerRadius: 6))
+                                .background(InsightColor.accentSoft, in: RoundedRectangle(cornerRadius: 6))
                             }
                             .buttonStyle(.plain)
                         }
@@ -188,7 +188,7 @@ struct SyncSheetView: View {
                                 .foregroundStyle(InsightColor.textMuted)
                             Text(pairingCode)
                                 .font(.system(size: 14, weight: .bold, design: .monospaced))
-                                .foregroundStyle(InsightColor.warning)
+                                .foregroundStyle(InsightColor.accent)
                         }
                     }
                 }
@@ -248,10 +248,10 @@ struct SyncSheetView: View {
                             Text("检测连接")
                         }
                         .font(InsightFont.caption)
-                        .foregroundStyle(InsightColor.warning)
+                        .foregroundStyle(InsightColor.accent)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(InsightColor.warningSoft, in: RoundedRectangle(cornerRadius: 6))
+                        .background(InsightColor.accentSoft, in: RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
                     .disabled(targetInput.isEmpty || isChecking)
@@ -299,8 +299,8 @@ struct SyncSheetView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(InsightColor.warning, in: RoundedRectangle(cornerRadius: InsightRadius.control))
-                            .foregroundStyle(Color.black)
+                            .background(InsightColor.accent, in: RoundedRectangle(cornerRadius: InsightRadius.control))
+                            .foregroundStyle(Color.white)
                             .font(InsightFont.bodyStrong)
                         }
                         .buttonStyle(PressableButtonStyle())
@@ -345,8 +345,8 @@ struct SyncSheetView: View {
                 onClose()
             }
             .buttonStyle(BorderedProminentButtonStyle())
-            .tint(InsightColor.warning)
-            .foregroundStyle(Color.black)
+            .tint(InsightColor.accent)
+            .foregroundStyle(Color.white)
         }
         .padding(.top, 4)
     }

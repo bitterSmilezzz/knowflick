@@ -121,7 +121,7 @@ struct HelpView: View {
                     HStack {
                         Text(row.keys)
                             .font(.system(size: 12.5, weight: .bold, design: .monospaced))
-                            .foregroundStyle(InsightColor.warning)
+                            .foregroundStyle(InsightColor.accent)
                             .frame(width: 96, alignment: .leading)
                         Text(row.action)
                             .font(InsightFont.body)
