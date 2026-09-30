@@ -159,7 +159,7 @@ struct InsightMainView: View {
             }
         }
         .overlay(alignment: .top) {
-            EditorialToast(center: toast, edge: .top)
+            InsightToast(center: toast, edge: .top)
                 .padding(.top, 14)
         }
     }
