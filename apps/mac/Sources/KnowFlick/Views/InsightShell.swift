@@ -87,7 +87,8 @@ struct InsightShell<Content: View>: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: sidebarExpanded ? InsightLayout.sidebarExpanded : InsightLayout.sidebarCollapsed)
-                .animation(InsightMotion.shell, value: sidebarExpanded)
+                // 展开走长弹簧、折叠走短弹簧：动画参数按「这扇门往哪开」取档（ui-research 共识 27）
+                .animation(sidebarExpanded ? InsightMotion.shellOpen : InsightMotion.shellClose, value: sidebarExpanded)
 
             // 内容区：与侧栏之间留出画布色缝隙，形成 Cutline 的结构分区
             content
@@ -96,7 +97,7 @@ struct InsightShell<Content: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: InsightRadius.sidebar, style: .continuous))
                 .padding(.trailing, 8)
                 .padding(.vertical, 8)
-                .animation(InsightMotion.shell, value: sidebarExpanded)
+                .animation(sidebarExpanded ? InsightMotion.shellOpen : InsightMotion.shellClose, value: sidebarExpanded)
         }
         .background(InsightColor.sidebar)
         .onAppear(perform: refreshBadgeCounts)
@@ -134,6 +135,7 @@ struct InsightShell<Content: View>: View {
                             .font(InsightFont.captionSmall)
                             .foregroundStyle(InsightColor.textMuted)
                     }
+                    .transition(.opacity)
                 }
                 Spacer(minLength: 0)
                 if sidebarExpanded {
@@ -142,15 +144,18 @@ struct InsightShell<Content: View>: View {
                         help: "折叠侧栏",
                         action: onToggleSidebar
                     )
+                    .transition(.opacity)
                 }
             }
             // 折叠态（72pt 宽）下品牌标与展开按钮共用 21pt 左边距，正好在侧栏内居中
             .padding(.leading, sidebarExpanded ? 14 : 21)
             .padding(.trailing, sidebarExpanded ? 10 : 0)
+            // 折叠/展开时品牌文字与按钮「变暗 → 消失」行淡出，不做整体缩放（ui-research 共识 20）
 
             if !sidebarExpanded {
                 InsightIconButton(icon: "sidebar.left", help: "展开侧栏", action: onToggleSidebar)
                     .padding(.leading, 21)
+                    .transition(.opacity)
             }
 
             ScrollView(showsIndicators: false) {
@@ -175,6 +180,7 @@ struct InsightShell<Content: View>: View {
                                 onOpenSheet(.webClip)
                             }
                         }
+                        .transition(.opacity)
                     }
                 }
                 .padding(.horizontal, sidebarExpanded ? 10 : 12)
@@ -201,6 +207,9 @@ struct InsightShell<Content: View>: View {
             .padding(.bottom, 14)
         }
         .padding(.top, 14)
+        // 折叠/展开的统一动画上下文：宽度之外，品牌文字/按钮/采集组的内边距与行淡出
+        // 全部被同一条弹簧覆盖（ui-research 共识 4：卡顿感来自没被动画覆盖的属性）
+        .animation(sidebarExpanded ? InsightMotion.shellOpen : InsightMotion.shellClose, value: sidebarExpanded)
     }
 
     // 品牌标：直接用真实 App 图标（icns），与 Dock / 访达一致，不另造符号

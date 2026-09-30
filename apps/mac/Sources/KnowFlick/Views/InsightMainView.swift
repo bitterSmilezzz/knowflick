@@ -408,14 +408,23 @@ struct InsightMainView: View {
                 if store.isGenerating {
                     HStack(spacing: InsightSpacing.small) {
                         ProgressView().controlSize(.small).tint(InsightColor.warning)
-                        Text("正在收集新知识…")
-                            .font(InsightFont.caption)
-                            .foregroundStyle(InsightColor.textSecondary)
+                        // 等待反馈带「已经等了多久」（ui-research 共识 9/22：≥2s 的等待要有可见进度，
+                        // 数字数上去不跳变）；起始时间由 AppStore 在生成启动时记录
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            let elapsed = max(0, Int(context.date.timeIntervalSince(store.generationStartedAt ?? context.date)))
+                            Text(elapsed > 0 ? "正在收集新知识 · \(elapsed)s" : "正在收集新知识…")
+                                .font(InsightFont.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(InsightColor.textSecondary)
+                                .contentTransition(.numericText())
+                                .animation(InsightMotion.value, value: elapsed)
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(InsightColor.warningSoft, in: Capsule())
                     .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.3), lineWidth: 1))
+                    .transition(.opacity)
                 }
 
                 InsightIconButton(
