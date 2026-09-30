@@ -408,16 +408,24 @@ struct InsightMainView: View {
                 if store.isGenerating {
                     HStack(spacing: InsightSpacing.small) {
                         ProgressView().controlSize(.small).tint(InsightColor.warning)
-                        // 等待反馈带「已经等了多久」（ui-research 共识 9/22：≥2s 的等待要有可见进度，
-                        // 数字数上去不跳变）；起始时间由 AppStore 在生成启动时记录
+                        // 等待反馈带「已经等了多久」（ui-research 共识 9/22），起始时间由
+                        // AppStore.generationStartedAt 记录。隐藏 sizer 装最长状态文案、可见层铺在
+                        // 其宽度上：秒数每秒 +1 时胶囊宽度不再逐秒变化（共识 29：换文案时
+                        // 容器的宽度要脱离文案，定宽而不是改短文案）
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             let elapsed = max(0, Int(context.date.timeIntervalSince(store.generationStartedAt ?? context.date)))
-                            Text(elapsed > 0 ? "正在收集新知识 · \(elapsed)s" : "正在收集新知识…")
+                            Text("正在收集新知识 · 888s")
                                 .font(InsightFont.caption)
                                 .monospacedDigit()
-                                .foregroundStyle(InsightColor.textSecondary)
-                                .contentTransition(.numericText())
-                                .animation(InsightMotion.value, value: elapsed)
+                                .opacity(0)
+                                .overlay(alignment: .leading) {
+                                    Text(elapsed > 0 ? "正在收集新知识 · \(elapsed)s" : "正在收集新知识…")
+                                        .font(InsightFont.caption)
+                                        .monospacedDigit()
+                                        .foregroundStyle(InsightColor.textSecondary)
+                                        .contentTransition(.numericText())
+                                        .animation(InsightMotion.value, value: elapsed)
+                                }
                         }
                     }
                     .padding(.horizontal, 12)
@@ -845,6 +853,10 @@ struct InsightMainView: View {
             .keyboardShortcut("z", modifiers: .command)
             .disabled(store.history.isEmpty || swipingCard != nil || activeSheet != nil)
 
+            // 底栏胶囊的内部分层线（ui-research 共识 14：胶囊是微型信息容器，
+            // 用 1px 分隔线区分「历史操作 | 刷卡三连 | AI 生成」三层）
+            capsuleDivider
+
             actionButton("xmark", size: 54, tint: InsightColor.danger, help: "不喜欢 ←") {
                 performSwipe(.left)
             }
@@ -862,6 +874,8 @@ struct InsightMainView: View {
             }
             .keyboardShortcut(.rightArrow, modifiers: [])
             .disabled(store.topCard == nil || swipingCard != nil)
+
+            capsuleDivider
 
             actionButton("dice", size: 40, tint: InsightColor.warning, help: !store.settings.isAIConfigured ? "配置 AI 后可生成新卡" : "AI 生成 3 张新卡 ⌘N") {
                 if !store.settings.isAIConfigured {
@@ -904,6 +918,11 @@ struct InsightMainView: View {
         .buttonStyle(PressableButtonStyle())
         .help(help)
         .accessibilityLabel(help)
+    }
+
+    /// 底栏胶囊的内部分层线（ui-research 共识 14：一胶囊多层信息）
+    private var capsuleDivider: some View {
+        Capsule().fill(InsightColor.border).frame(width: 1, height: 26)
     }
 
     // MARK: - 磨耳朵播放条
