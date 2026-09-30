@@ -215,7 +215,10 @@ struct LearningWorkspaceView: View {
                 Image(systemName: plan.completedToday >= dailyGoal ? "checkmark" : "sun.max")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(InsightColor.accent)
-            }.frame(width: 48, height: 48)
+            }
+            // 环与数字同源（rule 23 已满足）还必须同步动（共识 4：进度条跳、数字滚 = 各自动各的）
+            .animation(InsightMotion.value, value: plan.completedToday)
+            .frame(width: 48, height: 48)
             VStack(alignment: .leading, spacing: InsightSpacing.tiny) {
                 Text(plan.completedToday >= dailyGoal ? "今日目标已完成" : "今日目标")
                     .font(InsightFont.callout)
@@ -224,6 +227,7 @@ struct LearningWorkspaceView: View {
                         .font(InsightFont.statMedium)
                         .monospacedDigit()
                         .contentTransition(.numericText())
+                        .animation(InsightMotion.value, value: plan.completedToday)
                     Text("/ \(dailyGoal) 张")
                         .font(InsightFont.callout)
                         .foregroundStyle(InsightColor.textTertiary)
@@ -252,6 +256,7 @@ struct LearningWorkspaceView: View {
                 .font(InsightFont.statMedium)
                 .monospacedDigit()
                 .contentTransition(.numericText())
+                .animation(InsightMotion.value, value: value)
         }.fixedSize()
     }
 
