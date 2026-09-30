@@ -47,7 +47,7 @@ struct CoordinatorForwardingTests {
     }
 
     /// 设置通道的告警同样经协调器上报，且成功保存后能清除（回滚语义不变）。
-    @Test func settingsWarningTravelsThroughTheCoordinator() async throws {
+    @Test(.timeLimit(.minutes(1))) func settingsWarningTravelsThroughTheCoordinator() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let storage = Storage(baseDir: directory)
         let store = AppStore(storage: storage)

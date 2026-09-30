@@ -44,7 +44,7 @@ struct ChatSessionLoadTests {
     }
 
     /// 打开面板的那一刻不得同步读盘：先给空会话，磁盘内容稍后异步补上（且补得上）。
-    @Test func openChatDoesNotReadFromDiskSynchronously() async throws {
+    @Test(.timeLimit(.minutes(1))) func openChatDoesNotReadFromDiskSynchronously() async throws {
         try await withStore { store, storage in
             let subject = card("异步读盘")
             try storage.saveChatSessionThrowing(persistedSession(cardId: subject.id, headline: subject.headline))
@@ -60,7 +60,7 @@ struct ChatSessionLoadTests {
 
     /// 进程内缓存：第二次打开同一张卡直接命中缓存，不再读盘。
     /// 判据：把磁盘上的内容改成另一个版本，重开后必须仍是缓存版本（读盘的话会看到被改过的版本）。
-    @Test func secondOpenServesFromTheInProcessCache() async throws {
+    @Test(.timeLimit(.minutes(1))) func secondOpenServesFromTheInProcessCache() async throws {
         try await withStore { store, storage in
             let subject = card("缓存命中")
             try storage.saveChatSessionThrowing(persistedSession(cardId: subject.id, headline: subject.headline))
@@ -83,7 +83,7 @@ struct ChatSessionLoadTests {
     }
 
     /// 刚清除的卡以内存墓碑为准：重开时同步为空，异步读盘排在被清除之后，不会复活旧会话。
-    @Test func clearedSessionIsNotResurrectedByTheAsyncLoad() async throws {
+    @Test(.timeLimit(.minutes(1))) func clearedSessionIsNotResurrectedByTheAsyncLoad() async throws {
         try await withStore { store, storage in
             let subject = card("清除后重开")
             try storage.saveChatSessionThrowing(persistedSession(cardId: subject.id, headline: subject.headline))

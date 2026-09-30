@@ -100,7 +100,8 @@ struct StoreWriteContractTests {
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // apps/mac
             .appendingPathComponent("Sources/KnowFlick")
-        guard FileManager.default.fileExists(atPath: viewsRoot.path) else { return }
+        // 护栏自己失效时必须报红：`guard ... else { return }` 会让「目录找不到」退化成静默绿。
+        #expect(FileManager.default.fileExists(atPath: viewsRoot.path), "源码护栏未生效：视图目录不存在于 \(viewsRoot.path)")
 
         let forbidden = try NSRegularExpression(
             pattern: #"store\.(cards|settings|deck|history|favorites|topCard|isGenerating|isLoadingSeed)\s*=(?!=)"#
@@ -127,7 +128,8 @@ struct StoreWriteContractTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Sources/KnowFlickCore")
-        guard FileManager.default.fileExists(atPath: coreRoot.path) else { return }
+        // 同上：Core 侧这道护栏保护「卡片池写入点唯一」，静默绿等于没有护栏。
+        #expect(FileManager.default.fileExists(atPath: coreRoot.path), "源码护栏未生效：Core 目录不存在于 \(coreRoot.path)")
 
         let forbidden = try NSRegularExpression(pattern: #"store\.(cards|settings)\s*=(?!=)"#)
         var offenders: [String] = []
