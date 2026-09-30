@@ -372,20 +372,22 @@ struct InsightSidebarRow: View {
                     .frame(width: 20)
                     .foregroundStyle(isSelected ? InsightColor.accent : InsightColor.textTertiary)
                 if isExpanded {
-                    Text(title)
-                        .font(InsightFont.body)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if let count {
-                        Text("\(count)")
-                            .font(InsightFont.monoSmall)
-                            .monospacedDigit()
-                            // 计数变化数上去，不跳变（ui-research 共识 22：数字会变时让它数上去）
-                            .contentTransition(.numericText())
-                            .animation(InsightMotion.value, value: count)
+                    Group {
+                        Text(title)
+                            .font(InsightFont.body)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        if let count {
+                            Text("\(count)")
+                                .font(InsightFont.monoSmall)
+                                .monospacedDigit()
+                                // 计数变化数上去，不跳变（ui-research 共识 22：数字会变时让它数上去）
+                                .contentTransition(.numericText())
+                                .animation(InsightMotion.value, value: count)
+                        }
                     }
+                    .transition(.opacity)
                 }
-                .transition(.opacity)
             }
             .foregroundStyle(isSelected ? InsightColor.textPrimary : (hovering ? InsightColor.textSecondary : InsightColor.textTertiary))
             .padding(.horizontal, isExpanded ? 10 : 0)
