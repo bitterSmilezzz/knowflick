@@ -89,9 +89,17 @@ struct SpeechConsoleView: View {
                     HStack(spacing: InsightSpacing.small) {
                         AudioWaveformBars(isPlaying: isSpeaking)
                             .frame(width: 22, height: 16)
-                        Text(statusText)
+                        // 状态在「正在朗读/已暂停/正在合成语音…/已停止」间切换，长度各不相同：
+                        // 隐藏 sizer 装最长文案、可见层铺在其宽度上，切换时右侧组不再抖动
+                        //（ui-research 共识 29：换文案时容器的宽度要脱离文案）
+                        Text("正在合成语音…")
                             .font(InsightFont.caption)
-                            .foregroundStyle(isSpeaking ? InsightColor.success : InsightColor.textMuted)
+                            .hidden()
+                            .overlay(alignment: .leading) {
+                                Text(statusText)
+                                    .font(InsightFont.caption)
+                                    .foregroundStyle(isSpeaking ? InsightColor.success : InsightColor.textMuted)
+                            }
                     }
                 }
 
