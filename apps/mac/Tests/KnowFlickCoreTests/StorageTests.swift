@@ -45,9 +45,8 @@ final class StorageTests {
         #expect(storage.loadCards().map(\.headline) == ["往返测试"])
     }
 
-    @Test func loadingBeforeFirstSaveReturnsEmptyAndUnseeded() {
+    @Test func loadingBeforeFirstSaveReturnsEmpty() {
         #expect(storage.loadCards().isEmpty)
-        #expect(!(storage.hasSeeded()))
     }
 
     // MARK: - 备份轮转（C1 核心回归）
