@@ -45,7 +45,7 @@ public struct CardPosterExportSheet: View {
             // 浮动 HUD Toast 反馈
             VStack {
                 Spacer()
-                EditorialToast(center: toast, edge: .bottom)
+                InsightToast(center: toast, edge: .bottom)
                     .padding(.bottom, 80)
             }
             .zIndex(200)

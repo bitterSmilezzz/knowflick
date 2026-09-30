@@ -120,7 +120,7 @@ struct SettingsView: View {
             voiceOptions = SpeechSynthesizerService.availableVoices()
         }
         .overlay(alignment: .bottom) {
-            EditorialToast(center: toast, edge: .bottom)
+            InsightToast(center: toast, edge: .bottom)
                 .padding(.bottom, 64)
         }
         .overlay {
