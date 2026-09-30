@@ -697,14 +697,22 @@ public final class SpeechSynthesizerService: NSObject, @unchecked Sendable {
         Self.availableVoices().first { $0.language == language } ?? AVSpeechSynthesisVoice(language: language)
     }
 
-    /// 获取系统中可用的全部高质量语音列表
+    /// 语音列表在进程生命周期内不变，所以排序只做一次。
+    ///
+    /// 此前 `availableVoices()` 每次调用都重新 `AVSpeechSynthesisVoice.speechVoices()` 并全量排序，
+    /// 而 `detectBestVoice` 的三个语种分支各调一次 `bestVoice`（后者又调 `availableVoices()`）——
+    /// 即每次朗读最多重排 3 次系统语音列表，而这一切都跑在 MainActor 上（`speechVoices()`
+    /// 是系统调用，在百来条语音的系统上是毫秒级）。磨耳朵连续切卡时该开销持续累积。
+    private static let sortedVoices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice.speechVoices().sorted {
+        if $0.language.starts(with: "zh") && !$1.language.starts(with: "zh") { return true }
+        if !$0.language.starts(with: "zh") && $1.language.starts(with: "zh") { return false }
+        if $0.quality.rawValue != $1.quality.rawValue { return $0.quality.rawValue > $1.quality.rawValue }
+        return $0.name < $1.name
+    }
+
+    /// 获取系统中可用的全部高质量语音列表（已排序，进程内只枚举一次）
     public static func availableVoices() -> [AVSpeechSynthesisVoice] {
-        AVSpeechSynthesisVoice.speechVoices().sorted {
-            if $0.language.starts(with: "zh") && !$1.language.starts(with: "zh") { return true }
-            if !$0.language.starts(with: "zh") && $1.language.starts(with: "zh") { return false }
-            if $0.quality.rawValue != $1.quality.rawValue { return $0.quality.rawValue > $1.quality.rawValue }
-            return $0.name < $1.name
-        }
+        sortedVoices
     }
 }
 

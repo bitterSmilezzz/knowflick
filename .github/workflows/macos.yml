@@ -82,6 +82,12 @@ jobs:
         # 双端逐字段的等价性仍由各自的单测保证（那两层缺一不可）。
         run: python3 tools/check_taxonomy.py
 
+      - name: 校验课程导入管线
+        # import_lessons.py 与上面的 check_taxonomy.py 共享 tools/taxonomy.py 契约库：
+        # 契约自洽由 check_taxonomy 守住，但 import_lessons 自己的 SUBJECT_MAP / make_card
+        # 分类映射此前无人验证（纯手动步骤）。接进 CI 后这条映射错误不必等用户导入才发现。
+        run: python3 tools/test_import_lessons.py
+
       - name: 运行 Swift 测试
         run: ./tools/test.sh
 

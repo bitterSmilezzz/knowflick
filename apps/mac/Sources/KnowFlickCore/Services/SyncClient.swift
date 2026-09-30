@@ -74,6 +74,9 @@ public enum SyncClient {
     ) async throws -> (Data, HTTPURLResponse) {
         var lastError: Error?
         for attempt in 1...maxAttempts {
+            // 取消优先于重试：被取消后直接结束，不再走满剩余尝试。退避里的 `Task.sleep` 已经会抛
+            // CancellationError，这里再查一次是为了覆盖「两次尝试之间被取消」的空隙。
+            try Task.checkCancellation()
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse else {
@@ -92,6 +95,11 @@ public enum SyncClient {
                     throw NSError(domain: "SyncClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "对端设备暂时繁忙 (HTTP \(httpResponse.statusCode))"])
                 }
                 throw NSError(domain: "SyncClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "对端设备响应错误 HTTP \(httpResponse.statusCode)"])
+            } catch is CancellationError {
+                // 取消不是「可重试的失败」。落进下面的通用 catch 时，循环会空转剩余尝试
+                // （各带一次退避 sleep），最后把 `URLError.cancelled` 包成一条
+                // 「局域网通信失败: cancelled」抛给用户——用户看到的是网络故障，而实际是他自己取消的。
+                throw CancellationError()
             } catch {
                 if let nsErr = error as NSError?, nsErr.domain == "SyncClient" && (nsErr.code == 401 || nsErr.code == 413 || nsErr.code == -1 || nsErr.code == -2 || nsErr.code == -3) {
                     throw error
@@ -100,7 +108,9 @@ public enum SyncClient {
                 if attempt < maxAttempts {
                     let baseDelay = 0.5 * Double(1 << (attempt - 1))
                     let jitter = Double.random(in: 0...0.1)
-                    try? await Task.sleep(nanoseconds: UInt64((baseDelay + jitter) * 1_000_000_000))
+                    // 不加 `try?`：Task.sleep 在取消时抛 CancellationError，必须让它向上传播
+                    // （同仓库 AIService.swift / SpeechSynthesizerService.swift 已是这个写法）
+                    try await Task.sleep(nanoseconds: UInt64((baseDelay + jitter) * 1_000_000_000))
                 }
             }
         }

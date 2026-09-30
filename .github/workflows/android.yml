@@ -87,6 +87,11 @@ jobs:
         # 双端逐字段的等价性仍由各自的单测保证（那两层缺一不可）。
         run: python3 tools/check_taxonomy.py
 
+      - name: 校验课程导入管线
+        # 与 macos.yml 同一步：import_lessons.py 与 check_taxonomy.py 共享 tools/taxonomy.py
+        # 契约库，SUBJECT_MAP / make_card 的分类映射此前只在手动流程里跑过。
+        run: python3 tools/test_import_lessons.py
+
       - name: 单元测试与 Lint
         run: |
           cd apps/android

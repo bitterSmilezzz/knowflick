@@ -219,6 +219,74 @@ struct AppStoreDeckCharacterizationTests {
         }
     }
 
+    /// 与卡堆无关的设置变更，不得让卡堆 / 历史 / 收藏的观察者失效。
+    ///
+    /// 这条**不是**靠 `recomputeDeckAndHistory` 里的比较实现的——它无条件赋值，
+    /// 是 `@Observable` 生成的 setter 自身跳过等值赋值（Swift 6 实测：结果逐字节相同则不通知）。
+    /// 实测确认过：把两处可能的守卫都去掉后本用例依然通过，而下面那条
+    /// `sourceSwitchChangeStillInvalidatesDeckState`（派生结果真变了）照常通过。
+    ///
+    /// 那为什么还要留着它：它钉的是一条**可观察契约**。若将来有人把派生改成产出
+    /// 「非等值但等价」的结果（例如把 `Set` 的迭代顺序漏进输出，导致收藏顺序抖动），
+    /// 本用例会立刻变红——而那种 bug 靠编译和肉眼都看不出来。
+    @Test func unrelatedSettingsChangeDoesNotInvalidateDeckState() throws {
+        try withStore { store, _ in
+            store.cards = [card("甲"), card("乙"), card("丙")]
+            let probe = ObservationProbe()
+
+            withObservationTracking {
+                _ = store.deck
+            } onChange: {
+                probe.record("deck")
+            }
+            withObservationTracking {
+                _ = store.history
+            } onChange: {
+                probe.record("history")
+            }
+            withObservationTracking {
+                _ = store.favorites
+            } onChange: {
+                probe.record("favorites")
+            }
+
+            // 语速 / 音调 / 缓冲 / 外观：全部不参与卡堆派生
+            var tweaked = store.settings
+            tweaked.speechRate = 1.5
+            tweaked.speechPitch = 1.25
+            tweaked.ambientGapSeconds = 3.0
+            tweaked.appearance = .dark
+            store.settings = tweaked
+
+            #expect(!probe.contains("deck"), "改语速等无关设置不应让 deck 观察者失效")
+            #expect(!probe.contains("history"), "改语速等无关设置不应让 history 观察者失效")
+            #expect(!probe.contains("favorites"), "改语速等无关设置不应让 favorites 观察者失效")
+        }
+    }
+
+    /// 反向：派生结果真变了时，卡堆观察者**必须**收到通知。
+    /// 与上面那条成对——只有正向用例的话，「通知机制整个坏了」也会全绿。
+    @Test func sourceSwitchChangeStillInvalidatesDeckState() throws {
+        try withStore { store, _ in
+            store.cards = [card("甲", source: .seed), card("乙", source: .ai)]
+            let probe = ObservationProbe()
+
+            withObservationTracking {
+                _ = store.deck
+            } onChange: {
+                probe.record("deck")
+            }
+
+            // 关掉 AI 来源：`.ai` 那张不再进入卡堆
+            var tweaked = store.settings
+            tweaked.enableAI = false
+            store.settings = tweaked
+
+            #expect(probe.contains("deck"), "来源开关变化必须触发卡堆重算")
+            #expect(store.deck.allSatisfy { $0.source != .ai })
+        }
+    }
+
     /// 设置与聊天告警同样是视图直接读的转发属性（顶栏横幅），变更必须可见。
     @Test func settingsAndChatErrorChangesNotifyObservers() throws {
         try withStore { store, _ in
@@ -254,7 +322,9 @@ struct AppStoreDeckCharacterizationTests {
             .deletingLastPathComponent()                          // Tests
             .deletingLastPathComponent()                          // apps/mac
             .appendingPathComponent("Sources/KnowFlick")
-        guard FileManager.default.fileExists(atPath: viewsRoot.path) else { return }
+        // 护栏自己失效时必须报红：`guard ... else { return }` 会让「目录找不到」退化成静默绿，
+        // 换工作目录（打包后的测试 bundle、CI 换 cwd）时这条契约就等于不存在了。
+        #expect(FileManager.default.fileExists(atPath: viewsRoot.path), "源码护栏未生效：视图目录不存在于 \(viewsRoot.path)")
 
         // 「store.cards =」这种直接赋值；`==` 比较不算，`store.cards.contains` 这类读取也不算
         let forbidden = try NSRegularExpression(
