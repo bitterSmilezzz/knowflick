@@ -211,12 +211,6 @@ public struct Storage: Sendable {
         catch { throw StorageWriteError.writing(error.localizedDescription) }
     }
 
-    // MARK: - 首启标记
-
-    public func hasSeeded() -> Bool {
-        fileManager.fileExists(atPath: fileURL("cards.json").path)
-    }
-
     // MARK: - 卡片追问会话 (Card Chat Sessions)
 
     public func loadChatSessions() -> [UUID: CardChatSession] {
