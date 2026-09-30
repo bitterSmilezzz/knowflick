@@ -149,6 +149,9 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     private var syncServer: SyncServer? = null
 
+    /** 进行中的局域网同步任务：关面板即取消（与 macOS 同步面板 PR #25 同语义） */
+    private var lanSyncJob: Job? = null
+
     init {
         model.bootstrap()
         settings = loadSettings()
@@ -342,6 +345,10 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun closeSyncSheet() {
+        // 关面板即取消进行中的同步：面板已关，静默跑完的请求既无人看结果，
+        // restoreArchive 还会在用户不知情时改卡库（macOS 同步面板同款修复）
+        lanSyncJob?.cancel()
+        lanSyncJob = null
         showSyncSheet = false
     }
 
@@ -384,7 +391,9 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun executeLanSync(target: String, onDone: (Result<SyncResult>) -> Unit) {
-        viewModelScope.launch {
+        // 新同步顶掉旧同步：避免两个请求并发写同一组状态（macOS 同款语义）
+        lanSyncJob?.cancel()
+        lanSyncJob = viewModelScope.launch {
             val localSnapshot = model.store.cards.toList()
             val result = SyncClient.executeBidirectionalSync(
                 target = target,
