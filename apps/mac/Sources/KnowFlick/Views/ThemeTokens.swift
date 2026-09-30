@@ -148,24 +148,6 @@ public enum EditorialColor {
     )
 }
 
-// MARK: - 间距（8pt 基网的语义化刻度）
-
-/// 全 App 的间距刻度。此前 padding / spacing 有 15+ 种裸值随机分布
-/// （2/3/4/5/6/7/8/9/10/12/14/16/18/24…），同一语义在不同文件取值不同：
-/// 「悬浮胶囊」的 padding 就有三套（卡堆 30/16、播放条 18/10、Toast 16/10）。
-/// 这里按 8pt 基网收敛，hair/tiny 用于图标与文字贴邻，lg/xl 用于区块呼吸。
-public enum EditorialSpacing {
-    public static let hair: CGFloat = 2          ///< 图标与文字贴邻、微型元素
-    public static let tiny: CGFloat = 4          ///< 紧凑元素组内
-    public static let small: CGFloat = 6         ///< 胶囊内边距、元素间小间隙
-    public static let compact: CGFloat = 8       ///< 紧凑胶囊横边距、列表行内
-    public static let `default`: CGFloat = 12    ///< VStack 默认行距
-    public static let medium: CGFloat = 16       ///< HStack 默认横边距、Toast 横边距
-    public static let large: CGFloat = 20        ///< 区块内呼吸
-    public static let xl: CGFloat = 28           ///< 区块之间
-    public static let xxl: CGFloat = 36          ///< 大区块之间
-}
-
 // MARK: - 阴影（层级即语义）
 
 /// 阴影的语义刻度。此前 33 处 `.shadow(` 有 7 套规格（radius 4→40），
@@ -322,27 +304,6 @@ public enum PaperThemePalette {
     }
 }
 
-public enum EditorialFont {
-    // 宋体粗体主标题
-    public static let heroHeadline = Font.custom("Songti SC Black", size: 29)
-    public static let detailHeadline = Font.custom("Songti SC Black", size: 26)
-    public static let modalTitle = Font.custom("Songti SC Black", size: 21)
-    public static let sectionTitle = Font.custom("Songti SC Black", size: 17)
-    public static let statFigure = Font.custom("Songti SC Black", size: 32)
-    public static let statFigureSmall = Font.custom("Songti SC Black", size: 24)
-
-    // 衬线体正文
-    public static let bodySerif = Font.system(size: 15.5, weight: .regular, design: .serif)
-    public static let summarySerif = Font.system(size: 15.5, weight: .medium, design: .serif)
-
-    // 界面控制标签
-    public static let label = Font.system(size: 13, weight: .semibold)
-    public static let labelSmall = Font.system(size: 12, weight: .medium)
-    public static let badge = Font.system(size: 12, weight: .bold)
-    public static let caption = Font.system(size: 11, weight: .medium)
-    public static let captionSmall = Font.system(size: 10, weight: .regular)
-}
-
 public enum EditorialRadius {
     public static let card: CGFloat = 30
     public static let modal: CGFloat = 24
@@ -436,26 +397,6 @@ public extension View {
         return shadow(color: EditorialShadow.elevationNearColor, radius: near.radius, y: near.y)
             .shadow(color: EditorialShadow.elevationFarColor, radius: far.radius, y: far.y)
     }
-
-    /// 面板级阴影（弹窗、全局搜索、预览层）：广域漫反射
-    func editorialPanelShadow() -> some View {
-        let near = EditorialShadow.panelNear
-        let far = EditorialShadow.panelFar
-        return shadow(color: EditorialShadow.panelNearColor, radius: near.radius, y: near.y)
-            .shadow(color: EditorialShadow.panelFarColor, radius: far.radius, y: far.y)
-    }
-
-    /// 写真卡片阴影（摄影底图主视觉）：三层复合软影
-    func editorialPhotoShadow() -> some View {
-        let near = EditorialShadow.photoNear
-        let mid = EditorialShadow.photoMid
-        let far = EditorialShadow.photoFar
-        return shadow(color: EditorialShadow.photoNearColor, radius: near.radius, y: near.y)
-            .shadow(color: EditorialShadow.photoMidColor, radius: mid.radius, y: mid.y)
-            .shadow(color: EditorialShadow.photoFarColor, radius: far.radius, y: far.y)
-    }
-
-    // MARK: 输入框描边
 
     // MARK: 图表入场编排
 

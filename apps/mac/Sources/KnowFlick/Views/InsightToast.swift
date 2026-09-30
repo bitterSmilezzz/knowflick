@@ -64,7 +64,7 @@ final class ToastCenter {
 /// 此前 transition 缺失，只能靠 7 个宿主各写一遍外层 `.animation(...)` 兜底，
 /// 表现为「原地淡入」；且兜底参数还有两套（0.35/0.8 与 0.28/0.8）。
 /// `edge` 由调用方按实际挂载方位传入，否则滑入方向会与视觉预期相反。
-struct EditorialToast: View {
+struct InsightToast: View {
     let center: ToastCenter
     /// Toast 挂载的容器边缘：决定进场滑入方向（从该边缘外侧滑入）。
     var edge: Edge = .bottom
