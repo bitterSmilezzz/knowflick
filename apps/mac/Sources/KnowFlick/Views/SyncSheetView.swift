@@ -29,6 +29,11 @@ struct SyncSheetView: View {
     @State private var syncResult: SyncResult? = nil
     @State private var errorMessage: String? = nil
 
+    // 客户端任务的句柄：关面板时必须取消，否则进行中的请求会静默跑完。
+    // SyncClient 的协作式取消（checkCancellation + CancellationError 直通）在 Core 层已就绪。
+    @State private var checkTask: Task<Void, Never>? = nil
+    @State private var syncTask: Task<Void, Never>? = nil
+
     private var syncAddressString: String {
         guard isServerRunning, localIP != "正在检测…", !pairingCode.isEmpty else { return "" }
         return "\(localIP):\(serverPort)#\(pairingCode)"
@@ -78,6 +83,8 @@ struct SyncSheetView: View {
             initializeServerDefaults()
         }
         .onDisappear {
+            checkTask?.cancel()
+            syncTask?.cancel()
             stopServer()
         }
     }
@@ -405,15 +412,20 @@ struct SyncSheetView: View {
         isChecking = true
         AudioEffectManager.shared.playClick()
 
-        Task {
+        // 新一次检测顶掉旧检测，避免两个请求并发写同一组状态
+        checkTask?.cancel()
+        checkTask = Task {
             do {
                 let info = try await SyncClient.fetchRemoteInfo(target: targetInput)
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.remoteInfo = info
                     self.isChecking = false
                     AudioEffectManager.shared.playCardFlip()
                 }
             } catch {
+                // 取消不是故障：关面板/重复点击触发的取消不写错误栏
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.errorMessage = "检测失败: \(error.localizedDescription)"
                     self.isChecking = false
@@ -428,7 +440,8 @@ struct SyncSheetView: View {
         syncResult = nil
         AudioEffectManager.shared.playPaperSlide()
 
-        Task {
+        syncTask?.cancel()
+        syncTask = Task {
             do {
                 let localCards = await MainActor.run { store.cards }
                 let result = try await SyncClient.executeBidirectionalSync(
@@ -440,6 +453,7 @@ struct SyncSheetView: View {
                         return (added: res.added, restored: res.updated, ignored: res.ignored)
                     }
                 }
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.syncResult = result
                     self.isSyncing = false
@@ -447,6 +461,8 @@ struct SyncSheetView: View {
                     toast.show("双向同步成功！")
                 }
             } catch {
+                // 取消不是故障：关面板触发的取消不写错误栏（此前会伪装成「同步失败: cancelled」）
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.errorMessage = "同步失败: \(error.localizedDescription)"
                     self.isSyncing = false
