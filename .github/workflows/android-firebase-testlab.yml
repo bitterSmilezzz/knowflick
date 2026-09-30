@@ -1,0 +1,86 @@
+name: Android Firebase Test Lab
+
+# Android 仪器测试的云端执行通道（2026-09-30 选型定案）：
+# GitHub 托管 runner 已实测不可行——Linux 无 /dev/kvm（kvm-probe），macOS 嵌套虚拟化
+# 不透传（`HVF error: HV_UNSUPPORTED`，见 PR #31 关闭评论）。Firebase Test Lab 虚拟设备
+# 有免费额度，是唯一不动钱、不依赖本机开机的路径。
+#
+# 前置条件（一次性，见 docs/ANDROID_FIREBASE_TESTLAB.md）：
+#   仓库 secret `FIREBASE_SERVICE_ACCOUNT` = GCP service account JSON（需 Test Lab 权限）。
+# 未配置时本工作流所有实质步骤都会跳过并留 notice——显式可见，不静默也不报红。
+#
+# 触发：仅手动。FTL 免费额度按天计，不接推送/PR 自动跑；要跑进 PR 门禁等额度
+# 消耗模式摸清后再说。
+on:
+  workflow_dispatch:
+    inputs:
+      device_api:
+        description: '虚拟设备 API 级别'
+        required: false
+        default: '34'
+
+permissions:
+  contents: read
+
+jobs:
+  testlab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FTL_ENABLED: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 准备 JDK 17
+        if: env.FTL_ENABLED == 'true'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 缓存
+        if: env.FTL_ENABLED == 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('apps/android/**/*.gradle.kts', 'apps/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: 构建 APK 与测试 APK
+        if: env.FTL_ENABLED == 'true'
+        run: |
+          cd apps/android
+          ./gradlew --console=plain :app:assembleDebug :app:assembleDebugAndroidTest
+
+      - name: 认证 GCP
+        if: env.FTL_ENABLED == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: 安装 gcloud SDK
+        if: env.FTL_ENABLED == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: 运行仪器测试（34 项）
+        if: env.FTL_ENABLED == 'true'
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          PROJECT_ID="$(printf '%s' "$SA_JSON" | jq -r .project_id)"
+          gcloud firebase test android run \
+            --project "$PROJECT_ID" \
+            --type instrumentation \
+            --app apps/android/app/build/outputs/apk/debug/app-debug.apk \
+            --test apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+            --device model=Pixel2,version=${{ inputs.device_api || '34' }},locale=zh_CN,orientation=portrait \
+            --results-history-name "knowflick-instrumented-$(date +%Y%m%d)" \
+            --timeout 10m
+
+      - name: 未配置密钥的可见提示
+        if: env.FTL_ENABLED != 'true'
+        run: |
+          echo "::notice title=FTL 未启用::仓库 secret FIREBASE_SERVICE_ACCOUNT 未配置，本轮跳过。设置步骤见 docs/ANDROID_FIREBASE_TESTLAB.md"
