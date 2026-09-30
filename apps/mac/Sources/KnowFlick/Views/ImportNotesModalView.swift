@@ -576,6 +576,8 @@ private struct ParsedCardRowView: View {
                     .foregroundStyle(isChecked ? InsightColor.accent : InsightColor.textTertiary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isChecked ? "取消选择此卡片" : "选择此卡片")
+            .accessibilityAddTraits(isChecked ? [.isSelected] : [])
             .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 5) {

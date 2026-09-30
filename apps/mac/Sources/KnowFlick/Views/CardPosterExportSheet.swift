@@ -94,6 +94,8 @@ public struct CardPosterExportSheet: View {
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
+            .help("关闭 (Esc)")
+            .accessibilityLabel("关闭")
         }
     }
 
