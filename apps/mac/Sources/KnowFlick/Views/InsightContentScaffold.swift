@@ -78,12 +78,19 @@ struct InsightEmptyState: View {
 struct InsightStaggerReveal: ViewModifier {
     let index: Int
     @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
+        // reduce-motion 分层判据（ui-research 共识 5）：整屏级入场属 large motion，
+        // 系统开启「减弱动态效果」时塌为直出；micro 过渡（图标形变、勾选）不受影响
         content
-            .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 8)
+            .opacity(reduceMotion || shown ? 1 : 0)
+            .offset(y: reduceMotion ? 0 : (shown ? 0 : 8))
             .onAppear {
+                guard !reduceMotion else {
+                    shown = true
+                    return
+                }
                 withAnimation(InsightMotion.page.delay(Double(index) * InsightMotion.stagger)) {
                     shown = true
                 }
