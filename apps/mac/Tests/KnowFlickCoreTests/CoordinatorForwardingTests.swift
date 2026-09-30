@@ -46,6 +46,35 @@ struct CoordinatorForwardingTests {
         #expect(probe.contains("warning"), "转发属性的变更必须穿透到观察者（视图靠它重绘横幅）")
     }
 
+    /// 卡片库子系统（Step 5）：`cards` / `deck` / `favorites` 的状态所有权移入 `CardLibraryStore`
+    /// 后，经 facade 转发的读取必须仍能触发观察回调——卡片域的每一次重绘都压在这条链上。
+    @Test func forwardedCardLibraryNotifiesObservers() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = Storage(baseDir: directory)
+        let store = AppStore(storage: storage)
+        defer {
+            store.closeChat()
+            store.flushPersistence()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let probe = Probe()
+        withObservationTracking {
+            _ = store.cards
+            _ = store.deck
+            _ = store.favorites
+            _ = store.topCard
+        } onChange: {
+            probe.record("library")
+        }
+        #expect(store.cards.isEmpty)
+
+        let subject = card()
+        store.cards = [subject]
+
+        #expect(store.topCard?.id == subject.id)
+        #expect(probe.contains("library"), "卡片库转发属性的变更必须穿透到观察者（刷卡区/收藏/统计靠它重绘）")
+    }
+
     /// 设置通道的告警同样经协调器上报，且成功保存后能清除（回滚语义不变）。
     @Test(.timeLimit(.minutes(1))) func settingsWarningTravelsThroughTheCoordinator() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
