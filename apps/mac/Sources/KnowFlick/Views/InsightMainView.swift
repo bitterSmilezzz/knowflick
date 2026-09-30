@@ -23,6 +23,9 @@ struct InsightMainView: View {
 
     // 独立悬浮飞出层（划走瞬间解耦，底层卡堆直接就位，彻底解决闪烁与瞬跳）
     @State private var swipingCard: KnowledgeCard? = nil
+    /// reduce-motion 下飞出层的透明度：整卡飞离属 large motion，塌为原地淡出
+    @State private var flyingCardOpacity: Double = 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var swipingOffset: CGSize = .zero
     @State private var swipingDirection: SwipeDirection? = nil
 
@@ -647,7 +650,8 @@ struct InsightMainView: View {
         .offset(swipingOffset)
             .rotationEffect(.degrees(clampedDegrees))
             .overlay(flyingSwipeBadge)
-            .opacity(max(0.0, 1.0 - (Double(abs(swipingOffset.width)) - 180.0) / 450.0))
+            // 正常路径按飞行距离渐隐；reduce-motion 路径由 performSwipe 直接驱动原地淡出
+            .opacity(reduceMotion ? flyingCardOpacity : max(0.0, 1.0 - (Double(abs(swipingOffset.width)) - 180.0) / 450.0))
             .zIndex(999)
             .allowsHitTesting(false)
             .transition(.identity)
@@ -710,6 +714,7 @@ struct InsightMainView: View {
         swipingCard = card
         swipingOffset = initialOffset
         swipingDirection = direction
+        flyingCardOpacity = 1
 
         // 立即将 store 里的卡片划走，并无动画重置底层卡堆的拖拽偏移
         var noAnimation = Transaction()
@@ -720,21 +725,31 @@ struct InsightMainView: View {
             store.swipe(card, direction: direction)
         }
 
-        // 飞出动画：处于独立悬浮层的 swipingCard 顺滑飞离屏幕并渐隐；完成后回收悬浮卡
-        let targetX: CGFloat = direction == .left ? -760 : 760
-        let targetY: CGFloat = initialOffset.height * 0.35 + (direction == .left ? -20 : 20)
-
         func reclaimFlyingCard() {
             swipingCard = nil
             swipingOffset = .zero
             swipingDirection = nil
+            flyingCardOpacity = 1
         }
 
-        withAnimation(.easeOut(duration: 0.24), completionCriteria: .removed, {
-            swipingOffset = CGSize(width: targetX, height: targetY)
-        }, completion: {
-            reclaimFlyingCard()
-        })
+        if reduceMotion {
+            // 减弱动态：整卡飞离屏幕属 large motion，塌为原地淡出
+            //（ui-research 共识 5 的分层判据）；手势拖动阶段是直接操纵，不在其列
+            withAnimation(.easeOut(duration: 0.18), completionCriteria: .removed, {
+                flyingCardOpacity = 0
+            }, completion: {
+                reclaimFlyingCard()
+            })
+        } else {
+            // 飞出动画：处于独立悬浮层的 swipingCard 顺滑飞离屏幕并渐隐；完成后回收悬浮卡
+            let targetX: CGFloat = direction == .left ? -760 : 760
+            let targetY: CGFloat = initialOffset.height * 0.35 + (direction == .left ? -20 : 20)
+            withAnimation(.easeOut(duration: 0.24), completionCriteria: .removed, {
+                swipingOffset = CGSize(width: targetX, height: targetY)
+            }, completion: {
+                reclaimFlyingCard()
+            })
+        }
         // 兜底：飞行动画期间视图被整体卸载等极端情况下 completion 可能不回调，
         // 超时强制回收，防止 swipingCard 残留把卡堆锁死
         Task { @MainActor in
