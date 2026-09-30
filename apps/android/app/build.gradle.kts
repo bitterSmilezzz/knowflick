@@ -16,7 +16,9 @@ val releaseSigning = Properties().apply {
 
 android {
     namespace = "com.knowflick.app"
-    compileSdk = 35
+    // compileSdk 36（2026-09-30 工具链升级）：activity-compose 1.13 / lifecycle 2.10 的 AAR
+    // 元数据要求；targetSdk 有意保持 35——目标是行为变更决策，不是工具链决策，随发版单独走。
+    compileSdk = 36
 
     // 种子卡与分类背景图由仓库根 shared/assets 提供，与 macOS 端共用同一份内容，
     // 避免各端各自维护一份副本而逐渐漂移（迁移前两端 42 张底图与种子卡逐字节一致）。
@@ -70,7 +72,9 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
+    // Compose BOM 随工具链升级：2024.10.01 → 2025.06.00（compileSdk 36 配套；
+    // material3/ui 的 API 变更由 265 项 JVM 测试 + 34 项仪器测试兜底）。
+    val composeBom = platform("androidx.compose:compose-bom:2025.06.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -78,22 +82,14 @@ dependencies {
     // 只用 material-icons-core：扩展包含 2277 个图标，会让每个 debug 构建多出约 3.8 MB dex。
     // 本项目额外需要的 4 个图标见 ui/AppIcons.kt。
     implementation("androidx.compose.material:material-icons-core")
-    // activity-compose 停在 1.9.3：1.13.0 的 AAR 元数据要求 minCompileSdk=36 + AGP≥8.9.1，
-    // 升级会连锁到「装 SDK 36 → compileSdk 36 → 升 AGP → 大概率升 Kotlin → 重采 baseline profile」，
-    // 属于独立的工具链升级版本，0.8.6 不背这个包。
-    implementation("androidx.activity:activity-compose:1.9.3")
-    // lifecycle 留在 2.8.7（0.8.6 未能升级，实测记录如下）：
-    //  - 2.11.0：androidx.lifecycle 组内版本对齐会把 lifecycle-runtime-compose 一起升到 2.11.0，
-    //    而 lifecycle-runtime-compose-android:2.11.0 的 AAR 元数据是 minCompileSdk=37 +
-    //    minAndroidGradlePluginVersion=9.1.0 → `checkDebugAarMetadata` 直接失败。
-    //  - 2.10.0（元数据 minCompileSdk=35 / AGP 8.6.0，本可通过元数据校验）与 2.9.4：
-    //    其 lint 检测器（NonNullableMutableLiveDataDetector / RememberInCompositionDetector）
-    //    用新版 Kotlin 分析 API 编译，在 AGP 8.7.3 自带 lint 下抛
-    //    java.lang.IncompatibleClassChangeError，导致 `lintDebug` 任务崩溃。
-    //    不为此 disable 掉 "NullSafeMutableLiveData" 等正确性检查——那是拿检查换依赖版本。
-    // 结论：lifecycle 升级必须与 AGP 工具链升级（≥8.9，可能连带 compileSdk 36/37 与 Kotlin 版本）
-    // 作为一个整体版本推进，届时需重跑全量 JVM + 仪器测试并重采 baseline profile。
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    // activity-compose 1.13.0（原锁 1.9.3）：其 AAR 元数据要求 minCompileSdk=36 + AGP≥8.9.1，
+    // 本轮升级恰好满足这两条，锁的解除随 AGP/compileSdk 一并完成。
+    implementation("androidx.activity:activity-compose:1.13.0")
+    // lifecycle 2.10.0（原锁 2.8.7，0.8.6 的实测记录：2.9.4/2.10.0 的 lint 检测器用新版
+    // Kotlin 分析 API 编译，在 AGP 8.7.3 自带 lint 下抛 IncompatibleClassChangeError）。
+    // 升 AGP 后 lint 版本同步变新，该崩溃是否消除由本轮 lintDebug 实测裁决；
+    // 2.11.0 仍不可用：AAR 元数据要求 minCompileSdk=37 + AGP≥9.1.0。
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
