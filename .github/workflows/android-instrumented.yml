@@ -69,6 +69,9 @@ jobs:
           api-level: 35
           arch: arm64-v8a
           target: google_apis
+          # macOS runner 上 adb daemon 不会自启：模拟器启动时连不上 5037（首跑日志唯一的
+          # ERROR 行），设备永远注册不进 adb，轮询必然超时。启动前先把 server 拉起来。
+          pre-emulator-launch-script: adb start-server
           script: cd apps/android && ./gradlew --console=plain :app:connectedDebugAndroidTest
 
       - name: 上传测试报告（失败现场）
