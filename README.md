@@ -25,7 +25,7 @@ Android 端是同仓库内的独立原生应用（Kotlin + Jetpack Compose），
 ## 当前版本
 
 - [macOS v0.1.0](https://github.com/bitterSmilezzz/knowflick/releases/tag/v0.1.0)：pre-1.0 序列首个版本——界面 Cutline 迁移收官、收藏/统计单一路由化、刷卡卡片恢复摄影大图、三处性能热点修复。[发布说明](docs/MAC_RELEASE_0.1.0.md)
-- Android v0.10.2：AI 与语音凭据写入移至后台执行，保留持久化结果反馈。[发布说明](docs/ANDROID_RELEASE_0.10.2.md)（**待发版**——已记录但尚未打 tag、发 Release 或上传产物）
+- [Android v0.10.2](https://github.com/bitterSmilezzz/knowflick/releases/tag/android-v0.10.2)：AI 与语音凭据写入移至后台执行，保留持久化结果反馈。[发布说明](docs/ANDROID_RELEASE_0.10.2.md)
 - [本地 MCP / CLI 使用说明](tools/knowflick-mcp/README.md)：检索、地图、学习路径与人工确认暂存；自动刷新卡库并保护并发写入。
 
 ## 功能
