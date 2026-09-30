@@ -232,13 +232,23 @@ public final class AppStore {
         var migratedSettings = loaded.settings
         // 迁移旧版本可能写入 JSON 的密钥；成功进入 Keychain 后再清除明文。
         let legacyKey = migratedSettings.apiKey
+        func persistMigratedSettings(_ settings: AISettings) {
+            do {
+                try storage.saveSettingsThrowing(settings)
+            } catch {
+                // 写失败不中断 bootstrap（迁移本身幂等，下次启动会重试），
+                // 但必须可见——否则「settings.json 里明文密钥迟迟清不掉」无从排查
+                Logger(subsystem: "com.knowflick.app", category: "bootstrap")
+                    .error("密钥迁移后写设置失败，明文将保留至下次启动重试：\(error.localizedDescription, privacy: .public)")
+            }
+        }
         if let key = credentials.read(account: "apiKey") {
             migratedSettings.apiKey = key
-            if !legacyKey.isEmpty { try? storage.saveSettingsThrowing(migratedSettings) }
+            if !legacyKey.isEmpty { persistMigratedSettings(migratedSettings) }
         } else if !legacyKey.isEmpty {
             do {
                 try credentials.save(legacyKey, account: "apiKey")
-                try? storage.saveSettingsThrowing(migratedSettings)
+                persistMigratedSettings(migratedSettings)
             } catch {
                 lastError = error.localizedDescription
             }
