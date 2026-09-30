@@ -217,6 +217,10 @@ public enum InsightSpacing {
 public enum InsightMotion {
     /// 侧栏展开/折叠、面板进出
     public static let shell = Animation.spring(response: 0.36, dampingFraction: 0.82)
+    /// 侧栏展开：开比关长（ui-research 共识 27「关比开短」——起与落用不同速率，不对称才有重量）
+    public static let shellOpen = shell
+    /// 侧栏折叠：比展开短一档，退场要利落
+    public static let shellClose = Animation.spring(response: 0.26, dampingFraction: 0.84)
     /// 卡片 hover / 选中
     public static let card = Animation.spring(response: 0.28, dampingFraction: 0.84)
     /// 药丸筛选器吸边（素材 e7 的分段控件滑块）
