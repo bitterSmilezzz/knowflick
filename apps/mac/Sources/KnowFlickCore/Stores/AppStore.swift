@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// 全局状态：卡片池、历史记录、设置、AI 生成
 @MainActor
@@ -180,13 +181,24 @@ public final class AppStore {
 
     public func bootstrap() async {
         guard isLoadingSeed else { return }
+        // 启动耗时打点：分阶段 signpost（Instruments 的 os_signpost 轨道可直接看）+ 结束时
+        // 一条汇总日志。这是启动速度的测量基线——没有它，任何「启动更快」的改动都无法证实。
+        let signposter = OSSignposter(subsystem: "com.knowflick.app", category: "bootstrap")
+        let bootStart = ContinuousClock.now
+        defer {
+            let elapsed = ContinuousClock.now - bootStart
+            Logger(subsystem: "com.knowflick.app", category: "bootstrap")
+                .info("bootstrap 完成：\(elapsed.description, privacy: .public)")
+        }
         // 文件 IO 与种子解码（338KB JSON）放后台线程，钥匙串读取保持主线程（协议隔离）；
         // 卡片与设置均一次性赋值，避免逐字段变更触发 didSet → recompute 风暴
         let storage = self.storage
+        let loadState = signposter.beginInterval("loadLibrary")
         let io = Task.detached(priority: .userInitiated) { () -> (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings) in
             (storage.loadCards(), Self.loadSeedCards(), storage.loadSettings())
         }
         let loaded = await io.value
+        signposter.endInterval("loadLibrary", loadState)
 
         // 卡片库状态已经确定（无论空与否），从这里开始落盘就是安全的：先解除守卫再写盘。
         // 反过来（先写盘再解除）会让 bootstrap 期间的落盘被守卫吞掉，种子增量合并就永远存不下来。
@@ -216,6 +228,7 @@ public final class AppStore {
         // 挂起一小段时间让卡片库先上屏，再进入钥匙串读取。
         try? await Task.sleep(for: .milliseconds(120))
 
+        let keychainState = signposter.beginInterval("keychainMigration")
         var migratedSettings = loaded.settings
         // 迁移旧版本可能写入 JSON 的密钥；成功进入 Keychain 后再清除明文。
         let legacyKey = migratedSettings.apiKey
@@ -233,6 +246,7 @@ public final class AppStore {
         for i in migratedSettings.speech.profiles.indices {
             migratedSettings.speech.profiles[i].apiKey = credentials.read(account: "tts." + migratedSettings.speech.profiles[i].id) ?? ""
         }
+        signposter.endInterval("keychainMigration", keychainState)
         settings = migratedSettings
         // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）
         if deck.count < 5 && settings.autoGenerate && settings.isAIConfigured && settings.enableAI {

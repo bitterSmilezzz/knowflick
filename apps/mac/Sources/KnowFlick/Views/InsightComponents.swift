@@ -298,7 +298,9 @@ struct InsightButton: View {
             .opacity(isEnabled ? 1 : 0.4)
             .scaleEffect(hovering && isEnabled ? 1.02 : 1.0)
         }
-        .buttonStyle(.plain)
+        // 按压反馈与底栏图标按钮（PressableButtonStyle 0.94）同一套语言，文本按钮取更轻的 0.97：
+        // 之前只有 hover 缩放、按下无任何响应，是交互反馈的一致性缺口
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
         .disabled(!isEnabled)
         .onHover { hovering = $0 }
         .animation(InsightMotion.card, value: hovering)
