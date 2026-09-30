@@ -25,6 +25,9 @@ public final class AppStore {
         set { library.studyScope = newValue }
     }
     public var isGenerating = false
+    /// 本轮生成开始的时间（isGenerating 置 false 时清空）：等待反馈要显示「已等多久」
+    ///（ui-research 共识 9：≥2s 的等待需要可见进度），视图据此计算流逝秒数。
+    public private(set) var generationStartedAt: Date?
     public var lastError: String?
     /// 落盘告警（顶栏横幅）：由 `PersistenceCoordinator` 持有，这里转发。
     /// 转发属性同样能被观察（`@Observable` 的读取会穿透到协调器），视图零改动。
@@ -418,7 +421,11 @@ public final class AppStore {
     public func generateNewCards(count: Int = 3, topic: String? = nil) async {
         guard !isGenerating else { return }
         isGenerating = true
-        defer { isGenerating = false }
+        generationStartedAt = Date()
+        defer {
+            isGenerating = false
+            generationStartedAt = nil
+        }
 
         do {
             // 排除标题传全量，截断上限由 AIService 单点决定

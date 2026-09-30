@@ -193,6 +193,9 @@ struct InsightStatBlock: View {
                     .foregroundStyle(InsightColor.textPrimary)
                     .monospacedDigit()
                     .contentTransition(.numericText())
+                    // numericText 只在动画上下文里生效：这里补上触发键，
+                    // 否则调用方不包 withAnimation 时数字仍是硬跳（ui-research 共识 22）
+                    .animation(InsightMotion.value, value: value)
                 if let caption {
                     Text(caption)
                         .font(InsightFont.caption)
@@ -369,15 +372,21 @@ struct InsightSidebarRow: View {
                     .frame(width: 20)
                     .foregroundStyle(isSelected ? InsightColor.accent : InsightColor.textTertiary)
                 if isExpanded {
-                    Text(title)
-                        .font(InsightFont.body)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if let count {
-                        Text("\(count)")
-                            .font(InsightFont.monoSmall)
-                            .monospacedDigit()
+                    Group {
+                        Text(title)
+                            .font(InsightFont.body)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        if let count {
+                            Text("\(count)")
+                                .font(InsightFont.monoSmall)
+                                .monospacedDigit()
+                                // 计数变化数上去，不跳变（ui-research 共识 22：数字会变时让它数上去）
+                                .contentTransition(.numericText())
+                                .animation(InsightMotion.value, value: count)
+                        }
                     }
+                    .transition(.opacity)
                 }
             }
             .foregroundStyle(isSelected ? InsightColor.textPrimary : (hovering ? InsightColor.textSecondary : InsightColor.textTertiary))
