@@ -81,6 +81,11 @@ jobs:
       - name: 检查 shell 脚本陷阱
         run: ./tools/lint_shell_vars.sh
 
+      - name: 校验 MCP server
+        # 与 macos.yml 同一步：本 workflow 的路径过滤包含 tools/**，改 MCP 只会让
+        # Android job 触发构建——若这里不验，「Agent 接不上」要等下次 mac 端有改动才暴露。
+        run: node --test tools/knowflick-mcp/test.mjs
+
       - name: 校验学科契约与内容
         # 学科体系有三处事实来源：shared/assets/taxonomy_map.json、mac 与 Android 各自内嵌的
         # SubjectRegistry。这里先做契约自洽 + 种子内容合法 + 三处一致的粗校验，
