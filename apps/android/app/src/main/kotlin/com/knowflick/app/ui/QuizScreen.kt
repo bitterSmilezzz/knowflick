@@ -143,8 +143,8 @@ fun QuizScreen(
                 Row(
                     Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.06f))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                        .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -154,7 +154,7 @@ fun QuizScreen(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             "$countMastered",
-                            color = Color.White.copy(alpha = 0.8f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
@@ -165,7 +165,7 @@ fun QuizScreen(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             "$countHesitant",
-                            color = Color.White.copy(alpha = 0.8f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
@@ -176,7 +176,7 @@ fun QuizScreen(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             "$countForgot",
-                            color = Color.White.copy(alpha = 0.8f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
@@ -470,11 +470,13 @@ private fun QuizSummary(
             modifier = Modifier.size(130.dp),
             contentAlignment = Alignment.Center,
         ) {
+            // 环底色在 composable 作用域先解出来：DrawScope 里不能读 MaterialTheme
+            val ringTrack = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val strokeWidth = 10.dp.toPx()
                 // 底环
                 drawArc(
-                    color = Color.White.copy(alpha = 0.08f),
+                    color = ringTrack,
                     startAngle = -90f,
                     sweepAngle = 360f,
                     useCenter = false,
@@ -602,7 +604,7 @@ private fun QuizSummary(
                 ) {
                     Text(
                         "针对性重测弱项 ($weakCount 题)",
-                        color = Color.White,
+                        color = Color(0xFF1B1B1F),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                     )
@@ -614,7 +616,7 @@ private fun QuizSummary(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White.copy(alpha = 0.08f),
+                    containerColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
                     contentColor = MaterialTheme.colorScheme.onBackground,
                 ),
             ) {
@@ -800,7 +802,7 @@ private fun SummaryStatCard(
     Box(
         modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.04f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.04f))
             .border(1.dp, tint.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
             .padding(vertical = 12.dp, horizontal = 8.dp),
         contentAlignment = Alignment.Center,
@@ -816,13 +818,13 @@ private fun SummaryStatCard(
             Spacer(Modifier.height(2.dp))
             Text(
                 title,
-                color = Color.White.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
             )
             Text(
                 "$pct%",
-                color = Color.White.copy(alpha = 0.4f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
                 fontSize = 9.5.sp,
             )
         }
