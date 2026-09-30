@@ -83,7 +83,7 @@ struct AmbientAudioPlayerBar: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.06), in: Circle())
+                        .background(InsightColor.surfaceSunken, in: Circle())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .disabled(store.history.isEmpty)
@@ -114,7 +114,7 @@ struct AmbientAudioPlayerBar: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.06), in: Circle())
+                        .background(InsightColor.surfaceSunken, in: Circle())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .disabled(store.deck.count <= 1 || isTransitioning || nextRequestInFlight)
@@ -130,8 +130,8 @@ struct AmbientAudioPlayerBar: View {
                         .foregroundStyle(InsightColor.textSecondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
-                        .background(Color.white.opacity(0.06), in: Capsule())
-                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                        .background(InsightColor.surfaceSunken, in: Capsule())
+                        .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
                 .help("切换朗读语速 (当前 \(speedText))")
@@ -144,7 +144,7 @@ struct AmbientAudioPlayerBar: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.06), in: Circle())
+                        .background(InsightColor.surfaceSunken, in: Circle())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .help("语音听书控制台 ⌥⌘P")
@@ -153,7 +153,7 @@ struct AmbientAudioPlayerBar: View {
 
             Divider()
                 .frame(height: 18)
-                .overlay(Color.white.opacity(0.15))
+                .overlay(InsightColor.border)
 
             // 4. 睡眠定时剩余与退出磨耳朵模式
             if let seconds = speechService.sleepTimerRemainingSeconds {

@@ -116,7 +116,7 @@ public struct CardPosterExportSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(InsightColor.border, lineWidth: 1)
                     )
                     // 复合柔光立体阴影
                     .shadow(
