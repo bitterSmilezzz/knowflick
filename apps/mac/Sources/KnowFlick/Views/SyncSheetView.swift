@@ -74,7 +74,7 @@ struct SyncSheetView: View {
 
             VStack {
                 Spacer()
-                EditorialToast(center: toast, edge: .bottom)
+                InsightToast(center: toast, edge: .bottom)
                     .padding(.bottom, 64)
             }
         }
