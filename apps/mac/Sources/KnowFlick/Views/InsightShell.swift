@@ -78,6 +78,13 @@ struct InsightShell<Content: View>: View {
     @ViewBuilder var content: Content
 
     @State private var hoveringSidebarToggle = false
+    /// 系统减弱动态效果：侧栏整壳移动属 large motion，塌为直出（ui-research 共识 5 的分层判据）
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// 侧栏开合的动画档：正常时展开长弹簧 / 折叠短弹簧，reduce-motion 下不加动画
+    private var shellTiming: Animation? {
+        reduceMotion ? nil : (sidebarExpanded ? InsightMotion.shellOpen : InsightMotion.shellClose)
+    }
 
     /// 侧栏计数徽章缓存：仅在卡库或学习范围变化时重算一次，
     /// 而不是每行每次渲染都重建 LearningPlan（侧栏动画逐帧重绘时的主要卡顿源）
@@ -88,7 +95,7 @@ struct InsightShell<Content: View>: View {
             sidebar
                 .frame(width: sidebarExpanded ? InsightLayout.sidebarExpanded : InsightLayout.sidebarCollapsed)
                 // 展开走长弹簧、折叠走短弹簧：动画参数按「这扇门往哪开」取档（ui-research 共识 27）
-                .animation(sidebarExpanded ? InsightMotion.shellOpen : InsightMotion.shellClose, value: sidebarExpanded)
+                .animation(shellTiming, value: sidebarExpanded)
 
             // 内容区：与侧栏之间留出画布色缝隙，形成 Cutline 的结构分区
             content
@@ -97,7 +104,7 @@ struct InsightShell<Content: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: InsightRadius.sidebar, style: .continuous))
                 .padding(.trailing, 8)
                 .padding(.vertical, 8)
-                .animation(sidebarExpanded ? InsightMotion.shellOpen : InsightMotion.shellClose, value: sidebarExpanded)
+                .animation(shellTiming, value: sidebarExpanded)
         }
         .background(InsightColor.sidebar)
         .onAppear(perform: refreshBadgeCounts)
@@ -209,7 +216,7 @@ struct InsightShell<Content: View>: View {
         .padding(.top, 14)
         // 折叠/展开的统一动画上下文：宽度之外，品牌文字/按钮/采集组的内边距与行淡出
         // 全部被同一条弹簧覆盖（ui-research 共识 4：卡顿感来自没被动画覆盖的属性）
-        .animation(sidebarExpanded ? InsightMotion.shellOpen : InsightMotion.shellClose, value: sidebarExpanded)
+        .animation(shellTiming, value: sidebarExpanded)
     }
 
     // 品牌标：直接用真实 App 图标（icns），与 Dock / 访达一致，不另造符号
