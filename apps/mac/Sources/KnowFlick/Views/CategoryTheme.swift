@@ -54,7 +54,7 @@ struct CategoryTheme {
     }
 
     /// 未知分类（AI 新分类）统一回退到 tech 主题
-    private static let fallbackSpec = spec("tech", icon: "sparkles", code: "AI", r: 0.45, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.13, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09)
+    private static let fallbackSpec = spec("tech", icon: "cpu", code: "AI", r: 0.45, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.13, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09)
 
     private static let categoryAliases: [String: String] = [
         "物理": "physics", "生物": "biology", "天文": "astronomy", "数学": "math",
@@ -147,7 +147,7 @@ struct CategoryTheme {
         "tech": spec("tech", icon: "cpu", code: "TECH", r: 0.45, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.13, dtB: 0.18, dbR: 0.03, dbG: 0.06, dbB: 0.09),
         "life": spec("life", icon: "cup.and.saucer.fill", code: "LIFE", r: 0.90, g: 0.70, b: 0.50, dtR: 0.16, dtG: 0.12, dtB: 0.08, dbR: 0.07, dbG: 0.05, dbB: 0.04),
         "geography": spec("geography", icon: "globe.asia.australia.fill", code: "GEO", r: 0.60, g: 0.80, b: 0.65, dtR: 0.09, dtG: 0.15, dtB: 0.12, dbR: 0.04, dbG: 0.07, dbB: 0.06),
-        "ai": spec("ai", icon: "sparkles", code: "AI", r: 0.62, g: 0.70, b: 0.95, dtR: 0.10, dtG: 0.11, dtB: 0.20, dbR: 0.04, dbG: 0.05, dbB: 0.10),
+        "ai": spec("ai", icon: "cpu", code: "AI", r: 0.62, g: 0.70, b: 0.95, dtR: 0.10, dtG: 0.11, dtB: 0.20, dbR: 0.04, dbG: 0.05, dbB: 0.10),
         "algorithm": spec("algorithm", icon: "point.topleft.down.to.point.bottomright.curvepath", code: "ALGO", r: 0.50, g: 0.80, b: 0.80, dtR: 0.07, dtG: 0.14, dtB: 0.15, dbR: 0.03, dbG: 0.06, dbB: 0.07),
         "datastructure": spec("datastructure", icon: "square.stack.3d.up.fill", code: "DS", r: 0.55, g: 0.75, b: 0.90, dtR: 0.08, dtG: 0.12, dtB: 0.16, dbR: 0.04, dbG: 0.06, dbB: 0.08),
         "architecture": spec("architecture", icon: "building.columns.fill", code: "ARCH", r: 0.75, g: 0.78, b: 0.85, dtR: 0.12, dtG: 0.13, dtB: 0.16, dbR: 0.05, dbG: 0.06, dbB: 0.07),

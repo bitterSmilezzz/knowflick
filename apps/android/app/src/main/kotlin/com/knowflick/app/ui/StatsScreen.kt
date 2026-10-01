@@ -294,7 +294,7 @@ private fun SpacedRepetitionDueCard(
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    AppIcons.Sparkles,
+                    AppIcons.AiChip,
                     contentDescription = null,
                     tint = EditorialColor.aiAmber,
                     modifier = Modifier.size(18.dp),

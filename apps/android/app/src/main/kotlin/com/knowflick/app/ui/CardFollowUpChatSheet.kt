@@ -238,7 +238,7 @@ private fun ChatHeaderBar(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = AppIcons.Sparkles,
+                imageVector = AppIcons.AiChip,
                 contentDescription = null,
                 tint = EditorialColor.aiAmber,
                 modifier = Modifier.size(18.dp),
@@ -358,7 +358,7 @@ private fun ChatStartersView(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = AppIcons.Sparkles,
+                imageVector = AppIcons.AiChip,
                 contentDescription = null,
                 tint = EditorialColor.aiAmber,
                 modifier = Modifier.size(32.dp),
@@ -506,7 +506,7 @@ private fun FollowUpSuggestions(
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
         ) {
             Icon(
-                imageVector = AppIcons.Sparkles,
+                imageVector = AppIcons.AiChip,
                 contentDescription = null,
                 tint = EditorialColor.aiAmber,
                 modifier = Modifier.size(13.dp),
@@ -581,7 +581,7 @@ private fun ChatMessageBubble(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = AppIcons.Sparkles,
+                    imageVector = AppIcons.AiChip,
                     contentDescription = null,
                     tint = EditorialColor.aiAmber,
                     modifier = Modifier.size(14.dp),

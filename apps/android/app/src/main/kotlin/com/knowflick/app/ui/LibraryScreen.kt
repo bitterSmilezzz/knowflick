@@ -117,7 +117,7 @@ fun LibraryScreen(
                 Icon(AppIcons.Search, contentDescription = "搜索与筛选", tint = MaterialTheme.colorScheme.onBackground)
             }
             IconButton(onClick = onOpenGraph) {
-                Icon(AppIcons.Sparkles, contentDescription = "知识全景星图", tint = EditorialColor.aiAmber)
+                Icon(AppIcons.GraphHub, contentDescription = "知识全景星图", tint = EditorialColor.aiAmber)
             }
             // 备份与全量多格式导出
             IconButton(onClick = onOpenBackupExport) {
