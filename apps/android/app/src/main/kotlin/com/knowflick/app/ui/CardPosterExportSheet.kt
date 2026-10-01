@@ -130,7 +130,7 @@ fun CardPosterExportSheet(
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = AppIcons.Sparkles,
+                            imageVector = AppIcons.AiChip,
                             contentDescription = null,
                             tint = EditorialColor.aiAmber,
                             modifier = Modifier.size(16.dp),
