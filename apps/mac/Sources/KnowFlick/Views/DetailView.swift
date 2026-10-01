@@ -148,7 +148,7 @@ struct DetailView: View {
                                 // 关闭「AI 内容标记」后，AI 卡片不应被误标为「预置精选」，
                                 // 而是退化为不暴露来源的中性标签（与卡片正面 showAIMark 行为一致）。
                                 if showAIMark {
-                                    Label("AI 生成", systemImage: "sparkles")
+                                    Label("AI 生成", systemImage: "cpu")
                                         .font(InsightFont.caption.weight(.bold))
                                         .foregroundStyle(InsightColor.warning)
                                         .padding(.horizontal, 10)
@@ -183,7 +183,7 @@ struct DetailView: View {
                         // AI 内容核实提示条（可按设置隐藏）
                         if showAIMark && card.source == .ai {
                             HStack(spacing: 9) {
-                                Image(systemName: "sparkles")
+                                Image(systemName: "cpu")
                                     .foregroundStyle(InsightColor.warning)
                                 Text("由 AI 生成，请通过下方「延伸阅读」链接核实内容真实性")
                                     .font(InsightFont.caption)
@@ -341,7 +341,7 @@ struct DetailView: View {
     private var chatTopButton: some View {
         Button(action: { showChatSheet = true }) {
             HStack(spacing: 5) {
-                Image(systemName: "sparkles")
+                Image(systemName: "cpu")
                     .font(.system(size: 11.5, weight: .bold))
                 Text("AI 追问")
                     .font(InsightFont.captionSmall.weight(.bold))
@@ -371,7 +371,7 @@ struct DetailView: View {
                             endRadius: 20
                         ))
                         .frame(width: 40, height: 40)
-                    Image(systemName: "sparkles")
+                    Image(systemName: "cpu")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(InsightColor.warning)
                 }
@@ -559,7 +559,7 @@ struct DetailView: View {
         if !relatedCards.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
+                    Image(systemName: "cpu")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(InsightColor.warning)
                     Text("相关灵感脉络")

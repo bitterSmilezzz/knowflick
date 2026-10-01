@@ -229,8 +229,8 @@ struct InsightShell<Content: View>: View {
                     .frame(width: 30, height: 30)
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             } else {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 15, weight: .bold))
+                Text("K")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .frame(width: 30, height: 30)
                     .background(InsightColor.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))

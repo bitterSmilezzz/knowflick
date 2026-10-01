@@ -961,7 +961,6 @@ struct SettingsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 7)
             .background(InsightColor.success, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .shadow(color: InsightColor.success.opacity(0.35), radius: 8, y: 2)
             .buttonStyle(PressableButtonStyle(scale: 0.97))
         }
         .padding(18)

@@ -546,7 +546,7 @@ private fun SearchResultCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        AppIcons.Sparkles,
+                        AppIcons.AiChip,
                         contentDescription = null,
                         tint = EditorialColor.aiAmber,
                         modifier = Modifier.size(12.dp),

@@ -168,7 +168,6 @@ public struct CardPosterExportSheet: View {
                     RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.8)
                 )
-                .shadow(color: InsightColor.accent.opacity(0.35), radius: 8, y: 2)
             }
             .buttonStyle(PressableButtonStyle(scale: 0.97))
             .keyboardShortcut("c", modifiers: .command)
