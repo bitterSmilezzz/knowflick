@@ -18,10 +18,10 @@ struct CardFollowUpChatView: View {
     }
 
     private let starters: [(icon: String, text: String)] = [
-        ("💡", "用小学生都能听懂的生活比喻，解释它的底层运转机理"),
-        ("🔍", "在工业界、现实生活或前沿科技中有哪些典型应用或反转案例？"),
-        ("⚡", "这个概念与哪些其他学科存在意料之外的交叉与碰撞？"),
-        ("❓", "学术界最初是如何发现它的？背后有什么争议或思维迭代？")
+        ("lightbulb", "用小学生都能听懂的生活比喻，解释它的底层运转机理"),
+        ("magnifyingglass", "在工业界、现实生活或前沿科技中有哪些典型应用或反转案例？"),
+        ("bolt", "这个概念与哪些其他学科存在意料之外的交叉与碰撞？"),
+        ("questionmark.circle", "学术界最初是如何发现它的？背后有什么争议或思维迭代？")
     ]
 
     var body: some View {
@@ -68,7 +68,7 @@ struct CardFollowUpChatView: View {
     private var headerBar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: "sparkles")
+                Image(systemName: "cpu")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(InsightColor.warning)
 
@@ -192,8 +192,9 @@ struct CardFollowUpChatView: View {
                                 store.sendChatMessage(prompt: starter.text)
                             }) {
                                 HStack(alignment: .top, spacing: 12) {
-                                    Text(starter.icon)
-                                        .font(.system(size: 16))
+                                    Image(systemName: starter.icon)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(InsightColor.textTertiary)
 
                                     Text(starter.text)
                                         .font(InsightFont.body)
@@ -266,7 +267,7 @@ struct CardFollowUpChatView: View {
                     Circle()
                         .fill(InsightColor.warning.opacity(0.16))
                         .frame(width: 28, height: 28)
-                    Image(systemName: "sparkles")
+                    Image(systemName: "cpu")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(InsightColor.warning)
                 }
@@ -435,7 +436,7 @@ struct CardFollowUpChatView: View {
         let suggestions = CardChatInsightDeriver.suggestFollowUps(for: lastContent, parentCard: card)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "sparkles")
+                Image(systemName: "cpu")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(InsightColor.warning)
                 Text("深度追问建议 (Click to Ask)")

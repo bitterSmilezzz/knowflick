@@ -101,7 +101,6 @@ struct AmbientAudioPlayerBar: View {
                         .foregroundStyle(Color.black)
                         .frame(width: 34, height: 34)
                         .background(InsightColor.success, in: Circle())
-                        .shadow(color: InsightColor.success.opacity(0.4), radius: 6, y: 1)
                 }
                 .buttonStyle(PressableButtonStyle())
                 .disabled(currentCard == nil)

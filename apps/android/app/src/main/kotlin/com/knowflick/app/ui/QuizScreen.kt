@@ -103,7 +103,7 @@ fun QuizScreen(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    AppIcons.Sparkles,
+                    AppIcons.AiChip,
                     contentDescription = null,
                     tint = EditorialColor.aiAmber,
                     modifier = Modifier.size(16.dp),
@@ -322,7 +322,7 @@ private fun QuizCardFace(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            AppIcons.Sparkles,
+                            AppIcons.AiChip,
                             contentDescription = null,
                             tint = EditorialColor.aiAmber,
                             modifier = Modifier.size(13.dp),
@@ -441,7 +441,7 @@ private fun QuizSummary(
 
         // 顶端图标与标题
         Icon(
-            AppIcons.Sparkles,
+            AppIcons.AiChip,
             contentDescription = null,
             tint = EditorialColor.aiAmber,
             modifier = Modifier.size(36.dp),
@@ -772,7 +772,7 @@ private fun WeakCardReviewItem(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        AppIcons.Sparkles,
+                        AppIcons.AiChip,
                         contentDescription = null,
                         tint = EditorialColor.aiAmber,
                         modifier = Modifier.size(11.dp),

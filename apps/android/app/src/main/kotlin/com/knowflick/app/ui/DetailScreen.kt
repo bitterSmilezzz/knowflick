@@ -319,7 +319,7 @@ fun DetailScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = AppIcons.Sparkles,
+                        imageVector = AppIcons.AiChip,
                         contentDescription = null,
                         tint = EditorialColor.aiAmber,
                         modifier = Modifier.size(20.dp),
@@ -372,7 +372,7 @@ fun DetailScreen(
                         .border(1.dp, btnBorder, CircleShape),
                 ) {
                     Icon(
-                        AppIcons.Sparkles,
+                        AppIcons.AiChip,
                         contentDescription = "AI 伴学追问",
                         tint = EditorialColor.aiAmber,
                     )
