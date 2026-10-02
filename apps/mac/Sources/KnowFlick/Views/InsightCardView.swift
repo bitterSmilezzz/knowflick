@@ -117,7 +117,7 @@ struct InsightCardView: View {
             photoPill(icon: spec.icon, text: card.category)
 
             if card.source == .ai && showAIMark {
-                photoPill(icon: "sparkles", text: "AI", tint: InsightColor.warning)
+                photoPill(icon: "cpu", text: "AI", tint: InsightColor.warning)
             }
 
             Spacer(minLength: 0)

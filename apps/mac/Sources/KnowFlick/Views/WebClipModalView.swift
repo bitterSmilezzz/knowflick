@@ -198,7 +198,7 @@ struct WebClipModalView: View {
     private var cardPreview: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("AI 提炼预览（\(selectedCardIDs.count)/\(cards.count)）", systemImage: "sparkles")
+                Label("AI 提炼预览（\(selectedCardIDs.count)/\(cards.count)）", systemImage: "cpu")
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
                 Spacer()

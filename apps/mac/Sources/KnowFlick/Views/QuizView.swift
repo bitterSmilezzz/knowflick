@@ -209,7 +209,7 @@ struct QuizView: View {
 
                 // 顶端奖章与标题
                 VStack(spacing: InsightSpacing.compact) {
-                    Image(systemName: retentionRate >= 80 ? "medal.fill" : "sparkles")
+                    Image(systemName: retentionRate >= 80 ? "medal.fill" : "chart.bar.fill")
                         .font(.system(size: 38))
                         .foregroundStyle(InsightColor.accent)
 
@@ -594,7 +594,7 @@ private struct WeakCardRowView: View {
                 // AI 相关入口保留 warning 语义
                 Button(action: onChat) {
                     HStack(spacing: InsightSpacing.tiny) {
-                        Image(systemName: "sparkles")
+                        Image(systemName: "cpu")
                             .font(.system(size: 10, weight: .bold))
                         Text("AI 追问")
                             .font(InsightFont.captionSmall.weight(.semibold))
