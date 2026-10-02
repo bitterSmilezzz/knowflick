@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import com.knowflick.app.MainActivity
 import com.knowflick.app.R
 import com.knowflick.app.domain.KnowledgeCard
+import java.lang.ref.WeakReference
 
 /**
  * 知识卡片语音后台朗读与锁屏媒体播控服务：
@@ -314,7 +315,10 @@ class SpeechPlaybackService : Service() {
         const val EXTRA_DURATION_MS = "extra_duration_ms"
 
         /** 全局当前活跃的控制器弱引用，供系统媒体会话按键直接操作 */
-        var activeController: SpeechController? = null
+        private var controllerReference = WeakReference<SpeechController>(null)
+        var activeController: SpeechController?
+            get() = controllerReference.get()
+            set(value) { controllerReference = WeakReference(value) }
 
         fun updateService(
             context: Context,

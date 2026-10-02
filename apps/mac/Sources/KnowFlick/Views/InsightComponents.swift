@@ -23,7 +23,6 @@ struct InsightCard<Content: View>: View {
                         lineWidth: 1
                     )
             )
-            .animation(InsightMotion.card, value: isSelected)
     }
 }
 
@@ -43,7 +42,6 @@ struct InsightRawCard<Content: View>: View {
                         lineWidth: 1
                     )
             )
-            .animation(InsightMotion.card, value: isSelected)
     }
 }
 
@@ -58,8 +56,6 @@ struct InsightSectionLabel: View {
         HStack(alignment: .firstTextBaseline, spacing: InsightSpacing.small) {
             Text(text)
                 .font(InsightFont.sectionLabel())
-                .tracking(0.9)
-                .textCase(.uppercase)
                 .foregroundStyle(InsightColor.textTertiary)
             Spacer(minLength: 0)
             if let trailing {
@@ -142,7 +138,7 @@ struct InsightSegmented: View {
             ForEach(items, id: \.self) { item in
                 let isOn = item == selection
                 Button {
-                    withAnimation(InsightMotion.pill) { selection = item }
+                    selection = item
                 } label: {
                     HStack(spacing: InsightSpacing.small) {
                         Text(item)
@@ -167,6 +163,7 @@ struct InsightSegmented: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(isOn ? [.isSelected] : [])
             }
         }
         .padding(3)
@@ -184,6 +181,7 @@ struct InsightStatBlock: View {
     var caption: String? = nil
     var tone: InsightPill.Tone = .neutral
     var progress: Double? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: InsightSpacing.small) {
@@ -195,7 +193,7 @@ struct InsightStatBlock: View {
                     .contentTransition(.numericText())
                     // numericText 只在动画上下文里生效：这里补上触发键，
                     // 否则调用方不包 withAnimation 时数字仍是硬跳（ui-research 共识 22）
-                    .animation(InsightMotion.value, value: value)
+                    .animation(reduceMotion ? nil : InsightMotion.value, value: value)
                 if let caption {
                     Text(caption)
                         .font(InsightFont.caption)
@@ -220,6 +218,7 @@ struct InsightProgressBar: View {
     let value: Double
     var tint: Color = InsightColor.accent
     var height: CGFloat = 5
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { geo in
@@ -227,12 +226,15 @@ struct InsightProgressBar: View {
                 Capsule().fill(InsightColor.neutralSoft)
                 Capsule()
                     .fill(tint)
-                    .frame(width: max(height, geo.size.width * CGFloat(min(max(value, 0), 1))))
+                    .frame(width: geo.size.width * CGFloat(min(max(value, 0), 1)))
             }
         }
         .frame(height: height)
         .clipShape(Capsule())
-        .animation(InsightMotion.value, value: value)
+        .animation(reduceMotion ? nil : InsightMotion.value, value: value)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("进度")
+        .accessibilityValue("\(Int(min(max(value, 0), 1) * 100))%")
     }
 }
 
@@ -265,6 +267,7 @@ struct InsightIconButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(help)
+        .accessibilityLabel(help.isEmpty ? icon : help)
     }
 }
 
@@ -296,14 +299,11 @@ struct InsightButton: View {
             .foregroundStyle(foreground)
             .modifier(InsightButtonBackground(style: style, tint: tint, hovering: hovering))
             .opacity(isEnabled ? 1 : 0.4)
-            .scaleEffect(hovering && isEnabled ? 1.02 : 1.0)
         }
-        // 按压反馈与底栏图标按钮（PressableButtonStyle 0.94）同一套语言，文本按钮取更轻的 0.97：
-        // 之前只有 hover 缩放、按下无任何响应，是交互反馈的一致性缺口
+        // 高频按钮仅保留轻微按压反馈，hover 不改变几何。
         .buttonStyle(PressableButtonStyle(scale: 0.97))
         .disabled(!isEnabled)
         .onHover { hovering = $0 }
-        .animation(InsightMotion.card, value: hovering)
     }
 
     private var foreground: Color {
@@ -362,9 +362,15 @@ struct InsightSidebarRow: View {
     var isSelected: Bool = false
     var isExpanded: Bool = true
     var indent: CGFloat = 0
+    var helpText: String? = nil
     var action: () -> Void
 
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var hoverDescription: String {
+        [helpText ?? title, isSelected ? "当前页面" : nil].compactMap { $0 }.joined(separator: "\n")
+    }
 
     var body: some View {
         Button(action: action) {
@@ -385,7 +391,7 @@ struct InsightSidebarRow: View {
                                 .monospacedDigit()
                                 // 计数变化数上去，不跳变（ui-research 共识 22：数字会变时让它数上去）
                                 .contentTransition(.numericText())
-                                .animation(InsightMotion.value, value: count)
+                                .animation(reduceMotion ? nil : InsightMotion.value, value: count)
                         }
                     }
                     .transition(.opacity)
@@ -415,10 +421,37 @@ struct InsightSidebarRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(title)
-        .accessibilityValue(isSelected ? "当前页面" : "")
+        .help(isExpanded ? hoverDescription : "")
+        .sidebarHoverTip(hoverDescription, enabled: !isExpanded)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityValue([isSelected ? "当前页面" : nil, count.map { "\($0) 张" }].compactMap { $0 }.joined(separator: "，"))
         .padding(.leading, indent)
-        .animation(InsightMotion.card, value: isSelected)
-        .animation(InsightMotion.card, value: hovering)
+    }
+}
+
+/// Directory and task links keep their geometry stable under the pointer.
+/// Frequent navigation has immediate feedback; keyboard focus remains visible.
+struct InsightListButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        Row(configuration: configuration, isEnabled: isEnabled)
+    }
+
+    private struct Row: View {
+        let configuration: ButtonStyleConfiguration
+        let isEnabled: Bool
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .background(
+                    isEnabled && (hovering || configuration.isPressed) ? InsightColor.neutralSoft : .clear,
+                    in: RoundedRectangle(cornerRadius: InsightRadius.control)
+                )
+                .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+                .onHover { hovering = $0 }
+        }
     }
 }

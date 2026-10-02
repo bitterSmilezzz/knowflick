@@ -9,5 +9,5 @@ import Foundation
 /// 自 2026-09-28 起改用 pre-1.0 序列（v0.1.0 起）：mac 尚非正规产品，
 /// 版本号如实反映这一阶段；v4.6.0 为 4.x 序列末版，历史 tag/Release 全部保留。
 public enum AppVersion {
-    public static let current = "0.1.0"
+    public static let current = "0.2.0"
 }
