@@ -19,9 +19,9 @@ public enum RelationKind: String, Codable, CaseIterable, Sendable {
     public var icon: String {
         switch self {
         case .disciplineDeepen: return "atom"
-        case .crossDiscipline: return "sparkles"
+        case .crossDiscipline: return "arrow.triangle.branch"
         case .conceptBridge: return "link"
-        case .serendipity: return "wand.and.stars"
+        case .serendipity: return "lightbulb"
         }
     }
 }

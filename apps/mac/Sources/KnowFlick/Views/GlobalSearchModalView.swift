@@ -378,7 +378,7 @@ struct GlobalSearchModalView: View {
                 }
 
                 if item.card.source == .ai {
-                    Image(systemName: "sparkles")
+                    Image(systemName: "cpu")
                         .font(.system(size: 10))
                         .foregroundStyle(InsightColor.warning)
                 }
@@ -430,7 +430,7 @@ struct GlobalSearchModalView: View {
     private var emptySearchResultsView: some View {
         VStack(spacing: 16) {
             Spacer(minLength: 24)
-            Image(systemName: query.isEmpty ? "sparkles.magnifyingglass" : "magnifyingglass")
+            Image(systemName: "magnifyingglass")
                 .font(.system(size: 38))
                 .foregroundStyle(InsightColor.textTertiary)
 
@@ -479,7 +479,7 @@ struct GlobalSearchModalView: View {
                         }
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "sparkles")
+                            Image(systemName: "cpu")
                             Text("让 AI 围绕「\(query)」生成新卡片")
                         }
                         .font(InsightFont.bodyStrong)

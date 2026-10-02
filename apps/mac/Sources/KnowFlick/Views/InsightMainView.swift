@@ -597,7 +597,7 @@ struct InsightMainView: View {
                     Button {
                         activeSheet = .chat(top)
                     } label: {
-                        Label("向卡片追问 (AI 伴学) ⌘J", systemImage: "sparkles")
+                        Label("向卡片追问 (AI 伴学) ⌘J", systemImage: "cpu")
                     }
                     Divider()
                     Button {
@@ -1012,7 +1012,7 @@ struct InsightMainView: View {
                 }
                 if store.settings.isAIConfigured && store.settings.enableAI {
                     InsightButton(
-                        title: "生成新知识", icon: "sparkles",
+                        title: "生成新知识", icon: "cpu",
                         style: .primary, tint: InsightColor.warning,
                         isEnabled: !store.isGenerating
                     ) {
