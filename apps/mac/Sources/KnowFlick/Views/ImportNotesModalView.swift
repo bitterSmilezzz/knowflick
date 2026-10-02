@@ -381,7 +381,7 @@ struct ImportNotesModalView: View {
                         if isProcessing {
                             ProgressView().controlSize(.small)
                         } else {
-                            Image(systemName: extractionMethod == .ai ? "sparkles" : "wand.and.stars")
+                            Image(systemName: extractionMethod == .ai ? "cpu" : "gearshape")
                                 .font(.system(size: 12, weight: .semibold))
                         }
                         Text(extractionMethod == .ai ? "AI 深度提炼卡片" : "开始解析笔记")

@@ -288,7 +288,7 @@ public struct AIProviderPreset: Identifiable, Hashable, Sendable {
             id: "deepseek",
             name: "DeepSeek (官方)",
             group: "在线 API 服务",
-            icon: "sparkles",
+            icon: "fish.fill",
             defaultBaseURL: "https://api.deepseek.com",
             models: ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro", "deepseek-v4-flash"],
             defaultModel: "deepseek-chat",
