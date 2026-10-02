@@ -1,12 +1,12 @@
 # KnowFlick Android
 
-原生 Kotlin + Jetpack Compose 应用。当前版本 **0.10.2**（versionCode 22），最低 Android 8.0 / API 26，target/compile SDK 35。
+原生 Kotlin + Jetpack Compose 应用。当前版本 **0.10.3**（versionCode 23），最低 Android 8.0 / API 26，target SDK 35 / compile SDK 36。
 
 已实现刷卡、详情、收藏与历史、学习统计、知识测验、撤销上一张、AI 流式生成与服务商配置、卡片 JSON 导入，以及 JSON/Markdown/Anki 文本导出。语音支持系统 TTS、云端 OpenAI 兼容接口与本地回环网关。背景图使用 WebP 与领域多图池（42 张，计算机与 AI / 自然宇宙科学 / 人文心智 / 商业财会金融四池），发布包内置 baseline profile。
 
 ## 构建与测试
 
-需要 JDK 17、Android SDK Platform 35、Build Tools 35.0.0。将 SDK 路径写入本机 `apps/android/local.properties`：
+需要 JDK 17、Android SDK Platform 36（target SDK 仍为 35）。将 SDK 路径写入本机 `apps/android/local.properties`：
 
 ```properties
 sdk.dir=/absolute/path/to/Android/sdk

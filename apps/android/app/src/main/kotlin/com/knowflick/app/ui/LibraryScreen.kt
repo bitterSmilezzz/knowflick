@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -136,16 +140,17 @@ fun LibraryScreen(
                 .padding(horizontal = 20.dp, vertical = 4.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f))
-                .padding(3.dp),
+                .padding(3.dp)
+                .selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             SegmentedTab(
-                label = "收藏阁 ${favorites.size}",
+                label = "收藏 ${favorites.size}",
                 selected = tab == LibraryTab.FAVORITES,
                 modifier = Modifier.weight(1f),
             ) { tab = LibraryTab.FAVORITES }
             SegmentedTab(
-                label = "历史足迹 ${history.size}",
+                label = "历史 ${history.size}",
                 selected = tab == LibraryTab.HISTORY,
                 modifier = Modifier.weight(1f),
             ) { tab = LibraryTab.HISTORY }
@@ -155,7 +160,7 @@ fun LibraryScreen(
         when (tab) {
             LibraryTab.FAVORITES -> {
                 if (favorites.isEmpty()) {
-                    LibraryEmpty("还没有收藏的卡片\n刷卡时点 ♥ 或右划即可沉淀")
+                    LibraryEmpty("还没有收藏的卡片\n在卡片详情中点收藏，方便以后查找")
                 } else {
                     LazyColumn(Modifier.padding(horizontal = 20.dp)) {
                         items(favorites, key = { it.id }) { card ->
@@ -210,13 +215,14 @@ private fun SegmentedTab(
                 if (selected) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f) else Color.Transparent,
                 RoundedCornerShape(9.dp),
             )
-            .clickable { onClick() }
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .heightIn(min = 48.dp)
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
-            color = if (selected) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.70f),
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.70f),
             fontSize = 12.5.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
         )
@@ -225,25 +231,12 @@ private fun SegmentedTab(
 
 @Composable
 private fun HistoryFilterChip(label: String, selected: Boolean, onSelect: () -> Unit) {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) EditorialColor.aiAmber.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface)
-            .border(
-                1.dp,
-                if (selected) EditorialColor.aiAmber.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
-                RoundedCornerShape(8.dp),
-            )
-            .clickable { onSelect() }
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Text(
-            label,
-            color = if (selected) EditorialColor.aiAmber else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
-            fontSize = 11.5.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-        )
-    }
+    FilterChip(
+        selected = selected,
+        onClick = onSelect,
+        label = { Text(label, fontSize = 13.sp) },
+        modifier = Modifier.heightIn(min = 48.dp),
+    )
 }
 
 @Composable

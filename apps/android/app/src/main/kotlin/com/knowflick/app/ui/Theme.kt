@@ -2,6 +2,7 @@ package com.knowflick.app.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -12,10 +13,10 @@ import androidx.compose.ui.graphics.Color
  */
 enum class PaperTheme(val displayName: String, val subtitle: String) {
     SYSTEM("跟随系统", "自适应系统深浅模式"),
-    RICE_PAPER("宣纸白", "温暖米白，如抚手造质感纸张"),
-    PARCHMENT("羊皮纸", "温润驼黄，沉淀古籍典雅书卷感"),
-    MORNING_MIST("晨雾灰", "清朗灰调，宁静专注的现代排版"),
-    WARM_OBSIDIAN("暖曜黑", "柔和深邃，舒适护眼的人文暗色");
+    RICE_PAPER("宣纸白", "温暖米白"),
+    PARCHMENT("羊皮纸", "温润驼黄"),
+    MORNING_MIST("晨雾灰", "清朗灰调"),
+    WARM_OBSIDIAN("暖曜黑", "柔和暗色");
 
     companion object {
         fun fromName(name: String?): PaperTheme =
@@ -56,7 +57,8 @@ object EditorialColor {
 
 // 1. 宣纸白（天然手造纸）
 val RicePaperColors = lightColorScheme(
-    primary = EditorialColor.aiAmber,
+    primary = Color(0xFF80591D),
+    onPrimary = Color.White,
     background = Color(0xFFFAF9F6),
     surface = Color(0xFFFFFFFF),
     surfaceVariant = Color(0xFFF2F0EB),
@@ -67,7 +69,8 @@ val RicePaperColors = lightColorScheme(
 
 // 2. 复古羊皮纸（古典书卷）
 val ParchmentColors = lightColorScheme(
-    primary = Color(0xFFB58838),
+    primary = Color(0xFF78521D),
+    onPrimary = Color.White,
     background = Color(0xFFF5EFE6),
     surface = Color(0xFFFAF6EE),
     surfaceVariant = Color(0xFFEBE2D3),
@@ -78,7 +81,8 @@ val ParchmentColors = lightColorScheme(
 
 // 3. 晨雾冷灰（清朗现代）
 val MorningMistColors = lightColorScheme(
-    primary = EditorialColor.detailBlue,
+    primary = Color(0xFF356580),
+    onPrimary = Color.White,
     background = Color(0xFFEFF2F4),
     surface = Color(0xFFF7F9FA),
     surfaceVariant = Color(0xFFE1E6EB),
@@ -90,12 +94,39 @@ val MorningMistColors = lightColorScheme(
 // 4. 暖曜黑（墨玉护眼）
 val WarmObsidianColors = darkColorScheme(
     primary = EditorialColor.aiAmber,
+    onPrimary = Color(0xFF231B0F),
     background = Color(0xFF121215),
     surface = Color(0xFF1B1B1F),
     surfaceVariant = Color(0xFF232328),
     outline = Color(0x26FFFFFF),
     onBackground = Color(0xFFEDE9E1),
     onSurface = Color(0xFFEDE9E1),
+)
+
+/** Keep Material controls within the selected palette rather than default purple roles. */
+private fun ColorScheme.paperControls(): ColorScheme = copy(
+    primaryContainer = surfaceVariant,
+    onPrimaryContainer = onSurface,
+    secondary = primary,
+    onSecondary = onPrimary,
+    secondaryContainer = surfaceVariant,
+    onSecondaryContainer = onSurface,
+    tertiary = primary,
+    onTertiary = onPrimary,
+    tertiaryContainer = surfaceVariant,
+    onTertiaryContainer = onSurface,
+    onSurfaceVariant = onSurface.copy(alpha = 0.75f),
+    outlineVariant = onSurface.copy(alpha = 0.16f),
+    surfaceDim = background,
+    surfaceBright = surface,
+    surfaceContainerLowest = background,
+    surfaceContainerLow = surface,
+    surfaceContainer = surfaceVariant,
+    surfaceContainerHigh = surfaceVariant,
+    surfaceContainerHighest = surfaceVariant,
+    inverseSurface = onSurface,
+    inverseOnSurface = surface,
+    inversePrimary = if (background == WarmObsidianColors.background) RicePaperColors.primary else WarmObsidianColors.primary,
 )
 
 /** 全局主题包装，支持跟随系统与 4 款纸质人文主题热切换 */
@@ -113,7 +144,7 @@ fun KnowFlickTheme(
         PaperTheme.WARM_OBSIDIAN -> WarmObsidianColors
     }
     MaterialTheme(
-        colorScheme = scheme,
+        colorScheme = scheme.paperControls(),
         content = content,
     )
 }

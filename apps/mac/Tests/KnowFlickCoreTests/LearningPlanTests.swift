@@ -119,5 +119,40 @@ struct LearningPlanTests {
         #expect(schedule[1].count == 1) // c3
         #expect(schedule[3].count == 1) // c2
     }
+
+    @Test func nonpositiveForecastAndPreviewLimitsAreEmpty() {
+        let plan = LearningPlan(cards: [card(seen: now)], now: now, calendar: calendar)
+        for limit in [0, -1] {
+            #expect(plan.upcomingSchedule(days: limit).isEmpty)
+            #expect(plan.upcomingCards(limit: limit).isEmpty)
+        }
+    }
+
+    @Test func midnightResetsCompletionAndMakesFirstReviewDue() throws {
+        let tomorrow = try #require(calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)))
+        let subject = card(seen: tomorrow.addingTimeInterval(-1))
+        let before = LearningPlan(cards: [subject], now: tomorrow.addingTimeInterval(-1), calendar: calendar)
+        let after = LearningPlan(cards: [subject], now: tomorrow, calendar: calendar)
+        #expect(before.completedToday == 1)
+        #expect(before.due.isEmpty)
+        #expect(after.completedToday == 0)
+        #expect(after.due.map(\.id) == [subject.id])
+    }
+
+    @Test func forecastIncludesOverdueTodayAndKeepsFutureDaysSeparate() {
+        let cards = [card(seen: now.addingTimeInterval(-3 * 86400)), card(seen: now), card()]
+        let plan = LearningPlan(cards: cards, now: now, calendar: calendar)
+        #expect(plan.upcomingSchedule(days: 3).map(\.count) == [1, 1, 0])
+        #expect(plan.upcomingCards(limit: 5).count == 2)
+        #expect(plan.upcomingCards(limit: 1).first?.card.id == cards[0].id)
+    }
+
+    @Test func reviewDatesFollowCalendarAcrossDaylightSavingChange() throws {
+        var local = Calendar(identifier: .gregorian)
+        local.timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        let reading = try #require(local.date(from: DateComponents(year: 2026, month: 3, day: 8, hour: 12)))
+        let expected = try #require(local.date(from: DateComponents(year: 2026, month: 3, day: 9)))
+        #expect(LearningPlan.reviewDate(for: card(seen: reading), calendar: local) == expected)
+    }
 }
 

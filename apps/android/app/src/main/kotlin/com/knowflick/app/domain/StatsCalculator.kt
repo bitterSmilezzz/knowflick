@@ -37,10 +37,11 @@ object StatsCalculator {
         days: Int = 7,
     ): List<LearningStats.DailyCount> {
         if (days <= 0) return emptyList()
+        val zone = TIME_ZONE
         val counts = HashMap<LocalDate, Int>(minOf(cards.size, days))
         for (card in cards) {
             val seenAt = card.seenAt ?: continue
-            val day = Instant.ofEpochMilli(seenAt).atZone(TIME_ZONE).toLocalDate()
+            val day = Instant.ofEpochMilli(seenAt).atZone(zone).toLocalDate()
             counts.merge(day, 1, Int::plus)
         }
         return (0 until days).reversed().map { offset ->
@@ -88,8 +89,9 @@ object StatsCalculator {
      * 注意时区语义与 macOS 保持一致：以本地日历切日。
      */
     fun streakDays(seenCards: List<KnowledgeCard>, today: LocalDate): Int {
+        val zone = TIME_ZONE
         val days = seenCards.mapNotNullTo(HashSet()) { card ->
-            card.seenAt?.let { Instant.ofEpochMilli(it).atZone(TIME_ZONE).toLocalDate() }
+            card.seenAt?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
         }
         if (days.isEmpty()) return 0
         var cursor = today
@@ -103,5 +105,5 @@ object StatsCalculator {
     }
 
     /** 本地切日时区；macOS 端按设备本地日历，Android 端同为系统默认时区 */
-    private val TIME_ZONE: java.time.ZoneId = java.time.ZoneId.systemDefault()
+    private val TIME_ZONE: ZoneId get() = ZoneId.systemDefault()
 }

@@ -437,13 +437,14 @@ public struct NoiseOverlay: View {
 // 原位于 CardDeckView.swift 底部，17 个文件使用；归属设计系统文件
 
 struct PressableButtonStyle: ButtonStyle {
-    var scale: CGFloat = 0.94
+    var scale: CGFloat = 0.97
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? scale : 1.0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(EditorialSpring.micro, value: configuration.isPressed)
+            .animation(reduceMotion ? nil : EditorialSpring.micro, value: configuration.isPressed)
             .onHover { hovering in
                 if hovering {
                     NSCursor.pointingHand.push()

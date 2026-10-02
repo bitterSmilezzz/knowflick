@@ -20,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontFamily
@@ -49,8 +51,8 @@ fun LearningHeatmap(
 
     // 统计过去 35 天每天的活动次数（seenAt 或 lastReviewedAt）
     val daysCount = 35
-    val (dailyMap, totalActivity, streak) = remember(cards, today) {
-        val zone = ZoneId.systemDefault()
+    val zone = ZoneId.systemDefault()
+    val (dailyMap, totalActivity, streak) = remember(cards, today, zone) {
         val counts = mutableMapOf<LocalDate, Int>()
         for (i in 0 until daysCount) {
             counts[today.minusDays(i.toLong())] = 0
@@ -59,23 +61,24 @@ fun LearningHeatmap(
         cards.forEach { card ->
             card.seenAt?.let { epoch ->
                 val date = Instant.ofEpochMilli(epoch).atZone(zone).toLocalDate()
-                if (counts.containsKey(date)) counts[date] = (counts[date] ?: 0) + 1
+                counts[date] = (counts[date] ?: 0) + 1
             }
             card.lastReviewedAt?.let { epoch ->
                 val date = Instant.ofEpochMilli(epoch).atZone(zone).toLocalDate()
-                if (counts.containsKey(date)) counts[date] = (counts[date] ?: 0) + 1
+                counts[date] = (counts[date] ?: 0) + 1
             }
         }
 
         // 计算连续打卡天数
         var currentStreak = 0
-        var checkDate = today
+        var checkDate = if ((counts[today] ?: 0) > 0) today else today.minusDays(1)
         while ((counts[checkDate] ?: 0) > 0) {
             currentStreak++
             checkDate = checkDate.minusDays(1)
         }
 
-        val sum = counts.values.sum()
+        val firstDay = today.minusDays((daysCount - 1).toLong())
+        val sum = counts.filterKeys { !it.isBefore(firstDay) && !it.isAfter(today) }.values.sum()
         Triple(counts, sum, currentStreak)
     }
 
@@ -149,7 +152,7 @@ fun LearningHeatmap(
                             .padding(horizontal = 8.dp, vertical = 3.dp),
                     ) {
                         Text(
-                            "🔥 连击 $streak 天",
+                            "连续活动 $streak 天",
                             color = EditorialColor.aiAmber,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -174,7 +177,10 @@ fun LearningHeatmap(
                                 modifier = Modifier
                                     .size(17.dp)
                                     .clip(RoundedCornerShape(3.dp))
-                                    .background(if (isFuture) Color.Transparent else colorForCount(count)),
+                                    .background(if (isFuture || date.isBefore(today.minusDays(34))) Color.Transparent else colorForCount(count))
+                                    .semantics {
+                                        contentDescription = "$date：${if (isFuture) "未来日期" else if (date.isBefore(today.minusDays(34))) "统计区间外" else "$count 次学习与复习"}"
+                                    },
                             )
                         }
                     }

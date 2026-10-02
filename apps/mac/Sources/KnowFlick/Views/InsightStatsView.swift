@@ -14,20 +14,24 @@ struct InsightStatsPlaceholder: View {
 
     /// 分类下钻载荷：点分类行 → 带筛选局部 sheet 打开 HistoryView（不经 ActiveSheet）
     @State private var historyCategory: CategoryNav?
+    @State private var stats = StatsCalculator.compute(from: [])
+    @State private var plan = LearningPlan(cards: [])
+    @State private var daily35: [LearningStats.DailyCount] = []
+
+    private func refreshSnapshot() {
+        let now = Date()
+        stats = StatsCalculator.compute(from: store.cards)
+        plan = LearningPlan(cards: store.cards, now: now)
+        daily35 = StatsCalculator.dailyCounts(cards: store.cards, days: 35)
+    }
 
     var body: some View {
-        // 单次计算后以值下发：原实现中 stats/plan 是计算属性、heatmap/trend 各自
-        // 调 dailyCounts，一次渲染里 LearningPlan 与 StatsCalculator 被重建 5+ 次
-        let stats = StatsCalculator.compute(from: store.cards)
-        let plan = LearningPlan(cards: store.cards)
-        let daily35 = StatsCalculator.dailyCounts(cards: store.cards, days: 35)
-        let daily7 = StatsCalculator.dailyCounts(cards: store.cards, days: 7)
         InsightContentScaffold(
             title: "统计",
-            subtitle: "从刷卡记录派生的学习快照与记忆排程"
+            subtitle: "浏览、掌握度与复习安排"
         ) {
             Group {
-                if stats.seenCount == 0 {
+                if stats.seenCount == 0 && plan.masteryDistribution.totalReviews == 0 {
                     InsightEmptyState(icon: "chart.bar", title: "暂无数据", message: "刷过卡片后，这里会出现你的学习统计与记忆排程。")
                 } else {
                     ScrollView {
@@ -48,9 +52,8 @@ struct InsightStatsPlaceholder: View {
                                 )
                                 statTile(value: "\(stats.skipCount)", label: "系统跳过", tone: .warning, index: 2)
                                 statTile(value: "\(stats.streakDays)", label: "连续天数", tone: .violet, index: 3)
-                                statTile(value: "\(plan.mastered)", label: "熟练掌握", tone: .success, index: 4)
                             }
-                            StatsSections(plan: plan, stats: stats, daily35: daily35, daily7: daily7, onDrillDown: { category in
+                            StatsSections(plan: plan, stats: stats, daily35: daily35, daily7: Array(daily35.suffix(7)), onDrillDown: { category in
                                 historyCategory = CategoryNav(category: category)
                             })
                         }
@@ -60,6 +63,9 @@ struct InsightStatsPlaceholder: View {
                 }
             }
         }
+        .onAppear(perform: refreshSnapshot)
+        .onChange(of: store.cards) { _, _ in refreshSnapshot() }
+        .onLearningDayChange(perform: refreshSnapshot)
         .sheet(item: $historyCategory) { nav in
             HistoryView(
                 store: store,
@@ -75,7 +81,7 @@ struct InsightStatsPlaceholder: View {
         InsightCard(padding: InsightSpacing.default) {
             InsightStatBlock(value: value, label: label, caption: caption, tone: tone)
         }
-        .modifier(InsightStaggerReveal(index: index))
+
     }
 }
 
@@ -118,24 +124,25 @@ private struct StatsSections: View {
                 HStack {
                     Text("知识掌握度分布").font(InsightFont.headline).foregroundStyle(InsightColor.textPrimary)
                     Spacer()
-                    Text("累计复习 \(dist.totalReviews) 人次")
+                    Text("累计复习 \(dist.totalReviews) 次")
                         .font(InsightFont.captionSmall).foregroundStyle(InsightColor.textMuted)
                 }
-                HStack(spacing: 3) {
-                    if dist.masteredCount > 0 {
-                        Capsule().fill(InsightColor.success)
-                            .frame(width: max(8, 600 * CGFloat(dist.masteredCount) / CGFloat(total)))
-                    }
-                    if dist.hesitantCount > 0 {
-                        Capsule().fill(InsightColor.warning)
-                            .frame(width: max(8, 600 * CGFloat(dist.hesitantCount) / CGFloat(total)))
-                    }
-                    if dist.needsReviewCount > 0 {
-                        Capsule().fill(InsightColor.textMuted)
-                            .frame(width: max(8, 600 * CGFloat(dist.needsReviewCount) / CGFloat(total)))
+                GeometryReader { geometry in
+                    let segments: [(Int, Color)] = [
+                        (dist.masteredCount, InsightColor.success),
+                        (dist.hesitantCount, InsightColor.warning),
+                        (dist.needsReviewCount, InsightColor.textMuted)
+                    ].filter { $0.0 > 0 }
+                    let usable = max(0, geometry.size.width - CGFloat(max(0, segments.count - 1)) * 3)
+                    HStack(spacing: 3) {
+                        ForEach(segments.indices, id: \.self) { index in
+                            Capsule().fill(segments[index].1)
+                                .frame(width: usable * CGFloat(segments[index].0) / CGFloat(total))
+                        }
                     }
                 }
                 .frame(height: 10)
+                .accessibilityHidden(true)
                 HStack(spacing: InsightSpacing.large) {
                     legend(
                         "熟练掌握", count: dist.masteredCount,
@@ -172,9 +179,9 @@ private struct StatsSections: View {
         InsightCard {
             VStack(alignment: .leading, spacing: InsightSpacing.default) {
                 HStack {
-                    Text("艾宾浩斯间隔复习").font(InsightFont.headline).foregroundStyle(InsightColor.textPrimary)
+                    Text("间隔复习").font(InsightFont.headline).foregroundStyle(InsightColor.textPrimary)
                     Spacer()
-                    Text("基于 SM-2 记忆曲线排程")
+                    Text("按回忆反馈安排 1、3、7 天间隔")
                         .font(InsightFont.captionSmall).foregroundStyle(InsightColor.textMuted)
                 }
                 HStack(spacing: InsightSpacing.compact) {
@@ -184,7 +191,7 @@ private struct StatsSections: View {
                         tone: plan.due.isEmpty ? .success : .warning
                     )
                     metricTile(title: "今日已复习", value: "\(plan.completedToday)", unit: "张", tone: .success)
-                    metricTile(title: "记忆留存率", value: "\(dist.retentionRate)", unit: "%", tone: .accent)
+                    metricTile(title: "掌握度估算", value: "\(dist.retentionRate)", unit: "%", tone: .accent)
                 }
             }
         }
@@ -248,7 +255,7 @@ private struct StatsSections: View {
     }
 
     private func dayLabel(_ day: Date) -> String {
-        if Calendar.current.isDateInToday(day) { return "今天" }
+        if plan.calendar.isDate(day, inSameDayAs: plan.now) { return "今天" }
         return Self.weekdayFormatter.string(from: day)
     }
 
@@ -278,9 +285,11 @@ private struct StatsSections: View {
                                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                                     .strokeBorder(item.count > 0 ? Color.white.opacity(0.10) : InsightColor.border, lineWidth: 0.8)
                             )
-                            .help(Self.dateFormatter.string(from: item.day) + ": 研习 \(item.count) 张")
+                            .help(Self.dateFormatter.string(from: item.day) + ": 阅读 \(item.count) 张")
+                            .accessibilityLabel(Self.dateFormatter.string(from: item.day) + ": 阅读 \(item.count) 张")
                     }
                 }
+                .frame(maxWidth: 340, alignment: .leading)
                 HStack {
                     Spacer()
                     Text("少").font(InsightFont.captionSmall).foregroundStyle(InsightColor.textMuted)
@@ -298,7 +307,8 @@ private struct StatsSections: View {
 
     // 近 7 天趋势柱
     private var trendSection: some View {
-        InsightCard {
+        let maxCount = max(daily7.map(\.count).max() ?? 1, 1)
+        return InsightCard {
             VStack(alignment: .leading, spacing: InsightSpacing.default) {
                 Text("近 7 天学习趋势").font(InsightFont.headline).foregroundStyle(InsightColor.textPrimary)
                 HStack(alignment: .bottom, spacing: InsightSpacing.small) {
@@ -306,9 +316,11 @@ private struct StatsSections: View {
                         VStack(spacing: InsightSpacing.tiny) {
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
                                 .fill(item.count > 0 ? InsightColor.accent : InsightColor.surfaceSunken)
-                                .frame(height: CGFloat(item.count) * 12)
+                                .frame(height: max(2, CGFloat(item.count) / CGFloat(maxCount) * 64))
                             Text("\(item.count)").font(InsightFont.captionSmall).monospacedDigit()
-                                .foregroundStyle(InsightColor.textMuted)
+                                .foregroundStyle(InsightColor.textSecondary)
+                            Text(dayLabel(item.day)).font(InsightFont.captionSmall)
+                                .foregroundStyle(InsightColor.textSecondary)
                         }
                         .frame(maxWidth: .infinity)
                     }

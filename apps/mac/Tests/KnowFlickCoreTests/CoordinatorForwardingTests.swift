@@ -92,7 +92,7 @@ struct CoordinatorForwardingTests {
         )
         store.applySettingsChange { $0.appearance = .light }
         let deadline = ContinuousClock.now.advanced(by: .seconds(10))
-        while store.persistenceWarning == nil && ContinuousClock.now < deadline {
+        while store.persistenceWarning?.hasPrefix("设置保存失败") != true && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(25))
         }
         #expect(store.persistenceWarning?.hasPrefix("设置保存失败") == true)
@@ -101,10 +101,27 @@ struct CoordinatorForwardingTests {
         try FileManager.default.removeItem(at: directory.appendingPathComponent("settings.json"))
         store.applySettingsChange { $0.appearance = .dark }
         let clearDeadline = ContinuousClock.now.advanced(by: .seconds(10))
-        while store.persistenceWarning != nil && ContinuousClock.now < clearDeadline {
+        while (store.persistenceWarning != nil || Storage(baseDir: directory).loadSettings().appearance != .dark) && ContinuousClock.now < clearDeadline {
             try await Task.sleep(for: .milliseconds(25))
         }
         #expect(store.persistenceWarning == nil)
         #expect(Storage(baseDir: directory).loadSettings().appearance == .dark)
     }
+    @Test func successfulCardSaveDoesNotHideSettingsFailure() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = Storage(baseDir: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("settings.json"), withIntermediateDirectories: false)
+        let coordinator = PersistenceCoordinator(storage: storage)
+        coordinator.flushPersistence(cards: [], settings: .default, skipCards: false)
+        #expect(coordinator.persistenceWarning?.hasPrefix("设置保存失败") == true)
+        coordinator.receiveSaveResult(.failed("card failure"))
+        #expect(coordinator.persistenceWarning?.contains("尚未保存") == true)
+        coordinator.receiveSaveResult(.saved)
+        #expect(coordinator.persistenceWarning?.hasPrefix("设置保存失败") == true)
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("settings.json"))
+        coordinator.flushPersistence(cards: [], settings: .default, skipCards: false)
+        #expect(coordinator.persistenceWarning == nil)
+    }
+
 }

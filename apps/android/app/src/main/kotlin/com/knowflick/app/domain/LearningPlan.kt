@@ -3,6 +3,7 @@ package com.knowflick.app.domain
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 /**
  * 掌握度三档分布及全局记忆健康度统计
@@ -33,9 +34,11 @@ data class UpcomingDayStat(
  */
 data class LearningPlan(val cards: List<KnowledgeCard>, val today: LocalDate) {
 
+    private val timeZone = ZoneId.systemDefault()
+
     val completedToday: Int = cards.count { card ->
         listOfNotNull(card.seenAt, card.lastReviewedAt).any { instant ->
-            Instant.ofEpochMilli(instant).atZone(TIME_ZONE).toLocalDate() == today
+            Instant.ofEpochMilli(instant).atZone(timeZone).toLocalDate() == today
         }
     }
 
@@ -51,7 +54,7 @@ data class LearningPlan(val cards: List<KnowledgeCard>, val today: LocalDate) {
         val retentionRate = if (testedCards == 0) {
             0
         } else {
-            ((masteredCount * 1.0 + hesitantCount * 0.5) / testedCards * 100).toInt().coerceIn(0, 100)
+            ((masteredCount * 1.0 + hesitantCount * 0.5) / testedCards * 100).roundToInt().coerceIn(0, 100)
         }
         val totalReviews = cards.sumOf { it.reviewCount }
         MasteryDistribution(
@@ -66,24 +69,23 @@ data class LearningPlan(val cards: List<KnowledgeCard>, val today: LocalDate) {
     }
 
     /** 到期卡片：预计算到期时间再排序（与 macOS 优化一致），到期时间升序、并列按 id 稳定 */
-    val due: List<KnowledgeCard> = cards.mapNotNull { card ->
-        val date = reviewDate(card) ?: return@mapNotNull null
-        if (date.isAfter(today)) null else card to date
-    }.sortedWith(
-        compareBy<Pair<KnowledgeCard, LocalDate>> { it.second }.thenBy { it.first.id },
-    ).map { it.first }
+    private val scheduledCards: List<Pair<KnowledgeCard, LocalDate>> = cards.mapNotNull { card ->
+        reviewDate(card)?.let { card to it }
+    }.sortedWith(compareBy<Pair<KnowledgeCard, LocalDate>> { it.second }.thenBy { it.first.id })
+
+    val due: List<KnowledgeCard> = scheduledCards.takeWhile { !it.second.isAfter(today) }.map { it.first }
 
     /** 未来天数（默认 7 天）到期卡片预测统计表 */
     fun upcomingSchedule(days: Int = 7): List<UpcomingDayStat> {
+        if (days <= 0) return emptyList()
+        val counts = scheduledCards.groupingBy { it.second }.eachCount()
         return (0 until days).map { offset ->
             val targetDate = today.plusDays(offset.toLong())
             val count = if (offset == 0) {
                 // 今天包含历史逾期 + 今天到期的卡片
                 due.size
             } else {
-                cards.count { card ->
-                    reviewDate(card) == targetDate
-                }
+                counts[targetDate] ?: 0
             }
             UpcomingDayStat(
                 date = targetDate,
@@ -95,18 +97,14 @@ data class LearningPlan(val cards: List<KnowledgeCard>, val today: LocalDate) {
 
     /** 接下来近期按复习日期升序排列的待复习卡片清单 */
     fun upcomingCards(limit: Int = 5): List<Pair<KnowledgeCard, LocalDate>> {
-        return cards.mapNotNull { card ->
-            val date = reviewDate(card) ?: return@mapNotNull null
-            card to date
-        }.sortedWith(
-            compareBy<Pair<KnowledgeCard, LocalDate>> { it.second }.thenBy { it.first.id },
-        ).take(limit)
+        if (limit <= 0) return emptyList()
+        return scheduledCards.take(limit)
     }
 
     /** 下次复习日期：浏览次日为首次；优先采用 SM-2 算出的精确 intervalDays，回退兼容 masteryLevel (1/3/7天) */
     fun reviewDate(card: KnowledgeCard): LocalDate? {
         val last = card.lastReviewedAt ?: card.seenAt ?: return null
-        val lastDay = Instant.ofEpochMilli(last).atZone(TIME_ZONE).toLocalDate()
+        val lastDay = Instant.ofEpochMilli(last).atZone(timeZone).toLocalDate()
         val days = if (card.lastReviewedAt == null) {
             1L
         } else if (card.intervalDays > 1) {
@@ -121,7 +119,4 @@ data class LearningPlan(val cards: List<KnowledgeCard>, val today: LocalDate) {
         return lastDay.plusDays(days)
     }
 
-    private companion object {
-        val TIME_ZONE: ZoneId = ZoneId.systemDefault()
-    }
 }

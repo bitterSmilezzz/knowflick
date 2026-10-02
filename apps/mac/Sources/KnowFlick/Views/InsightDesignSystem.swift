@@ -80,12 +80,12 @@ public enum InsightColor {
         dark: NSColor.white.withAlphaComponent(0.62)
     )
     public static let textTertiary = dynamic(
-        light: NSColor(red: 0.32, green: 0.34, blue: 0.38, alpha: 0.72),
-        dark: NSColor.white.withAlphaComponent(0.42)
+        light: NSColor(red: 0.38, green: 0.40, blue: 0.44, alpha: 1.0),
+        dark: NSColor.white.withAlphaComponent(0.58)
     )
     public static let textMuted = dynamic(
-        light: NSColor(red: 0.38, green: 0.40, blue: 0.44, alpha: 0.58),
-        dark: NSColor.white.withAlphaComponent(0.30)
+        light: NSColor(red: 0.43, green: 0.45, blue: 0.49, alpha: 1.0),
+        dark: NSColor.white.withAlphaComponent(0.52)
     )
 
     // MARK: 语义色（药丸徽章用）
@@ -124,7 +124,7 @@ public enum InsightColor {
     )
     public static let neutral = dynamic(
         light: NSColor(red: 0.35, green: 0.38, blue: 0.44, alpha: 1.0),
-        dark: NSColor.white.withAlphaComponent(0.42)
+        dark: NSColor.white.withAlphaComponent(0.58)
     )
     public static let neutralSoft = dynamic(
         light: NSColor(white: 0.0, alpha: 0.06),
@@ -173,9 +173,9 @@ public enum InsightFont {
 
 public enum InsightRadius {
     /// 侧栏/大容器外圆角（Cutline 侧栏 20pt）
-    public static let sidebar: CGFloat = 20
+    public static let sidebar: CGFloat = 12
     /// 卡片圆角（Cutline 项目卡约 14pt）
-    public static let card: CGFloat = 14
+    public static let card: CGFloat = 10
     /// 卡片内嵌小块
     public static let inset: CGFloat = 10
     /// 控件（按钮/输入框）

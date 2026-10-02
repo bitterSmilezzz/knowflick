@@ -9,7 +9,7 @@ struct KnowFlickApp: App {
     var body: some Scene {
         WindowGroup {
             InsightMainView(store: store)
-                .frame(minWidth: InsightLayout.defaultWindow.width, minHeight: InsightLayout.defaultWindow.height)
+                .frame(minWidth: 900, minHeight: 640)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     store.shutdown()
                 }

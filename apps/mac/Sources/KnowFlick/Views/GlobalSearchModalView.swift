@@ -21,6 +21,7 @@ struct GlobalSearchModalView: View {
     // 避免 body 每次求值重复跑 3 遍全量检索 + 拼音转换造成输入卡顿。
     @State private var results: [SearchResultItem] = []
     @State private var searchGeneration = 0
+    @State private var isSearching = false
     @State private var searchDebounceTask: Task<Void, Never>?
 
     /// 共享 AppStore 的搜索引擎实例：拼音缓存（PhoneticCache，容量 2048）随之复用，
@@ -44,6 +45,7 @@ struct GlobalSearchModalView: View {
     }
 
     private func selectCard(_ card: KnowledgeCard, action: (KnowledgeCard) -> Void) {
+        guard !isSearching else { return }
         store.addSearchHistory(query)
         dismiss()
         action(card)
@@ -51,17 +53,18 @@ struct GlobalSearchModalView: View {
 
     /// 过滤条件变化后调度一次防抖搜索
     private func scheduleSearch() {
+        isSearching = true
+        searchGeneration += 1
+        let generation = searchGeneration
         searchDebounceTask?.cancel()
         searchDebounceTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled else { return }
-            performSearch()
+            performSearch(generation: generation)
         }
     }
 
-    private func performSearch() {
-        searchGeneration += 1
-        let generation = searchGeneration
+    private func performSearch(generation: Int) {
         let engine = searchEngine
         let cards = store.cards
         let favs = Set(store.favorites.map(\.id))
@@ -72,7 +75,9 @@ struct GlobalSearchModalView: View {
             let outcome = engine.search(query: currentQuery, category: category, source: source, in: cards, favorites: favs)
             await MainActor.run {
                 guard generation == searchGeneration else { return }
+                isSearching = false
                 results = outcome
+                selectedIndex = min(selectedIndex, max(0, outcome.count - 1))
             }
         }
     }
@@ -83,25 +88,12 @@ struct GlobalSearchModalView: View {
             filterBar
             Divider().overlay(InsightColor.divider)
             resultsArea
+                .disabled(isSearching)
             Divider().overlay(InsightColor.divider)
             footerBar
         }
         .frame(minWidth: 700, idealWidth: 720, minHeight: 520, idealHeight: 550)
-        .background(
-            ZStack {
-                InsightColor.surfaceRaised
-                // 柔和微光渐变
-                RadialGradient(
-                    colors: [
-                        InsightColor.accent.opacity(0.08),
-                        Color.clear
-                    ],
-                    center: .top,
-                    startRadius: 20,
-                    endRadius: 400
-                )
-            }
-        )
+        .background(InsightColor.surfaceRaised)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -119,6 +111,14 @@ struct GlobalSearchModalView: View {
         .onChange(of: selectedCategory) { _, _ in
             scheduleSearch()
         }
+        .onChange(of: store.cards) { _, _ in
+            if !allCategories.contains(selectedCategory) { selectedCategory = "全部" }
+            scheduleSearch()
+        }
+        .onDisappear {
+            searchDebounceTask?.cancel()
+            searchGeneration += 1
+        }
         .onChange(of: selectedSource) { _, _ in
             scheduleSearch()
         }
@@ -135,7 +135,7 @@ struct GlobalSearchModalView: View {
             return .handled
         }
         .onKeyPress(.return, phases: .down) { press in
-            if !results.isEmpty && selectedIndex < results.count {
+            if !isSearching && !results.isEmpty && selectedIndex < results.count {
                 let card = results[selectedIndex].card
                 if press.modifiers.contains(.command) {
                     selectCard(card, action: onPromote)
@@ -147,7 +147,7 @@ struct GlobalSearchModalView: View {
             return .ignored
         }
         .onKeyPress(KeyEquivalent("j"), phases: .down) { press in
-            if press.modifiers.contains(.command) && !results.isEmpty && selectedIndex < results.count {
+            if !isSearching && press.modifiers.contains(.command) && !results.isEmpty && selectedIndex < results.count {
                 let card = results[selectedIndex].card
                 selectCard(card, action: onChat)
                 return .handled
@@ -164,8 +164,9 @@ struct GlobalSearchModalView: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(InsightColor.accent)
 
-            TextField("搜索知识库… (支持关键词、学科分类、拼音首字母或全文检索)", text: $query)
-                .font(.system(size: 16, weight: .medium, design: .serif))
+            TextField("搜索标题、正文或拼音", text: $query)
+                .accessibilityLabel("搜索知识库")
+                .font(InsightFont.headline)
                 .textFieldStyle(.plain)
                 .focused($isSearchFocused)
                 .onChange(of: query) { _, _ in
@@ -212,10 +213,8 @@ struct GlobalSearchModalView: View {
                 ForEach(SearchSourceFilter.allCases) { filter in
                     let isSelected = selectedSource == filter
                     Button {
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            selectedSource = filter
-                            selectedIndex = 0
-                        }
+                        selectedSource = filter
+                        selectedIndex = 0
                     } label: {
                         HStack(spacing: 4) {
                             if filter == .favorites {
@@ -240,6 +239,7 @@ struct GlobalSearchModalView: View {
                         .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 }
 
                 Rectangle()
@@ -253,14 +253,8 @@ struct GlobalSearchModalView: View {
                     let isSelected = selectedCategory == cat
                     let count = counts[cat] ?? 0
                     Button {
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            if selectedCategory == cat && cat != "全部" {
-                                selectedCategory = "全部"
-                            } else {
-                                selectedCategory = cat
-                            }
-                            selectedIndex = 0
-                        }
+                        selectedCategory = selectedCategory == cat && cat != "全部" ? "全部" : cat
+                        selectedIndex = 0
                     } label: {
                         Text("\(cat) (\(count))")
                             .font(InsightFont.callout)
@@ -279,6 +273,7 @@ struct GlobalSearchModalView: View {
                             .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textTertiary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 }
             }
             .padding(.horizontal, 20)
@@ -291,7 +286,9 @@ struct GlobalSearchModalView: View {
     private var resultsArea: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                if results.isEmpty {
+                if isSearching && results.isEmpty {
+                    Color.clear.frame(height: 120).accessibilityHidden(true)
+                } else if results.isEmpty {
                     emptySearchResultsView
                 } else {
                     LazyVStack(spacing: 6) {
@@ -571,7 +568,7 @@ struct GlobalSearchModalView: View {
 
     private var footerBar: some View {
         HStack {
-            Text("共找到 \(results.count) 张卡片")
+            Text(isSearching ? "正在检索…" : "共找到 \(results.count) 张卡片")
                 .font(InsightFont.caption)
                 .foregroundStyle(InsightColor.textTertiary)
 

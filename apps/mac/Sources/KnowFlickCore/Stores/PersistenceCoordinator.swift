@@ -23,7 +23,9 @@ public final class PersistenceCoordinator {
     private var settingsPersistRevision = 0
 
     /// 落盘失败时的用户可见告警（视图顶栏横幅）；成功后自动清除
-    public private(set) var persistenceWarning: String?
+    private var cardWarning: String?
+    private var settingsWarning: String?
+    public var persistenceWarning: String? { cardWarning ?? settingsWarning }
 
     public init(
         storage: Storage,
@@ -67,21 +69,23 @@ public final class PersistenceCoordinator {
         settingsPersistTask?.cancel()
         settingsPersistTask = nil
         persistenceRevision &+= 1
+        settingsPersistRevision &+= 1
         let revision = persistenceRevision
+        let settingsRevision = settingsPersistRevision
         let storage = self.storage
         persistenceQueue.async { [weak self] in
             let result: CardSaveResult = skipCards ? .saved : storage.saveCards(cards)
+            let warning: String?
             do {
                 try storage.saveSettingsThrowing(settings)
+                warning = nil
             } catch {
-                Task { @MainActor [weak self] in
-                    guard let self, self.persistenceRevision == revision else { return }
-                    self.persistenceWarning = "设置保存失败：\(error.localizedDescription)"
-                }
+                warning = "设置保存失败：\(error.localizedDescription)"
             }
             Task { @MainActor [weak self] in
-                guard let self, self.persistenceRevision == revision else { return }
-                self.receiveSaveResult(result)
+                guard let self else { return }
+                if self.settingsPersistRevision == settingsRevision { self.settingsWarning = warning }
+                if self.persistenceRevision == revision { self.receiveSaveResult(result) }
             }
         }
     }
@@ -94,10 +98,14 @@ public final class PersistenceCoordinator {
         settingsPersistTask = nil
         persistenceRevision &+= 1
         let storage = self.storage
-        let result: CardSaveResult = persistenceQueue.sync {
-            try? storage.saveSettingsThrowing(settings)
-            return skipCards ? .saved : storage.saveCards(cards)
+        settingsPersistRevision &+= 1
+        let (result, warning): (CardSaveResult, String?) = persistenceQueue.sync {
+            let warning: String?
+            do { try storage.saveSettingsThrowing(settings); warning = nil }
+            catch { warning = "设置保存失败：\(error.localizedDescription)" }
+            return (skipCards ? .saved : storage.saveCards(cards), warning)
         }
+        settingsWarning = warning
         receiveSaveResult(result)
     }
 
@@ -125,15 +133,12 @@ public final class PersistenceCoordinator {
                     try storage.saveSettingsThrowing(settings)
                     Task { @MainActor [weak self] in
                         guard let self, self.settingsPersistRevision == revision else { return }
-                        // 仅清理本通道产生的告警，不掩盖卡片保存告警
-                        if self.persistenceWarning?.hasPrefix("设置保存失败") == true {
-                            self.persistenceWarning = nil
-                        }
+                        self.settingsWarning = nil
                     }
                 } catch {
                     Task { @MainActor [weak self] in
                         guard let self, self.settingsPersistRevision == revision else { return }
-                        self.persistenceWarning = "设置保存失败：\(error.localizedDescription)"
+                        self.settingsWarning = "设置保存失败：\(error.localizedDescription)"
                     }
                 }
             }
@@ -153,11 +158,11 @@ public final class PersistenceCoordinator {
     func receiveSaveResult(_ result: CardSaveResult) {
         switch result {
         case .saved:
-            persistenceWarning = nil
+            cardWarning = nil
         case .failed(let message):
-            persistenceWarning = "最新卡片更改尚未保存，请保留应用并重试。\n\(message)"
+            cardWarning = "最新卡片更改尚未保存，请保留应用并重试。\n\(message)"
         case .savedWithoutBackup(let message):
-            persistenceWarning = "卡片已保存，但备份未能更新。\n\(message)"
+            cardWarning = "卡片已保存，但备份未能更新。\n\(message)"
         }
     }
 }

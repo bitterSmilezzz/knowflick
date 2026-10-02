@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,13 +65,14 @@ fun StatsScreen(
 ) {
     androidx.activity.compose.BackHandler { onBack() }
 
-    val today = LocalDate.now()
-    val stats = StatsCalculator.compute(cards, today)
-    val plan = LearningPlan(cards, today)
+    val day = rememberLearningDay()
+    val today = day.date
+    val stats = remember(cards, day) { StatsCalculator.compute(cards, today) }
+    val plan = remember(cards, day) { LearningPlan(cards, today) }
     val masteryDist = plan.masteryDistribution
-    val upcomingSchedule = plan.upcomingSchedule(7)
-    val upcomingCards = plan.upcomingCards(5)
-    val daily = StatsCalculator.dailyCounts(cards, today, days = 7)
+    val upcomingSchedule = remember(plan) { plan.upcomingSchedule(7) }
+    val upcomingCards = remember(plan) { plan.upcomingCards(5) }
+    val daily = remember(cards, day) { StatsCalculator.dailyCounts(cards, today, days = 7) }
     val maxDaily = maxOf(1, daily.maxOfOrNull { it.count } ?: 1)
     val maxUpcoming = maxOf(1, upcomingSchedule.maxOfOrNull { it.count } ?: 1)
 

@@ -106,4 +106,49 @@ class LearningPlanTest {
         assertEquals(c1.id, upcoming[0].first.id, "首张为今日到期")
         assertEquals(c3.id, upcoming[1].first.id, "第二张为明天到期")
     }
+
+    @Test
+    fun nonpositiveForecastAndPreviewLimitsAreEmpty() {
+        val plan = LearningPlan(listOf(card("阅读", seenAt = seenNDaysAgo(0))), today)
+        for (limit in listOf(0, -1)) {
+            assertEquals(emptyList(), plan.upcomingSchedule(limit))
+            assertEquals(emptyList(), plan.upcomingCards(limit))
+        }
+    }
+
+    @Test
+    fun midnightResetsCompletionAndMakesFirstReviewDue() {
+        val subject = card("阅读", seenAt = seenNDaysAgo(0))
+        val before = LearningPlan(listOf(subject), today)
+        val after = LearningPlan(listOf(subject), today.plusDays(1))
+        assertEquals(1, before.completedToday)
+        assertEquals(emptyList(), before.due)
+        assertEquals(0, after.completedToday)
+        assertEquals(listOf(subject.id), after.due.map { it.id })
+    }
+
+    @Test
+    fun retentionPercentageRoundsToNearestInteger() {
+        val cards = (0 until 6).map { index ->
+            card("卡$index", reviewedAt = seenNDaysAgo(0), masteryLevel = if (index == 0) 2 else 0)
+                .copy(reviewCount = 1)
+        }
+        assertEquals(17, LearningPlan(cards, today).masteryDistribution.retentionRate)
+    }
+
+    @Test
+    fun newPlanUsesCurrentSystemTimeZone() {
+        val original = java.util.TimeZone.getDefault()
+        try {
+            val instant = java.time.Instant.parse("2026-09-12T00:30:00Z").toEpochMilli()
+            val subject = card("跨时区", seenAt = instant)
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"))
+            assertEquals(1, LearningPlan(listOf(subject), today).completedToday)
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Los_Angeles"))
+            assertEquals(0, LearningPlan(listOf(subject), today).completedToday)
+            assertEquals(today, LearningPlan(listOf(subject), today).reviewDate(subject))
+        } finally {
+            java.util.TimeZone.setDefault(original)
+        }
+    }
 }
