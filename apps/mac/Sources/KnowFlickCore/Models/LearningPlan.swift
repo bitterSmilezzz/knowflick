@@ -52,43 +52,47 @@ public struct LearningPlan: Sendable {
     public let cards: [KnowledgeCard]
     public let now: Date
     public let calendar: Calendar
+    private let scheduledCards: [(card: KnowledgeCard, date: Date)]
 
     public init(cards: [KnowledgeCard], now: Date = Date(), calendar: Calendar = .current) {
         self.cards = cards
         self.now = now
         self.calendar = calendar
 
-        completedToday = cards.filter {
-            [$0.seenAt, $0.lastReviewedAt].compactMap { $0 }.contains {
-                calendar.isDate($0, inSameDayAs: now)
+        var completed = 0
+        var masteredCount = 0
+        var hesitantCount = 0
+        var testedCards = 0
+        var totalReviews = 0
+        var scheduled: [(card: KnowledgeCard, date: Date)] = []
+        scheduled.reserveCapacity(cards.count)
+        for card in cards {
+            if card.seenAt.map({ calendar.isDate($0, inSameDayAs: now) }) == true ||
+                card.lastReviewedAt.map({ calendar.isDate($0, inSameDayAs: now) }) == true {
+                completed += 1
             }
-        }.count
-        mastered = cards.filter { $0.masteryLevel >= 2 }.count
-
-        // 预计算到期时间再排序：避免比较器内 O(n log n) 次重复日历运算
-        due = cards.compactMap { card -> (card: KnowledgeCard, date: Date)? in
-            guard let date = Self.reviewDate(for: card, calendar: calendar), date <= now else { return nil }
-            return (card, date)
+            if card.masteryLevel >= 2 { masteredCount += 1 }
+            else if card.masteryLevel == 1 { hesitantCount += 1 }
+            if card.reviewCount > 0 || card.masteryLevel > 0 { testedCards += 1 }
+            totalReviews += card.reviewCount
+            if let date = Self.reviewDate(for: card, calendar: calendar) {
+                scheduled.append((card, date))
+            }
         }
-        .sorted {
+        scheduled.sort {
             if $0.date != $1.date { return $0.date < $1.date }
             return $0.card.id.uuidString < $1.card.id.uuidString
         }
-        .map(\.card)
+        scheduledCards = scheduled
+        due = scheduled.prefix { $0.date <= now }.map(\.card)
+        completedToday = completed
+        mastered = masteredCount
 
-        let masteredCount = cards.filter { $0.masteryLevel >= 2 }.count
-        let hesitantCount = cards.filter { $0.masteryLevel == 1 }.count
         let totalCards = cards.count
         let needsReviewCount = max(0, totalCards - masteredCount - hesitantCount)
-        let testedCards = cards.filter { $0.reviewCount > 0 || $0.masteryLevel > 0 }.count
-        let retentionRate: Int
-        if testedCards == 0 {
-            retentionRate = 0
-        } else {
-            let rate = (Double(masteredCount) * 1.0 + Double(hesitantCount) * 0.5) / Double(testedCards) * 100.0
-            retentionRate = min(100, max(0, Int(rate.rounded())))
-        }
-        let totalReviews = cards.reduce(0) { $0 + $1.reviewCount }
+        let retentionRate = testedCards == 0 ? 0 : min(100, max(0, Int(
+            ((Double(masteredCount) + Double(hesitantCount) * 0.5) / Double(testedCards) * 100).rounded()
+        )))
 
         masteryDistribution = MasteryDistribution(
             masteredCount: masteredCount,
@@ -110,17 +114,19 @@ public struct LearningPlan: Sendable {
 
     /// 未来天数（默认 7 天）到期卡片预测统计表
     public func upcomingSchedule(days: Int = 7) -> [UpcomingDayStat] {
+        guard days > 0 else { return [] }
         let startOfToday = calendar.startOfDay(for: now)
+        var counts: [Date: Int] = [:]
+        for item in scheduledCards where item.date > now {
+            counts[calendar.startOfDay(for: item.date), default: 0] += 1
+        }
         return (0..<days).compactMap { offset -> UpcomingDayStat? in
             guard let targetDate = calendar.date(byAdding: .day, value: offset, to: startOfToday) else { return nil }
             let count: Int
             if offset == 0 {
                 count = due.count
             } else {
-                count = cards.filter { card in
-                    guard let rDate = Self.reviewDate(for: card, calendar: calendar) else { return false }
-                    return calendar.isDate(rDate, inSameDayAs: targetDate)
-                }.count
+                count = counts[targetDate] ?? 0
             }
             return UpcomingDayStat(
                 date: targetDate,
@@ -132,15 +138,7 @@ public struct LearningPlan: Sendable {
 
     /// 近期即将到期的卡片清单
     public func upcomingCards(limit: Int = 5) -> [(card: KnowledgeCard, date: Date)] {
-        cards.compactMap { card -> (card: KnowledgeCard, date: Date)? in
-            guard let date = Self.reviewDate(for: card, calendar: calendar) else { return nil }
-            return (card, date)
-        }
-        .sorted {
-            if $0.date != $1.date { return $0.date < $1.date }
-            return $0.card.id.uuidString < $1.card.id.uuidString
-        }
-        .prefix(limit)
-        .map { $0 }
+        guard limit > 0 else { return [] }
+        return Array(scheduledCards.prefix(limit))
     }
 }

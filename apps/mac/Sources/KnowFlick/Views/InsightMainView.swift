@@ -45,7 +45,7 @@ struct InsightMainView: View {
             store: store,
             selection: $destination,
             sidebarExpanded: sidebarExpanded,
-            onToggleSidebar: { withAnimation(InsightMotion.shell) { sidebarExpanded.toggle() } },
+            onToggleSidebar: { sidebarExpanded.toggle() },
             onOpenSheet: { route($0) }
         ) {
             destinationContent
@@ -127,7 +127,7 @@ struct InsightMainView: View {
     }
 
     private func navigate(to target: InsightDestination) {
-        withAnimation(InsightMotion.shell) { destination = target }
+        destination = target
     }
 
     // MARK: - 内容区
