@@ -344,7 +344,7 @@ struct SettingsView: View {
     private var aiServiceCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
-                Image(systemName: "sparkles")
+                Image(systemName: "cpu")
                     .foregroundStyle(InsightColor.warning)
                 Text("AI 驱动服务")
                     .font(InsightFont.headline)

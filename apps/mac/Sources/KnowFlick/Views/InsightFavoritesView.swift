@@ -418,7 +418,7 @@ struct InsightFavoritesPlaceholder: View {
             Button {
                 onOpenSheet(.chat(card))
             } label: {
-                Label("向卡片追问 (AI 伴学)", systemImage: "sparkles")
+                Label("向卡片追问 (AI 伴学)", systemImage: "cpu")
             }
             Divider()
             Button {

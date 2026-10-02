@@ -238,7 +238,7 @@ struct QuizCardView: View {
                 // AI 相关入口保留 warning 语义
                 Button(action: onOpenChat) {
                     HStack(spacing: InsightSpacing.small) {
-                        Image(systemName: "sparkles")
+                        Image(systemName: "cpu")
                             .font(.system(size: 11, weight: .semibold))
                         Text("向 AI 追问本卡解析")
                             .font(InsightFont.callout)
