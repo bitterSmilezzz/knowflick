@@ -162,6 +162,63 @@ final class AIServiceTests {
         #expect(AIService.scanObjects(in: text).map(\.headline) == ["带 \" 引号的标题", "含嵌套字段"])
     }
 
+    // MARK: - Wave A：未配对 `{` 的候选栈修复
+
+    /// Wave A 回归（P2-1 的对称缺陷）：正文里**未配对的 `{`** 不得把后续合法卡片当成
+    /// 嵌套对象漏扫。修复前单一起点被散文 `{` 顶高一格、永远等不到 depth 归零，
+    /// `scanObjects` 返回 0（用户侧「AI 返回格式无法解析」而模型有产出）。
+    @Test func testScanObjectsRecoversAfterUnpairedOpeningBraceInProse() {
+        let text = """
+        下面是代码示例 { 刻意不配对的花括号，以及一段说明。
+        {"category":"物理","headline":"一","summary":"s","details":"d","searchKeywords":["a"]}
+        {"category":"生物","headline":"二","summary":"s","details":"d","searchKeywords":["b"]}
+        {"category":"历史","headline":"三","summary":"s","details":"d","searchKeywords":["c"]}
+        """
+        #expect(AIService.scanObjects(in: text).map(\.headline) == ["一", "二", "三"])
+    }
+
+    /// 卡片字符串字段里的配对 `{}`（代码示例文本）是字符串内容，不得参与候选栈、
+    /// 也不得把卡片拆碎。与散文防护（候选区段内的引号状态机）的交互最容易回归。
+    @Test func testScanObjectsBracesInsideStringFieldsStayStringContent() {
+        let text = """
+        {"category":"计算机","headline":"代码示例卡","summary":"s","details":"示例函数 { print(\\"hi\\") } 与空对象 {} 都只是文本","searchKeywords":["a"]}
+        """
+        let found = AIService.scanObjects(in: text)
+        #expect(found.count == 1)
+        #expect(found.first?.headline == "代码示例卡")
+        #expect(found.first?.details.contains("{ print(") == true)
+        #expect(found.first?.details.contains("{}") == true)
+    }
+
+    /// 分块边界切在候选区段中间：增量入口与整段扫描必须等价（含未配对 `{` 的散文）。
+    @Test func testIncrementalScannerSurvivesChunkBoundaryInsideCandidateSegment() {
+        let text = """
+        说明 { 这是一个未配对的花括号示例
+        {"category":"物理","headline":"一","summary":"s","details":"d","searchKeywords":["a"]},
+        {"category":"生物","headline":"二","summary":"s","details":"d","searchKeywords":["b"]}
+        ]
+        """
+        let whole = AIService.scanObjects(in: text)
+        #expect(whole.map(\.headline) == ["一", "二"])
+
+        let scanner = AIService.IncrementalObjectScanner()
+        var index = text.startIndex
+        while index < text.endIndex {
+            let end = text.index(index, offsetBy: 5, limitedBy: text.endIndex) ?? text.endIndex
+            scanner.append(String(text[index..<end]))
+            index = end
+        }
+        #expect(scanner.objects.map(\.headline) == whole.map(\.headline))
+    }
+
+    /// 流结束仍未闭合的候选直接丢弃：不产出半个对象，也不影响已产出的卡片。
+    @Test func testIncrementalScannerDiscardsUnclosedCandidatesAtStreamEnd() {
+        let scanner = AIService.IncrementalObjectScanner()
+        scanner.append(#"{"category":"物理","headline":"完整卡","summary":"s","details":"d","searchKeywords":["a"]}"#)
+        scanner.append(#" 后文还有一个永远不闭合的 {"a":"1""#)
+        #expect(scanner.objects.map(\.headline) == ["完整卡"])
+    }
+
     // MARK: - SSE 行解析
 
     @Test func testSSEContentDeltaStreaming() {
