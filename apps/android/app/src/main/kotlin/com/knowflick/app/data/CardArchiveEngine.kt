@@ -134,7 +134,8 @@ object CardArchiveEngine {
             选择此 ZIP 压缩包即可一键恢复所有卡片与学习进度。
         """.trimIndent()
 
-        val cardsJson = CardFileIO.encodeList(cards)
+        // 归档导出走 v2 信封（SYNC_PROTOCOL.md §3：信封用于线格式与归档导入导出）
+        val cardsJson = com.knowflick.app.domain.CardJson.encodeEnvelope(cards)
 
         val bos = ByteArrayOutputStream()
         ZipOutputStream(bos).use { zos ->
@@ -164,9 +165,9 @@ object CardArchiveEngine {
         return bos.toByteArray()
     }
 
-    /** 生成 JSON 结构化归档字节流 */
+    /** 生成 JSON 结构化归档字节流（v2 信封，§3） */
     fun buildJsonArchive(cards: List<KnowledgeCard>): ByteArray {
-        return CardFileIO.encodeList(cards).toByteArray(StandardCharsets.UTF_8)
+        return com.knowflick.app.domain.CardJson.encodeEnvelope(cards).toByteArray(StandardCharsets.UTF_8)
     }
 
     /** 生成 Markdown 整合排版单文档 */

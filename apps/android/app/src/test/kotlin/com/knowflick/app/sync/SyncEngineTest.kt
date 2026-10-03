@@ -37,7 +37,7 @@ class SyncEngineTest {
         val server = SyncServer(
             accessCode = "123456",
             getCards = { serverCards },
-            onReceiveCards = { incoming ->
+            onReceiveCards = { incoming, _ ->
                 serverCards.addAll(incoming)
                 CardStore.ArchiveRestoreResult(added = incoming.size, restored = 0, ignored = 0)
             }
@@ -65,7 +65,7 @@ class SyncEngineTest {
             val syncResult = SyncClient.executeBidirectionalSync(
                 target = "127.0.0.1:$port#123456",
                 localCards = clientCards,
-                onApplyRemoteCards = { remote ->
+                onApplyRemoteCards = { remote, _ ->
                     localApplied.addAll(remote)
                     CardStore.ArchiveRestoreResult(added = remote.size, restored = 0, ignored = 0)
                 }
@@ -89,7 +89,7 @@ class SyncEngineTest {
         val server = SyncServer(
             accessCode = "654321",
             getCards = { emptyList() },
-            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+            onReceiveCards = { _, _ -> CardStore.ArchiveRestoreResult(0, 0, 0) },
         )
         val port = server.start(preferredPort = 9193).getOrThrow()
         try {
@@ -115,7 +115,7 @@ class SyncEngineTest {
                 val result = SyncClient.executeBidirectionalSync(
                     target = "127.0.0.1:1#123456",
                     localCards = emptyList(),
-                    onApplyRemoteCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+                    onApplyRemoteCards = { _, _ -> CardStore.ArchiveRestoreResult(0, 0, 0) },
                 )
                 outcome.complete("returned:$result")
             } catch (cancelled: CancellationException) {
@@ -136,7 +136,7 @@ class SyncEngineTest {
         val server = SyncServer(
             accessCode = "123456",
             getCards = { emptyList() },
-            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+            onReceiveCards = { _, _ -> CardStore.ArchiveRestoreResult(0, 0, 0) },
             onAbnormallyStopped = { reported.complete(it) },
         )
         server.start(preferredPort = 9195).getOrThrow()
@@ -157,7 +157,7 @@ class SyncEngineTest {
         val server = SyncServer(
             accessCode = "123456",
             getCards = { emptyList() },
-            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+            onReceiveCards = { _, _ -> CardStore.ArchiveRestoreResult(0, 0, 0) },
             onAbnormallyStopped = { reported.complete(it) },
         )
         server.start(preferredPort = 9196).getOrThrow()
@@ -171,7 +171,7 @@ class SyncEngineTest {
         val server = SyncServer(
             accessCode = "123456",
             getCards = { listOf(createCard("s1", "服务端卡片")) },
-            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+            onReceiveCards = { _, _ -> CardStore.ArchiveRestoreResult(0, 0, 0) },
         )
         val port = server.start(preferredPort = 9197).getOrThrow()
         try {
@@ -253,6 +253,71 @@ class SyncEngineTest {
             }
             if (buffer.size() == 0) null else buffer.toString("UTF-8")
         }
+    }
+
+    @Test
+    fun testCardsEndpointsUseV2Envelope() = runBlocking {
+        val serverCards = mutableListOf(createCard("s1", "服务端卡片"))
+        val receivedTombstones = mutableListOf<com.knowflick.app.domain.Tombstone>()
+        val server = SyncServer(
+            accessCode = "123456",
+            getCards = { serverCards },
+            onReceiveCards = { incoming, tombstones ->
+                receivedTombstones.addAll(tombstones)
+                serverCards.addAll(incoming)
+                CardStore.ArchiveRestoreResult(added = incoming.size, restored = 0, ignored = 0)
+            },
+        )
+        val port = server.start(preferredPort = 9199).getOrThrow()
+        try {
+            // ① GET 返回 v2 信封（§3）：cards 单卡编码与 v1 一致，墓碑表随信封上浮
+            val getResp = exchange(port, rawRequest(port, "GET", "/api/cards"))!!
+            assertTrue("实际：${getResp.lineSequence().first()}", getResp.startsWith("HTTP/1.1 200"))
+            val getBody = getResp.substringAfter("\r\n\r\n")
+            val envelope = com.knowflick.app.domain.CardJson.decodeEnvelope(getBody)
+            assertEquals(2, envelope.protocolVersion)
+            assertEquals(listOf("s1"), envelope.cards.map { it.id })
+            assertEquals(0, envelope.tombstones.size)
+
+            // ② POST v2 信封：墓碑交给合并方，响应带 deleted 计数
+            val peerCard = createCard("c1", "客户端卡片")
+            val envelopeBody = com.knowflick.app.domain.CardJson.encodeEnvelope(
+                listOf(peerCard),
+                listOf(com.knowflick.app.domain.Tombstone("dead-1", 1_727_900_001_000)),
+            )
+            val postResp = exchange(port, rawRequest(port, "POST", "/api/cards", envelopeBody))!!
+            assertTrue("实际：${postResp.lineSequence().first()}", postResp.startsWith("HTTP/1.1 200"))
+            assertEquals(listOf("dead-1"), receivedTombstones.map { it.id })
+            assertTrue(
+                "POST 响应应带 deleted 计数，实际：${postResp.substringAfter("\r\n\r\n")}",
+                postResp.substringAfter("\r\n\r\n").contains("\"deleted\":0"),
+            )
+            assertEquals(listOf("s1", "c1"), serverCards.map { it.id })
+
+            // ③ POST v1 裸数组仍被接受（兼容规则）
+            val bareBody = com.knowflick.app.domain.CardJson.encodeList(listOf(createCard("c2", "旧端卡片")))
+            val bareResp = exchange(port, rawRequest(port, "POST", "/api/cards", bareBody))!!
+            assertTrue("v1 裸数组应被接受，实际：${bareResp.lineSequence().first()}", bareResp.startsWith("HTTP/1.1 200"))
+            assertEquals(listOf("s1", "c1", "c2"), serverCards.map { it.id })
+
+            // ④ 非法顶层载荷 → 400（解析类失败）
+            val badResp = exchange(port, rawRequest(port, "POST", "/api/cards", """{"protocolVersion":2}"""))
+            assertTrue("缺 cards 的对象应回 400", badResp?.startsWith("HTTP/1.1 400") == true)
+        } finally {
+            server.stop()
+        }
+    }
+
+    private fun rawRequest(port: Int, method: String, path: String, body: String? = null): ByteArray {
+        val payload = (body ?: "").toByteArray(Charsets.UTF_8)
+        val headers = buildString {
+            append("$method $path HTTP/1.1\r\n")
+            append("${SyncServer.AUTH_HEADER}: 123456\r\n")
+            if (body != null) append("Content-Type: application/json; charset=utf-8\r\n")
+            append("Content-Length: ${payload.size}\r\n")
+            append("Connection: close\r\n\r\n")
+        }
+        return headers.toByteArray(Charsets.UTF_8) + payload
     }
 
     @Test

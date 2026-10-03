@@ -6,6 +6,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
@@ -197,4 +198,68 @@ object CardJson {
 
     fun decodeList(text: String): List<KnowledgeCard> =
         json.decodeFromString(CardListSerializer, text)
+
+    /**
+     * 编码 v2 信封：`{"protocolVersion":2,"cards":[…],"tombstones":[…]}`（§3）。
+     * cards 单卡编码与 v1 裸列表完全一致；信封只用于线格式与归档导入导出，
+     * 本地 cards.json 保持裸列表。
+     */
+    fun encodeEnvelope(cards: List<KnowledgeCard>, tombstones: List<Tombstone> = emptyList()): String =
+        buildJsonObject {
+            put("protocolVersion", PROTOCOL_VERSION)
+            put("cards", JsonArray(cards.map(CardJson::toJsonElement)))
+            put(
+                "tombstones",
+                JsonArray(tombstones.map { tombstone ->
+                    buildJsonObject {
+                        put("id", tombstone.id)
+                        put("deletedAt", tombstone.deletedAt)
+                    }
+                }),
+            )
+        }.toString()
+
+    /**
+     * 解码信封（§3 兼容规则，三种输入）：
+     * - 顶层 JSON 数组 → v1 裸列表（墓碑为空）；
+     * - 顶层对象、有 `cards` → v2 信封（`protocolVersion` 仅记录用于 UI 提示）；
+     * - 其他 → 抛 [IllegalArgumentException]（协议层由 SyncServer 转 400）。
+     * 单卡沿用 [fromJsonElement] 的宽松语义；畸形墓碑条目逐条挽救丢弃。
+     */
+    fun decodeEnvelope(text: String): CardEnvelope {
+        val root = Json.parseToJsonElement(text)
+        return when (root) {
+            is JsonArray -> CardEnvelope(
+                protocolVersion = null,
+                cards = root.map(CardJson::fromJsonElement),
+                tombstones = emptyList(),
+            )
+            is JsonObject -> {
+                val cardsElement = root["cards"]
+                    ?: throw IllegalArgumentException("信封载荷缺少 cards 字段")
+                CardEnvelope(
+                    protocolVersion = (root["protocolVersion"] as? JsonPrimitive)?.intOrNull,
+                    cards = cardsElement.jsonArray.map(CardJson::fromJsonElement),
+                    tombstones = (root["tombstones"] as? JsonArray)?.mapNotNull { entry ->
+                        (entry as? JsonObject)?.let { tombstone ->
+                            val id = (tombstone["id"] as? JsonPrimitive)?.contentOrNull
+                            val deletedAt = (tombstone["deletedAt"] as? JsonPrimitive)?.longOrNull
+                            if (id != null && deletedAt != null) Tombstone(id, deletedAt) else null
+                        }
+                    } ?: emptyList(),
+                )
+            }
+            else -> throw IllegalArgumentException("载荷既不是卡片数组也不是 v2 信封")
+        }
+    }
 }
+
+/**
+ * 同步/归档线格式信封（docs/SYNC_PROTOCOL.md §3）。
+ * v1 裸数组解码时 [protocolVersion] 为 null、墓碑为空。
+ */
+data class CardEnvelope(
+    val protocolVersion: Int?,
+    val cards: List<KnowledgeCard>,
+    val tombstones: List<Tombstone>,
+)

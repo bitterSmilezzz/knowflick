@@ -369,8 +369,9 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             getCards = {
                 withContext(Dispatchers.Main.immediate) { model.store.cards.toList() }
             },
-            onReceiveCards = { incoming ->
+            onReceiveCards = { incoming, _ ->
                 withContext(Dispatchers.Main.immediate) {
+                    // 墓碑合并语义（§4）随墓碑表条目接入；当前对端墓碑仅上浮
                     val result = model.store.restoreArchive(incoming)
                     version++
                     schedulePersist()
@@ -410,7 +411,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             val result = SyncClient.executeBidirectionalSync(
                 target = target,
                 localCards = localSnapshot,
-                onApplyRemoteCards = { remote ->
+                onApplyRemoteCards = { remote, _ ->
                     val merged = model.store.restoreArchive(remote)
                     version++
                     schedulePersist()
