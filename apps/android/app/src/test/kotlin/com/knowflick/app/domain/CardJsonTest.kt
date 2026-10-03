@@ -104,4 +104,83 @@ class CardJsonTest {
         assertEquals("42", card.headline)   // 数字按字符串形式宽容处理（外部工具产物）
         assertFalse(card.isFavorite)
     }
+
+    // ---------- 协议 v2 信封（SYNC_PROTOCOL.md §3） ----------
+
+    private fun envelopeCard(id: String = "env-1") = KnowledgeCard(
+        id = id,
+        category = "物理",
+        headline = "量子纠缠",
+        summary = "摘要",
+        details = "正文",
+        links = emptyList(),
+        source = CardSource.SEED,
+        createdAt = 1_700_000_000_000,
+    )
+
+    @Test
+    fun envelopeRoundTripCarriesCardsAndTombstones() {
+        val card = envelopeCard()
+        val tombstones = listOf(Tombstone("dead-1", 1_700_000_100_000), Tombstone("dead-2", 1_700_000_200_000))
+
+        val text = CardJson.encodeEnvelope(listOf(card), tombstones)
+        val envelope = CardJson.decodeEnvelope(text)
+
+        assertEquals(CardJson.PROTOCOL_VERSION, envelope.protocolVersion)
+        assertEquals(listOf(card), envelope.cards)
+        assertEquals(tombstones, envelope.tombstones)
+    }
+
+    @Test
+    fun envelopeEncodeOmitsTombstonesWhenEmpty() {
+        // tombstones 可省略或为空数组（§3）：空墓碑时编码为空数组，保持载荷形态稳定
+        val envelope = CardJson.decodeEnvelope(CardJson.encodeEnvelope(listOf(envelopeCard())))
+        assertEquals(emptyList(), envelope.tombstones)
+    }
+
+    @Test
+    fun envelopeDecodeAcceptsV1BareArray() {
+        val bare = """
+            [{"id":"f1","category":"冷知识","headline":"测试卡","summary":"摘要","details":"正文","source":"seed","createdAt":1727900000000,"isFavorite":false}]
+        """.trimIndent()
+
+        val envelope = CardJson.decodeEnvelope(bare)
+
+        assertEquals(null, envelope.protocolVersion, "v1 裸列表无版本字段")
+        assertEquals(emptyList(), envelope.tombstones)
+        assertEquals(listOf("f1"), envelope.cards.map { it.id })
+    }
+
+    @Test
+    fun envelopeDecodeRejectsInvalidPayloads() {
+        val invalid = listOf(
+            "not-json",
+            "123",
+            "\"str\"",
+            "{}",                       // 顶层对象但无 cards
+            """{"protocolVersion":2}""", // 同上
+            """{"cards":"x"}""",         // cards 不是数组
+        )
+        for (bad in invalid) {
+            try {
+                CardJson.decodeEnvelope(bad)
+                throw AssertionError("非法载荷应抛异常: $bad")
+            } catch (_: IllegalArgumentException) {
+                // 期望路径
+            } catch (e: Exception) {
+                throw AssertionError("非法载荷应抛 IllegalArgumentException，实际 ${e::class.simpleName}: $bad")
+            }
+        }
+    }
+
+    @Test
+    fun envelopeDecodeSalvagesMalformedTombstoneEntries() {
+        val text = """
+            {"protocolVersion":2,"cards":[],"tombstones":[{"id":"ok","deletedAt":1727900001000},{"deletedAt":1},{"id":"no-ts"},{"not-an-object":true}]}
+        """.trimIndent()
+
+        val envelope = CardJson.decodeEnvelope(text)
+
+        assertEquals(listOf(Tombstone("ok", 1_727_900_001_000)), envelope.tombstones)
+    }
 }

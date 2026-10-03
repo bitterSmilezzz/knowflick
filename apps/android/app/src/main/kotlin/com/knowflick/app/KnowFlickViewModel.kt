@@ -153,8 +153,13 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     /** 进行中的局域网同步任务：关面板即取消（与 macOS 同步面板 PR #25 同语义） */
     private var lanSyncJob: Job? = null
 
+    /** A5：微件落库事件收集任务；onCleared 显式取消（viewModelScope 亦会兜底） */
+    private var widgetSyncJob: Job? = null
+
     init {
         model.bootstrap()
+        // 墓碑表（SYNC_PROTOCOL.md §4）：启动时从持久化层灌入内存态，合并后写回
+        model.store.loadTombstones(model.storage.loadTombstones())
         settings = loadSettings()
         com.knowflick.app.ui.common.AudioEffectHelper.isEnabled = settings.soundEffectsEnabled
         speechSettings = com.knowflick.app.speech.SpeechSettings.fromJson(model.storage.loadSpeechJson() ?: "")
@@ -180,6 +185,20 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         speech.onSettingsChanged = { updated ->
             speechSettings = updated
             model.storage.saveSpeechJson(updated.toJson())
+        }
+        // A5 残留收口：微件 toggleFavorite 经 CardStorage.shared 落库后，App 内存态不知情，
+        // 后续整库持久化会反向覆盖。按 id 从共享存储重读该卡并回灌内存 store——
+        // 磁盘已是权威态，故只 bump version 触发重组，不再整库重写。VM 不在时无收集者，
+        // 事件被丢弃，磁盘态即真相。
+        widgetSyncJob = viewModelScope.launch {
+            com.knowflick.app.widget.WidgetSyncBus.favoriteChanges.collect { cardId ->
+                val fresh = withContext(Dispatchers.IO) {
+                    model.storage.loadCards().firstOrNull { it.id == cardId }
+                } ?: return@collect
+                if (model.store.replaceCard(fresh)) {
+                    version++
+                }
+            }
         }
     }
 
@@ -369,11 +388,16 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             getCards = {
                 withContext(Dispatchers.Main.immediate) { model.store.cards.toList() }
             },
-            onReceiveCards = { incoming ->
+            getTombstones = {
+                withContext(Dispatchers.Main.immediate) { model.store.tombstones }
+            },
+            onReceiveCards = { incoming, tombstones ->
                 withContext(Dispatchers.Main.immediate) {
-                    val result = model.store.restoreArchive(incoming)
+                    // 墓碑合并语义（§4）：对端墓碑删本地旧卡并记表；本地墓碑抵抗对端旧卡
+                    val result = model.store.restoreSyncPayload(incoming, tombstones)
                     version++
                     schedulePersist()
+                    model.storage.saveTombstones(model.store.tombstones)
                     result
                 }
             },
@@ -410,16 +434,26 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             val result = SyncClient.executeBidirectionalSync(
                 target = target,
                 localCards = localSnapshot,
-                onApplyRemoteCards = { remote ->
-                    val merged = model.store.restoreArchive(remote)
+                localTombstones = model.store.tombstones,
+                onApplyRemoteCards = { remote, tombstones ->
+                    val merged = model.store.restoreSyncPayload(remote, tombstones)
                     version++
                     schedulePersist()
+                    model.storage.saveTombstones(model.store.tombstones)
+                    // B8 同步完成点 1：合并落库后强制落盘，消除 kill-app 丢数窗口
+                    flushPending()
                     merged
                 },
             )
+            // B8 同步完成点 2：推送完成后再次强制落盘（拉取失败时快照未变，flush 为幂等兜底）
+            flushPending()
             onDone(result)
         }
     }
+
+    /** 同步结果的对端版本提示（协议 §2）：旧端/更新各一条文案，版本一致无提示。纯逻辑在 sync 包便于单测 */
+    fun syncVersionHint(peerProtocolVersion: Int?): String? =
+        com.knowflick.app.sync.syncVersionHint(peerProtocolVersion)
 
     /** 连通性测试：返回用户可读状态 */
     suspend fun testConnection(temp: AiSettings, apiKey: String): String {
@@ -1009,6 +1043,10 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     override fun onCleared() {
         syncServer?.stop()
         syncServer = null
+        lanSyncJob?.cancel()
+        lanSyncJob = null
+        widgetSyncJob?.cancel()
+        widgetSyncJob = null
         persistJob?.cancel()
         persistJob = null
         persistenceQueue.closeAfter(model.store.cards)
@@ -1027,21 +1065,18 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    /** 生命周期 flush：同步把最新快照写盘，避免退到后台后被系统回收丢失最后一批改动。 */
+    /** 生命周期 flush：同步把最新快照写盘，避免退到后台后被系统回收丢失最后一批改动。
+     *  也作为 B8 同步完成点的强制落盘（400ms 有界等待，超时交给队列自然完成）。 */
     fun flushPending() {
         persistJob?.cancel()
         persistJob = null
         val snapshot = model.store.cards.toList()
-        // 走串行队列的同步提交：队列保证顺序，等待落盘完成再返回。
-        val done = java.util.concurrent.CountDownLatch(1)
-        val accepted = persistenceQueue.enqueueAndWait(snapshot) { done.countDown() }
+        // 走串行队列的有界等待 flush：队列保证顺序，等待落盘完成再返回（不阻塞超过 400ms）。
+        val accepted = persistenceQueue.flush(snapshot)
         if (!accepted) {
             // 队列已关闭（ViewModel 已清理）时直接同步写一次，避免静默丢数据。
             handlePersistenceResult(model.storage.saveCards(snapshot))
-            return
         }
-        // onPause 允许极短等待；超时说明写入较慢，交给队列自然完成，不阻塞界面。
-        done.await(400, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
     private fun handlePersistenceResult(result: CardSaveResult) {

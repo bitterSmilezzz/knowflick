@@ -1,5 +1,6 @@
 package com.knowflick.app.data
 
+import com.knowflick.app.domain.CardJson
 import com.knowflick.app.domain.KnowledgeCard
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -92,8 +93,8 @@ object CardExportEngine {
         return lines.joinToString("\n")
     }
 
-    /** JSON 归档（cards.json 同构线格式，含复习进度，跨端迁移） */
-    fun exportJSONArchive(cards: List<KnowledgeCard>): String = CardFileIO.encodeList(cards)
+    /** JSON 归档（v2 信封线格式，含复习进度，跨端迁移；导入侧兼容旧裸列表） */
+    fun exportJSONArchive(cards: List<KnowledgeCard>): String = CardJson.encodeEnvelope(cards)
 
     fun sourceLabel(card: KnowledgeCard): String = when (card.source.raw) {
         "ai" -> "🤖 AI 灵感探索"

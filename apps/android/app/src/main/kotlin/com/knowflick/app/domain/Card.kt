@@ -52,6 +52,12 @@ data class KnowledgeCard(
     val links: List<ScienceLink>,
     val source: CardSource,
     val createdAt: Long,
+    /**
+     * 最近编辑时间（epoch ms，docs/SYNC_PROTOCOL.md §5）：details 合并冲突「新者赢」的依据，
+     * 也是墓碑合并的卡片时间戳（§4.3，editedAt 优先、否则 createdAt）。
+     * 可选字段：线格式缺失 = null（旧数据）；Android 无编辑器，只消费不生产。
+     */
+    val editedAt: Long? = null,
     val seenAt: Long? = null,
     val swiped: SwipeDirection? = null,
     /** 收藏状态：与 swiped（喜好意图）解耦；取消收藏只清此标记 */

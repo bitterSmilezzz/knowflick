@@ -3,6 +3,7 @@ package com.knowflick.app.sync
 import com.knowflick.app.domain.CardJson
 import com.knowflick.app.domain.CardStore
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.domain.Tombstone
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.net.Inet4Address
@@ -12,6 +13,7 @@ import java.net.Socket
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.intOrNull
@@ -24,13 +26,16 @@ data class SyncResult(
     val pulledCount: Int,
     val addedCount: Int,
     val restoredCount: Int,
+    /** 对端 /api/info 携带的协议版本；null = 旧端（缺字段），随同步结果上浮供 UI 提示 */
+    val peerProtocolVersion: Int? = null,
 )
 
 /** 局域网同步客户端。仅允许回环、链路本地和 RFC1918 IPv4，避免把卡库误传到公网主机。 */
 object SyncClient {
 
-    private const val CONNECT_TIMEOUT_MS = 5_000
-    private const val READ_TIMEOUT_MS = 15_000
+    // B5 超时对齐（SYNC_PROTOCOL.md §6）：连接 6s、读 20s（双端一致；Android 由 5s/15s 对齐过来）
+    internal const val CONNECT_TIMEOUT_MS = 6_000
+    internal const val READ_TIMEOUT_MS = 20_000
     private const val MAX_RESPONSE_BODY_BYTES = SyncServer.MAX_REQUEST_BODY_BYTES
 
     private data class Target(val address: InetAddress, val hostLabel: String, val port: Int, val accessCode: String)
@@ -116,7 +121,7 @@ object SyncClient {
         }
     }
 
-    private fun requestWithRetry(
+    private suspend fun requestWithRetry(
         target: Target,
         method: String,
         path: String,
@@ -147,11 +152,11 @@ object SyncClient {
                 }
                 lastException = e
                 if (attempt < maxAttempts) {
+                    // B5 退避（§6）：500ms×2^(n-1) + ≤100ms 抖动；协程 delay 释放 IO 线程，
+                    // 且取消期间可被协作式打断（原 Thread.sleep 吞中断不可取消）
                     val baseDelay = 500L * (1L shl (attempt - 1))
                     val jitter = (Math.random() * 100).toLong()
-                    try {
-                        Thread.sleep(baseDelay + jitter)
-                    } catch (_: InterruptedException) {}
+                    delay(baseDelay + jitter)
                 }
             }
         }
@@ -164,26 +169,36 @@ object SyncClient {
     }
 
     suspend fun fetchRemoteInfo(target: String): Result<RemoteDeviceInfo> = withContext(Dispatchers.IO) {
-        runCatching {
-            val response = requestWithRetry(parseTarget(target), "GET", "/api/info")
-            if (response.status !in 200..299) error("对端设备响应错误 HTTP ${response.status}")
-            val obj = Json.parseToJsonElement(response.body).jsonObject
-            RemoteDeviceInfo(
-                deviceName = obj["deviceName"]?.jsonPrimitive?.content ?: "未知设备",
-                cardCount = obj["cardCount"]?.jsonPrimitive?.intOrNull ?: 0,
-                favoriteCount = obj["favoriteCount"]?.jsonPrimitive?.intOrNull ?: 0,
-                timestamp = obj["timestamp"]?.jsonPrimitive?.longOrNull ?: 0L,
-            )
-        }
+        runCatching { fetchInfo(parseTarget(target)) }
+    }
+
+    /** 拉取对端 /api/info（含重试）；版本握手字段解析见 [parseInfoBody] */
+    private suspend fun fetchInfo(parsed: Target): RemoteDeviceInfo = withContext(Dispatchers.IO) {
+        val response = requestWithRetry(parsed, "GET", "/api/info")
+        if (response.status !in 200..299) error("对端设备响应错误 HTTP ${response.status}")
+        parseInfoBody(response.body)
+    }
+
+    private fun parseInfoBody(body: String): RemoteDeviceInfo {
+        val obj = Json.parseToJsonElement(body).jsonObject
+        return RemoteDeviceInfo(
+            deviceName = obj["deviceName"]?.jsonPrimitive?.content ?: "未知设备",
+            cardCount = obj["cardCount"]?.jsonPrimitive?.intOrNull ?: 0,
+            favoriteCount = obj["favoriteCount"]?.jsonPrimitive?.intOrNull ?: 0,
+            timestamp = obj["timestamp"]?.jsonPrimitive?.longOrNull ?: 0L,
+            // 缺字段 = v1 旧端（SYNC_PROTOCOL.md §2）
+            protocolVersion = obj["protocolVersion"]?.jsonPrimitive?.intOrNull,
+        )
     }
 
     /** 网络读写放在 IO；卡库合并回到调用方上下文，避免后台线程直接修改 Compose 状态。 */
     suspend fun executeBidirectionalSync(
         target: String,
         localCards: List<KnowledgeCard>,
-        onApplyRemoteCards: (List<KnowledgeCard>) -> CardStore.ArchiveRestoreResult,
+        localTombstones: List<Tombstone> = emptyList(),
+        onApplyRemoteCards: (List<KnowledgeCard>, List<Tombstone>) -> CardStore.ArchiveRestoreResult,
     ): Result<SyncResult> = try {
-        Result.success(bidirectionalSync(target, localCards, onApplyRemoteCards))
+        Result.success(bidirectionalSync(target, localCards, localTombstones, onApplyRemoteCards))
     } catch (cancelled: CancellationException) {
         // 关闭同步面板等正常取消不是同步失败：原样上抛交给协程机制收尾，
         // 否则取消会被包成 Result.failure 以假错误回调 onDone（与全仓 rethrow 惯例一致）
@@ -195,19 +210,25 @@ object SyncClient {
     private suspend fun bidirectionalSync(
         target: String,
         localCards: List<KnowledgeCard>,
-        onApplyRemoteCards: (List<KnowledgeCard>) -> CardStore.ArchiveRestoreResult,
+        localTombstones: List<Tombstone>,
+        onApplyRemoteCards: (List<KnowledgeCard>, List<Tombstone>) -> CardStore.ArchiveRestoreResult,
     ): SyncResult {
         val parsed = withContext(Dispatchers.IO) { parseTarget(target) }
-        val pulledCards = withContext(Dispatchers.IO) {
+        // 版本握手（SYNC_PROTOCOL.md §2）：先取对端 /api/info，protocolVersion 随同步结果上浮；
+        // 缺字段 = 旧端，不阻断同步
+        val peerInfo = fetchInfo(parsed)
+        val pulled = withContext(Dispatchers.IO) {
             val response = requestWithRetry(parsed, "GET", "/api/cards")
             if (response.status !in 200..299) error("拉取对端卡片失败 HTTP ${response.status}")
-            CardJson.decodeList(response.body)
+            // 兼容规则（§3）：v2 信封 / v1 裸数组均可，其余非法抛错走重试-失败路径
+            CardJson.decodeEnvelope(response.body)
         }
 
-        val mergeResult = onApplyRemoteCards(pulledCards)
+        val mergeResult = onApplyRemoteCards(pulled.cards, pulled.tombstones)
 
         withContext(Dispatchers.IO) {
-            val payload = CardJson.encodeList(localCards).toByteArray(StandardCharsets.UTF_8)
+            val payload = CardJson.encodeEnvelope(localCards, localTombstones)
+                .toByteArray(StandardCharsets.UTF_8)
             require(payload.size <= SyncServer.MAX_REQUEST_BODY_BYTES) { "本机卡片数据超过 25 MiB 同步上限" }
             val response = requestWithRetry(parsed, "POST", "/api/cards", payload)
             if (response.status !in 200..299) error("推送卡片至对端失败 HTTP ${response.status}")
@@ -215,9 +236,10 @@ object SyncClient {
 
         return SyncResult(
             pushedCount = localCards.size,
-            pulledCount = pulledCards.size,
+            pulledCount = pulled.cards.size,
             addedCount = mergeResult.added,
             restoredCount = mergeResult.restored,
+            peerProtocolVersion = peerInfo.protocolVersion,
         )
     }
 }

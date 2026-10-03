@@ -7,7 +7,8 @@ import java.io.InputStream
 import java.io.ByteArrayOutputStream
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 
 /** 卡片文件 IO 辅助（统一 JSON 实例 + 逐卡挽救解码） */
 object CardFileIO {
@@ -20,10 +21,17 @@ object CardFileIO {
     fun encodeList(cards: List<KnowledgeCard>): String =
         json.encodeToString(ListSerializer(CardJson.CardJsonSerializer), cards)
 
-    /** 逐卡挽救解码：一张坏卡不再拖垮整个文件（对齐 macOS parseJSON 宽松语义） */
+    /** 逐卡挽救解码：一张坏卡不再拖垮整个文件（对齐 macOS parseJSON 宽松语义）。
+     *  兼容 v2 信封与旧裸列表两种顶层形态（SYNC_PROTOCOL.md §3）：
+     *  归档/导入文件可能是信封对象（取 cards 数组逐卡挽救），也可能是历史裸数组；
+     *  非法或空载荷返回空列表，由调用方上浮「未检测到有效数据」。 */
     fun decodeListSalvaging(text: String): List<KnowledgeCard> {
-        val array = runCatching { Json.parseToJsonElement(text).jsonArray }.getOrNull()
-            ?: return emptyList()
+        val root = runCatching { Json.parseToJsonElement(text) }.getOrNull() ?: return emptyList()
+        val array = when (root) {
+            is JsonArray -> root
+            is JsonObject -> root["cards"] as? JsonArray ?: return emptyList()
+            else -> return emptyList()
+        }
         return array.mapNotNull { element ->
             runCatching { CardJson.fromJsonElement(element) }.getOrNull()
         }
@@ -47,4 +55,7 @@ object CardFileIO {
 
     /** 备份文件路径（供测试断言轮转行为） */
     fun backupFile(baseDir: File): File = File(baseDir, "cards.backup.json")
+
+    /** 第二代备份文件路径（B7 数据纵深：主文件 → backup → backup.2） */
+    fun backup2File(baseDir: File): File = File(baseDir, "cards.backup.2.json")
 }
