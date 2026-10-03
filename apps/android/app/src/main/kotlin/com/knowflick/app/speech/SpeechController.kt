@@ -283,6 +283,11 @@ class SpeechController(
 
     /** 完全停止播放并重置状态 */
     fun stop() {
+        if (speakingCardId == null && !isSpeaking && !isPaused) {
+            // 已处于停止态：不再向服务排队 STOP。
+            // 服务侧收到 STOP 会回调本方法再触发一次 stopService——不拦住就是 STOP 自激死循环
+            return
+        }
         stopAmbientInternal()
         stopPlayback(keepAmbient = false, keepCard = false)
         speakingCardId = null
@@ -294,6 +299,21 @@ class SpeechController(
         durationMs = 0L
 
         SpeechPlaybackService.stopService(context)
+    }
+
+    /**
+     * 前台服务失去系统保护（startForeground 被系统拒绝）：
+     * 干净停止播放并把原因呈现给用户。不回打 stopService——服务正在自行收尾。
+     */
+    fun onForegroundServiceLost(reason: String) {
+        stopAmbientInternal()
+        stopPlayback(keepAmbient = false, keepCard = false)
+        lastError = reason
+        speakingCardId = null
+        currentCard = null
+        isSpeaking = false
+        isPaused = false
+        stopProgressTracker()
     }
 
     /** 相对快进快退（单位秒，负数快退，正数快进） */
