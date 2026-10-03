@@ -3,9 +3,14 @@ package com.knowflick.app.sync
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.CardStore
 import com.knowflick.app.domain.KnowledgeCard
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -95,6 +100,154 @@ class SyncEngineTest {
             assertTrue(valid.isSuccess)
         } finally {
             server.stop()
+        }
+    }
+
+    @Test
+    fun testCancelledSyncRethrowsInsteadOfFakeFailure() = runBlocking {
+        val outcome = CompletableDeferred<String>()
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                val result = SyncClient.executeBidirectionalSync(
+                    target = "127.0.0.1:1#123456",
+                    localCards = emptyList(),
+                    onApplyRemoteCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+                )
+                outcome.complete("returned:$result")
+            } catch (cancelled: CancellationException) {
+                outcome.complete("rethrown")
+            } catch (e: Exception) {
+                outcome.complete("swallowed:$e")
+            }
+        }
+        // UNDISPATCHED 已把协程推进到第一个挂起点（withContext(IO)）；此刻取消，
+        // 取消必须以 CancellationException 原样上抛，而不是被包成 Result.failure 假错误
+        job.cancel()
+        assertEquals("rethrown", outcome.await())
+    }
+
+    @Test
+    fun testAbnormalAcceptFailureSurfacesToCallback() = runBlocking {
+        val reported = CompletableDeferred<Throwable>()
+        val server = SyncServer(
+            accessCode = "123456",
+            getCards = { emptyList() },
+            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+            onAbnormallyStopped = { reported.complete(it) },
+        )
+        server.start(preferredPort = 9195).getOrThrow()
+        try {
+            // 不经 stop() 直接关监听 socket：模拟 fd 耗尽等 accept 带病退出
+            server.closeListenerForTest()
+            val error = kotlinx.coroutines.withTimeoutOrNull(2_000) { reported.await() }
+            assertNotNull("accept 带病退出必须上浮到 onAbnormallyStopped", error)
+            assertTrue("带病退出后 isRunning 必须翻假，UI 不能继续显示已启动", !server.isRunning)
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun testNormalStopDoesNotFireAbnormalCallback() = runBlocking {
+        val reported = CompletableDeferred<Throwable>()
+        val server = SyncServer(
+            accessCode = "123456",
+            getCards = { emptyList() },
+            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+            onAbnormallyStopped = { reported.complete(it) },
+        )
+        server.start(preferredPort = 9196).getOrThrow()
+        server.stop()
+        assertTrue(!server.isRunning)
+        val fired = kotlinx.coroutines.withTimeoutOrNull(300) { reported.await() }
+        assertNull("正常 stop() 不得触发异常停止回调", fired)    }
+
+    @Test
+    fun testGarbageRequestDoesNotKillServer() = runBlocking {
+        val server = SyncServer(
+            accessCode = "123456",
+            getCards = { listOf(createCard("s1", "服务端卡片")) },
+            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+        )
+        val port = server.start(preferredPort = 9197).getOrThrow()
+        try {
+            // ① 非 HTTP 垃圾字节：连接被关闭或收到 4xx，服务端必须存活
+            val garbage = exchange(port, "门柱从王维处\r\n\r\n".toByteArray())
+            assertTrue(
+                "垃圾请求应被关闭或回 4xx，实际：$garbage",
+                garbage == null || garbage.startsWith("HTTP/1.1 4"),
+            )
+
+            // ② 超长请求头（>8KB）：可归因于解析失败，应回 400
+            val bigHeader = "GET /api/info HTTP/1.1\r\nX-Big: ${"a".repeat(9000)}\r\n\r\n"
+            val oversized = exchange(port, bigHeader.toByteArray())
+            assertTrue(
+                "超长请求头应回 400，实际：${oversized?.lineSequence()?.first()}",
+                oversized?.startsWith("HTTP/1.1 400") == true,
+            )
+
+            // ③ 声明 Content-Length 但正文截断（半关闭写端模拟对端中断）：
+            // 服务端读到不完整正文应回 400，而不是挂着等满 500 字节
+            val truncated = exchange(
+                port,
+                (
+                    "POST /api/cards HTTP/1.1\r\n" +
+                        "${SyncServer.AUTH_HEADER}: 123456\r\n" +
+                        "Content-Length: 500\r\n\r\n" +
+                        "{\"id\":"
+                    ).toByteArray(),
+                halfClose = true,
+            )
+            assertTrue(
+                "截断正文应回 400，实际：${truncated?.lineSequence()?.first()}",
+                truncated?.startsWith("HTTP/1.1 400") == true,
+            )
+
+            // ④ 非法 JSON 正文：可归因于请求解析，应回 400
+            val badBody = "not-json"
+            val badJson = exchange(
+                port,
+                (
+                    "POST /api/cards HTTP/1.1\r\n" +
+                        "${SyncServer.AUTH_HEADER}: 123456\r\n" +
+                        "Content-Type: application/json\r\n" +
+                        "Content-Length: ${badBody.length}\r\n\r\n" +
+                        badBody
+                    ).toByteArray(),
+            )
+            assertTrue(
+                "非法 JSON 应回 400，实际：${badJson?.lineSequence()?.first()}",
+                badJson?.startsWith("HTTP/1.1 400") == true,
+            )
+
+            // ⑤ 一连串畸形请求后，服务必须照常应答合法请求
+            assertTrue("畸形请求不得让服务停摆", server.isRunning)
+            val ok = SyncClient.fetchRemoteInfo("127.0.0.1:$port#123456")
+            assertTrue("畸形请求之后合法请求必须照常工作：${ok.exceptionOrNull()}", ok.isSuccess)
+        } finally {
+            server.stop()
+        }
+    }
+
+    /** 发送原始字节并读取到对端关闭；无响应（直接关闭）返回 null；halfClose 模拟对端发完即断 */
+    private fun exchange(port: Int, request: ByteArray, halfClose: Boolean = false): String? {
+        return java.net.Socket().use { socket ->
+            socket.connect(java.net.InetSocketAddress("127.0.0.1", port), 3_000)
+            socket.soTimeout = 3_000
+            socket.getOutputStream().apply {
+                write(request)
+                flush()
+            }
+            if (halfClose) socket.shutdownOutput()
+            val input = socket.getInputStream()
+            val buffer = java.io.ByteArrayOutputStream()
+            val chunk = ByteArray(4096)
+            while (true) {
+                val n = input.read(chunk)
+                if (n < 0) break
+                buffer.write(chunk, 0, n)
+            }
+            if (buffer.size() == 0) null else buffer.toString("UTF-8")
         }
     }
 

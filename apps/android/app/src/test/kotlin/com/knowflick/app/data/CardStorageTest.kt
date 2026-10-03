@@ -75,5 +75,68 @@ class CardStorageTest {
         assertEquals("""{"apiKeySet":true}""", storage.loadSettingsJson())
     }
 
+    @Test
+    fun updateCardsRebasesOntoLatestStateUnderLock() {
+        // A5 契约：updateCards 以锁内最新卡库为基线，调用方持有的旧快照不参与写回
+        val appCard = makeCard("App写入卡").copy(id = "app-x")
+        val widgetCard = makeCard("微件当前卡").copy(id = "widget-y")
+        storage.saveCards(listOf(appCard, widgetCard))
+        val stale = storage.loadCards()   // 微件在 App 写入前捕获的旧快照
+        storage.saveCards(listOf(appCard.copy(isFavorite = true), widgetCard))
+
+        val bases = mutableListOf<List<KnowledgeCard>>()
+        val result = storage.updateCards { latest ->
+            bases += latest
+            latest.map { if (it.id == "widget-y") it.copy(isFavorite = true) else it }
+        }
+
+        assertTrue(result is CardSaveResult.Saved)
+        assertEquals(1, bases.size)
+        assertTrue(
+            bases.single().first { it.id == "app-x" }.isFavorite,
+            "transform 基线必须是锁内最新卡库，不得是调用方旧快照",
+        )
+        val final = storage.loadCards()
+        assertTrue(final.first { it.id == "app-x" }.isFavorite, "App 写入不得被微件写回冲掉")
+        assertTrue(final.first { it.id == "widget-y" }.isFavorite, "微件的增量必须落库")
+    }
+
+    @Test
+    fun updateCardsExcludesConcurrentSaveCards() {
+        // 读-改-写必须整体持锁：并发 saveCards 只能排在它之前或之后，不得插进中间
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val updateDone = java.util.concurrent.CountDownLatch(1)
+        val appCard = makeCard("App写入卡").copy(id = "app-x")
+        val widgetCard = makeCard("微件当前卡").copy(id = "widget-y")
+        storage.saveCards(listOf(appCard, widgetCard))
+
+        Thread {
+            storage.updateCards { cards ->
+                entered.countDown()
+                release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                cards
+            }
+            updateDone.countDown()
+        }.apply { start() }
+
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val appWriteDone = java.util.concurrent.CountDownLatch(1)
+        Thread {
+            storage.saveCards(listOf(appCard.copy(isFavorite = true), widgetCard))
+            appWriteDone.countDown()
+        }.apply { start() }
+
+        // 若锁被共享，App 写入必须排队等待；只有它插进了读-改-写中间才会提前完成
+        assertTrue(
+            !appWriteDone.await(150, java.util.concurrent.TimeUnit.MILLISECONDS),
+            "saveCards 必须等待 updateCards 完成（同一把实例锁串行化）",
+        )
+        release.countDown()
+        assertTrue(updateDone.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(appWriteDone.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(storage.loadCards().first { it.id == "app-x" }.isFavorite)
+    }
+
     private fun cardsFile(): File = File(baseDir, "cards.json")
 }

@@ -283,6 +283,11 @@ class SpeechController(
 
     /** 完全停止播放并重置状态 */
     fun stop() {
+        if (speakingCardId == null && !isSpeaking && !isPaused) {
+            // 已处于停止态：不再向服务排队 STOP。
+            // 服务侧收到 STOP 会回调本方法再触发一次 stopService——不拦住就是 STOP 自激死循环
+            return
+        }
         stopAmbientInternal()
         stopPlayback(keepAmbient = false, keepCard = false)
         speakingCardId = null
@@ -294,6 +299,21 @@ class SpeechController(
         durationMs = 0L
 
         SpeechPlaybackService.stopService(context)
+    }
+
+    /**
+     * 前台服务失去系统保护（startForeground 被系统拒绝）：
+     * 干净停止播放并把原因呈现给用户。不回打 stopService——服务正在自行收尾。
+     */
+    fun onForegroundServiceLost(reason: String) {
+        stopAmbientInternal()
+        stopPlayback(keepAmbient = false, keepCard = false)
+        lastError = reason
+        speakingCardId = null
+        currentCard = null
+        isSpeaking = false
+        isPaused = false
+        stopProgressTracker()
     }
 
     /** 相对快进快退（单位秒，负数快退，正数快进） */
@@ -506,9 +526,16 @@ class SpeechController(
         val totalDurationMs = ((fullText.length / charsPerSecond) * 1000L).toLong().coerceAtLeast(1500L)
         durationMs = totalDurationMs
 
-        // 若从进度继续，截取未朗读文本发音
-        val startCharIndex = (resumeFromProgress.coerceIn(0f, 0.95f) * fullText.length).toInt()
+        // 系统音色单次 speak() 超过引擎上限会被静默截断：按句贪心分段排队（上限内逐段 QUEUE_ADD）
+        val maxSpeechLength = TextToSpeech.getMaxSpeechInputLength()
+        // 若从进度继续，截取未朗读文本发音；起点回退到码位边界，避免劈开代理对
+        val startCharIndex = SpeechTextSegmenter.snapBackToCodePointStart(
+            fullText,
+            (resumeFromProgress.coerceIn(0f, 0.95f) * fullText.length).toInt().coerceAtMost(fullText.length),
+        )
         val speakSubText = if (startCharIndex > 0) fullText.substring(startCharIndex) else fullText
+        val segments = SpeechTextSegmenter.segment(speakSubText, maxSpeechLength)
+        val lastUtteranceId = systemTtsUtteranceId(card.id, segments.lastIndex)
 
         ttsPausedAccumulatedMs = (resumeFromProgress * totalDurationMs).toLong()
         ttsStartTimeMs = System.currentTimeMillis()
@@ -518,14 +545,15 @@ class SpeechController(
             override fun onStart(utteranceId: String?) = Unit
             override fun onError(utteranceId: String?) {
                 mainHandler.post {
-                    if (utteranceId == card.id && speakingCardId == card.id) {
+                    if (utteranceId?.startsWith("${card.id}#") == true && speakingCardId == card.id) {
                         failSystemTts("系统语音播放失败")
                     }
                 }
             }
             override fun onDone(utteranceId: String?) {
                 mainHandler.post {
-                    if (utteranceId == card.id && speakingCardId == card.id) {
+                    // 分段排队后只有最后一段的 onDone 代表整卡播完
+                    if (utteranceId == lastUtteranceId && speakingCardId == card.id) {
                         playbackProgress = 1.0f
                         currentPositionMs = durationMs
                         onPlaybackFinished()
@@ -534,13 +562,24 @@ class SpeechController(
             }
         })
 
-        val result = tts?.speak(speakSubText, TextToSpeech.QUEUE_FLUSH, null, card.id)
-        if (result == TextToSpeech.ERROR) {
+        var enqueueFailed = false
+        segments.forEachIndexed { index, segment ->
+            val result = tts?.speak(
+                segment,
+                if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
+                null,
+                systemTtsUtteranceId(card.id, index),
+            )
+            if (result == TextToSpeech.ERROR) enqueueFailed = true
+        }
+        if (enqueueFailed) {
             failSystemTts("系统语音播放失败")
         } else {
             startProgressTracker()
         }
     }
+
+    private fun systemTtsUtteranceId(cardId: String, segmentIndex: Int) = "$cardId#$segmentIndex"
 
     private suspend fun speakWithRemote(card: KnowledgeCard, decision: SpeechChannelPolicy.Decision.Remote) {
         try {

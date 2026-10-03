@@ -33,6 +33,8 @@ class SyncServer(
     private val accessCode: String,
     private val getCards: suspend () -> List<KnowledgeCard>,
     private val onReceiveCards: suspend (List<KnowledgeCard>) -> CardStore.ArchiveRestoreResult,
+    /** 服务带病退出（fd 耗尽等）时回调；正常 stop() 不会触发。回调运行在 accept 线程上 */
+    private val onAbnormallyStopped: (Throwable) -> Unit = {},
 ) {
     private var serverSocket: ServerSocket? = null
     private var executor: ExecutorService? = null
@@ -75,11 +77,24 @@ class SyncServer(
                     try {
                         val client = ss.accept()
                         pool.submit {
-                            handleClient(client)
+                            try {
+                                handleClient(client)
+                            } catch (e: Exception) {
+                                // 只拦 Exception；Error/kill 类照常外溢。
+                                // 兜底在此是因为 submit 的 FutureTask 会吞掉 worker 异常，
+                                // 不拦的话畸形请求只留下「无响应、无日志」的静默失败。
+                                logConnectionFailure(e)
+                            }
                         }
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        // 正常 stop() 先置 isRunning=false 再关 socket，走到这里不会触发回调
+                        if (isRunning) markAbnormallyStopped(e)
                         break
                     }
+                }
+                // 循环条件退出（监听 socket 被外力关闭）同样是带病停摆：isRunning 仍为 true 必须上浮
+                if (isRunning) {
+                    markAbnormallyStopped(java.io.IOException("同步服务监听已意外关闭"))
                 }
             }, "KnowFlickSyncAcceptor").apply { isDaemon = true }
             acceptThread.start()
@@ -101,6 +116,32 @@ class SyncServer(
         executor = null
     }
 
+    /** 测试注入点：不经 stop() 直接关闭监听 socket，模拟 fd 耗尽等带病退出 */
+    internal fun closeListenerForTest() {
+        try {
+            serverSocket?.close()
+        } catch (_: Exception) {}
+    }
+
+    /** 连接级异常兜底日志；纯 JVM 单元测试没有 Android 框架，Log 是抛桩异常的空壳，静默忽略 */
+    private fun logConnectionFailure(error: Exception) {
+        try {
+            android.util.Log.w("KnowFlickSync", "局域网同步连接处理失败，已关闭该连接", error)
+        } catch (_: Throwable) {}
+    }
+
+    /** 停止接受连接并上浮异常原因；与 [stop] 同一把监视器锁，顺序竞争是安全的 */
+    @Synchronized
+    private fun markAbnormallyStopped(cause: Throwable) {
+        isRunning = false
+        val pool = executor
+        try {
+            pool?.shutdownNow()
+        } catch (_: Exception) {}
+        executor = null
+        onAbnormallyStopped(cause)
+    }
+
     private fun readHttpLine(input: java.io.InputStream): String? {
         val baos = java.io.ByteArrayOutputStream()
         while (true) {
@@ -115,114 +156,138 @@ class SyncServer(
             if (b != '\r'.code) {
                 baos.write(b)
                 if (baos.size() > MAX_HEADER_LINE_BYTES) {
-                    error("请求头过长")
+                    throw BadRequestException("请求头过长")
                 }
             }
         }
         return baos.toString(StandardCharsets.UTF_8.name())
     }
 
+    /** 请求可归因于解析失败（超长头/非法 JSON 等）：向对端回 400 后关闭连接 */
+    private class BadRequestException(message: String) : Exception(message)
+
     private fun handleClient(client: Socket) {
         client.use { s ->
-            s.soTimeout = 10000
-            val input = java.io.BufferedInputStream(s.getInputStream())
-            val out = s.getOutputStream()
-
-            val requestLine = readHttpLine(input) ?: return
-            val parts = requestLine.split(" ")
-            if (parts.size < 2) return
-            val method = parts[0].uppercase()
-            val path = parts[1].substringBefore("?")
-
-            var contentLength = 0
-            val headers = HashMap<String, String>()
-            var line: String?
-            var headerCount = 0
-            while (readHttpLine(input).also { line = it } != null) {
-                if (line.isNullOrBlank()) break
-                headerCount++
-                if (headerCount > MAX_HEADER_COUNT) error("请求头过多")
-                val header = line!!
-                val separator = header.indexOf(':')
-                if (separator > 0) {
-                    headers[header.substring(0, separator).trim().lowercase()] =
-                        header.substring(separator + 1).trim()
-                }
-                if (header.startsWith("Content-Length:", ignoreCase = true)) {
-                    contentLength = header.substringAfter(":").trim().toIntOrNull() ?: 0
+            try {
+                serveRequest(s)
+            } catch (e: BadRequestException) {
+                // 对端可能已断开，写失败忽略；无论成败连接都在 use 中关闭
+                runCatching {
+                    sendResponse(
+                        s.getOutputStream(),
+                        400,
+                        "Bad Request",
+                        "application/json",
+                        """{"error":"${e.message ?: "Malformed request"}"}""",
+                    )
                 }
             }
+        }
+    }
 
-            if (headers[AUTH_HEADER.lowercase()] != accessCode) {
-                sendResponse(out, 401, "Unauthorized", "application/json", """{"error":"Invalid pairing code"}""")
-                return
+    private fun serveRequest(s: Socket) {
+        s.soTimeout = 10000
+        val input = java.io.BufferedInputStream(s.getInputStream())
+        val out = s.getOutputStream()
+
+        val requestLine = readHttpLine(input) ?: return
+        val parts = requestLine.split(" ")
+        if (parts.size < 2) return
+        val method = parts[0].uppercase()
+        val path = parts[1].substringBefore("?")
+
+        var contentLength = 0
+        val headers = HashMap<String, String>()
+        var line: String?
+        var headerCount = 0
+        while (readHttpLine(input).also { line = it } != null) {
+            if (line.isNullOrBlank()) break
+            headerCount++
+            if (headerCount > MAX_HEADER_COUNT) throw BadRequestException("请求头过多")
+            val header = line!!
+            val separator = header.indexOf(':')
+            if (separator > 0) {
+                headers[header.substring(0, separator).trim().lowercase()] =
+                    header.substring(separator + 1).trim()
             }
-
-            if (contentLength !in 0..MAX_REQUEST_BODY_BYTES) {
-                sendResponse(out, 413, "Payload Too Large", "application/json", """{"error":"Payload Too Large"}""")
-                return
+            if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                contentLength = header.substringAfter(":").trim().toIntOrNull() ?: 0
             }
+        }
 
-            when (path) {
-                "/api/info" -> {
-                    if (method == "GET") {
+        if (headers[AUTH_HEADER.lowercase()] != accessCode) {
+            sendResponse(out, 401, "Unauthorized", "application/json", """{"error":"Invalid pairing code"}""")
+            return
+        }
+
+        if (contentLength !in 0..MAX_REQUEST_BODY_BYTES) {
+            sendResponse(out, 413, "Payload Too Large", "application/json", """{"error":"Payload Too Large"}""")
+            return
+        }
+
+        when (path) {
+            "/api/info" -> {
+                if (method == "GET") {
+                    val cards = runBlocking { getCards() }
+                    val favCount = cards.count { it.isFavorite }
+                    val deviceName = try {
+                        "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim().ifBlank { "Android Device" }
+                    } catch (_: Throwable) {
+                        "KnowFlick Host"
+                    }
+                    val json = buildJsonObject {
+                        put("deviceName", deviceName)
+                        put("cardCount", cards.size)
+                        put("favoriteCount", favCount)
+                        put("timestamp", System.currentTimeMillis())
+                    }.toString()
+                    sendResponse(out, 200, "OK", "application/json; charset=utf-8", json)
+                } else {
+                    sendResponse(out, 405, "Method Not Allowed", "application/json", """{"error":"Method Not Allowed"}""")
+                }
+            }
+            "/api/cards" -> {
+                when (method) {
+                    "GET" -> {
                         val cards = runBlocking { getCards() }
-                        val favCount = cards.count { it.isFavorite }
-                        val deviceName = try {
-                            "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim().ifBlank { "Android Device" }
-                        } catch (_: Throwable) {
-                            "KnowFlick Host"
-                        }
-                        val json = buildJsonObject {
-                            put("deviceName", deviceName)
-                            put("cardCount", cards.size)
-                            put("favoriteCount", favCount)
-                            put("timestamp", System.currentTimeMillis())
-                        }.toString()
+                        val json = CardJson.encodeList(cards)
                         sendResponse(out, 200, "OK", "application/json; charset=utf-8", json)
-                    } else {
+                    }
+                    "POST" -> {
+                        val body = if (contentLength > 0) {
+                            val bytes = ByteArray(contentLength)
+                            var totalRead = 0
+                            while (totalRead < contentLength) {
+                                val r = input.read(bytes, totalRead, contentLength - totalRead)
+                                if (r == -1) break
+                                totalRead += r
+                            }
+                            String(bytes, 0, totalRead, StandardCharsets.UTF_8)
+                        } else {
+                            ""
+                        }
+                        val incoming = try {
+                            CardJson.decodeList(body)
+                        } catch (e: Exception) {
+                            throw BadRequestException("请求体不是合法的卡片 JSON")
+                        }
+                        val result = runBlocking { onReceiveCards(incoming) }
+                        val resp = buildJsonObject {
+                            put("status", "success")
+                            put("restored", result.restored)
+                            put("added", result.added)
+                            put("ignored", result.ignored)
+                            put("total", runBlocking { getCards() }.size)
+                        }.toString()
+                        sendResponse(out, 200, "OK", "application/json; charset=utf-8", resp)
+                    }
+                    else -> {
                         sendResponse(out, 405, "Method Not Allowed", "application/json", """{"error":"Method Not Allowed"}""")
                     }
                 }
-                "/api/cards" -> {
-                    when (method) {
-                        "GET" -> {
-                            val cards = runBlocking { getCards() }
-                            val json = CardJson.encodeList(cards)
-                            sendResponse(out, 200, "OK", "application/json; charset=utf-8", json)
-                        }
-                        "POST" -> {
-                            val body = if (contentLength > 0) {
-                                val bytes = ByteArray(contentLength)
-                                var totalRead = 0
-                                while (totalRead < contentLength) {
-                                    val r = input.read(bytes, totalRead, contentLength - totalRead)
-                                    if (r == -1) break
-                                    totalRead += r
-                                }
-                                String(bytes, 0, totalRead, StandardCharsets.UTF_8)
-                            } else {
-                                ""
-                            }
-                            val incoming = CardJson.decodeList(body)
-                            val result = runBlocking { onReceiveCards(incoming) }
-                            val resp = buildJsonObject {
-                                put("status", "success")
-                                put("restored", result.restored)
-                                put("added", result.added)
-                                put("ignored", result.ignored)
-                                put("total", runBlocking { getCards() }.size)
-                            }.toString()
-                            sendResponse(out, 200, "OK", "application/json; charset=utf-8", resp)
-                        }
-                        else -> {
-                            sendResponse(out, 405, "Method Not Allowed", "application/json", """{"error":"Method Not Allowed"}""")
-                        }
-                    }
-                }
-                else -> {
-                    sendResponse(out, 404, "Not Found", "application/json", """{"error":"Not Found"}""")
-                }
+            }
+            else -> {
+                sendResponse(out, 404, "Not Found", "application/json", """{"error":"Not Found"}""")
             }
         }
     }

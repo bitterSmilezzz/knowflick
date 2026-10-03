@@ -34,6 +34,25 @@ class CardStorage(private val baseDir: File) {
     @Volatile
     private var corruptionFlag = false
 
+    companion object {
+        // 同一目录进程级共享同一实例：应用持久化队列与桌面微件写回必须在同一把实例锁上
+        // 串行化，各造各的实例会让 @Synchronized 形同虚设（A5 微件整库写回竞态）。
+        private val sharedInstances = java.util.concurrent.ConcurrentHashMap<String, CardStorage>()
+
+        /** 按目录取进程级共享实例；应用与微件的整库读写都应经此入口 */
+        fun shared(baseDir: File): CardStorage =
+            sharedInstances.computeIfAbsent(baseDir.absolutePath) { CardStorage(baseDir) }
+    }
+
+    /**
+     * 原子读-改-写：在实例锁内以**最新**卡库为基线应用 transform 后整库写回。
+     * 微件等调用方持有的旧快照只能当作「要施加的增量」的线索传进来，
+     * 不得作为写回基线——否则两个读之间落库的应用写入会被整库冲掉。
+     */
+    @Synchronized
+    fun updateCards(transform: (List<KnowledgeCard>) -> List<KnowledgeCard>): CardSaveResult =
+        saveCards(transform(loadCards()))
+
     /** 保存卡片：主文件原子写，旧主文件字节轮转进备份 */
     @Synchronized
     fun saveCards(cards: List<KnowledgeCard>): CardSaveResult {

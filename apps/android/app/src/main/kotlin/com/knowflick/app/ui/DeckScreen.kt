@@ -419,7 +419,7 @@ fun DeckScreen(
                                 onClick = { showMore = false; onOpenGraph() },
                             )
                             androidx.compose.material3.DropdownMenuItem(
-                                text = { Text(if (studyScopeLabel.isEmpty()) "学习地图" else "学习地图 · 退出「${'$'}studyScopeLabel」", fontSize = 13.sp) },
+                                text = { Text(if (studyScopeLabel.isEmpty()) "学习地图" else "学习地图 · 退出「${studyScopeLabel}」", fontSize = 13.sp) },
                                 onClick = { showMore = false; onOpenMap() },
                             )
                             androidx.compose.material3.DropdownMenuItem(
