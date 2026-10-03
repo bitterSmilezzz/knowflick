@@ -25,11 +25,19 @@ public final class AppStore {
         get { library.studyScope }
         set { library.studyScope = newValue }
     }
-    public var isGenerating = false
+    /// 生成域状态（并发守卫 / 开始时间 / 最近失败）的所有权在 `GenerationCoordinator`（Wave C2），
+    /// 这里只做转发：`@Observable` 的读取会穿透到子系统，视图与测试零改动。
+    public var isGenerating: Bool {
+        get { generation.isGenerating }
+        set { generation.isGenerating = newValue }
+    }
     /// 本轮生成开始的时间（isGenerating 置 false 时清空）：等待反馈要显示「已等多久」
     ///（ui-research 共识 9：≥2s 的等待需要可见进度），视图据此计算流逝秒数。
-    public private(set) var generationStartedAt: Date?
-    public var lastError: String?
+    public var generationStartedAt: Date? { generation.generationStartedAt }
+    public var lastError: String? {
+        get { generation.lastError }
+        set { generation.lastError = newValue }
+    }
     /// 落盘告警（顶栏横幅）：由 `PersistenceCoordinator` 持有，这里转发。
     /// 转发属性同样能被观察（`@Observable` 的读取会穿透到协调器），视图零改动。
     public var persistenceWarning: String? { persistence.persistenceWarning }
@@ -47,6 +55,9 @@ public final class AppStore {
 
     /// 全库重排轨迹（测试护栏，见 `CardLibraryStore.recomputeTrace`）
     var deckRecomputeTrace: [Int] { library.recomputeTrace }
+
+    /// 测试护栏：等待在途的后台全量重排落地（转发到卡库；生产路径不需要等待）
+    func awaitPendingRearrange() async { await library.awaitPendingRearrange() }
 
     /// 语音朗读与磨耳朵服务
     public let speechService: SpeechSynthesizerService
@@ -93,6 +104,8 @@ public final class AppStore {
     private let settingsStore: SettingsStore
     /// 卡片库子系统（拆分方案 B Step 5）：卡片池 / 卡堆 / 历史 / 收藏的状态所有权与卡片域动作
     private let library: CardLibraryStore
+    /// AI 生成编排子系统（Wave C2）：守卫 / 计时 / exclude 装配 / 自动补卡触发
+    private let generation: GenerationCoordinator
     /// 本地同步墓碑表（协议 v2 §4）：内存快照由 facade 持有，落盘走持久化队列。
     /// 本轮无删除 UI，本地永不主动产生墓碑——表内容只来自对端同步（含规则 1 触发的删除记录）。
     private var tombstones: [SyncTombstone]
@@ -118,8 +131,22 @@ public final class AppStore {
         // 初始设置此刻必为 .default（init 内没有任何 settings 赋值）；此后 settings.didSet
         // 单漏斗把每次变更同步进子系统
         self.library = CardLibraryStore(persistence: persistence)
+        // AI 生成编排（Wave C2）：先把壳存进属性，再 attach 读写回调——回调要读 facade 的
+        // cards / settings，而捕获 self 必须等全部存储属性就位（两步都只在 init 内发生一次）。
+        let generation = GenerationCoordinator(aiService: resolvedAIService)
+        self.generation = generation
         self.tombstones = storage.loadTombstones()
         self.searchHistory = storage.loadSearchHistory()
+        generation.attach(GenerationCoordinator.Dependencies(
+            existingHeadlines: { [weak self] in self?.cards.map(\.headline) ?? [] },
+            appendGeneratedCards: { [weak self] newCards in self?.appendGeneratedCards(newCards) },
+            currentSettings: { [weak self] in self?.settings ?? .default },
+            skipTopCard: { [weak self] in self?.skipTopCardForRefresh() },
+            deckCount: { [weak self] in self?.deck.count ?? 0 },
+            recordAutoTopUp: { [weak self] date in
+                self?.applySettingsChange { $0.lastAutoTopUpAt = date }
+            }
+        ))
 
         syncSpeechService()
 
@@ -186,13 +213,21 @@ public final class AppStore {
 
     // MARK: - 生命周期
 
-    /// 自动补卡节流判定：距上次自动补卡不足 `interval` 则跳过（nil = 从未补过，放行）。
-    /// 补卡是顺手行为，不应成为每次启动的固定开销。
+    /// 自动补卡节流判定（Wave A 语义）：距上次自动补卡不足 `interval` 则跳过（nil = 从未补过，放行）。
+    /// 补卡是顺手行为，不应成为每次启动的固定开销。判定本体在 `GenerationCoordinator`，
+    /// 这里保留同名入口供既有测试与调用方使用。
     static func autoTopUpAllowed(lastAutoTopUpAt: Date?, now: Date, interval: TimeInterval = 24 * 60 * 60) -> Bool {
-        guard let last = lastAutoTopUpAt else { return true }
-        return now.timeIntervalSince(last) >= interval
+        GenerationCoordinator.autoTopUpAllowed(lastAutoTopUpAt: lastAutoTopUpAt, now: now, interval: interval)
     }
 
+    /// 启动引导（四段）：加载回退与种子解码 → 卡片/设置落位（空库保持 / 重新播种 / 种子增量合并）
+    /// → 钥匙串迁移 → 自动补卡。
+    ///
+    /// 拆段（Wave C2）只改代码组织，不改 await 序列：阶段之间没有任何新增挂起点，
+    /// os_signpost 的 begin/end 仍逐段包住原来的区间（Instruments 启动基线与拆分前逐点对照）。
+    /// 两条 Wave A 语义不得回退：
+    /// - 设置先于卡片就位（卡堆派生依赖设置，否则启动白排两遍）；
+    /// - 钥匙串迁移只补密钥（不触碰派生输入，不触发全库重排）。
     public func bootstrap() async {
         guard isLoadingSeed else { return }
         // 启动耗时打点：分阶段 signpost（Instruments 的 os_signpost 轨道可直接看）+ 结束时
@@ -204,8 +239,25 @@ public final class AppStore {
             Logger(subsystem: "com.knowflick.app", category: "bootstrap")
                 .info("bootstrap 完成：\(elapsed.description, privacy: .public)")
         }
-        // 文件 IO 与种子解码（338KB JSON）放后台线程，钥匙串读取保持主线程（协议隔离）；
-        // 卡片与设置均一次性赋值，避免逐字段变更触发 didSet → recompute 风暴
+
+        let loaded = await loadLibraryStage(signposter: signposter)
+        installLibraryStage(loaded)
+        // 首次渲染窗口：上面的卡片赋值此刻还只是「脏状态」——bootstrap 从赋值到返回
+        // 之间若没有任何挂起点，SwiftUI 没机会画一帧。而下面的钥匙串读取会弹安全授权
+        // 对话框并阻塞主线程直到用户响应（CI 每次构建签名不同，用户装新版必弹）。
+        // 不先渲染，弹窗期间用户看到的就是空库（实测「0 张未读卡片」）。
+        // 挂起一小段时间让卡片库先上屏，再进入钥匙串读取。
+        try? await Task.sleep(for: .milliseconds(120))
+
+        migrateCredentialsStage(loadedSettings: loaded.settings, signposter: signposter)
+        // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发 + 24h 节流）：判定与触发都在
+        // `GenerationCoordinator` 内（Wave C2），失败同样记入节流窗口。
+        await generation.autoTopUpIfNeeded()
+    }
+
+    /// 阶段 1：文件 IO 与种子解码（338KB JSON）放后台线程，钥匙串读取保持主线程（协议隔离）；
+    /// 卡片与设置一次性带回主线程赋值，避免逐字段变更触发 didSet → recompute 风暴。
+    private func loadLibraryStage(signposter: OSSignposter) async -> (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings) {
         let storage = self.storage
         let loadState = signposter.beginInterval("loadLibrary")
         let io = Task.detached(priority: .userInitiated) { () -> (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings) in
@@ -213,7 +265,12 @@ public final class AppStore {
         }
         let loaded = await io.value
         signposter.endInterval("loadLibrary", loadState)
+        return loaded
+    }
 
+    /// 阶段 2：卡片与设置落位——三级加载回退结果的处置（合法空库保持 / 预置库重新播种）
+    /// 与种子增量合并。注意赋值顺序：设置先于卡片。
+    private func installLibraryStage(_ loaded: (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings)) {
         // 设置先于卡片就位：卡堆派生（来源开关 / 偏好分类）依赖设置。若把设置赋值留在
         // 钥匙串迁移之后（旧实现），cards 赋值会先按 .default 全库派生一遍、结尾再按真实
         // 设置重排一遍——启动白排两遍。此刻卡池还是空的，这次派生是 O(1)。
@@ -240,15 +297,13 @@ public final class AppStore {
             cards = loaded.seeds
             persist()
         }
-        // 首次渲染窗口：上面的卡片赋值此刻还只是「脏状态」——bootstrap 从赋值到返回
-        // 之间若没有任何挂起点，SwiftUI 没机会画一帧。而下面的钥匙串读取会弹安全授权
-        // 对话框并阻塞主线程直到用户响应（CI 每次构建签名不同，用户装新版必弹）。
-        // 不先渲染，弹窗期间用户看到的就是空库（实测「0 张未读卡片」）。
-        // 挂起一小段时间让卡片库先上屏，再进入钥匙串读取。
-        try? await Task.sleep(for: .milliseconds(120))
+    }
 
+    /// 阶段 3：钥匙串迁移——只补密钥字段（apiKey / TTS key），不触碰卡堆派生输入。
+    /// 迁移成功（或发现 Keychain 已有密钥）后清除 settings.json 里的明文。
+    private func migrateCredentialsStage(loadedSettings: AISettings, signposter: OSSignposter) {
         let keychainState = signposter.beginInterval("keychainMigration")
-        var migratedSettings = loaded.settings
+        var migratedSettings = loadedSettings
         // 迁移旧版本可能写入 JSON 的密钥；成功进入 Keychain 后再清除明文。
         let legacyKey = migratedSettings.apiKey
         func persistMigratedSettings(_ settings: AISettings) {
@@ -279,14 +334,18 @@ public final class AppStore {
         // 迁移只补密钥字段（apiKey / TTS key），不触碰卡堆派生输入：settingsDidChange 的
         // 派生输入守卫保证这次赋值不再触发一次全库重排。
         settings = migratedSettings
-        // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）。补卡是顺手行为而非每次启动
-        // 的固定开销：24h 内已自动补过卡则跳过，避免每次启动都消耗用户 API 额度。
-        // 失败同样记入节流窗口——失败的请求也可能已产生费用，且网络异常时不应每次启动都空打。
-        if deck.count < 5 && settings.autoGenerate && settings.isAIConfigured && settings.enableAI,
-           Self.autoTopUpAllowed(lastAutoTopUpAt: settings.lastAutoTopUpAt, now: Date()) {
-            await generateNewCards()
-            applySettingsChange { $0.lastAutoTopUpAt = Date() }
-        }
+    }
+
+    /// 生成成功后的写入回调（`GenerationCoordinator` 注入）：追加卡片池并落盘。
+    /// 追加经 `cards` 触发卡堆派生分支 3——新卡按 minDistance 排在队尾，前部正在浏览的卡堆不动。
+    private func appendGeneratedCards(_ newCards: [KnowledgeCard]) {
+        cards.append(contentsOf: newCards)
+        persist()
+    }
+
+    /// 「换一批」的跳顶卡回调（语义见 `GenerationCoordinator.refreshDeck`）
+    private func skipTopCardForRefresh() {
+        if let top = deck.first { swipe(top, direction: .skip) }
     }
 
     // MARK: - 持久化
@@ -469,48 +528,19 @@ public final class AppStore {
 
     // MARK: - AI 生成
 
+    // 生成域的方法与状态已随 Wave C2 移入 `GenerationCoordinator`（并发守卫 / 计时 /
+    // exclude 装配 / 自动补卡节流的完整契约注释在子系统内），这里只保留同名转发，
+    // 对外 API 与成员名不变（视图与测试零改动）。
+
     /// 生成 count 张新卡片并追加到队列
     /// - Parameter topic: 可选主题，非空时围绕该主题生成（全局搜索「围绕关键词生成」入口使用）
     public func generateNewCards(count: Int = 3, topic: String? = nil) async {
-        guard !isGenerating else { return }
-        isGenerating = true
-        generationStartedAt = Date()
-        defer {
-            isGenerating = false
-            generationStartedAt = nil
-        }
-
-        do {
-            // 排除标题传全量，截断上限由 AIService 单点决定
-            let existing = cards.map { $0.headline }
-            let newCards = try await aiService.generateCards(
-                settings: settings,
-                count: count,
-                excludeHeadlines: existing,
-                topic: topic
-            )
-            cards.append(contentsOf: newCards)
-            persist()
-            lastError = nil
-        } catch {
-            lastError = error.localizedDescription
-        }
+        await generation.generateNewCards(count: count, topic: topic)
     }
 
-    /// 手动触发：换一批新知识——只跳过**当前顶卡**，再按设置条件生成新卡。
-    ///
-    /// 为什么不是「跳过整个卡堆」：`deck` 是全部未读卡（实测用户库 216 张），整堆写 `seenAt`/`skip`
-    /// 会让待刷池一次归零、历史 +216、`skipCount` +216，直接污染今日目标与连续天数，
-    /// 用户只能靠「重新探索全部卡片」回退（同时丢掉真实浏览进度）。
-    /// 口径对齐 Android 端「换一批」只跳顶卡（`DeckScreen.kt:224`），也复用意图化方法 `swipe`，
-    /// 保证 `skip` 语义（仅计已刷、不表达喜好、按 CONTEXT.md 不动收藏）与其它入口一致。
+    /// 手动触发：换一批新知识——只跳过**当前顶卡**，再按设置条件生成新卡（语义见子系统）。
     public func refreshDeck() async {
-        if let top = deck.first {
-            swipe(top, direction: .skip)
-        }
-        if settings.autoGenerate && settings.isAIConfigured && settings.enableAI {
-            await generateNewCards(count: 6)
-        }
+        await generation.refreshDeck()
     }
 
     // MARK: - 设置
