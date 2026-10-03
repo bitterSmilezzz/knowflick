@@ -368,7 +368,13 @@ class CardStore(
         val working = cards.toMutableList()
         for (tombstone in incomingTombstones) {
             val index = working.indexOfFirst { it.id == tombstone.id }
-            if (index < 0) continue
+            if (index < 0) {
+                // 本地无此卡也照记墓碑（协议 §4.5）：防已删卡经第三方副本回流后再次灌入；
+                // 复活仍由规则 2 的卡片时间戳判定兜底
+                val existing = tombstoneTable[tombstone.id]
+                tombstoneTable[tombstone.id] = maxOf(existing ?: Long.MIN_VALUE, tombstone.deletedAt)
+                continue
+            }
             val card = working[index]
             if (cardTimestamp(card) <= tombstone.deletedAt) {
                 working.removeAt(index)

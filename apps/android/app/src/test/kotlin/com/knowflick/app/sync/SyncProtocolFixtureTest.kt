@@ -96,6 +96,23 @@ class SyncProtocolFixtureTest {
         assertEquals(emptyList(), keeping.tombstones, "未触发删除不得记墓碑")
     }
 
+    /** §4.5：本地不存在的 id 收到墓碑也照记（防已删卡经第三方副本回流后再次灌入） */
+    @Test
+    fun tombstoneForUnknownIdIsStillRecorded() {
+        val store = CardStore(seedCards = emptyList())
+        val tombstone = Tombstone("dead", 1_727_900_001_000L)
+
+        val result = store.restoreSyncPayload(emptyList(), listOf(tombstone))
+        assertEquals(0, result.deleted)
+        assertEquals(listOf(tombstone), store.tombstones, "未知 id 墓碑记入表")
+
+        // 回流抵抗：同 id 旧卡此后到达（时间戳 ≤ deletedAt）→ 拒收
+        val flowedBack = fixtureCard(id = "dead", headline = "第三方回流的已删卡", createdAt = 1_727_900_000_000L)
+        val resisted = store.restoreSyncPayload(listOf(flowedBack), emptyList())
+        assertEquals(0, resisted.added)
+        assertTrue(store.cards.isEmpty(), "被墓碑抵抗，不复活")
+    }
+
     /** §7 F4：details 冲突（双方有 editedAt 取新者；任一缺失沿用「较长者」） */
     @Test
     fun F4_detailsConflictFixture() {
