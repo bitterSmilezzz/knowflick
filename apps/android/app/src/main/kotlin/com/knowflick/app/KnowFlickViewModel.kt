@@ -361,6 +361,8 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
         if (isSyncServerRunning) return
 
+        // 异常回调需要比对「出事的是不是当前这台」：构造期引用尚未就绪，用局部持有者转接
+        var startedServer: SyncServer? = null
         val server = SyncServer(
             accessCode = syncAccessCode,
             getCards = {
@@ -374,7 +376,16 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
                     result
                 }
             },
+            onAbnormallyStopped = { error ->
+                // accept 循环带病退出：UI 必须能感知「服务异常停止」，不能继续显示已启动
+                viewModelScope.launch(Dispatchers.Main.immediate) {
+                    if (syncServer === startedServer) syncServer = null
+                    isSyncServerRunning = false
+                    generateNotice = "局域网同步服务异常停止：${error.message ?: "未知原因"}"
+                }
+            },
         )
+        startedServer = server
         server.start().fold(
             onSuccess = { port ->
                 syncServer = server

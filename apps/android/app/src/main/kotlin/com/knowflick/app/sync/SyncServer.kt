@@ -33,6 +33,8 @@ class SyncServer(
     private val accessCode: String,
     private val getCards: suspend () -> List<KnowledgeCard>,
     private val onReceiveCards: suspend (List<KnowledgeCard>) -> CardStore.ArchiveRestoreResult,
+    /** 服务带病退出（fd 耗尽等）时回调；正常 stop() 不会触发。回调运行在 accept 线程上 */
+    private val onAbnormallyStopped: (Throwable) -> Unit = {},
 ) {
     private var serverSocket: ServerSocket? = null
     private var executor: ExecutorService? = null
@@ -77,9 +79,15 @@ class SyncServer(
                         pool.submit {
                             handleClient(client)
                         }
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        // 正常 stop() 先置 isRunning=false 再关 socket，走到这里不会触发回调
+                        if (isRunning) markAbnormallyStopped(e)
                         break
                     }
+                }
+                // 循环条件退出（监听 socket 被外力关闭）同样是带病停摆：isRunning 仍为 true 必须上浮
+                if (isRunning) {
+                    markAbnormallyStopped(java.io.IOException("同步服务监听已意外关闭"))
                 }
             }, "KnowFlickSyncAcceptor").apply { isDaemon = true }
             acceptThread.start()
@@ -99,6 +107,25 @@ class SyncServer(
             executor?.shutdownNow()
         } catch (_: Exception) {}
         executor = null
+    }
+
+    /** 测试注入点：不经 stop() 直接关闭监听 socket，模拟 fd 耗尽等带病退出 */
+    internal fun closeListenerForTest() {
+        try {
+            serverSocket?.close()
+        } catch (_: Exception) {}
+    }
+
+    /** 停止接受连接并上浮异常原因；与 [stop] 同一把监视器锁，顺序竞争是安全的 */
+    @Synchronized
+    private fun markAbnormallyStopped(cause: Throwable) {
+        isRunning = false
+        val pool = executor
+        try {
+            pool?.shutdownNow()
+        } catch (_: Exception) {}
+        executor = null
+        onAbnormallyStopped(cause)
     }
 
     private fun readHttpLine(input: java.io.InputStream): String? {

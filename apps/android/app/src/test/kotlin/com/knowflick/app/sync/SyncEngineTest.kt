@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -124,6 +125,42 @@ class SyncEngineTest {
         job.cancel()
         assertEquals("rethrown", outcome.await())
     }
+
+    @Test
+    fun testAbnormalAcceptFailureSurfacesToCallback() = runBlocking {
+        val reported = CompletableDeferred<Throwable>()
+        val server = SyncServer(
+            accessCode = "123456",
+            getCards = { emptyList() },
+            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+            onAbnormallyStopped = { reported.complete(it) },
+        )
+        server.start(preferredPort = 9195).getOrThrow()
+        try {
+            // 不经 stop() 直接关监听 socket：模拟 fd 耗尽等 accept 带病退出
+            server.closeListenerForTest()
+            val error = kotlinx.coroutines.withTimeoutOrNull(2_000) { reported.await() }
+            assertNotNull("accept 带病退出必须上浮到 onAbnormallyStopped", error)
+            assertTrue("带病退出后 isRunning 必须翻假，UI 不能继续显示已启动", !server.isRunning)
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun testNormalStopDoesNotFireAbnormalCallback() = runBlocking {
+        val reported = CompletableDeferred<Throwable>()
+        val server = SyncServer(
+            accessCode = "123456",
+            getCards = { emptyList() },
+            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+            onAbnormallyStopped = { reported.complete(it) },
+        )
+        server.start(preferredPort = 9196).getOrThrow()
+        server.stop()
+        assertTrue(!server.isRunning)
+        val fired = kotlinx.coroutines.withTimeoutOrNull(300) { reported.await() }
+        assertNull("正常 stop() 不得触发异常停止回调", fired)    }
 
     @Test
     fun testFieldLevelMergeCommutative() {
