@@ -65,11 +65,14 @@
 > hourly 备忘既有大项（三巨档 de-nesting、VM 拆域）+ 本轮审计新发现，合并成体系。这波不改变行为，以「测试先行护栏 + 等价搬迁」为纪律。
 
 ### macOS 端
-1. **AppStore 域下沉**（634 行）：测验选题算法（`generateQuizCards`，AppStore.swift:396-432，0 测试）→ `QuizBuilder` 纯函数 + 补齐选题/混池/打乱语义测试；AI 生成编排（445-485）→ `GenerationCoordinator`；bootstrap 84 行四件事（三级回退/种子合并/钥匙串迁移/自动补卡）拆阶段函数。
-2. **SettingsView 编辑缓冲重构**（1098 行）：29 个 `@State` + onAppear 全量拷入 + save() 手工逐字段拷出——`AISettings` 每加一个字段必须同步改两处，漏一处静默丢配置。改为 struct 驱动的编辑缓冲（copy-with 语义），消除字段漂移。
-3. **三巨档 de-nesting**（SettingsView/InsightMainView 1027/DetailView 845）：按 hourly 既定方案配合视图层测试做。DetailView 顺手修 `store = nil` 兜底新建 `SpeechSynthesizerService()` 的潜伏陷阱（DetailView.swift:658, 686）。
-4. **mac 视图层测试从 0 起步**：`Package.swift` 只有一个 Core 测试 target，App 层 41 个视图文件 0 覆盖。先给路由（ActiveSheet）、手势判定、SettingsView 缓冲等纯逻辑建 target，CI 可跑（本地 CLT 编不了 SwiftUI 宏，走 CI）。
-5. **AI 重试策略统一**：生成 429/5xx×3、追问 3 次「yield 后不重试」、SyncClient 0.5s/1s 抖动——三套口径收成一个 RetryPolicy 类型；「够数即停」`prefix(targetCount)` 丢弃已扫描完整对象（AIService.swift:557）顺手回收。
+> **进展（2026-10-03，PR #54 已合并，main CI 绿）**：① 测验选题 → `QuizBuilder` 纯函数已下沉（选题语义测试 7 项补齐）；② SettingsView → `SettingsEditBuffer`（Core 纯类型）已落地——18 个设置 @State 收敛为一处字段清单，字段漂移有守卫测试；③ DetailView `store` 收紧必传（5 处 nil 路径消除）；④「够数即停」不再丢弃已扫描完整对象（红→绿：前几张过筛失败时误报 noUsableCards 的场景修复）。测试 400→412 全绿。
+> **用户拍板：Android 端暂停，等 mac 完善后再恢复；三巨档 de-nesting 与 i18n 待另一会话的 mac 交互简化 WIP（InsightMainView/InsightShell/LearningWorkspaceView）落地后再做。**
+> 剩余项：AppStore 的 AI 生成编排下沉（GenerationCoordinator）/ bootstrap 拆段；AI 重试策略统一（RetryPolicy）；主线程减负三处（arrangeWithMinDistance / 背景图解码 / 聊天全量 load+encode）；mac 视图层测试 target 起步（本机已确认有完整 Xcode，本地可跑全量）。
+1. **AppStore 域下沉**（634 行）：测验选题算法（`generateQuizCards`，AppStore.swift:396-432，0 测试）→ `QuizBuilder` 纯函数 + 补齐选题/混池/打乱语义测试 ✅ 已做；AI 生成编排（445-485）→ `GenerationCoordinator`；bootstrap 84 行四件事（三级回退/种子合并/钥匙串迁移/自动补卡）拆阶段函数。
+2. **SettingsView 编辑缓冲重构**（1098 行）：29 个 `@State` + onAppear 全量拷入 + save() 手工逐字段拷出——`AISettings` 每加一个字段必须同步改两处，漏一处静默丢配置。改为 struct 驱动的编辑缓冲（copy-with 语义），消除字段漂移。✅ 已做（SettingsEditBuffer + 字段漂移守卫）
+3. **三巨档 de-nesting**（SettingsView/InsightMainView 1027/DetailView 845）：按 hourly 既定方案配合视图层测试做。DetailView 顺手修 `store = nil` 兜底新建 `SpeechSynthesizerService()` 的潜伏陷阱（DetailView.swift:658, 686）。✅ 陷阱已修；de-nesting 本体待 WIP 落地
+4. **mac 视图层测试从 0 起步**：`Package.swift` 只有一个 Core 测试 target，App 层 41 个视图文件 0 覆盖。先给路由（ActiveSheet）、手势判定、SettingsView 缓冲等纯逻辑建 target，CI 可跑（**本机已装完整 Xcode：本地全量 swift build/test 可跑**）。
+5. **AI 重试策略统一**：生成 429/5xx×3、追问 3 次「yield 后不重试」、SyncClient 0.5s/1s 抖动——三套口径收成一个 RetryPolicy 类型；「够数即停」`prefix(targetCount)` 丢弃已扫描完整对象（AIService.swift:557）顺手回收。✅ 够数即停已修；重试统一待做
 6. **主线程大活挪走**：`arrangeWithMinDistance` 在 MainActor（1080 张 0.69s）、`BackgroundImageCache` 未命中同步解码在主线程（CategoryTheme.swift:197-207）、聊天全量 load+encode 每条消息（Storage.swift:243-254）。
 
 ### Android 端
