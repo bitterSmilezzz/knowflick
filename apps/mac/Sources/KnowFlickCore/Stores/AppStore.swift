@@ -448,43 +448,16 @@ public final class AppStore {
         library.recordQuizResult(cardId: cardId, rating: rating)
     }
 
-    /// 生成测验题库：可按分类筛选；优先收藏与未掌握卡片，混合历史已读卡片，生成指定数量并打乱
+    /// 测验选题：域逻辑在 `QuizBuilder`（纯函数，可测排序与打乱），这里只做输入装配；
+    /// 优先级规则（收藏/历史优先、掌握度升序）见 `QuizBuilder.ranked`
     public func generateQuizCards(category: String? = nil, limit: Int = 10) -> [KnowledgeCard] {
-        guard limit > 0 else { return [] }
-        var pool: [KnowledgeCard] = []
-
-        if let category = category, !category.isEmpty {
-            let catFavs = favorites.filter { $0.category == category }
-            let catFavIds = Set(catFavs.map(\.id))
-            let catHistory = history.filter { $0.category == category && !catFavIds.contains($0.id) }
-            pool = catFavs + catHistory
-            if pool.isEmpty {
-                pool = cards.filter { $0.category == category }
-            }
-        } else {
-            let favs = favorites
-            let favIds = Set(favs.map(\.id))
-            let others = history.filter { !favIds.contains($0.id) }
-            pool = favs + others
-            if pool.count < limit {
-                let poolIds = Set(pool.map(\.id))
-                let rest = cards.filter { !poolIds.contains($0.id) }
-                pool += rest
-            }
-        }
-
-        let sorted = pool.sorted { c1, c2 in
-            if c1.masteryLevel != c2.masteryLevel {
-                return c1.masteryLevel < c2.masteryLevel
-            }
-            let r1 = c1.lastReviewedAt ?? .distantPast
-            let r2 = c2.lastReviewedAt ?? .distantPast
-            return r1 < r2
-        }
-
-        let countToTake = min(limit, sorted.count)
-        let selection = Array(sorted.prefix(countToTake))
-        return selection.shuffled()
+        QuizBuilder.selectCards(
+            cards: cards,
+            favorites: favorites,
+            history: history,
+            category: category,
+            limit: limit
+        )
     }
 
     // MARK: - 知识星图与语义关联链 (Knowledge Graph & Connected Cards)
