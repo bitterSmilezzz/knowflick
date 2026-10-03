@@ -560,7 +560,11 @@ public struct AIService: Sendable {
                 guard let delta = Self.sseContentDelta(line) else { continue }
                 scanner.append(delta)
                 if scanner.objects.count >= targetCount {
-                    return Array(scanner.objects.prefix(targetCount))   // 够数即停
+                    // 够数即停（省时省额度）但**不丢弃**已扫描的完整对象：同一 delta 常一次
+                    // 带出多个对象，多出的部分是已付费内容，且下游还有 ≥80 字门槛与近重复
+                    // 过滤会再筛一遍——只交前 targetCount 张，会让「前几张没过筛」的批次
+                    // 白白报「无可用产出」。全量交下游，最终输出数量仍由调用方 count 收口。
+                    return scanner.objects
                 }
             }
             // 流结束兜底：buffer 中所有完整对象

@@ -107,6 +107,36 @@ private final class BatchStubProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+/// 溢出流替身：单次 delta 里一次带出 4 张完整对象，其中**前两张 details 过短**会被下游
+/// ≥80 字门槛过滤。请求 count=2 时，修复前「够数即停」只交前 2 张（全被过滤 → 误报
+/// 「无可用产出」）；修复后交全部已扫描对象，后两张有效内容正常产出。
+private final class OverflowStreamStubProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        func payload(_ headline: String, details: String) -> [String: Any] {
+            ["category": "AI", "headline": headline, "summary": "摘要", "details": details]
+        }
+        let objects = [
+            payload("短甲", details: "太短"),
+            payload("短乙", details: "也太短"),
+            payload("碳纤维为何比铝轻", details: String(repeating: "这是机制的深入说明。", count: 12)),
+            payload("冰箱制冷不是制造冷", details: String(repeating: "这是机制的深入说明。", count: 12)),
+        ]
+        let text = String(data: try! JSONSerialization.data(withJSONObject: objects), encoding: .utf8)!
+        let event: [String: Any] = ["choices": [["delta": ["content": text]]]]
+        let body = Data("data: \(String(data: try! JSONSerialization.data(withJSONObject: event), encoding: .utf8)!)\n\ndata: [DONE]\n\n".utf8)
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "text/event-stream"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 struct AITransportTests {
     private func service() -> (AIService, URLSession) {
         let config = URLSessionConfiguration.ephemeral
@@ -204,4 +234,22 @@ struct AITransportTests {
         #expect(Set(cards.map(\.headline)).count == 2)
         #expect(BatchStubProtocol.requestCount == 2)
     }
+    /// 够数即停不得丢弃已扫描的多余完整对象：前两张被门槛过滤时，后两张仍应产出
+    /// （修复前只交前 targetCount 张 → 整批误报 noUsableCards）
+    @Test func streamStopKeepsScannedObjectsBeyondTarget() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [OverflowStreamStubProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+
+        let service = AIService(session: session)
+        var settings = AISettings.default
+        settings.baseURL = "http://localhost/overflow/v1"
+        settings.model = "test-model"
+
+        let cards = try await service.generateCards(settings: settings, count: 2, excludeHeadlines: [])
+        #expect(cards.count == 2, "过短对象被过滤后，仍应从上溢对象凑满请求数量")
+        #expect(cards.allSatisfy { $0.details.count >= 80 })
+    }
 }
+
