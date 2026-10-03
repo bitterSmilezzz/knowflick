@@ -163,6 +163,95 @@ class SyncEngineTest {
         assertNull("正常 stop() 不得触发异常停止回调", fired)    }
 
     @Test
+    fun testGarbageRequestDoesNotKillServer() = runBlocking {
+        val server = SyncServer(
+            accessCode = "123456",
+            getCards = { listOf(createCard("s1", "服务端卡片")) },
+            onReceiveCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+        )
+        val port = server.start(preferredPort = 9197).getOrThrow()
+        try {
+            // ① 非 HTTP 垃圾字节：连接被关闭或收到 4xx，服务端必须存活
+            val garbage = exchange(port, "门柱从王维处\r\n\r\n".toByteArray())
+            assertTrue(
+                "垃圾请求应被关闭或回 4xx，实际：$garbage",
+                garbage == null || garbage.startsWith("HTTP/1.1 4"),
+            )
+
+            // ② 超长请求头（>8KB）：可归因于解析失败，应回 400
+            val bigHeader = "GET /api/info HTTP/1.1\r\nX-Big: ${"a".repeat(9000)}\r\n\r\n"
+            val oversized = exchange(port, bigHeader.toByteArray())
+            assertTrue(
+                "超长请求头应回 400，实际：${oversized?.lineSequence()?.first()}",
+                oversized?.startsWith("HTTP/1.1 400") == true,
+            )
+
+            // ③ 声明 Content-Length 但正文截断（半关闭写端模拟对端中断）：
+            // 服务端读到不完整正文应回 400，而不是挂着等满 500 字节
+            val truncated = exchange(
+                port,
+                (
+                    "POST /api/cards HTTP/1.1\r\n" +
+                        "${SyncServer.AUTH_HEADER}: 123456\r\n" +
+                        "Content-Length: 500\r\n\r\n" +
+                        "{\"id\":"
+                    ).toByteArray(),
+                halfClose = true,
+            )
+            assertTrue(
+                "截断正文应回 400，实际：${truncated?.lineSequence()?.first()}",
+                truncated?.startsWith("HTTP/1.1 400") == true,
+            )
+
+            // ④ 非法 JSON 正文：可归因于请求解析，应回 400
+            val badBody = "not-json"
+            val badJson = exchange(
+                port,
+                (
+                    "POST /api/cards HTTP/1.1\r\n" +
+                        "${SyncServer.AUTH_HEADER}: 123456\r\n" +
+                        "Content-Type: application/json\r\n" +
+                        "Content-Length: ${badBody.length}\r\n\r\n" +
+                        badBody
+                    ).toByteArray(),
+            )
+            assertTrue(
+                "非法 JSON 应回 400，实际：${badJson?.lineSequence()?.first()}",
+                badJson?.startsWith("HTTP/1.1 400") == true,
+            )
+
+            // ⑤ 一连串畸形请求后，服务必须照常应答合法请求
+            assertTrue("畸形请求不得让服务停摆", server.isRunning)
+            val ok = SyncClient.fetchRemoteInfo("127.0.0.1:$port#123456")
+            assertTrue("畸形请求之后合法请求必须照常工作：${ok.exceptionOrNull()}", ok.isSuccess)
+        } finally {
+            server.stop()
+        }
+    }
+
+    /** 发送原始字节并读取到对端关闭；无响应（直接关闭）返回 null；halfClose 模拟对端发完即断 */
+    private fun exchange(port: Int, request: ByteArray, halfClose: Boolean = false): String? {
+        return java.net.Socket().use { socket ->
+            socket.connect(java.net.InetSocketAddress("127.0.0.1", port), 3_000)
+            socket.soTimeout = 3_000
+            socket.getOutputStream().apply {
+                write(request)
+                flush()
+            }
+            if (halfClose) socket.shutdownOutput()
+            val input = socket.getInputStream()
+            val buffer = java.io.ByteArrayOutputStream()
+            val chunk = ByteArray(4096)
+            while (true) {
+                val n = input.read(chunk)
+                if (n < 0) break
+                buffer.write(chunk, 0, n)
+            }
+            if (buffer.size() == 0) null else buffer.toString("UTF-8")
+        }
+    }
+
+    @Test
     fun testFieldLevelMergeCommutative() {
         val cardId = "test-card-1"
         val t1 = 1000L
