@@ -75,6 +75,41 @@ class CardStorageTest {
         assertEquals("""{"apiKeySet":true}""", storage.loadSettingsJson())
     }
 
+    // ---------- 墓碑表持久化（SYNC_PROTOCOL.md §4：store 目录独立小文件） ----------
+
+    @Test
+    fun tombstonesRoundTrip() {
+        val tombstones = listOf(
+            com.knowflick.app.domain.Tombstone("dead-1", 1_727_900_001_000),
+            com.knowflick.app.domain.Tombstone("dead-2", 1_727_900_002_000),
+        )
+        assertTrue(storage.saveTombstones(tombstones))
+        assertEquals(tombstones, storage.loadTombstones())
+    }
+
+    @Test
+    fun corruptTombstoneFileIsIsolatedAndLoadsEmpty() {
+        File(baseDir, "tombstones.json").writeText("{ not valid json")
+        assertTrue(storage.loadTombstones().isEmpty(), "损坏墓碑文件必须隔离并返回空，不得拖垮同步")
+        // 之后的保存照常覆盖坏文件
+        assertTrue(storage.saveTombstones(listOf(com.knowflick.app.domain.Tombstone("ok", 1L))))
+        assertEquals(listOf(com.knowflick.app.domain.Tombstone("ok", 1L)), storage.loadTombstones())
+    }
+
+    @Test
+    fun tombstoneTableCapsAt1000EvictingOldest() {
+        val over = (0 until 1005).map {
+            com.knowflick.app.domain.Tombstone("id-$it", 1_000_000L + it)
+        }
+        assertTrue(storage.saveTombstones(over))
+        val loaded = storage.loadTombstones()
+        assertEquals(1000, loaded.size, "超出 1000 上限必须裁最老")
+        assertTrue(loaded.none { it.id == "id-0" }, "最老墓碑应被裁掉")
+        assertTrue(loaded.none { it.id == "id-4" })
+        assertEquals("id-5", loaded.first().id)
+        assertEquals("id-1004", loaded.last().id)
+    }
+
     @Test
     fun updateCardsRebasesOntoLatestStateUnderLock() {
         // A5 契约：updateCards 以锁内最新卡库为基线，调用方持有的旧快照不参与写回

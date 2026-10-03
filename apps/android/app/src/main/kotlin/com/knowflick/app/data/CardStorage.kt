@@ -39,6 +39,9 @@ class CardStorage(private val baseDir: File) {
         // 串行化，各造各的实例会让 @Synchronized 形同虚设（A5 微件整库写回竞态）。
         private val sharedInstances = java.util.concurrent.ConcurrentHashMap<String, CardStorage>()
 
+        /** 墓碑表容量上限（SYNC_PROTOCOL.md §4），超出裁最老 */
+        const val TOMBSTONE_CAP = 1000
+
         /** 按目录取进程级共享实例；应用与微件的整库读写都应经此入口 */
         fun shared(baseDir: File): CardStorage =
             sharedInstances.computeIfAbsent(baseDir.absolutePath) { CardStorage(baseDir) }
@@ -116,6 +119,34 @@ class CardStorage(private val baseDir: File) {
 
     fun saveSpeechJson(json: String): Boolean =
         atomicWrite(File(baseDir, "speech.json"), json.toByteArray(Charsets.UTF_8)) == null
+
+    // ---------- 墓碑表（SYNC_PROTOCOL.md §4：与卡片库同目录的独立小文件，上限 1000 裁最老） ----------
+
+    private val tombstoneFile: File get() = File(baseDir, "tombstones.json")
+    private val tombstoneSerializer = ListSerializer(com.knowflick.app.domain.Tombstone.serializer())
+
+    /** 加载墓碑表：文件损坏时隔离（返回空表），不得让坏字节拖垮同步与卡库 */
+    fun loadTombstones(): List<com.knowflick.app.domain.Tombstone> {
+        val bytes = readFileSafe(tombstoneFile) ?: return emptyList()
+        return try {
+            jsonSerializer.decodeFromString(tombstoneSerializer, bytes.decodeToString())
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    /** 原子写墓碑表；超出上限（1000）按 deletedAt 裁最老，落盘保持时间升序 */
+    fun saveTombstones(tombstones: List<com.knowflick.app.domain.Tombstone>): Boolean {
+        val capped = if (tombstones.size <= TOMBSTONE_CAP) tombstones else {
+            tombstones.sortedBy { it.deletedAt }.takeLast(TOMBSTONE_CAP)
+        }
+        val raw = try {
+            jsonSerializer.encodeToString(tombstoneSerializer, capped)
+        } catch (_: Throwable) {
+            return false
+        }
+        return atomicWrite(tombstoneFile, raw.toByteArray(Charsets.UTF_8)) == null
+    }
 
     // ---------- 搜索历史 (Search History) ----------
 

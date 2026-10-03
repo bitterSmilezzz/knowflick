@@ -155,6 +155,8 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         model.bootstrap()
+        // 墓碑表（SYNC_PROTOCOL.md §4）：启动时从持久化层灌入内存态，合并后写回
+        model.store.loadTombstones(model.storage.loadTombstones())
         settings = loadSettings()
         com.knowflick.app.ui.common.AudioEffectHelper.isEnabled = settings.soundEffectsEnabled
         speechSettings = com.knowflick.app.speech.SpeechSettings.fromJson(model.storage.loadSpeechJson() ?: "")
@@ -369,12 +371,16 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             getCards = {
                 withContext(Dispatchers.Main.immediate) { model.store.cards.toList() }
             },
-            onReceiveCards = { incoming, _ ->
+            getTombstones = {
+                withContext(Dispatchers.Main.immediate) { model.store.tombstones }
+            },
+            onReceiveCards = { incoming, tombstones ->
                 withContext(Dispatchers.Main.immediate) {
-                    // 墓碑合并语义（§4）随墓碑表条目接入；当前对端墓碑仅上浮
-                    val result = model.store.restoreArchive(incoming)
+                    // 墓碑合并语义（§4）：对端墓碑删本地旧卡并记表；本地墓碑抵抗对端旧卡
+                    val result = model.store.restoreSyncPayload(incoming, tombstones)
                     version++
                     schedulePersist()
+                    model.storage.saveTombstones(model.store.tombstones)
                     result
                 }
             },
@@ -411,10 +417,12 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             val result = SyncClient.executeBidirectionalSync(
                 target = target,
                 localCards = localSnapshot,
-                onApplyRemoteCards = { remote, _ ->
-                    val merged = model.store.restoreArchive(remote)
+                localTombstones = model.store.tombstones,
+                onApplyRemoteCards = { remote, tombstones ->
+                    val merged = model.store.restoreSyncPayload(remote, tombstones)
                     version++
                     schedulePersist()
+                    model.storage.saveTombstones(model.store.tombstones)
                     merged
                 },
             )

@@ -27,6 +27,24 @@ class CardStore(
     var cards: List<KnowledgeCard> = emptyList()
         private set
 
+    /**
+     * 本地墓碑表（docs/SYNC_PROTOCOL.md §4）：id → deletedAt(epoch ms)。
+     * 只在同步合并中产生（本轮无删除 UI）：收到对端墓碑删本地卡时记入（deletedAt 取较大者），
+     * 收到同 id 更新卡复活时清除。持久化由装配方经 [com.knowflick.app.data.CardStorage] 存取
+     * （store 目录 tombstones.json），CardStore 只维护内存态。
+     */
+    private val tombstoneTable = LinkedHashMap<String, Long>()
+
+    /** 启动时用持久化层快照灌入（整体替换） */
+    fun loadTombstones(list: List<Tombstone>) {
+        tombstoneTable.clear()
+        list.forEach { tombstoneTable[it.id] = it.deletedAt }
+    }
+
+    /** 内存墓碑表快照（GET 信封与持久化保存共用） */
+    val tombstones: List<Tombstone>
+        get() = tombstoneTable.map { Tombstone(it.key, it.value) }
+
     /** 偏好分类（多选；空 = 全部） */
     var preferredCategories: Set<String> = emptySet()
 
@@ -263,8 +281,7 @@ class CardStore(
      * 已有卡保留本机 id 并恢复归档里的正文、来源和全部学习状态；新卡保留归档 id。
      * 这与 [addCards] 的“新增内容并去重”语义分开，避免恢复备份时丢失收藏、历史和复习进度。
      */
-    fun restoreArchive(incoming: List<KnowledgeCard>, insertNewAtTop: Boolean = true): ArchiveRestoreResult {
-        val working = cards.toMutableList()
+    fun restoreArchive(incoming: List<KnowledgeCard>, insertNewAtTop: Boolean = true): ArchiveRestoreResult {        val working = cards.toMutableList()
         val addedIds = LinkedHashSet<String>()
         var restored = 0
         var ignored = 0
@@ -314,6 +331,61 @@ class CardStore(
         recompute()
         return ArchiveRestoreResult(added = addedIds.size, restored = restored, ignored = ignored)
     }
+
+    /**
+     * 同步载荷合并（docs/SYNC_PROTOCOL.md §4，两端同源、交换律成立）：
+     *
+     * 1. **收到墓碑** `{id, deletedAt}`：本地存在该 id 卡片且卡片时间戳 ≤ deletedAt
+     *    → 删除本地卡片、记入本地墓碑表（deletedAt 取较大者）；卡片时间戳 > deletedAt
+     *    （对端删除后又有新编辑/重建）→ 保留卡片、忽略该墓碑。卡片时间戳取 [KnowledgeCard.editedAt]
+     *    优先、否则 [KnowledgeCard.createdAt]。
+     * 2. **收到卡片**：本地墓碑表存在该 id 且 deletedAt ≥ 卡片时间戳 → 拒收（不复活，计入 ignored）；
+     *    否则按 [restoreArchive] 语义正常合并，并清除本地同 id 墓碑（复活场景）。
+     *
+     * 墓碑先于卡片处理：同一载荷「删旧卡 + 同 id 更新卡」会按规则 1 删除旧版本、规则 2 复活新版本，
+     * 结果与拆成两次载荷到达一致。
+     */
+    fun restoreSyncPayload(
+        incoming: List<KnowledgeCard>,
+        incomingTombstones: List<Tombstone>,
+    ): ArchiveRestoreResult {
+        var deleted = 0
+
+        // 规则 1：墓碑 → 删本地旧卡并记墓碑（deletedAt 取较大者）
+        val working = cards.toMutableList()
+        for (tombstone in incomingTombstones) {
+            val index = working.indexOfFirst { it.id == tombstone.id }
+            if (index < 0) continue
+            val card = working[index]
+            if (cardTimestamp(card) <= tombstone.deletedAt) {
+                working.removeAt(index)
+                val existing = tombstoneTable[tombstone.id]
+                tombstoneTable[tombstone.id] = maxOf(existing ?: Long.MIN_VALUE, tombstone.deletedAt)
+                deleted++
+            }
+            // else：本地卡片比对端墓碑更新 → 保留、忽略该墓碑、不记表
+        }
+        if (deleted > 0) {
+            cards = working
+            recompute()
+        }
+
+        // 规则 2：卡片 → 墓碑抵抗或复活（partition 首列 = 命中抵抗条件者）
+        val (resisted, accepted) = incoming.partition { card ->
+            tombstoneTable[card.id]?.let { it >= cardTimestamp(card) } == true
+        }
+        val merged = if (accepted.isEmpty()) {
+            ArchiveRestoreResult(added = 0, restored = 0, ignored = 0)
+        } else {
+            restoreArchive(accepted)
+        }
+        accepted.forEach { tombstoneTable.remove(it.id) }
+
+        return merged.copy(ignored = merged.ignored + resisted.size, deleted = deleted)
+    }
+
+    /** 卡片时间戳（§4.3）：editedAt 优先，否则 createdAt */
+    private fun cardTimestamp(card: KnowledgeCard): Long = card.editedAt ?: card.createdAt
 
     companion object {
         /**

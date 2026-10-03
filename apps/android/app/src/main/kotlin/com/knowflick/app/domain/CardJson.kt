@@ -96,6 +96,8 @@ object CardJson {
             } ?: emptyList(),
             source = CardSource.fromRaw(obj.str("source")),
             createdAt = obj.longField("createdAt") ?: System.currentTimeMillis(),
+            // §5：可选字段，缺失 = null（旧数据/旧端）；epoch 数字与 ISO8601 均兼容
+            editedAt = obj.longField("editedAt"),
             seenAt = obj.longField("seenAt"),
             swiped = swiped,
             isFavorite = isFavorite,
@@ -135,6 +137,8 @@ object CardJson {
         )
         put("source", card.source.raw)
         put("createdAt", encodeDate(card.createdAt))
+        // §5：只在有值时写出——历史卡不产生新键，与旧版本互传保持字节级友好
+        card.editedAt?.let { put("editedAt", encodeDate(it)) }
         card.seenAt?.let { put("seenAt", encodeDate(it)) }
         card.swiped?.let { put("swiped", it.raw) }
         put("isFavorite", card.isFavorite)
