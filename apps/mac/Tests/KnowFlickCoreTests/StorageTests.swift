@@ -110,12 +110,15 @@ final class StorageTests {
     @Test func corruptedSettingsAndChatSessionsAreQuarantined() throws {
         try Data("{bad".utf8).write(to: tempDir.appendingPathComponent("settings.json"))
         try Data("{bad".utf8).write(to: tempDir.appendingPathComponent("chat_sessions.json"))
+        try Data("{bad".utf8).write(to: tempDir.appendingPathComponent("search_history.json"))
 
         #expect(storage.loadSettings() == .default)
         #expect(storage.loadChatSessions().isEmpty)
+        // 搜索历史与卡片/设置/追问会话同一口径：损坏时保留隔离副本，而不是静默当空
+        #expect(storage.loadSearchHistory().isEmpty)
         let quarantined = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
             .filter { $0.contains("corrupt-") }
-        #expect(quarantined.count == 2)
+        #expect(quarantined.count == 3)
     }
 }
 

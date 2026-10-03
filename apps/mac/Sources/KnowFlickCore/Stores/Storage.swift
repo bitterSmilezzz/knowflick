@@ -275,6 +275,9 @@ public struct Storage: Sendable {
             let data = try Data(contentsOf: url)
             return try JSONDecoder().decode([String].self, from: data)
         } catch {
+            // 与卡片/设置/追问会话同一口径：损坏文件保留隔离副本，而不是静默当空
+            NSLog("KnowFlick: search_history.json 损坏，将保留隔离副本: %@", error.localizedDescription)
+            quarantineIfPresent(url)
             return []
         }
     }

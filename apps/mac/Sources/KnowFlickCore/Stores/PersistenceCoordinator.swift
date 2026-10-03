@@ -21,11 +21,13 @@ public final class PersistenceCoordinator {
     private var settingsPersistTask: Task<Void, Never>?
     private var persistenceRevision: UInt64 = 0
     private var settingsPersistRevision = 0
+    private var searchHistoryRevision = 0
 
     /// 落盘失败时的用户可见告警（视图顶栏横幅）；成功后自动清除
     private var cardWarning: String?
     private var settingsWarning: String?
-    public var persistenceWarning: String? { cardWarning ?? settingsWarning }
+    private var searchHistoryWarning: String?
+    public var persistenceWarning: String? { cardWarning ?? settingsWarning ?? searchHistoryWarning }
 
     public init(
         storage: Storage,
@@ -141,6 +143,30 @@ public final class PersistenceCoordinator {
                         self.settingsWarning = "设置保存失败：\(error.localizedDescription)"
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: - 搜索历史落盘
+
+    /// 搜索历史与卡片/设置同一编排：串行队列落盘，失败上浮 `persistenceWarning` 横幅。
+    /// 原先 AppStore 直写 persistenceQueue 且失败只进 NSLog，用户无从得知历史没存上。
+    /// 无节流：写入轻量（一个 ≤8 条的字符串数组）且低频（每次搜索至多一次）。
+    public func scheduleSearchHistoryPersist(_ history: [String]) {
+        searchHistoryRevision &+= 1
+        let revision = searchHistoryRevision
+        let storage = self.storage
+        persistenceQueue.async { [weak self] in
+            let warning: String?
+            do {
+                try storage.saveSearchHistoryThrowing(history)
+                warning = nil
+            } catch {
+                warning = "搜索历史保存失败：\(error.localizedDescription)"
+            }
+            Task { @MainActor [weak self] in
+                guard let self, self.searchHistoryRevision == revision else { return }
+                self.searchHistoryWarning = warning
             }
         }
     }

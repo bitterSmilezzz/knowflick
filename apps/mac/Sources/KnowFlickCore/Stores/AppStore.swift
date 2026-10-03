@@ -592,15 +592,9 @@ public final class AppStore {
     }
 
     private func schedulePersistSearchHistory() {
-        let snapshot = searchHistory
-        let storage = self.storage
-        persistenceQueue.async {
-            do {
-                try storage.saveSearchHistoryThrowing(snapshot)
-            } catch {
-                NSLog("KnowFlick: 保存搜索历史失败: %@", error.localizedDescription)
-            }
-        }
+        // 落盘编排与告警口径统一走 PersistenceCoordinator：失败上浮 persistenceWarning 横幅，
+        // 与卡片/设置一致（原先直写队列失败只进 NSLog，用户无从得知）
+        persistence.scheduleSearchHistoryPersist(searchHistory)
     }
 
     // MARK: - 预置库

@@ -56,4 +56,26 @@ final class SearchHistoryTests {
         store.clearSearchHistory()
         #expect(store.searchHistory.isEmpty)
     }
+
+    /// Wave A：搜索历史写失败必须上浮 `persistenceWarning` 横幅，与卡片/设置同一告警口径。
+    /// 修复前 AppStore 绕过 PersistenceCoordinator 直写后台队列，失败只进 NSLog，用户无从得知。
+    @Test(.timeLimit(.minutes(1))) func searchHistoryWriteFailureSurfacesPersistenceWarning() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KnowFlickSearchFail-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // 用目录占住 search_history.json 的位置：写入必然失败（PersistenceFeedbackTests 同款手法）
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("search_history.json"), withIntermediateDirectories: false)
+        let store = AppStore(storage: Storage(baseDir: directory))
+        defer { store.flushPersistence() }
+
+        store.addSearchHistory("量子纠缠")
+
+        // 告警在后台队列落盘失败后跳回主线程设置，轮询等待（超时保护避免慢机误报）
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while store.persistenceWarning == nil && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(store.persistenceWarning?.contains("搜索历史保存失败") == true)
+    }
 }
