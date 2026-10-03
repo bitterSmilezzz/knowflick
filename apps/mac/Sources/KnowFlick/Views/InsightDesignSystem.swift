@@ -27,9 +27,10 @@ public enum InsightColor {
     }
 
     // MARK: 画布与表面
-    /// 应用画布：比 windowBackgroundColor 更黑一档，让深色卡片「浮」起来
+    /// 应用画布：比 windowBackgroundColor 更黑一档，让深色卡片「浮」起来。
+    /// 浅色档带一点纸的暖灰（原值偏冷、与白色卡片几乎贴在一起）
     public static let canvas = dynamic(
-        light: NSColor(red: 0.965, green: 0.961, blue: 0.953, alpha: 1.0),
+        light: NSColor(red: 0.957, green: 0.949, blue: 0.933, alpha: 1.0),
         dark: NSColor(red: 0.055, green: 0.058, blue: 0.066, alpha: 1.0)
     )
     /// 侧栏：与画布略有区分（Cutline 侧栏比主区亮一档）
@@ -89,22 +90,33 @@ public enum InsightColor {
     )
 
     // MARK: 语义色（药丸徽章用）
-    /// 主强调：Cutline 的选中态蓝
+    /// 主强调：黛青墨——墨落于纸的青黑，替代原通用系统蓝（Cutline 蓝偏冷、无身份感）。
+    /// 白字按钮对比度：浅色 ≈7:1、深色 ≈4.3:1（AA 大字达标）
     public static let accent = dynamic(
-        light: NSColor(red: 0.20, green: 0.42, blue: 0.95, alpha: 1.0),
-        dark: NSColor(red: 0.29, green: 0.51, blue: 0.98, alpha: 1.0)
+        light: NSColor(red: 0.153, green: 0.298, blue: 0.545, alpha: 1.0),
+        dark: NSColor(red: 0.333, green: 0.470, blue: 0.780, alpha: 1.0)
     )
     public static let accentSoft = dynamic(
-        light: NSColor(red: 0.20, green: 0.42, blue: 0.95, alpha: 0.12),
-        dark: NSColor(red: 0.29, green: 0.51, blue: 0.98, alpha: 0.20)
+        light: NSColor(red: 0.153, green: 0.298, blue: 0.545, alpha: 0.10),
+        dark: NSColor(red: 0.435, green: 0.573, blue: 0.859, alpha: 0.18)
+    )
+    /// 朱砂（印记色）：只用于「今天 / 当下」这类独一时点强调——一次界面最多一处。
+    /// 这是本应用的签名色，不得用于常规状态或装饰。
+    public static let seal = dynamic(
+        light: NSColor(red: 0.702, green: 0.216, blue: 0.161, alpha: 1.0),
+        dark: NSColor(red: 0.898, green: 0.435, blue: 0.353, alpha: 1.0)
+    )
+    public static let sealSoft = dynamic(
+        light: NSColor(red: 0.702, green: 0.216, blue: 0.161, alpha: 0.12),
+        dark: NSColor(red: 0.898, green: 0.435, blue: 0.353, alpha: 0.20)
     )
     public static let success = dynamic(
-        light: NSColor(red: 0.13, green: 0.60, blue: 0.36, alpha: 1.0),
-        dark: NSColor(red: 0.30, green: 0.78, blue: 0.50, alpha: 1.0)
+        light: NSColor(red: 0.145, green: 0.510, blue: 0.345, alpha: 1.0),
+        dark: NSColor(red: 0.353, green: 0.760, blue: 0.553, alpha: 1.0)
     )
     public static let successSoft = dynamic(
-        light: NSColor(red: 0.13, green: 0.60, blue: 0.36, alpha: 0.12),
-        dark: NSColor(red: 0.30, green: 0.78, blue: 0.50, alpha: 0.18)
+        light: NSColor(red: 0.145, green: 0.510, blue: 0.345, alpha: 0.12),
+        dark: NSColor(red: 0.353, green: 0.760, blue: 0.553, alpha: 0.18)
     )
     public static let warning = dynamic(
         light: NSColor(red: 0.82, green: 0.53, blue: 0.10, alpha: 1.0),
@@ -162,6 +174,12 @@ public enum InsightFont {
     /// 统计块大数字：Cutline 的「84.2 GB」「48」「16」都是粗体大号
     public static let statLarge = Font.system(size: 30, weight: .bold)
     public static let statMedium = Font.system(size: 20, weight: .bold)
+
+    /// 阅读面衬线（宋体基因）：详情页正文标题、海报、听书条已在使用——
+    /// 工具界面保持无衬线（Cutline），阅读面用衬线，这是本应用「纸与墨」的分界约定。
+    public static func display(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
+        .system(size: size, weight: weight, design: .serif)
+    }
 
     /// 分区标签：大写 + 小 + semiBold（Cutline 的 MY WORKSPACE / Pinned）
     public static func sectionLabel(_ tracking: CGFloat = 0.8) -> Font {
