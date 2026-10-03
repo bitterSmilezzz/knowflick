@@ -16,6 +16,8 @@ class CardStore(
         val added: Int,
         val restored: Int,
         val ignored: Int,
+        /** v2 同步（§1/§4）：本次被对端墓碑删除的本地卡数；归档导入恒为 0 */
+        val deleted: Int = 0,
     ) {
         val accepted: Int get() = added + restored
     }

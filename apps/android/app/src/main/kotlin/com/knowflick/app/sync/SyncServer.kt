@@ -3,6 +3,7 @@ package com.knowflick.app.sync
 import com.knowflick.app.domain.CardJson
 import com.knowflick.app.domain.CardStore
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.domain.Tombstone
 import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.InetSocketAddress
@@ -34,7 +35,9 @@ data class RemoteDeviceInfo(
 class SyncServer(
     private val accessCode: String,
     private val getCards: suspend () -> List<KnowledgeCard>,
-    private val onReceiveCards: suspend (List<KnowledgeCard>) -> CardStore.ArchiveRestoreResult,
+    /** 本地墓碑表快照（§4）：GET 信封随卡片下发；本轮无删除 UI，装配点返回持久化表（恒为空直到对端删过本端卡片） */
+    private val getTombstones: suspend () -> List<Tombstone> = { emptyList() },
+    private val onReceiveCards: suspend (List<KnowledgeCard>, List<Tombstone>) -> CardStore.ArchiveRestoreResult,
     /** 服务带病退出（fd 耗尽等）时回调；正常 stop() 不会触发。回调运行在 accept 线程上 */
     private val onAbnormallyStopped: (Throwable) -> Unit = {},
 ) {
@@ -254,7 +257,8 @@ class SyncServer(
                 when (method) {
                     "GET" -> {
                         val cards = runBlocking { getCards() }
-                        val json = CardJson.encodeList(cards)
+                        // 协议 v2 信封（SYNC_PROTOCOL.md §3）；墓碑表接入见 getTombstones 闭包
+                        val json = CardJson.encodeEnvelope(cards, runBlocking { getTombstones() })
                         sendResponse(out, 200, "OK", "application/json; charset=utf-8", json)
                     }
                     "POST" -> {
@@ -270,17 +274,20 @@ class SyncServer(
                         } else {
                             ""
                         }
+                        // 兼容规则（§3）：v2 信封 / v1 裸数组均可；其余非法 → 400
                         val incoming = try {
-                            CardJson.decodeList(body)
+                            CardJson.decodeEnvelope(body)
                         } catch (e: Exception) {
                             throw BadRequestException("请求体不是合法的卡片 JSON")
                         }
-                        val result = runBlocking { onReceiveCards(incoming) }
+                        val result = runBlocking { onReceiveCards(incoming.cards, incoming.tombstones) }
                         val resp = buildJsonObject {
                             put("status", "success")
                             put("restored", result.restored)
                             put("added", result.added)
                             put("ignored", result.ignored)
+                            // v2 新增（§1）：本次被对端墓碑删除的本地卡数；旧端不认识则忽略
+                            put("deleted", result.deleted)
                             put("total", runBlocking { getCards() }.size)
                         }.toString()
                         sendResponse(out, 200, "OK", "application/json; charset=utf-8", resp)
