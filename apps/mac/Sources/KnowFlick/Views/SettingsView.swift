@@ -7,26 +7,11 @@ struct SettingsView: View {
     @Bindable var store: AppStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var baseURL = ""
-    @State private var model = ""
-    @State private var apiKey = ""
-    @State private var autoGenerate = true
-    @State private var selectedCategories: Set<String> = []   // 偏好分类（分类体系多选）
-    @State private var enableSeed = true
-    @State private var enableAI = true
-    @State private var aiSources = ""
-    @State private var showAIMark = true
-    @State private var appearance: AppearanceMode = .system
-    @State private var paperTheme: PaperTheme = .xuanzhiWhite
-    @State private var customCategories: [CategoryConfig] = []   // 自定义分类（编辑副本）
-    @State private var speech = SpeechSettings()
-    @State private var speechRate: Float = 1.0
-    @State private var speechPitch: Float = 1.0
-    @State private var speechVoiceIdentifier: String = "auto"
+    /// 设置编辑缓冲：可编辑字段的编辑态集中在 SettingsEditBuffer（Core），
+    /// 字段清单只维护一处——旧实现要在 onAppear 与 save() 各手抄一份，漏一处即静默丢配置
+    @State private var buffer = SettingsEditBuffer(from: .default)
     /// 系统音色列表：枚举 + 排序是重活，若写在 body 里会在任意输入框每次击键时重算，故 onAppear 取一次
     @State private var voiceOptions: [AVSpeechSynthesisVoice] = []
-    @State private var ambientGapSeconds: Double = 1.5
-    @State private var autoSpeakOnDetailOpen: Bool = false
     @State private var newCategoryName = ""
     @State private var newCategoryDesc = ""
     @State private var toast = ToastCenter()
@@ -47,16 +32,16 @@ struct SettingsView: View {
     private func selectProvider(_ preset: AIProviderPreset) {
         selectedProviderId = preset.id
         if preset.id != "custom" {
-            baseURL = preset.defaultBaseURL
-            if !preset.models.contains(model) {
-                model = preset.defaultModel
+            buffer.baseURL = preset.defaultBaseURL
+            if !preset.models.contains(buffer.model) {
+                buffer.model = preset.defaultModel
             }
         }
     }
 
     /// 当前编辑中的分类体系（内置「冷知识」+ 自定义），偏好 chips 与分类管理共用
     private var editingCategoryNames: [String] {
-        [CategoryRegistry.builtinCategory] + customCategories.map(\.name)
+        [CategoryRegistry.builtinCategory] + buffer.customCategories.map(\.name)
     }
 
     var body: some View {
@@ -98,25 +83,8 @@ struct SettingsView: View {
         }
         .frame(minWidth: 620, idealWidth: 680, minHeight: 520, idealHeight: 700)
         .onAppear {
-            appearance = store.settings.appearance
-            paperTheme = store.settings.paperTheme
-            baseURL = store.settings.baseURL
-            model = store.settings.model
-            apiKey = store.settings.apiKey
+            buffer = SettingsEditBuffer(from: store.settings)
             selectedProviderId = AIProviderPreset.match(baseURL: store.settings.baseURL).id
-            autoGenerate = store.settings.autoGenerate
-            selectedCategories = Set(store.settings.preferredCategories)
-            enableSeed = store.settings.enableSeed
-            enableAI = store.settings.enableAI
-            aiSources = store.settings.aiSources
-            showAIMark = store.settings.showAIMark
-            customCategories = store.settings.customCategories
-            speech = store.settings.speech
-            speechRate = store.settings.speechRate
-            speechPitch = store.settings.speechPitch
-            speechVoiceIdentifier = store.settings.speechVoiceIdentifier
-            ambientGapSeconds = store.settings.ambientGapSeconds
-            autoSpeakOnDetailOpen = store.settings.autoSpeakOnDetailOpen
             voiceOptions = SpeechSynthesizerService.availableVoices()
         }
         .overlay(alignment: .bottom) {
@@ -223,19 +191,19 @@ struct SettingsView: View {
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
                 Spacer()
-                Text(appearance.title)
+                Text(buffer.appearance.title)
                     .font(InsightFont.caption)
                     .foregroundStyle(InsightColor.textMuted)
             }
 
             HStack(spacing: 12) {
                 ForEach(AppearanceMode.allCases) { mode in
-                    let isSelected = (appearance == mode)
+                    let isSelected = (buffer.appearance == mode)
                     Button {
                         withAnimation(InsightMotion.pill) {
                             // 与其余 18 项一致：仅写入本地编辑态，点击「保存配置」统一生效，
                             // 保证「放弃修改并关闭」承诺可兑现
-                            appearance = mode
+                            buffer.appearance = mode
                         }
                     } label: {
                         HStack(spacing: 8) {
@@ -279,18 +247,18 @@ struct SettingsView: View {
                         .font(InsightFont.bodyStrong)
                         .foregroundStyle(InsightColor.textPrimary)
                     Spacer()
-                    Text(paperTheme.subtitle)
+                    Text(buffer.paperTheme.subtitle)
                         .font(InsightFont.caption)
                         .foregroundStyle(InsightColor.textMuted)
                 }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                     ForEach(PaperTheme.allCases) { theme in
-                        let isSelected = (paperTheme == theme)
+                        let isSelected = (buffer.paperTheme == theme)
                         let palette = PaperThemePalette.colors(for: theme)
                         Button {
                             withAnimation(InsightMotion.pill) {
-                                paperTheme = theme
+                                buffer.paperTheme = theme
                             }
                         } label: {
                             HStack(spacing: 10) {
@@ -395,7 +363,7 @@ struct SettingsView: View {
 
                 // 2. API 地址
                 fieldRow(label: "API 地址") {
-                    TextField(currentPreset.defaultBaseURL.isEmpty ? "https://..." : currentPreset.defaultBaseURL, text: $baseURL)
+                    TextField(currentPreset.defaultBaseURL.isEmpty ? "https://..." : currentPreset.defaultBaseURL, text: $buffer.baseURL)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -407,7 +375,7 @@ struct SettingsView: View {
                 // 3. 模型选择
                 fieldRow(label: "模型选择") {
                     if currentPreset.models.isEmpty {
-                        TextField("例如：deepseek-chat、gpt-4o、qwen-plus", text: $model)
+                        TextField("例如：deepseek-chat、gpt-4o、qwen-plus", text: $buffer.model)
                             .textFieldStyle(.plain)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -419,18 +387,18 @@ struct SettingsView: View {
                             Menu {
                                 ForEach(currentPreset.models, id: \.self) { m in
                                     Button(m) {
-                                        model = m
+                                        buffer.model = m
                                     }
                                 }
                                 Divider()
                                 Button("手动输入其他模型…") {
-                                    if currentPreset.models.contains(model) {
-                                        model = ""
+                                    if currentPreset.models.contains(buffer.model) {
+                                        buffer.model = ""
                                     }
                                 }
                             } label: {
                                 HStack {
-                                    Text(currentPreset.models.contains(model) ? model : (model.isEmpty ? "选择模型…" : "自定义模型"))
+                                    Text(currentPreset.models.contains(buffer.model) ? buffer.model : (buffer.model.isEmpty ? "选择模型…" : "自定义模型"))
                                         .font(InsightFont.callout)
                                         .foregroundStyle(InsightColor.textPrimary)
                                     Spacer()
@@ -445,8 +413,8 @@ struct SettingsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
                             }
 
-                            if !currentPreset.models.contains(model) {
-                                TextField("输入具体模型名", text: $model)
+                            if !currentPreset.models.contains(buffer.model) {
+                                TextField("输入具体模型名", text: $buffer.model)
                                     .textFieldStyle(.plain)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
@@ -461,7 +429,7 @@ struct SettingsView: View {
                 // 4. API Key
                 fieldRow(label: "API Key") {
                     VStack(alignment: .leading, spacing: 4) {
-                        SecureField(currentPreset.apiKeyPlaceholder, text: $apiKey)
+                        SecureField(currentPreset.apiKeyPlaceholder, text: $buffer.apiKey)
                             .textFieldStyle(.plain)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -498,7 +466,7 @@ struct SettingsView: View {
                 }
                 .padding(.top, 4)
 
-                Toggle("卡片不足时自动触发 AI 批量补充", isOn: $autoGenerate)
+                Toggle("卡片不足时自动触发 AI 批量补充", isOn: $buffer.autoGenerate)
                     .font(InsightFont.callout)
                     .foregroundStyle(InsightColor.textSecondary)
                     .padding(.top, 2)
@@ -542,7 +510,7 @@ struct SettingsView: View {
                 .background(InsightColor.surface.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 // 自定义分类列表
-                ForEach(customCategories) { cat in
+                ForEach(buffer.customCategories) { cat in
                     let accent = CategoryTheme.visualSpec(for: cat.name).accent
                     HStack(spacing: 8) {
                         Circle()
@@ -561,8 +529,8 @@ struct SettingsView: View {
                         }
                         Spacer()
                         Button {
-                            selectedCategories.remove(cat.name)
-                            customCategories.removeAll { $0.name == cat.name }
+                            buffer.selectedCategories.remove(cat.name)
+                            buffer.customCategories.removeAll { $0.name == cat.name }
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 11))
@@ -638,16 +606,16 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("启用预置精选知识库", isOn: $enableSeed)
+                Toggle("启用预置精选知识库", isOn: $buffer.enableSeed)
                     .font(InsightFont.callout)
                     .foregroundStyle(InsightColor.textPrimary)
 
-                Toggle("启用 AI 智能生成卡片", isOn: $enableAI)
+                Toggle("启用 AI 智能生成卡片", isOn: $buffer.enableAI)
                     .font(InsightFont.callout)
                     .foregroundStyle(InsightColor.textPrimary)
 
                 fieldRow(label: "权威来源偏好") {
-                    TextField("维基百科, 国家地理, NASA", text: $aiSources)
+                    TextField("维基百科, 国家地理, NASA", text: $buffer.aiSources)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -656,7 +624,7 @@ struct SettingsView: View {
                         .foregroundStyle(InsightColor.textPrimary)
                 }
 
-                Toggle("在卡片与详情页标注「AI 生成」徽章", isOn: $showAIMark)
+                Toggle("在卡片与详情页标注「AI 生成」徽章", isOn: $buffer.showAIMark)
                     .font(InsightFont.callout)
                     .foregroundStyle(InsightColor.textPrimary)
             }
@@ -685,23 +653,23 @@ struct SettingsView: View {
             Divider().overlay(InsightColor.divider)
 
             // 默认语速倍率
-            SpeechSettingsEditor(settings: $speech)
+            SpeechSettingsEditor(settings: $buffer.speech)
 
-            fieldRow(label: "默认朗读语速 (当前: \(String(format: "%.2fx", speechRate)))") {
+            fieldRow(label: "默认朗读语速 (当前: \(String(format: "%.2fx", buffer.speechRate)))") {
                 HStack(spacing: 12) {
-                    Slider(value: $speechRate, in: 0.75...2.0, step: 0.25)
+                    Slider(value: $buffer.speechRate, in: 0.75...2.0, step: 0.25)
                         .tint(InsightColor.success)
 
                     HStack(spacing: 6) {
                         ForEach([0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { rate in
                             Button("\(String(format: "%.2f", rate))x") {
-                                speechRate = Float(rate)
+                                buffer.speechRate = Float(rate)
                             }
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(abs(speechRate - Float(rate)) < 0.05 ? InsightColor.textPrimary : InsightColor.textTertiary)
+                            .foregroundStyle(abs(buffer.speechRate - Float(rate)) < 0.05 ? InsightColor.textPrimary : InsightColor.textTertiary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
-                            .background(abs(speechRate - Float(rate)) < 0.05 ? InsightColor.success.opacity(0.3) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
+                            .background(abs(buffer.speechRate - Float(rate)) < 0.05 ? InsightColor.success.opacity(0.3) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                             .buttonStyle(.plain)
                         }
                     }
@@ -709,21 +677,21 @@ struct SettingsView: View {
             }
 
             // 默认音调倍率（仅系统合成器生效）
-            fieldRow(label: "默认朗读音调 (当前: \(String(format: "%.2fx", speechPitch)))") {
+            fieldRow(label: "默认朗读音调 (当前: \(String(format: "%.2fx", buffer.speechPitch)))") {
                 HStack(spacing: 12) {
-                    Slider(value: $speechPitch, in: 0.5...2.0, step: 0.05)
+                    Slider(value: $buffer.speechPitch, in: 0.5...2.0, step: 0.05)
                         .tint(InsightColor.accent)
 
                     HStack(spacing: 6) {
                         ForEach([("低沉", 0.85), ("自然", 1.0), ("清亮", 1.15)], id: \.1) { name, value in
                             Button(name) {
-                                speechPitch = Float(value)
+                                buffer.speechPitch = Float(value)
                             }
                             .font(InsightFont.captionSmall.weight(.medium))
-                            .foregroundStyle(abs(speechPitch - Float(value)) < 0.05 ? InsightColor.textPrimary : InsightColor.textTertiary)
+                            .foregroundStyle(abs(buffer.speechPitch - Float(value)) < 0.05 ? InsightColor.textPrimary : InsightColor.textTertiary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(abs(speechPitch - Float(value)) < 0.05 ? InsightColor.accent.opacity(0.28) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
+                            .background(abs(buffer.speechPitch - Float(value)) < 0.05 ? InsightColor.accent.opacity(0.28) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                             .buttonStyle(.plain)
                         }
                     }
@@ -731,18 +699,18 @@ struct SettingsView: View {
             }
 
             // 磨耳朵换卡缓冲时间
-            fieldRow(label: "磨耳朵模式换卡缓冲间隔 (当前: \(String(format: "%.1f", ambientGapSeconds)) 秒)") {
+            fieldRow(label: "磨耳朵模式换卡缓冲间隔 (当前: \(String(format: "%.1f", buffer.ambientGapSeconds)) 秒)") {
                 HStack(spacing: 10) {
                     ForEach([1.0, 1.5, 2.0, 3.0], id: \.self) { sec in
                         Button("\(String(format: "%.1f", sec)) 秒") {
-                            ambientGapSeconds = sec
+                            buffer.ambientGapSeconds = sec
                         }
                         .font(InsightFont.captionSmall.weight(.medium))
-                        .foregroundStyle(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.textPrimary : InsightColor.textTertiary)
+                        .foregroundStyle(abs(buffer.ambientGapSeconds - sec) < 0.1 ? InsightColor.textPrimary : InsightColor.textTertiary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.accent.opacity(0.25) : InsightColor.surface, in: Capsule())
-                        .overlay(Capsule().strokeBorder(abs(ambientGapSeconds - sec) < 0.1 ? InsightColor.accent.opacity(0.6) : InsightColor.border, lineWidth: 1))
+                        .background(abs(buffer.ambientGapSeconds - sec) < 0.1 ? InsightColor.accent.opacity(0.25) : InsightColor.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(abs(buffer.ambientGapSeconds - sec) < 0.1 ? InsightColor.accent.opacity(0.6) : InsightColor.border, lineWidth: 1))
                         .buttonStyle(.plain)
                     }
                 }
@@ -750,7 +718,7 @@ struct SettingsView: View {
 
             // 声音选择
             fieldRow(label: "系统音色（系统模式与离线兜底使用）") {
-                Picker("", selection: $speechVoiceIdentifier) {
+                Picker("", selection: $buffer.speechVoiceIdentifier) {
                     Text("自动选择已下载的高质量音色（推荐）").tag("auto")
                     ForEach(voiceOptions, id: \.identifier) { voice in
                         Text("\(voice.name) · \(voice.language)\(voice.quality == .default ? " · 标准" : " · 高质量")").tag(voice.identifier)
@@ -761,7 +729,7 @@ struct SettingsView: View {
 
             // 试听与自动朗读
             HStack {
-                Toggle("进入详情页时自动开启语音导读", isOn: $autoSpeakOnDetailOpen)
+                Toggle("进入详情页时自动开启语音导读", isOn: $buffer.autoSpeakOnDetailOpen)
                     .toggleStyle(SwitchToggleStyle(tint: InsightColor.success))
                     .font(InsightFont.caption)
                     .foregroundStyle(InsightColor.textSecondary)
@@ -769,7 +737,7 @@ struct SettingsView: View {
                 Spacer()
 
                 Button {
-                    store.speechService.preview(configuration: speech, voice: speechVoiceIdentifier, speed: speechRate, pitch: speechPitch)
+                    store.speechService.preview(configuration: buffer.speech, voice: buffer.speechVoiceIdentifier, speed: buffer.speechRate, pitch: buffer.speechPitch)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "speaker.wave.2")
@@ -951,7 +919,7 @@ struct SettingsView: View {
             .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
             .buttonStyle(PressableButtonStyle())
-            .disabled(isTesting || (currentPreset.requiresKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+            .disabled(isTesting || (currentPreset.requiresKey && buffer.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
 
             Button("保存配置") {
                 save()
@@ -1002,13 +970,13 @@ struct SettingsView: View {
 
     /// 偏好分类选择 chip
     private func categoryChip(_ cat: String) -> some View {
-        let selected = selectedCategories.contains(cat)
+        let selected = buffer.selectedCategories.contains(cat)
         let accent = CategoryTheme.visualSpec(for: cat).accent
         return Button {
             if selected {
-                selectedCategories.remove(cat)
+                buffer.selectedCategories.remove(cat)
             } else {
-                selectedCategories.insert(cat)
+                buffer.selectedCategories.insert(cat)
             }
         } label: {
             HStack(spacing: 5) {
@@ -1031,27 +999,9 @@ struct SettingsView: View {
     /// 返回是否成功；失败时在设置页顶部展示可见错误，调用方不应关闭页面
     @discardableResult
     private func save() -> Bool {
-        var updated = store.settings
-        updated.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        updated.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        updated.autoGenerate = autoGenerate
-        updated.customCategories = customCategories
-        // 偏好中已被删除的分类自动清理
-        selectedCategories = selectedCategories.intersection(editingCategoryNames)
-        updated.setPreferredCategories(Array(selectedCategories))
-        updated.enableSeed = enableSeed
-        updated.enableAI = enableAI
-        updated.aiSources = aiSources.trimmingCharacters(in: .whitespacesAndNewlines)
-        updated.showAIMark = showAIMark
-        updated.appearance = appearance
-        updated.paperTheme = paperTheme
-        updated.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        updated.speech = speech
-        updated.speechRate = speechRate
-        updated.speechPitch = speechPitch
-        updated.speechVoiceIdentifier = speechVoiceIdentifier
-        updated.ambientGapSeconds = ambientGapSeconds
-        updated.autoSpeakOnDetailOpen = autoSpeakOnDetailOpen
+        // 拷出与清洗集中在 SettingsEditBuffer.applying(to:)（trim / 已删分类清理都在那里）；
+        // 非编辑字段（如自动补卡节流时间戳）从 store.settings 原样保留
+        let updated = buffer.applying(to: store.settings)
         do {
             try store.saveSettings(updated)
             saveErrorMessage = nil
@@ -1068,12 +1018,12 @@ struct SettingsView: View {
     private func addCategory() {
         let name = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        guard name != CategoryRegistry.builtinCategory, !customCategories.contains(where: { $0.name == name }) else {
+        guard name != CategoryRegistry.builtinCategory, !buffer.customCategories.contains(where: { $0.name == name }) else {
             categoryNotice = "分类「\(name)」已存在"
             return
         }
         categoryNotice = nil
-        customCategories.append(CategoryConfig(
+        buffer.customCategories.append(CategoryConfig(
             name: name,
             description: newCategoryDesc.trimmingCharacters(in: .whitespacesAndNewlines)
         ))
@@ -1087,9 +1037,9 @@ struct SettingsView: View {
         testResult = "正在测试连接…"
         // 用当前输入值组一个临时设置做探测
         var temp = store.settings
-        temp.baseURL = baseURL
-        temp.model = model
-        temp.apiKey = apiKey
+        temp.baseURL = buffer.baseURL
+        temp.model = buffer.model
+        temp.apiKey = buffer.apiKey
         Task { @MainActor in
             testResult = await store.testConnection(settings: temp)
             isTesting = false
