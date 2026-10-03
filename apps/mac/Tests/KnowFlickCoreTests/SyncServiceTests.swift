@@ -59,6 +59,46 @@ struct SyncServiceTests {
         #expect(!info.deviceName.isEmpty)
     }
 
+    // MARK: - Wave B B1：/api/info 协议版本握手（协议 v2 §2）
+
+    /// 服务端 /api/info 必须携带 protocolVersion=2，客户端解析出对端版本。
+    @Test("B1 /api/info 返回 protocolVersion=2 且客户端解析出对端版本")
+    func infoEndpointCarriesProtocolVersion() async throws {
+        let serverCard = createTestCard(headline: "版本握手")
+        let server = SyncServer(
+            accessCode: "334455",
+            getCards: { [serverCard] },
+            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+        )
+        let startRes = server.start(preferredPort: 19011)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        let info = try await SyncClient.fetchRemoteInfo(target: "127.0.0.1:\(port)#334455")
+        #expect(info.protocolVersion == SyncProtocol.currentVersion)
+    }
+
+    /// 缺 `protocolVersion` 字段 = v1 旧端 → 解析为 nil（UI 提示「建议两端升级」，不阻断）；
+    /// 高于本端支持版本的值如实透出（UI 提示「对端版本更新」，同样不阻断）。
+    @Test("B1 缺 protocolVersion 字段按旧端解析（nil），更高版本如实透出")
+    func infoVersionParsingTreatsMissingFieldAsLegacyPeer() {
+        let legacy = RemoteDeviceInfo.parseInfo([
+            "deviceName": "旧端设备", "cardCount": 3, "favoriteCount": 1, "timestamp": 1_727_900_000_000
+        ])
+        #expect(legacy.protocolVersion == nil)
+        #expect(legacy.deviceName == "旧端设备")
+        #expect(legacy.cardCount == 3)
+
+        let newer = RemoteDeviceInfo.parseInfo([
+            "deviceName": "新端设备", "cardCount": 3, "favoriteCount": 1, "timestamp": 1_727_900_000_000,
+            "protocolVersion": SyncProtocol.currentVersion + 1
+        ])
+        #expect(newer.protocolVersion == SyncProtocol.currentVersion + 1)
+    }
+
     @Test func syncClientBidirectionalSync() async throws {
         let serverCard = createTestCard(headline: "中子星")
         let clientCard = createTestCard(headline: "黑洞")

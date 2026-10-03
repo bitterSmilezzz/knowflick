@@ -291,6 +291,10 @@ struct SyncSheetView: View {
                                 .foregroundStyle(InsightColor.textMuted)
                         }
 
+                        if let hint = peerVersionHint(info.protocolVersion) {
+                            versionHintRow(hint)
+                        }
+
                         Button {
                             executeSync()
                         } label: {
@@ -330,6 +334,10 @@ struct SyncSheetView: View {
                         Text("向对端推送 \(res.pushedCount) 张，从对端拉取 \(res.pulledCount) 张（本机新增 \(res.addedCount) 张，更新学习进度 \(res.restoredCount) 张）。")
                             .font(InsightFont.caption)
                             .foregroundStyle(InsightColor.textSecondary)
+                        // 协议 v2 §2：版本握手提示——不阻断同步，仅提醒两端升级
+                        if let hint = peerVersionHint(remoteInfo?.protocolVersion) {
+                            versionHintRow(hint)
+                        }
                     }
                     .padding(12)
                     .background(InsightColor.success.opacity(0.12), in: RoundedRectangle(cornerRadius: InsightRadius.control))
@@ -359,6 +367,23 @@ struct SyncSheetView: View {
     }
 
     // MARK: - 同步与服务逻辑
+
+    /// 对端版本提示（协议 v2 §2）：缺字段 = v1 旧端；高于本端支持版本 = 对端更新。
+    /// 两种情况都**不阻断**同步（字段级兼容，新字段会被旧端静默丢弃）。
+    private func peerVersionHint(_ version: Int?) -> String? {
+        guard let version else { return "对端版本较旧，建议两端升级" }
+        return version > SyncProtocol.currentVersion ? "对端版本更新" : nil
+    }
+
+    private func versionHintRow(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.up.circle")
+                .foregroundStyle(InsightColor.textMuted)
+            Text(text)
+                .font(InsightFont.caption)
+                .foregroundStyle(InsightColor.textMuted)
+        }
+    }
 
     private func initializeServerDefaults() {
         if pairingCode.isEmpty {

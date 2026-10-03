@@ -6,12 +6,28 @@ public struct RemoteDeviceInfo: Sendable, Equatable {
     public let cardCount: Int
     public let favoriteCount: Int
     public let timestamp: Int64
+    /// 对端协议版本（/api/info 的 `protocolVersion`）。
+    /// `nil` = 缺字段 = v1 旧端（协议 §2：提示「建议两端升级」，不阻断同步）。
+    public let protocolVersion: Int?
 
-    public init(deviceName: String, cardCount: Int, favoriteCount: Int, timestamp: Int64) {
+    public init(deviceName: String, cardCount: Int, favoriteCount: Int, timestamp: Int64, protocolVersion: Int? = nil) {
         self.deviceName = deviceName
         self.cardCount = cardCount
         self.favoriteCount = favoriteCount
         self.timestamp = timestamp
+        self.protocolVersion = protocolVersion
+    }
+
+    /// /api/info 响应解析：缺 `protocolVersion` 字段的旧端解析为 nil。
+    /// 单独成函数以便对「缺字段=旧端」的契约做无网络单测。
+    static func parseInfo(_ json: [String: Any]) -> RemoteDeviceInfo {
+        RemoteDeviceInfo(
+            deviceName: json["deviceName"] as? String ?? "未知设备",
+            cardCount: json["cardCount"] as? Int ?? 0,
+            favoriteCount: json["favoriteCount"] as? Int ?? 0,
+            timestamp: (json["timestamp"] as? NSNumber)?.int64Value ?? 0,
+            protocolVersion: json["protocolVersion"] as? Int
+        )
     }
 }
 
@@ -231,7 +247,9 @@ public final class SyncServer: @unchecked Sendable {
                     "deviceName": hostName,
                     "cardCount": cards.count,
                     "favoriteCount": favCount,
-                    "timestamp": timestamp
+                    "timestamp": timestamp,
+                    // 协议 v2 §2：版本握手。旧端缺此字段按「建议两端升级」提示，不阻断同步。
+                    "protocolVersion": SyncProtocol.currentVersion
                 ]
                 if let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict),
                    let jsonString = String(data: jsonData, encoding: .utf8) {
