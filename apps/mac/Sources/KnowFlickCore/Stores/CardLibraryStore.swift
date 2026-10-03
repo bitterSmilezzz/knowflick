@@ -44,6 +44,12 @@ public final class CardLibraryStore {
     private var lastSwipedCardId: UUID?
     private var lastSwipedKey: String?
 
+    /// 全库重排轨迹（测试护栏）：每次 recompute 记录当时的卡池规模。启动路径的
+    /// 「settings 迁移赋值不得再触发一次全库重排」在**调用次数**上不可见（卡片赋值与
+    /// 设置赋值各会跑一次），只有按卡池规模记录才能区分「只排一遍」与「白排两遍」。
+    /// 条目为常量大小，长会话的增长可忽略。
+    private(set) var recomputeTrace: [Int] = []
+
     private let persistence: PersistenceCoordinator
 
     init(persistence: PersistenceCoordinator, initialSettings: AISettings = .default) {
@@ -55,8 +61,16 @@ public final class CardLibraryStore {
     // MARK: - 跨域同步入口
 
     /// facade 的 `settings` 每次赋值都会调用（didSet）：刷新派生快照并重算卡堆。
+    /// 只有**参与卡堆派生的输入**（来源开关 / 偏好分类）变化才值得全库重排——bootstrap
+    /// 的钥匙串迁移只补密钥（apiKey / TTS key），若无条件重排，每次启动结尾都会把刚
+    /// 派生好的全库再白排一遍。派生输入未变时仅刷新快照：之后任何 cards 变更触发的
+    /// 重排自然会带上最新设置，语义不变。
     func settingsDidChange(_ settings: AISettings) {
+        let derivationInputsChanged = lastKnownSettings.enableSeed != settings.enableSeed
+            || lastKnownSettings.enableAI != settings.enableAI
+            || lastKnownSettings.preferredCategories != settings.preferredCategories
         lastKnownSettings = settings
+        guard derivationInputsChanged else { return }
         recomputeDeckAndHistory()
     }
 
@@ -71,6 +85,7 @@ public final class CardLibraryStore {
     /// 卡片池 → 卡堆/历史/收藏 的派生统一走 `DeckDeriver`（纯函数，可穷举单测）。
     /// 这里只做「取值 → 派生 → 一次性赋值」，避免逐项变更触发观察风暴。
     private func recomputeDeckAndHistory() {
+        recomputeTrace.append(cards.count)
         let derived = DeckDeriver.derive(
             cards: cards,
             currentDeck: deck,
