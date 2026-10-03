@@ -217,6 +217,14 @@ public final class AppStore {
         GenerationCoordinator.autoTopUpAllowed(lastAutoTopUpAt: lastAutoTopUpAt, now: now, interval: interval)
     }
 
+    /// 启动引导（四段）：加载回退与种子解码 → 卡片/设置落位（空库保持 / 重新播种 / 种子增量合并）
+    /// → 钥匙串迁移 → 自动补卡。
+    ///
+    /// 拆段（Wave C2）只改代码组织，不改 await 序列：阶段之间没有任何新增挂起点，
+    /// os_signpost 的 begin/end 仍逐段包住原来的区间（Instruments 启动基线与拆分前逐点对照）。
+    /// 两条 Wave A 语义不得回退：
+    /// - 设置先于卡片就位（卡堆派生依赖设置，否则启动白排两遍）；
+    /// - 钥匙串迁移只补密钥（不触碰派生输入，不触发全库重排）。
     public func bootstrap() async {
         guard isLoadingSeed else { return }
         // 启动耗时打点：分阶段 signpost（Instruments 的 os_signpost 轨道可直接看）+ 结束时
@@ -228,8 +236,25 @@ public final class AppStore {
             Logger(subsystem: "com.knowflick.app", category: "bootstrap")
                 .info("bootstrap 完成：\(elapsed.description, privacy: .public)")
         }
-        // 文件 IO 与种子解码（338KB JSON）放后台线程，钥匙串读取保持主线程（协议隔离）；
-        // 卡片与设置均一次性赋值，避免逐字段变更触发 didSet → recompute 风暴
+
+        let loaded = await loadLibraryStage(signposter: signposter)
+        installLibraryStage(loaded)
+        // 首次渲染窗口：上面的卡片赋值此刻还只是「脏状态」——bootstrap 从赋值到返回
+        // 之间若没有任何挂起点，SwiftUI 没机会画一帧。而下面的钥匙串读取会弹安全授权
+        // 对话框并阻塞主线程直到用户响应（CI 每次构建签名不同，用户装新版必弹）。
+        // 不先渲染，弹窗期间用户看到的就是空库（实测「0 张未读卡片」）。
+        // 挂起一小段时间让卡片库先上屏，再进入钥匙串读取。
+        try? await Task.sleep(for: .milliseconds(120))
+
+        migrateCredentialsStage(loadedSettings: loaded.settings, signposter: signposter)
+        // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发 + 24h 节流）：判定与触发都在
+        // `GenerationCoordinator` 内（Wave C2），失败同样记入节流窗口。
+        await generation.autoTopUpIfNeeded()
+    }
+
+    /// 阶段 1：文件 IO 与种子解码（338KB JSON）放后台线程，钥匙串读取保持主线程（协议隔离）；
+    /// 卡片与设置一次性带回主线程赋值，避免逐字段变更触发 didSet → recompute 风暴。
+    private func loadLibraryStage(signposter: OSSignposter) async -> (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings) {
         let storage = self.storage
         let loadState = signposter.beginInterval("loadLibrary")
         let io = Task.detached(priority: .userInitiated) { () -> (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings) in
@@ -237,7 +262,12 @@ public final class AppStore {
         }
         let loaded = await io.value
         signposter.endInterval("loadLibrary", loadState)
+        return loaded
+    }
 
+    /// 阶段 2：卡片与设置落位——三级加载回退结果的处置（合法空库保持 / 预置库重新播种）
+    /// 与种子增量合并。注意赋值顺序：设置先于卡片。
+    private func installLibraryStage(_ loaded: (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings)) {
         // 设置先于卡片就位：卡堆派生（来源开关 / 偏好分类）依赖设置。若把设置赋值留在
         // 钥匙串迁移之后（旧实现），cards 赋值会先按 .default 全库派生一遍、结尾再按真实
         // 设置重排一遍——启动白排两遍。此刻卡池还是空的，这次派生是 O(1)。
@@ -264,15 +294,13 @@ public final class AppStore {
             cards = loaded.seeds
             persist()
         }
-        // 首次渲染窗口：上面的卡片赋值此刻还只是「脏状态」——bootstrap 从赋值到返回
-        // 之间若没有任何挂起点，SwiftUI 没机会画一帧。而下面的钥匙串读取会弹安全授权
-        // 对话框并阻塞主线程直到用户响应（CI 每次构建签名不同，用户装新版必弹）。
-        // 不先渲染，弹窗期间用户看到的就是空库（实测「0 张未读卡片」）。
-        // 挂起一小段时间让卡片库先上屏，再进入钥匙串读取。
-        try? await Task.sleep(for: .milliseconds(120))
+    }
 
+    /// 阶段 3：钥匙串迁移——只补密钥字段（apiKey / TTS key），不触碰卡堆派生输入。
+    /// 迁移成功（或发现 Keychain 已有密钥）后清除 settings.json 里的明文。
+    private func migrateCredentialsStage(loadedSettings: AISettings, signposter: OSSignposter) {
         let keychainState = signposter.beginInterval("keychainMigration")
-        var migratedSettings = loaded.settings
+        var migratedSettings = loadedSettings
         // 迁移旧版本可能写入 JSON 的密钥；成功进入 Keychain 后再清除明文。
         let legacyKey = migratedSettings.apiKey
         func persistMigratedSettings(_ settings: AISettings) {
@@ -303,12 +331,6 @@ public final class AppStore {
         // 迁移只补密钥字段（apiKey / TTS key），不触碰卡堆派生输入：settingsDidChange 的
         // 派生输入守卫保证这次赋值不再触发一次全库重排。
         settings = migratedSettings
-        // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）。补卡是顺手行为而非每次启动
-        // 的固定开销：24h 内已自动补过卡则跳过，避免每次启动都消耗用户 API 额度。
-        // 失败同样记入节流窗口——失败的请求也可能已产生费用，且网络异常时不应每次启动都空打。
-        // 自动补卡（卡片不足 + 来源含 AI 且已配置 + 24h 节流）：判定与触发都在
-        // `GenerationCoordinator` 内（Wave C2），这里只调用；失败同样记入节流窗口。
-        await generation.autoTopUpIfNeeded()
     }
 
     /// 生成成功后的写入回调（`GenerationCoordinator` 注入）：追加卡片池并落盘。
