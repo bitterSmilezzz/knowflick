@@ -257,6 +257,97 @@ struct SyncServiceTests {
         }
     }
 
+    // MARK: - Wave A：响应写全量 + SIGPIPE 防护
+
+    /// 大响应体必须完整送达：全库导出（上限 25MiB）远超 socket 发送缓冲，单次 write 遇上
+    /// 对端读得慢 / SO_SNDTIMEO / EINTR 都可能只写出一部分，客户端会拿到 Content-Length
+    /// 对不上的截断 JSON。这里用 ~1MB 级卡片库走回环，按 Content-Length 逐字节核对。
+    @Test func syncServerDeliversFullBodyForLargeLibrary() async throws {
+        let cards = (0..<200).map { i in
+            KnowledgeCard(
+                category: "物理",
+                headline: "大库卡\(i)",
+                summary: "摘要\(i)",
+                details: String(repeating: "这段说明用于撑大同步响应体以覆盖部分写路径。", count: 100),
+                source: .seed,
+                createdAt: Date(timeIntervalSince1970: 1_000_000)
+            )
+        }
+        let server = SyncServer(
+            accessCode: "135790",
+            getCards: { cards },
+            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+        )
+        let startRes = server.start(preferredPort: 19107)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        let peer = try RawLoopbackPeer(port: UInt16(port))
+        let response = try peer.request(
+            "GET /api/cards HTTP/1.1\r\nHost: 127.0.0.1\r\n\(SyncServer.authHeader): 135790\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+        )
+
+        guard let headerEnd = response.range(of: Data("\r\n\r\n".utf8)) else {
+            Issue.record("响应缺少头部结束标记")
+            return
+        }
+        let headerText = String(decoding: response[..<headerEnd.lowerBound], as: UTF8.self)
+        guard let lengthLine = headerText.split(separator: "\r\n").first(where: { $0.lowercased().hasPrefix("content-length:") }),
+              let declaredBytes = Int(lengthLine.split(separator: ":")[1].trimmingCharacters(in: .whitespaces)) else {
+            Issue.record("响应头部缺少 Content-Length: \(headerText)")
+            return
+        }
+        let body = response.subdata(in: headerEnd.upperBound..<response.count)
+        #expect(body.count == declaredBytes, "实际收到 \(body.count) 字节，头部声明 \(declaredBytes) 字节")
+        let parsed = try CardImportEngine.parseJSON(data: body)
+        #expect(parsed.count == 200)
+        #expect(parsed.map(\.headline) == cards.map(\.headline))
+    }
+
+    /// 对端提前断开：客户端发完请求立即 close，服务端向已断开的连接写响应不得崩溃
+    /// （无 SO_NOSIGPIPE 防护时 SIGPIPE 的默认动作是杀掉整个进程），且后续新连接仍能正常服务。
+    /// 用大响应体让「写响应」持续进行：对端的 RST 必然落在写入中途，EPIPE 无处可躲。
+    @Test func syncServerSurvivesPeerClosingEarly() async throws {
+        let cards = (0..<200).map { i in
+            KnowledgeCard(
+                category: "物理",
+                headline: "大库卡\(i)",
+                summary: "摘要\(i)",
+                details: String(repeating: "这段说明用于撑大同步响应体以覆盖部分写路径。", count: 100),
+                source: .seed,
+                createdAt: Date(timeIntervalSince1970: 1_000_000)
+            )
+        }
+        let server = SyncServer(
+            accessCode: "246810",
+            getCards: { cards },
+            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+        )
+        let startRes = server.start(preferredPort: 19109)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        // 发完请求立即断开（响应一字节都不读）。多次连接抬高「写响应时对端已断开」的确定性。
+        for _ in 0..<3 {
+            let peer = try RawLoopbackPeer(port: UInt16(port))
+            try peer.sendAndClose(
+                "GET /api/cards HTTP/1.1\r\nHost: 127.0.0.1\r\n\(SyncServer.authHeader): 246810\r\n\r\n"
+            )
+            try await Task.sleep(for: .milliseconds(100))
+        }
+
+        // 进程未死、监听未坏：新连接照常完整走一次请求-响应
+        let info = try await SyncClient.fetchRemoteInfo(target: "127.0.0.1:\(port)#246810")
+        #expect(info.cardCount == 200)
+        #expect(info.deviceName.isEmpty == false)
+    }
+
     /// 退避重试必须尊重取消：取消后应当立刻以 `CancellationError` 结束，而不是把用户自己的
     /// 取消伪装成一条网络故障。
     ///
@@ -433,5 +524,72 @@ private final class CountingRefusingPeer: @unchecked Sendable {
         stopped = true
         lock.unlock()
         if !already { close(listenFD) }
+    }
+}
+
+/// 最小回环对端：直连 SyncServer 监听端口收发原始 HTTP 字节。
+/// 不走 URLSession——这里要控制「发完立即 close」「读满到对端关连接」这类传输层行为。
+private struct RawLoopbackPeer {
+    let fd: Int32
+
+    init(port: UInt16) throws {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw NSError(domain: "RawLoopbackPeer", code: -1, userInfo: [NSLocalizedDescriptionKey: "socket 创建失败"])
+        }
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let connected = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                Darwin.connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_in>.stride))
+            }
+        }
+        guard connected == 0 else {
+            Darwin.close(fd)
+            throw NSError(domain: "RawLoopbackPeer", code: -2, userInfo: [NSLocalizedDescriptionKey: "连接 SyncServer 失败"])
+        }
+        // 读超时保护：服务端异常时测试挂死不如直接失败
+        var tv = timeval(tv_sec: 10, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        self.fd = fd
+    }
+
+    /// 发送请求并读满响应直到对端关连接（服务端响应固定带 Connection: close）
+    func request(_ text: String) throws -> Data {
+        try send(text)
+        defer { Darwin.close(fd) }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        while true {
+            let n = buffer.withUnsafeMutableBytes { raw in
+                Darwin.read(fd, raw.baseAddress, raw.count)
+            }
+            guard n > 0 else { break }
+            data.append(buffer, count: n)
+        }
+        return data
+    }
+
+    /// 发完请求立即断开（一个字节的响应都不读）：复现「对端提前断开」
+    func sendAndClose(_ text: String) throws {
+        try send(text)
+        Darwin.close(fd)
+    }
+
+    private func send(_ text: String) throws {
+        let bytes = [UInt8](text.utf8)
+        var offset = 0
+        while offset < bytes.count {
+            let written = bytes.withUnsafeBytes { raw in
+                Darwin.write(fd, raw.baseAddress!.advanced(by: offset), bytes.count - offset)
+            }
+            guard written > 0 else {
+                throw NSError(domain: "RawLoopbackPeer", code: -3, userInfo: [NSLocalizedDescriptionKey: "请求发送失败"])
+            }
+            offset += written
+        }
     }
 }

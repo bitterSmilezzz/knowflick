@@ -45,6 +45,9 @@ public final class AppStore {
     public var deck: [KnowledgeCard] { library.deck }
     public var history: [KnowledgeCard] { library.history }
 
+    /// 全库重排轨迹（测试护栏，见 `CardLibraryStore.recomputeTrace`）
+    var deckRecomputeTrace: [Int] { library.recomputeTrace }
+
     /// 语音朗读与磨耳朵服务
     public let speechService: SpeechSynthesizerService
 
@@ -179,6 +182,13 @@ public final class AppStore {
 
     // MARK: - 生命周期
 
+    /// 自动补卡节流判定：距上次自动补卡不足 `interval` 则跳过（nil = 从未补过，放行）。
+    /// 补卡是顺手行为，不应成为每次启动的固定开销。
+    static func autoTopUpAllowed(lastAutoTopUpAt: Date?, now: Date, interval: TimeInterval = 24 * 60 * 60) -> Bool {
+        guard let last = lastAutoTopUpAt else { return true }
+        return now.timeIntervalSince(last) >= interval
+    }
+
     public func bootstrap() async {
         guard isLoadingSeed else { return }
         // 启动耗时打点：分阶段 signpost（Instruments 的 os_signpost 轨道可直接看）+ 结束时
@@ -199,6 +209,11 @@ public final class AppStore {
         }
         let loaded = await io.value
         signposter.endInterval("loadLibrary", loadState)
+
+        // 设置先于卡片就位：卡堆派生（来源开关 / 偏好分类）依赖设置。若把设置赋值留在
+        // 钥匙串迁移之后（旧实现），cards 赋值会先按 .default 全库派生一遍、结尾再按真实
+        // 设置重排一遍——启动白排两遍。此刻卡池还是空的，这次派生是 O(1)。
+        settings = loaded.settings
 
         // 卡片库状态已经确定（无论空与否），从这里开始落盘就是安全的：先解除守卫再写盘。
         // 反过来（先写盘再解除）会让 bootstrap 期间的落盘被守卫吞掉，种子增量合并就永远存不下来。
@@ -257,10 +272,16 @@ public final class AppStore {
             migratedSettings.speech.profiles[i].apiKey = credentials.read(account: "tts." + migratedSettings.speech.profiles[i].id) ?? ""
         }
         signposter.endInterval("keychainMigration", keychainState)
+        // 迁移只补密钥字段（apiKey / TTS key），不触碰卡堆派生输入：settingsDidChange 的
+        // 派生输入守卫保证这次赋值不再触发一次全库重排。
         settings = migratedSettings
-        // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）
-        if deck.count < 5 && settings.autoGenerate && settings.isAIConfigured && settings.enableAI {
+        // 卡片不足时尝试自动生成（来源含 AI 且已配置才触发）。补卡是顺手行为而非每次启动
+        // 的固定开销：24h 内已自动补过卡则跳过，避免每次启动都消耗用户 API 额度。
+        // 失败同样记入节流窗口——失败的请求也可能已产生费用，且网络异常时不应每次启动都空打。
+        if deck.count < 5 && settings.autoGenerate && settings.isAIConfigured && settings.enableAI,
+           Self.autoTopUpAllowed(lastAutoTopUpAt: settings.lastAutoTopUpAt, now: Date()) {
             await generateNewCards()
+            applySettingsChange { $0.lastAutoTopUpAt = Date() }
         }
     }
 
@@ -592,15 +613,9 @@ public final class AppStore {
     }
 
     private func schedulePersistSearchHistory() {
-        let snapshot = searchHistory
-        let storage = self.storage
-        persistenceQueue.async {
-            do {
-                try storage.saveSearchHistoryThrowing(snapshot)
-            } catch {
-                NSLog("KnowFlick: 保存搜索历史失败: %@", error.localizedDescription)
-            }
-        }
+        // 落盘编排与告警口径统一走 PersistenceCoordinator：失败上浮 persistenceWarning 横幅，
+        // 与卡片/设置一致（原先直写队列失败只进 NSLog，用户无从得知）
+        persistence.scheduleSearchHistoryPersist(searchHistory)
     }
 
     // MARK: - 预置库
