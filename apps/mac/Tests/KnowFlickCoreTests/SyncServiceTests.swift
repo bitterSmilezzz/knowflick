@@ -342,9 +342,12 @@ struct SyncServiceTests {
         }
         let body = response.subdata(in: headerEnd.upperBound..<response.count)
         #expect(body.count == declaredBytes, "实际收到 \(body.count) 字节，头部声明 \(declaredBytes) 字节")
-        let parsed = try CardImportEngine.parseJSON(data: body)
-        #expect(parsed.count == 200)
-        #expect(parsed.map(\.headline) == cards.map(\.headline))
+        // 协议 v2 §3：GET 响应为信封（cards 与请求前的卡库逐张一致，tombstones 为空表预留）
+        let payload = try CardImportEngine.parseJSON(data: body)
+        #expect(payload.protocolVersion == SyncProtocol.currentVersion)
+        #expect(payload.tombstones.isEmpty)
+        #expect(payload.cards.count == 200)
+        #expect(payload.cards.map(\.headline) == cards.map(\.headline))
     }
 
     /// 对端提前断开：客户端发完请求立即 close，服务端向已断开的连接写响应不得崩溃

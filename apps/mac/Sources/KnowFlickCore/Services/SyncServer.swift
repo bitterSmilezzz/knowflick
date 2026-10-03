@@ -262,6 +262,7 @@ public final class SyncServer: @unchecked Sendable {
         case "/api/cards":
             if method == "GET" {
                 let cards = await getCards()
+                // 协议 v2 §3：GET 响应为信封（含本地墓碑表；表的接线在墓碑持久化落地时接入）
                 if let jsonString = try? CardExportEngine.exportToJSON(cards: cards) {
                     sendResponse(clientFd, code: 200, message: "OK", contentType: "application/json; charset=utf-8", body: jsonString)
                 } else {
@@ -272,8 +273,8 @@ public final class SyncServer: @unchecked Sendable {
                     sendResponse(clientFd, code: 400, message: "Bad Request", contentType: "application/json", body: #"{"error":"Invalid card JSON"}"#)
                     return
                 }
-
-                let mergeResult = await onReceiveCards(incoming)
+                // 协议 v2 §3：信封里的墓碑随载荷到达，合并方在墓碑合并落地时承接（协议 §4）
+                let mergeResult = await onReceiveCards(incoming.cards)
                 let totalCards = await getCards().count
 
                 let respDict: [String: Any] = [

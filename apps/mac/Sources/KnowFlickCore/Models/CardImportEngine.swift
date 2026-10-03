@@ -13,12 +13,131 @@ public struct CardImportResult: Sendable {
     }
 }
 
+/// JSON 载荷解析结果：卡片 + 墓碑 + 载荷版本（协议 v2 §3）。
+///
+/// - v2 信封：`protocolVersion` = 信封值，`tombstones` = 信封值；
+/// - v1 裸列表 / 单卡对象：`protocolVersion` = nil（旧端），墓碑为空。
+public struct ParsedCardPayload: Sendable, Equatable {
+    public let cards: [KnowledgeCard]
+    public let tombstones: [SyncTombstone]
+    public let protocolVersion: Int?
+
+    public init(cards: [KnowledgeCard], tombstones: [SyncTombstone] = [], protocolVersion: Int? = nil) {
+        self.cards = cards
+        self.tombstones = tombstones
+        self.protocolVersion = protocolVersion
+    }
+}
+
 /// 卡片导入与笔记提炼引擎
 public enum CardImportEngine {
 
-    // MARK: - 1. JSON 备份解析
+    // MARK: - 1. JSON 备份解析（协议 v2 §3 兼容规则）
 
-    public static func parseJSON(data: Data) throws -> [KnowledgeCard] {
+    /// 三种输入的兼容解析：
+    /// ① 顶层 JSON 数组 → v1 裸列表（墓碑为空、版本 nil）；
+    /// ② 顶层对象且有 `cards` → v2 信封（cards + tombstones + protocolVersion）；
+    /// ③ 其他 → throw（同步服务端据此回 400）。
+    /// 单卡对象仍被接受：文件导入路径的历史行为（协议载荷不会发单卡对象）。
+    public static func parseJSON(data: Data) throws -> ParsedCardPayload {
+        let decoder = makeTolerantJSONDecoder()
+
+        // ① v1 裸列表（顶层 JSON 数组）。空数组是「合法但内容为空」，不是解析失败
+        //（与卡片库本身的口径一致，见 Storage.loadCards）：旧实现在这里静默跳过空数组，
+        // 最后抛「无法解析 JSON 文件」，把「没有卡片」误报成格式错误。
+        if let list = try? decoder.decode([KnowledgeCard].self, from: data) {
+            return ParsedCardPayload(cards: list)
+        }
+
+        // ② 顶层对象
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let rawCards = object["cards"] {
+                // v2 信封（协议 §3 判据：顶层对象、有 cards）
+                return try parseEnvelope(
+                    rawCards: rawCards,
+                    rawTombstones: object["tombstones"],
+                    protocolVersion: object["protocolVersion"] as? Int,
+                    decoder: decoder
+                )
+            }
+            if let single = try? decoder.decode(KnowledgeCard.self, from: data) {
+                return ParsedCardPayload(cards: [single])
+            }
+        }
+
+        // ③ 顶层是数组但存在坏卡：逐卡挽救，一张坏卡不再拖垮整个文件（校验必填字段仍是单卡硬门槛）
+        if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            let salvaged = salvageCards(from: array, decoder: decoder)
+            if !salvaged.isEmpty {
+                return ParsedCardPayload(cards: salvaged)
+            }
+        }
+        throw AIError.parse("无法解析 JSON 文件，格式与 KnowFlick 卡片结构不匹配")
+    }
+
+    public static func parseJSON(_ text: String) -> ParsedCardPayload? {
+        guard let data = text.data(using: .utf8) else { return nil }
+        return try? parseJSON(data: data)
+    }
+
+    /// v2 信封解析：cards 与 tombstones 分开取；tombstones 缺省为空表，
+    /// 存在但格式非法则抛错（400）——**绝不静默丢弃删除信息**。
+    private static func parseEnvelope(
+        rawCards: Any,
+        rawTombstones: Any?,
+        protocolVersion: Int?,
+        decoder: JSONDecoder
+    ) throws -> ParsedCardPayload {
+        guard let cardsArray = rawCards as? [Any] else {
+            throw AIError.parse("信封 cards 字段必须是数组")
+        }
+        let tombstones = try parseTombstones(rawTombstones)
+
+        let cardsData: Data
+        do { cardsData = try JSONSerialization.data(withJSONObject: cardsArray) }
+        catch { throw AIError.parse("信封 cards 字段编码无效") }
+        if let cards = try? decoder.decode([KnowledgeCard].self, from: cardsData) {
+            return ParsedCardPayload(cards: cards, tombstones: tombstones, protocolVersion: protocolVersion)
+        }
+        // 逐卡挽救：一张坏卡不再拖垮整个载荷
+        let salvaged = cardsArray.compactMap { item -> KnowledgeCard? in
+            guard let item = item as? [String: Any],
+                  let itemData = try? JSONSerialization.data(withJSONObject: item) else { return nil }
+            return try? decoder.decode(KnowledgeCard.self, from: itemData)
+        }
+        guard !salvaged.isEmpty else {
+            throw AIError.parse("无法解析信封 cards 字段，格式与 KnowFlick 卡片结构不匹配")
+        }
+        return ParsedCardPayload(cards: salvaged, tombstones: tombstones, protocolVersion: protocolVersion)
+    }
+
+    /// 墓碑数组解析（协议 §3 线格式 `[{"id":"…","deletedAt":毫秒}]`）。
+    /// `id` 按字符串解析（对端 id 格式不一定是 UUID，如规格夹具 "dead"）。
+    private static func parseTombstones(_ raw: Any?) throws -> [SyncTombstone] {
+        guard let raw else { return [] }
+        guard let array = raw as? [[String: Any]] else {
+            throw AIError.parse("信封 tombstones 字段必须是数组")
+        }
+        return try array.map { entry in
+            guard let id = entry["id"] as? String else {
+                throw AIError.parse("墓碑缺少 id 字段")
+            }
+            guard let timestamp = entry["deletedAt"] as? NSNumber else {
+                throw AIError.parse("墓碑缺少 deletedAt 时间戳")
+            }
+            return SyncTombstone(id: id, deletedAt: timestamp.int64Value)
+        }
+    }
+
+    private static func salvageCards(from array: [[String: Any]], decoder: JSONDecoder) -> [KnowledgeCard] {
+        array.compactMap { item -> KnowledgeCard? in
+            guard let itemData = try? JSONSerialization.data(withJSONObject: item) else { return nil }
+            return try? decoder.decode(KnowledgeCard.self, from: itemData)
+        }
+    }
+
+    /// 卡片/备份解析共用的宽容日期解码器：兼容 ISO8601（含毫秒）与秒级数字。
+    private static func makeTolerantJSONDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
@@ -37,31 +156,7 @@ public enum CardImportEngine {
             }
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "日期字段类型无效")
         }
-
-        if let list = try? decoder.decode([KnowledgeCard].self, from: data) {
-            // 空数组是「合法但内容为空」，不是解析失败（与卡片库本身的口径一致，见 Storage.loadCards）：
-            // 旧实现在这里静默跳过空数组，最后抛「无法解析 JSON 文件」，把「没有卡片」误报成格式错误。
-            return list
-        }
-        if let single = try? decoder.decode(KnowledgeCard.self, from: data) {
-            return [single]
-        }
-        // 逐卡挽救：一张坏卡不再拖垮整个文件（校验必填字段仍是单卡硬门槛）
-        if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            let salvaged = array.compactMap { item -> KnowledgeCard? in
-                guard let itemData = try? JSONSerialization.data(withJSONObject: item) else { return nil }
-                return try? decoder.decode(KnowledgeCard.self, from: itemData)
-            }
-            if !salvaged.isEmpty {
-                return salvaged
-            }
-        }
-        throw AIError.parse("无法解析 JSON 文件，格式与 KnowFlick 卡片结构不匹配")
-    }
-
-    public static func parseJSON(_ text: String) -> [KnowledgeCard]? {
-        guard let data = text.data(using: .utf8) else { return nil }
-        return try? parseJSON(data: data)
+        return decoder
     }
 
     // MARK: - 2. Markdown / 纯文本规则解析
