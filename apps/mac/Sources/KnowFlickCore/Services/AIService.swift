@@ -379,14 +379,26 @@ public struct AIService: Sendable {
     /// 增量对象扫描器：流式解析 SSE 累积 buffer 中的顶层 JSON 对象。
     /// 记录扫描位置与状态机，每个 delta 只扫新增字节，消除原「每 delta 全量重扫」的 O(n²)。
     /// 字节级状态机：JSON 转义与结构字符均为 ASCII，多字节 UTF-8 内容不会误触。
+    ///
+    /// 对象起点用「候选栈」而不是单值：正文散文里**未配对的 `{`** 若把唯一起点顶高一格，
+    /// 其后所有合法卡片都会被当成嵌套对象而漏扫（用户看到「AI 返回格式无法解析」而模型
+    /// 有产出）。改为每个 `{` 入栈为候选起点、每个 `}` 弹出最近候选并尝试解码该区段——
+    /// 解码成功即产出，失败继续扫（散文垃圾不产出）；流结束时未闭合的候选直接丢弃。
+    /// 散文防护保持不变：没有候选时只认 `{`，游离的引号与 `}` 一律不迁移状态。
+    /// 每次解码尝试的区段都嵌在栈中更深的候选之内，总尝试字节数 ≤ 文档长度 × 栈深；
+    /// 栈深由 maxCandidateDepth 封顶，整体 O(n)。
     public final class IncrementalObjectScanner {
+        /// 候选栈深上限：真实卡片 JSON 的嵌套只有两三层（对象 → 数组/子对象），封顶只是把
+        /// 「散文嵌套花括号」的最坏解码尝试次数压回 O(n)，超深的 `{` 一律视为散文噪声。
+        private static let maxCandidateDepth = 64
+
         private let decoder = JSONDecoder()
         private var buffer: [UInt8] = []
         private var position = 0
-        private var depth = 0
+        /// 未闭合的候选起点栈（候选 = 疑似 JSON 对象起点的 `{` 下标）
+        private var candidates: [Int] = []
         private var inString = false
         private var escape = false
-        private var start = 0
         private var found: [AICardPayload] = []
 
         public init() {}
@@ -402,23 +414,13 @@ public struct AIService: Sendable {
         private func scan() {
             while position < buffer.count {
                 let byte = buffer[position]
-                // 「不在对象内」（depth == 0）是权威状态：此处只认对象起点，其余字节一律不迁移状态。
-                //
-                // 为什么必须这样：模型常在 JSON 之外输出散文/示例/Markdown，其中的**游离花括号与引号**
-                // 会让字节状态机与文档结构失同步。原实现在 depth == 0 时也照常 `depth -= 1`，
-                // 游离的 `}` 直接把 depth 带成负数；此后真正的 `{` 不再被记为起点
-                // （`if depth == 0 { start = position }` 不成立），而对象内部的嵌套 `{` 反被当成顶层起点，
-                // 于是合法卡片**一张都扫不出来**（实测 `scanObjects(prose-with-brace) -> 0`），
-                // 用户看到的是「AI 返回格式无法解析」而模型其实给了可用内容。
-                // 游离的 `"` 同理会把 inString 永久卡在 true，让后续花括号全被当成字符串内容。
-                // 修复：把状态机约束在对象内部——对象外的花括号不再改变 depth，引号不再切换 inString。
-                // 已知残留（对称缺陷，本轮未修）：正文里**未配对**的 `{` 仍会把 depth 顶高一格，
-                // 后续合法卡片会被当成嵌套对象而漏扫。彻底修需要把「起点」从单值改成候选栈
-                // （每次 `}` 弹栈并尝试解码），风险高于本轮的收益，留待后续。
-                if depth == 0 {
+                if candidates.isEmpty {
+                    // 「没有候选」是权威状态：此处只认对象起点，其余字节（散文游离的
+                    // 花括号与引号）一律不迁移状态，否则状态机会与文档结构失同步。
                     if byte == UInt8(ascii: "{") {
-                        start = position
-                        depth = 1
+                        candidates.append(position)
+                        inString = false
+                        escape = false
                     }
                 } else if escape {
                     escape = false
@@ -428,17 +430,21 @@ public struct AIService: Sendable {
                     inString.toggle()
                 } else if !inString {
                     if byte == UInt8(ascii: "{") {
-                        depth += 1
+                        // 嵌套候选（如 meta 字段）同样入栈；栈满视为散文，不再入栈
+                        if candidates.count < Self.maxCandidateDepth {
+                            candidates.append(position)
+                        }
+                        inString = false
+                        escape = false
                     } else if byte == UInt8(ascii: "}") {
-                        depth -= 1
-                        if depth == 0 {
-                            // 一个顶层对象闭合：复位字符串/转义状态，保证下一个对象从干净状态开始
-                            inString = false
-                            escape = false
-                            let objData = Data(buffer[start...position])
-                            if let obj = try? decoder.decode(AICardPayload.self, from: objData) {
-                                found.append(obj)
-                            }
+                        // 弹出最近候选并尝试解码该区段：解出卡片即产出；解不出（散文垃圾、
+                        // 嵌套碎片段）就继续扫。字符串/转义状态随之复位，保证下一个候选
+                        // 从干净状态开始（弹出点必然不在字符串内）。
+                        let start = candidates.removeLast()
+                        inString = false
+                        escape = false
+                        if let obj = try? decoder.decode(AICardPayload.self, from: Data(buffer[start...position])) {
+                            found.append(obj)
                         }
                     }
                 }

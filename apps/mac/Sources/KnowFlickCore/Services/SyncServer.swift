@@ -143,6 +143,12 @@ public final class SyncServer: @unchecked Sendable {
             Darwin.close(clientFd)
         }
 
+        // 本地 socket 默认在向已断开的对端写入时投递 SIGPIPE（默认动作：杀进程）。
+        // 对端「发完请求就断开」是网络常态，进程不能因此整个退出——每个连接关掉它，
+        // 写失败改由 writeAll 的返回值上报。
+        var noSigPipe: Int32 = 1
+        setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
         // 设置 10 秒超时
         var tv = timeval(tv_sec: 10, tv_usec: 0)
         setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
@@ -272,6 +278,28 @@ public final class SyncServer: @unchecked Sendable {
         }
     }
 
+    /// 循环写满整个缓冲。流式 socket 的单次 write 只保证「把能放进发送缓冲的写出去」：
+    /// 大响应（全库导出上限 25MiB）远超 socket 发送缓冲、对端读得慢触发 SO_SNDTIMEO、
+    /// 或被信号打断（EINTR）时都会返回部分写/错误——单次 write + 忽略返回值会让对端
+    /// 拿到 Content-Length 对不上的静默截断 JSON。返回 false 表示连接已不可用
+    /// （对端断开 / 超时 / 出错），调用方应放弃本次响应。
+    private func writeAll(_ fd: Int32, _ bytes: [UInt8]) -> Bool {
+        var offset = 0
+        while offset < bytes.count {
+            let written = bytes.withUnsafeBytes { raw -> Int in
+                Darwin.write(fd, raw.baseAddress!.advanced(by: offset), bytes.count - offset)
+            }
+            if written > 0 {
+                offset += written
+            } else if written < 0 && errno == EINTR {
+                continue   // 被信号打断：重试本次写入
+            } else {
+                return false
+            }
+        }
+        return true
+    }
+
     private func sendResponse(_ clientFd: Int32, code: Int, message: String, contentType: String, body: String) {
         let bodyBytes = [UInt8](body.utf8)
         let header = "HTTP/1.1 \(code) \(message)\r\n" +
@@ -279,10 +307,11 @@ public final class SyncServer: @unchecked Sendable {
             "Content-Length: \(bodyBytes.count)\r\n" +
             "Connection: close\r\n\r\n"
 
-        let headerBytes = [UInt8](header.utf8)
-        Darwin.write(clientFd, headerBytes, headerBytes.count)
+        // header 与 body 都必须写满：Content-Length 是对端读取的依据，任何一段提前放弃
+        // 都是对端侧的截断 JSON。写失败后连接由 handleClient 的 defer 关闭，无可恢复手段。
+        guard writeAll(clientFd, [UInt8](header.utf8)) else { return }
         if !bodyBytes.isEmpty {
-            Darwin.write(clientFd, bodyBytes, bodyBytes.count)
+            _ = writeAll(clientFd, bodyBytes)
         }
     }
 

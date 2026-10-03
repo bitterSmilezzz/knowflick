@@ -86,6 +86,9 @@ public struct AISettings: Codable, Equatable, Sendable {
     public var ambientGapSeconds: Double = 1.5      // 磨耳朵切换下一张缓冲秒数
     public var speech: SpeechSettings = SpeechSettings()
     public var autoSpeakOnDetailOpen: Bool = false  // 打开详情页是否自动朗读
+    /// 上次「卡片不足自动补卡」的时间（bootstrap 用）：24h 节流窗口的判据，
+    /// 避免每次启动都自动生成、固定消耗用户 API 额度
+    public var lastAutoTopUpAt: Date? = nil
 
     public init(
         baseURL: String,
@@ -213,6 +216,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         try c.encode(speechVoiceIdentifier, forKey: .speechVoiceIdentifier)
         try c.encode(ambientGapSeconds, forKey: .ambientGapSeconds)
         try c.encode(autoSpeakOnDetailOpen, forKey: .autoSpeakOnDetailOpen)
+        try c.encodeIfPresent(lastAutoTopUpAt, forKey: .lastAutoTopUpAt)
     }
 
     // 旧版 settings.json 无新字段——解码时给默认值，避免旧用户设置被整体重置
@@ -220,6 +224,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         case baseURL, model, apiKey, autoGenerate, categoryFilter, speech
         case enableSeed, enableAI, aiSources, showAIMark, appearance, paperTheme, customCategories
         case speechRate, speechPitch, speechVoiceIdentifier, ambientGapSeconds, autoSpeakOnDetailOpen
+        case lastAutoTopUpAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -242,6 +247,7 @@ public struct AISettings: Codable, Equatable, Sendable {
         speechVoiceIdentifier = try c.decodeIfPresent(String.self, forKey: .speechVoiceIdentifier) ?? "auto"
         ambientGapSeconds = try c.decodeIfPresent(Double.self, forKey: .ambientGapSeconds) ?? 1.5
         autoSpeakOnDetailOpen = try c.decodeIfPresent(Bool.self, forKey: .autoSpeakOnDetailOpen) ?? false
+        lastAutoTopUpAt = try c.decodeIfPresent(Date.self, forKey: .lastAutoTopUpAt)
     }
 }
 
