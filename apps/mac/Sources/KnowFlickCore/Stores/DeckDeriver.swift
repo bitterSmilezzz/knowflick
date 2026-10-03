@@ -15,6 +15,34 @@ enum DeckDeriver {
         let favorites: [KnowledgeCard]
     }
 
+    /// 卡堆的派生分支。抽成枚举（Wave C2）是为了一条调用方契约：`CardLibraryStore` 需要
+    /// 在不重复实现分支判定的前提下知道本次派生是否会走 O(n²) 的全量重排，从而决定是否
+    /// 把它下沉到后台线程——判定只有一份（这里），两边不会漂移。
+    enum RearrangePlan: Equatable {
+        /// 专学顺序模式：按 orderKey 一级级推，不做防重打散
+        case sequentialScope
+        /// 日常刷卡出队：原样保留已排好的队列
+        case keepRemainingOrder
+        /// 撤销插回：走统一插回入口
+        case insertReturnedCard
+        /// 新增 ≤10 张：局部排布后追加队尾
+        case appendNewCards
+        /// 全量重排（全新初始化 / 切换分类过滤 / 清空历史等）；
+        /// `inputCount` = 参与排布的未读卡数，是此次 O(n²) 工作的规模
+        case fullRearrange(inputCount: Int)
+    }
+
+    /// 派生中间量：把「历史/收藏派生 → 来源与分类过滤 → 队列差分 → 分支判定」一次算好，
+    /// 供同步路径与后台重排路径共用（同一批 O(n) 过滤不跑第二遍）。
+    struct Prepared {
+        let plan: RearrangePlan
+        let history: [KnowledgeCard]
+        let favorites: [KnowledgeCard]
+        let filtered: [KnowledgeCard]
+        let remainingInDeck: [KnowledgeCard]
+        let newCards: [KnowledgeCard]
+    }
+
     /// 派生卡堆/历史/收藏。
     /// - Parameters:
     ///   - cards: 卡片池（领域真源）
@@ -35,6 +63,31 @@ enum DeckDeriver {
         lastSwipedCardId: UUID?,
         lastSwipedKey: String?
     ) -> Derived {
+        derive(
+            prepare(
+                cards: cards,
+                currentDeck: currentDeck,
+                enableSeed: enableSeed,
+                enableAI: enableAI,
+                preferredCategories: preferredCategories,
+                studyScope: studyScope,
+                lastSwipedCardId: lastSwipedCardId
+            ),
+            studyScope: studyScope,
+            lastSwipedKey: lastSwipedKey
+        )
+    }
+
+    /// 第一阶段：过滤 + 队列差分 + 分支判定（纯计算，O(n)）。
+    static func prepare(
+        cards: [KnowledgeCard],
+        currentDeck: [KnowledgeCard],
+        enableSeed: Bool,
+        enableAI: Bool,
+        preferredCategories: [String],
+        studyScope: StudyScope = .none,
+        lastSwipedCardId: UUID?
+    ) -> Prepared {
         let hist = cards.filter { $0.seenAt != nil }
             .sorted { ($0.seenAt ?? .distantPast) > ($1.seenAt ?? .distantPast) }
         let favorites = cards.filter(\.isFavorite)
@@ -69,31 +122,60 @@ enum DeckDeriver {
         let remainingInDeck = currentDeck.compactMap { currentCards[$0.id] }
         let newCards = filtered.filter { !existingDeckIds.contains($0.id) }
 
-        let deck: [KnowledgeCard]
+        let plan: RearrangePlan
         if studyScope.isActive && studyScope.sequential {
             // 专学模式：「按导入顺序一级一级往前推」就是产品语义，必须跳过背景图防重打散
             // 与增量拼接——打散会把学习顺序冲掉。划走即 seenAt != nil，自然离开队列，
             // 撤销则回到它在 orderKey 上的原位（比"插回队首"更符合路径语义）。
-            deck = studyScope.orderForDeck(filtered)
+            plan = .sequentialScope
         } else if !remainingInDeck.isEmpty && newCards.isEmpty {
             // 绝大多数日常划卡出队场景：直接移除划走卡片，100% 保留排好的无碰撞队列顺序，杜绝重排抖动
-            deck = remainingInDeck
+            plan = .keepRemainingOrder
         } else if !remainingInDeck.isEmpty && newCards.count == 1 && newCards.first?.id == lastSwipedCardId {
             // 撤销上一张场景：插回顶部。走统一的插回入口做防重校验——
             // 收藏阁对「未读收藏卡」划不喜欢时，该卡可能从卡堆中部消失，裸插顶部会与队首同图（距离 1）
-            deck = insertRespectingMinDistance(newCards[0], into: remainingInDeck)
+            plan = .insertReturnedCard
         } else if !remainingInDeck.isEmpty && !newCards.isEmpty && newCards.count <= 10 {
             // 后台 AI 异步生成新卡（3~6 张）：对新卡安排 minDistance 排布后追加至末尾，绝不打散前部正在浏览的卡堆
-            let lastKey = remainingInDeck.last.map { CardThemeResolver.resolveKey(for: $0) }
-            let arrangedNew = CardThemeResolver.arrangeWithMinDistance(newCards, minDistance: 5, avoidingTopKey: lastKey)
-            deck = remainingInDeck + arrangedNew
+            plan = .appendNewCards
         } else {
             // 全新初始化、切换分类过滤、清空历史等场景：全量重新排布无碰撞队列
-            let lastKey = hist.first.map { CardThemeResolver.resolveKey(for: $0) } ?? lastSwipedKey
-            deck = CardThemeResolver.arrangeWithMinDistance(filtered, minDistance: 5, avoidingTopKey: lastKey)
+            plan = .fullRearrange(inputCount: filtered.count)
         }
 
-        return Derived(deck: deck, history: hist, favorites: favorites)
+        return Prepared(
+            plan: plan,
+            history: hist,
+            favorites: favorites,
+            filtered: filtered,
+            remainingInDeck: remainingInDeck,
+            newCards: newCards
+        )
+    }
+
+    /// 第二阶段：按已判定分支产出三份快照（纯计算；全量重排分支可离线运行，见 `CardLibraryStore`）。
+    /// `currentDeck` / `lastSwipedCardId` 已在 `prepared`（队列差分与分支判定）里用完，不再重复传入。
+    static func derive(
+        _ prepared: Prepared,
+        studyScope: StudyScope,
+        lastSwipedKey: String?
+    ) -> Derived {
+        let deck: [KnowledgeCard]
+        switch prepared.plan {
+        case .sequentialScope:
+            deck = studyScope.orderForDeck(prepared.filtered)
+        case .keepRemainingOrder:
+            deck = prepared.remainingInDeck
+        case .insertReturnedCard:
+            deck = insertRespectingMinDistance(prepared.newCards[0], into: prepared.remainingInDeck)
+        case .appendNewCards:
+            let lastKey = prepared.remainingInDeck.last.map { CardThemeResolver.resolveKey(for: $0) }
+            deck = prepared.remainingInDeck + CardThemeResolver.arrangeWithMinDistance(prepared.newCards, minDistance: 5, avoidingTopKey: lastKey)
+        case .fullRearrange:
+            let lastKey = prepared.history.first.map { CardThemeResolver.resolveKey(for: $0) } ?? lastSwipedKey
+            deck = CardThemeResolver.arrangeWithMinDistance(prepared.filtered, minDistance: 5, avoidingTopKey: lastKey)
+        }
+        return Derived(deck: deck, history: prepared.history, favorites: prepared.favorites)
     }
 
     // MARK: - 统一插回入口（防重排布收敛）

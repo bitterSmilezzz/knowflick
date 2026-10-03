@@ -82,23 +82,61 @@ public final class CardLibraryStore {
 
     // MARK: - 派生
 
+    /// 全量重排下沉后台的规模阈值（Wave C2）：参与排布的未读卡 ≤ 该值时仍走同步路径——
+    /// 现状语义与耗时逐字节不变（216 张用户库实测 0.13s 的既有路径保持同步，既有性质测试
+    /// 依赖「赋值后立刻可读 deck」），超过才后台计算。千卡库实测 0.69s 的 O(n²) 贪心
+    /// 不再占用主线程。
+    static let backgroundRearrangeThreshold = 256
+
+    /// 后台全量重排的代号：任何一次新的重排都会作废在途结果，避免旧排布晚到覆盖新状态
+    private var rearrangeGeneration = 0
+    /// 在途的后台全量重排（仅供测试等待；生产路径不需要——结果自行回主线程赋值）
+    private(set) var pendingRearrange: Task<Void, Never>?
+
     /// 卡片池 → 卡堆/历史/收藏 的派生统一走 `DeckDeriver`（纯函数，可穷举单测）。
     /// 这里只做「取值 → 派生 → 一次性赋值」，避免逐项变更触发观察风暴。
+    ///
+    /// 全量重排分支在输入超过 `backgroundRearrangeThreshold` 时下沉后台（Wave C2）：
+    /// 过滤/差分/分支判定（O(n)）留在主线程，O(n²) 的防重排布离线运行，结果回主线程
+    /// 一次性赋值；其余分支（出队保序 / 撤销插回 / 追加 ≤10 张）保持同步不变。
     private func recomputeDeckAndHistory() {
         recomputeTrace.append(cards.count)
-        let derived = DeckDeriver.derive(
+        let prepared = DeckDeriver.prepare(
             cards: cards,
             currentDeck: deck,
             enableSeed: lastKnownSettings.enableSeed,
             enableAI: lastKnownSettings.enableAI,
             preferredCategories: lastKnownSettings.preferredCategories,
             studyScope: studyScope,
-            lastSwipedCardId: lastSwipedCardId,
-            lastSwipedKey: lastSwipedKey
+            lastSwipedCardId: lastSwipedCardId
         )
+        rearrangeGeneration &+= 1
+        let generation = rearrangeGeneration
+        let scope = studyScope
+        let swipedKey = lastSwipedKey
+
+        if case .fullRearrange(let inputCount) = prepared.plan, inputCount > Self.backgroundRearrangeThreshold {
+            // 计算下沉后台；结果晚到（期间又发生过派生）时按代号丢弃，绝不让旧排布覆盖新状态。
+            pendingRearrange = Task.detached(priority: .userInitiated) { [weak self] in
+                let derived = DeckDeriver.derive(prepared, studyScope: scope, lastSwipedKey: swipedKey)
+                await self?.apply(derived, generation: generation)
+            }
+        } else {
+            apply(DeckDeriver.derive(prepared, studyScope: scope, lastSwipedKey: swipedKey), generation: generation)
+        }
+    }
+
+    /// 三份派生快照一次性赋值（deck / history / favorites 的赋值纪律：同一来源、一次提交）
+    private func apply(_ derived: DeckDeriver.Derived, generation: Int) {
+        guard generation == rearrangeGeneration else { return }
         history = derived.history
         favorites = derived.favorites
         deck = derived.deck
+    }
+
+    /// 测试护栏：等待在途的后台全量重排落地（生产路径无需等待）
+    func awaitPendingRearrange() async {
+        await pendingRearrange?.value
     }
 
     // MARK: - 持久化
