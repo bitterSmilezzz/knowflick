@@ -75,7 +75,7 @@ public struct Storage: Sendable {
 
     // MARK: - 卡片库
 
-    /// 加载卡片：主文件 → 备份 → 重播种三级回退。
+    /// 加载卡片：主文件 → 备份（三代）→ 重播种四级回退。
     ///
     /// 判据是「**解码成功即视为有效**」，合法的空数组 `[]` 是用户状态（用户清空过卡片库），不是损坏：
     /// 旧实现用 `!cards.isEmpty` 守卫把两者混为一谈，一个合法空库会被隔离，随后 `bootstrap` 用预置库覆盖，
@@ -88,6 +88,7 @@ public struct Storage: Sendable {
 
         let url = fileURL("cards.json")
         let backup = fileURL("cards.backup.json")
+        let backup2 = fileURL("cards.backup.2.json")
 
         if let data = try? Data(contentsOf: url),
            let cards = try? decoder.decode([KnowledgeCard].self, from: data),
@@ -95,8 +96,8 @@ public struct Storage: Sendable {
             state.setLibraryUsable(true)
             return cards
         }
-        // 主文件缺失/损坏，或是一个空的合法数组 → 尝试备份
-        if let restored = restoredFromBackup(decoder: decoder, backup: backup) {
+        // 主文件缺失/损坏，或是一个空的合法数组 → 依次尝试两代备份
+        if let restored = restoredFromBackup(decoder: decoder, backups: [backup, backup2]) {
             return restored
         }
         if let data = try? Data(contentsOf: url), (try? decoder.decode([KnowledgeCard].self, from: data)) != nil {
@@ -107,26 +108,30 @@ public struct Storage: Sendable {
             return []
         }
         // 主文件与备份都不可用 → 保留损坏文件副本后再重新播种，避免静默抹掉用户最后的恢复线索。
-        if (try? Data(contentsOf: url)) != nil || (try? Data(contentsOf: backup)) != nil {
+        if (try? Data(contentsOf: url)) != nil || (try? Data(contentsOf: backup)) != nil || (try? Data(contentsOf: backup2)) != nil {
             NSLog("KnowFlick: 卡片数据不可恢复，将重新初始化")
         }
         state.setLibraryUsable(false)
         state.setCorruptionFlag(true)
         quarantineIfPresent(url)
         quarantineIfPresent(backup)
+        quarantineIfPresent(backup2)
         return []
     }
 
-    /// 从备份恢复非空卡片库（并重建主文件）；备份不可用或为空时返回 nil。
-    private func restoredFromBackup(decoder: JSONDecoder, backup: URL) -> [KnowledgeCard]? {
-        guard let data = try? Data(contentsOf: backup),
-              let cards = try? decoder.decode([KnowledgeCard].self, from: data),
-              !cards.isEmpty else { return nil }
-        NSLog("KnowFlick: cards.json 不可用，已从备份恢复 %d 张卡片", cards.count)
-        state.setCorruptionFlag(true)
-        state.setLibraryUsable(true)
-        saveCards(cards)
-        return cards
+    /// 从备份恢复非空卡片库（并重建主文件）；两代备份都不可用或为空时返回 nil。
+    private func restoredFromBackup(decoder: JSONDecoder, backups: [URL]) -> [KnowledgeCard]? {
+        for backup in backups {
+            guard let data = try? Data(contentsOf: backup),
+                  let cards = try? decoder.decode([KnowledgeCard].self, from: data),
+                  !cards.isEmpty else { continue }
+            NSLog("KnowFlick: cards.json 不可用，已从备份恢复 %d 张卡片", cards.count)
+            state.setCorruptionFlag(true)
+            state.setLibraryUsable(true)
+            saveCards(cards)
+            return cards
+        }
+        return nil
     }
 
     private func quarantineIfPresent(_ url: URL) {
@@ -136,11 +141,35 @@ public struct Storage: Sendable {
         let stamp = Int(Date().timeIntervalSince1970)
         let target = url.deletingPathExtension()
             .appendingPathExtension("corrupt-\(stamp)-\(UUID().uuidString.prefix(8))")
-        do { try fileManager.moveItem(at: url, to: target) }
-        catch { NSLog("KnowFlick: 无法保留损坏文件 %@: %@", url.path, error.localizedDescription) }
+        do {
+            try fileManager.moveItem(at: url, to: target)
+            pruneQuarantineCopies()
+        } catch {
+            NSLog("KnowFlick: 无法保留损坏文件 %@: %@", url.path, error.localizedDescription)
+        }
     }
 
-    /// 保存卡片：原子写主文件，并把旧主文件轮转进备份（先删旧备份，保证轮转真正生效）
+    /// 隔离副本上限（B7）：`*.corrupt-*` 超过 10 个删最老（按修改时间），
+    /// 防止长期损坏循环把 store 目录塞满。刚隔离的副本时间最新，不会被本轮裁掉。
+    static let quarantineCopyLimit = 10
+
+    private func pruneQuarantineCopies() {
+        let contents = (try? fileManager.contentsOfDirectory(
+            at: baseDir, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]
+        )) ?? []
+        let copies = contents.filter { $0.lastPathComponent.contains(".corrupt-") }
+        guard copies.count > Self.quarantineCopyLimit else { return }
+        let sorted = copies.sorted { lhs, rhs in
+            let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return lhsDate < rhsDate
+        }
+        for stale in sorted.prefix(copies.count - Self.quarantineCopyLimit) {
+            try? fileManager.removeItem(at: stale)
+        }
+    }
+
+    /// 保存卡片：原子写主文件，并把旧主文件轮转进备份（B7：三代——cards.json → backup → backup.2）。
     @discardableResult
     public func saveCards(_ cards: [KnowledgeCard]) -> CardSaveResult {
         let encoder = JSONEncoder()
@@ -151,9 +180,12 @@ public struct Storage: Sendable {
         }
         let url = fileURL("cards.json")
         let backup = fileURL("cards.backup.json")
+        let backup2 = fileURL("cards.backup.2.json")
+        // 三代轮转（B7）：每次保存依次把上一版主文件转进 backup、上上版转进 backup.2。
         // 备份内容 = 上一版主文件字节。常态直接轮转原始字节（零解码开销）；
         // 仅当加载期发现过损坏时才解码校验，避免把坏字节转进备份。
         let previous = try? Data(contentsOf: url)
+        let previousBackup = try? Data(contentsOf: backup)
         let backupData: Data
         if let previous {
             if state.corruptionFlag {
@@ -168,6 +200,13 @@ public struct Storage: Sendable {
             backupData = data
         }
         var backupError: String?
+        if let previousBackup {
+            do { try previousBackup.write(to: backup2, options: .atomic) }
+            catch {
+                // 第三代失败不阻断主流程：它只是恢复链的最末位
+                NSLog("KnowFlick: 第三代备份轮转失败: %@", error.localizedDescription)
+            }
+        }
         do {
             try backupData.write(to: backup, options: .atomic)
         } catch {
@@ -184,6 +223,38 @@ public struct Storage: Sendable {
         }
         if let backupError { return .savedWithoutBackup(backupError) }
         return .saved
+    }
+
+    // MARK: - 同步墓碑表（协议 v2 §3/§4）
+
+    /// 加载本地墓碑表（tombstones.json，与卡片库同目录的独立小文件）。
+    /// 文件缺失 → 空表；损坏 → 保留隔离副本并返回空表（删除记忆丢失是可接受的退化：
+    /// 已删卡片最多在下一次同步中被对端墓碑再次删除）。
+    public func loadTombstones() -> [SyncTombstone] {
+        let url = fileURL("tombstones.json")
+        guard fileManager.fileExists(atPath: url.path) else { return [] }
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode([SyncTombstone].self, from: data)
+        } catch {
+            NSLog("KnowFlick: tombstones.json 损坏，将保留隔离副本: %@", error.localizedDescription)
+            quarantineIfPresent(url)
+            return []
+        }
+    }
+
+    /// 原子写本地墓碑表；超出协议容量上限（1000）时裁最老（deletedAt 最小的先淘汰）。
+    public func saveTombstones(_ tombstones: [SyncTombstone]) {
+        var trimmed = tombstones
+        if trimmed.count > SyncProtocol.maxTombstoneCount {
+            trimmed = Array(trimmed.sorted { $0.deletedAt < $1.deletedAt }.suffix(SyncProtocol.maxTombstoneCount))
+        }
+        do {
+            let data = try JSONEncoder().encode(trimmed)
+            try data.write(to: fileURL("tombstones.json"), options: .atomic)
+        } catch {
+            NSLog("KnowFlick: 墓碑表落盘失败: %@", error.localizedDescription)
+        }
     }
 
     // MARK: - 设置（key 除外）

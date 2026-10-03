@@ -10,6 +10,10 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
     public var links: [ScienceLink]    // 科普链接
     public var source: CardSource      // 来源：预置库 / AI 生成
     public var createdAt: Date
+    /// 最近一次内容编辑时间（协议 v2 §5）：编辑器保存时任一字段变更即写入。
+    /// 用于同步合并 details 冲突（双方均有 editedAt → 新者赢）；nil = 历史卡（沿用 v1「较长者」规则）。
+    /// 线格式：可选字段，decodeIfPresent/encodeIfPresent——旧 cards.json / 旧同步包不含此键，行为不变。
+    public var editedAt: Date? = nil
     public var seenAt: Date?           // 看过的时间（nil = 还没刷到）
     public var swiped: SwipeDirection? // 刷走意图
     /// 收藏状态：与 `swiped`（喜好意图）解耦；取消收藏只清此标记，不污染喜欢/不喜欢统计。
@@ -54,6 +58,7 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         links: [ScienceLink] = [],
         source: CardSource,
         createdAt: Date = Date(),
+        editedAt: Date? = nil,
         seenAt: Date? = nil,
         swiped: SwipeDirection? = nil,
         isFavorite: Bool = false,
@@ -81,6 +86,7 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         self.links = links
         self.source = source
         self.createdAt = createdAt
+        self.editedAt = editedAt
         self.seenAt = seenAt
         self.swiped = swiped
         self.isFavorite = isFavorite
@@ -103,7 +109,7 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, category, headline, summary, details, links, source
-        case createdAt, seenAt, swiped, isFavorite, favoritedAt, reviewCount, masteryLevel, lastReviewedAt
+        case createdAt, editedAt, seenAt, swiped, isFavorite, favoritedAt, reviewCount, masteryLevel, lastReviewedAt
         case repetition, intervalDays, easeFactor, stability, difficulty
         case subject, branch, level, track, orderKey, prereq
     }
@@ -118,6 +124,7 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         self.links = try container.decodeIfPresent([ScienceLink].self, forKey: .links) ?? []
         self.source = try container.decode(CardSource.self, forKey: .source)
         self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.editedAt = try container.decodeIfPresent(Date.self, forKey: .editedAt)
         self.seenAt = try container.decodeIfPresent(Date.self, forKey: .seenAt)
         self.swiped = try container.decodeIfPresent(SwipeDirection.self, forKey: .swiped)
         // 旧数据无 isFavorite 字段：从「右划感兴趣」回填，保持既有收藏阁内容不丢。
@@ -152,6 +159,8 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         try container.encode(links, forKey: .links)
         try container.encode(source, forKey: .source)
         try container.encode(createdAt, forKey: .createdAt)
+        // 可选字段缺省不落键：旧版本/对端读到的是没有 editedAt 的历史卡（协议 §9）
+        try container.encodeIfPresent(editedAt, forKey: .editedAt)
         try container.encodeIfPresent(seenAt, forKey: .seenAt)
         try container.encodeIfPresent(swiped, forKey: .swiped)
         try container.encode(isFavorite, forKey: .isFavorite)
