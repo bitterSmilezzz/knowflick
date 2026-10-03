@@ -67,7 +67,8 @@
 ### macOS 端
 > **进展（2026-10-03，PR #54 已合并，main CI 绿）**：① 测验选题 → `QuizBuilder` 纯函数已下沉（选题语义测试 7 项补齐）；② SettingsView → `SettingsEditBuffer`（Core 纯类型）已落地——18 个设置 @State 收敛为一处字段清单，字段漂移有守卫测试；③ DetailView `store` 收紧必传（5 处 nil 路径消除）；④「够数即停」不再丢弃已扫描完整对象（红→绿：前几张过筛失败时误报 noUsableCards 的场景修复）。测试 400→412 全绿。
 > **用户拍板：Android 端暂停，等 mac 完善后再恢复；三巨档 de-nesting 与 i18n 待另一会话的 mac 交互简化 WIP（InsightMainView/InsightShell/LearningWorkspaceView）落地后再做。**
-> 剩余项：AppStore 的 AI 生成编排下沉（GenerationCoordinator）/ bootstrap 拆段；AI 重试策略统一（RetryPolicy）；主线程减负三处（arrangeWithMinDistance / 背景图解码 / 聊天全量 load+encode）；mac 视图层测试 target 起步（本机已确认有完整 Xcode，本地可跑全量）。
+> **C2 已销账（2026-10-03，PR #58 合并，main CI 绿，CI 全量 443 项）**：GenerationCoordinator 下沉 + bootstrap 拆段 + RetryPolicy 统一（生成/追问两路逐条等价）；重排 >256 张才下沉后台（216 现状同步不变）；背景图未命中改后台解码 + 主线程回填（**已知残留**：PosterExportManager 冷缓存离屏渲染可能少背景图，正常流程经预览预热）；聊天会话内存态表（每条消息不再全量 decode）；**app 层测试 target `KnowFlickAppTests` 起步**（ActiveSheet 路由 3 项 + 背景图缓存 5 项，本地与 CI 均可跑）。
+> 剩余项（mac）：AI 生成编排已完成；三巨档 de-nesting 待 WIP；视图层测试继续扩面；`arrangeWithMinDistance` 的 ≤256 同步路径保持现状（实测 216 张无害）。
 1. **AppStore 域下沉**（634 行）：测验选题算法（`generateQuizCards`，AppStore.swift:396-432，0 测试）→ `QuizBuilder` 纯函数 + 补齐选题/混池/打乱语义测试 ✅ 已做；AI 生成编排（445-485）→ `GenerationCoordinator`；bootstrap 84 行四件事（三级回退/种子合并/钥匙串迁移/自动补卡）拆阶段函数。
 2. **SettingsView 编辑缓冲重构**（1098 行）：29 个 `@State` + onAppear 全量拷入 + save() 手工逐字段拷出——`AISettings` 每加一个字段必须同步改两处，漏一处静默丢配置。改为 struct 驱动的编辑缓冲（copy-with 语义），消除字段漂移。✅ 已做（SettingsEditBuffer + 字段漂移守卫）
 3. **三巨档 de-nesting**（SettingsView/InsightMainView 1027/DetailView 845）：按 hourly 既定方案配合视图层测试做。DetailView 顺手修 `store = nil` 兜底新建 `SpeechSynthesizerService()` 的潜伏陷阱（DetailView.swift:658, 686）。✅ 陷阱已修；de-nesting 本体待 WIP 落地
@@ -127,3 +128,22 @@
 - Wave A 双端可并行各开一个 PR（纯止血、无协议变更）；Wave B 起双端必须同轮互相验收（mac ↔ android 真机各一轮同步）。
 - 每波销账后同步更新 [[knowflick-improvement-backlog]] 记忆与本档勾选状态。
 - 全仓扫描类工作严禁 head 截断后下「清零」结论（PR #45 教训）。
+
+---
+
+## UI 品质迭代（获奖级，2026-10-03 起）
+
+用户验收标准：达到 Awwwards / Webby / FWA 获奖级品质；流程 = 实屏截图自检 → 缺陷清单 → 修复 → 再截图，循环直到达标。
+
+**艺术方向「纸与墨」**（第一轮已定案，PR #57）：
+- 主强调 = **黛青墨**（浅 #274C8B / 深 #5578C7）；**朱砂印记色**（#B33729）只用于「今天/当下」级独一时点，一次界面最多一处。
+- 工具界面无衬线（Cutline 延续）；**阅读面用衬线**（`InsightFont.display`，宋体基因）。
+- 热力图 = 墨密度（accent 四级）；浅色画布偏暖（纸感）；彩色数字除非有「当下」语义一律回归墨色。
+
+**轮次**：
+- 第 1 轮 ✅（PR #57）：token 艺术方向 + 统计页图表工艺（分布条、7 天预测基线/刻度、图例形状、热力图墨密度）。
+- 第 2 轮（待做）：详情页阅读面（衬线 + 阅读节奏 + scrim）、测验页、知识库/收藏/历史列表工艺。
+- 第 3 轮（待做）：全局搜索面板、微交互语言（hover/press/转场曲线审计）。
+- **阻塞项**：shell（InsightShell/InsightMainView）与学习工作台（LearningWorkspaceView）被另一会话 MAC_INTERACTION_SIMPLIFICATION WIP 占用——待其落地后接续；i18n 同理。
+
+**自检工作流**（实测可用）：`build_app.sh` → 直接跑 `dist/KnowFlick.app/Contents/MacOS/KnowFlick` → 菜单命令导航（学习与探索 → 统计/测验/星图…）→ 按窗口 ID `screencapture -x -l <id>`（窗口 ID 用 CGWindowListCopyWindowInfo 列出；`screencapture -R` 与 `CGWindowListCreateImage` 均不可靠）。
