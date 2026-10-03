@@ -423,9 +423,13 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
                     version++
                     schedulePersist()
                     model.storage.saveTombstones(model.store.tombstones)
+                    // B8 同步完成点 1：合并落库后强制落盘，消除 kill-app 丢数窗口
+                    flushPending()
                     merged
                 },
             )
+            // B8 同步完成点 2：推送完成后再次强制落盘（拉取失败时快照未变，flush 为幂等兜底）
+            flushPending()
             onDone(result)
         }
     }
@@ -1040,21 +1044,18 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    /** 生命周期 flush：同步把最新快照写盘，避免退到后台后被系统回收丢失最后一批改动。 */
+    /** 生命周期 flush：同步把最新快照写盘，避免退到后台后被系统回收丢失最后一批改动。
+     *  也作为 B8 同步完成点的强制落盘（400ms 有界等待，超时交给队列自然完成）。 */
     fun flushPending() {
         persistJob?.cancel()
         persistJob = null
         val snapshot = model.store.cards.toList()
-        // 走串行队列的同步提交：队列保证顺序，等待落盘完成再返回。
-        val done = java.util.concurrent.CountDownLatch(1)
-        val accepted = persistenceQueue.enqueueAndWait(snapshot) { done.countDown() }
+        // 走串行队列的有界等待 flush：队列保证顺序，等待落盘完成再返回（不阻塞超过 400ms）。
+        val accepted = persistenceQueue.flush(snapshot)
         if (!accepted) {
             // 队列已关闭（ViewModel 已清理）时直接同步写一次，避免静默丢数据。
             handlePersistenceResult(model.storage.saveCards(snapshot))
-            return
         }
-        // onPause 允许极短等待；超时说明写入较慢，交给队列自然完成，不阻塞界面。
-        done.await(400, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
     private fun handlePersistenceResult(result: CardSaveResult) {
