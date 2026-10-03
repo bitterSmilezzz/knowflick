@@ -98,6 +98,77 @@ struct SyncProtocolFixtureTests {
         #expect(object["protocolVersion"] as? Int == 2)
     }
 
+    /// F4：details 冲突合并口径（协议 §5）。
+    /// A{details:"短",editedAt:2000} × B{details:"更长的正文内容",editedAt:1000} → 取 A（新者赢）；
+    /// B 无 editedAt → 取 B（沿用 v1「较长者」旧规则，兼容历史数据）。
+    /// 双向合并必须对称（mergeCard(a,b) == mergeCard(b,a)）。
+    @Test("F4 details 冲突：双方有 editedAt 取新者，任一缺失沿用较长者旧规则")
+    func f4DetailsConflictPrefersNewerEditedAt() {
+        let base = KnowledgeCard(
+            id: UUID(uuidString: "F1A73039-3A26-4C67-9E5D-52D5F3B35E1F")!,
+            category: "冷知识",
+            headline: "测试卡",
+            summary: "摘要",
+            details: "占位",
+            source: .seed,
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+
+        func with(details: String, editedAt: Date?) -> KnowledgeCard {
+            var card = base
+            card.details = details
+            card.editedAt = editedAt
+            return card
+        }
+
+        // 场景一：双方均有 editedAt → 新者赢（用户缩短后不再被旧长文覆盖）
+        let newerShort = with(details: "短", editedAt: Date(timeIntervalSince1970: 2_000))
+        let olderLong = with(details: "更长的正文内容", editedAt: Date(timeIntervalSince1970: 1_000))
+        #expect(CardImportEngine.mergeCard(newerShort, olderLong).details == "短")
+        #expect(CardImportEngine.mergeCard(olderLong, newerShort).details == "短")
+        #expect(CardImportEngine.mergeCard(newerShort, olderLong) == CardImportEngine.mergeCard(olderLong, newerShort))
+
+        // 场景二：任一方缺失 editedAt → 沿用 v1「较长者」规则
+        let legacyLong = with(details: "更长的正文内容", editedAt: nil)
+        #expect(CardImportEngine.mergeCard(newerShort, legacyLong).details == "更长的正文内容")
+        #expect(CardImportEngine.mergeCard(legacyLong, newerShort).details == "更长的正文内容")
+
+        // 场景三：空正文让位非空（字段合并的外层守卫不变）
+        let editedEmpty = with(details: "", editedAt: Date(timeIntervalSince1970: 3_000))
+        #expect(CardImportEngine.mergeCard(editedEmpty, olderLong).details == "更长的正文内容")
+    }
+
+    /// editedAt 的线格式契约（协议 §5/§9）：可选字段缺省不落键；旧数据缺键解码为 nil。
+    @Test("editedAt 编码缺省不落键、旧数据缺键解码为 nil")
+    func editedAtWireFormatIsOptionalAndBackwardCompatible() throws {
+        let base = KnowledgeCard(
+            category: "冷知识", headline: "历史卡", summary: "摘要", details: "正文", source: .seed,
+            createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+
+        // 历史卡不写 editedAt 键（本地 cards.json 格式不变）
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let legacyObject = try #require(JSONSerialization.jsonObject(with: encoder.encode(base)) as? [String: Any])
+        #expect(legacyObject["editedAt"] == nil)
+
+        // 旧 cards.json / 旧同步包缺键 → nil
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        #expect(try decoder.decode(KnowledgeCard.self, from: encoder.encode(base)).editedAt == nil)
+
+        // 带 editedAt 的卡 roundtrip 还原
+        var edited = base
+        edited.editedAt = Date(timeIntervalSince1970: 1_727_900_100)
+        let decoded = try decoder.decode(KnowledgeCard.self, from: encoder.encode(edited))
+        #expect(decoded.editedAt == edited.editedAt)
+
+        // 合并：单方有 editedAt 的历史卡合并，合并结果带较新编辑时间
+        let merged = CardImportEngine.mergeCard(edited, base)
+        #expect(merged.editedAt == edited.editedAt)
+        #expect(merged == CardImportEngine.mergeCard(base, edited))
+    }
+
     /// 旧版本 KnowFlick 导出的裸数组文件导入仍然可用（文件导入路径的兼容验证）。
     @Test("文件导入路径兼容 v1 裸数组与 v2 信封两种备份")
     func fileImportPathAcceptsLegacyBareListAndEnvelope() throws {
@@ -117,5 +188,35 @@ struct SyncProtocolFixtureTests {
             category: "物理", headline: "新版备份卡", summary: "摘要", details: "正文", source: .seed
         )])
         #expect(try CardImportEngine.parseJSON(data: Data(modern.utf8)).cards.count == 1)
+    }
+
+    /// 编辑器保存漏斗（CardEditorView → updateCardContent）：任一字段变更即写 editedAt，
+    /// 内容未变不刷新时间戳（协议 §5）。
+    @Test("编辑器保存任一字段变更即写 editedAt=now，内容未变不刷新")
+    @MainActor
+    func editingContentStampsEditedAtOnlyWhenChanged() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = AppStore(storage: Storage(baseDir: directory))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        store.isLoadingSeed = false
+
+        var subject = KnowledgeCard(
+            category: "冷知识", headline: "原标题", summary: "原摘要", details: "原正文",
+            source: .imported, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+        subject.seenAt = Date(timeIntervalSince1970: 1_727_900_100)
+        store.cards = [subject]
+        #expect(subject.editedAt == nil)
+
+        // 任一字段变更 → 打编辑时间戳，学习状态不被触碰
+        #expect(store.updateCardContent(id: subject.id, headline: "新标题", category: "冷知识", summary: "原摘要", details: "原正文"))
+        let edited = try! #require(store.cards.first)
+        #expect(edited.editedAt != nil)
+        #expect(edited.seenAt == subject.seenAt)
+
+        // 相同内容再保存 → 时间戳不刷新
+        let stamp = edited.editedAt
+        #expect(store.updateCardContent(id: subject.id, headline: "新标题", category: "冷知识", summary: "原摘要", details: "原正文"))
+        #expect(store.cards.first?.editedAt == stamp)
     }
 }
