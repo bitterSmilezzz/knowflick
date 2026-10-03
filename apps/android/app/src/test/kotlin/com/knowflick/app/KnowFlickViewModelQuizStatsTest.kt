@@ -72,4 +72,21 @@ class KnowFlickViewModelQuizStatsTest {
         assertEquals(2, session.total)
         assertEquals(setOf(c2.id, c3.id), session.cards.map { it.id }.toSet())
     }
+
+    @Test
+    fun dueCardsCountRefreshesAfterVersionBump() {
+        val vm = KnowFlickViewModel(application)
+        // 种子卡无浏览足迹，不进到期队列
+        assertEquals(0, vm.dueCardsCount)
+
+        // 记忆化后仍必须感知 version 推进：新增一张两天前浏览过的卡（次日到期，已逾期）
+        val due = sampleCard("due-1", "两天前浏览卡", seenDaysAgo = 2)
+        vm.mutate { vm.model.store.addCards(listOf(due), insertAtTop = true) }
+        assertEquals(1, vm.dueCardsCount, "version 推进后到期数必须重算，不得吃到旧缓存")
+
+        // 复习卡堆与到期计数共用同一记忆化入口，口径必须一致
+        vm.enterReviewDeckMode()
+        assertEquals(1, vm.reviewQueue.size)
+        assertEquals(due.id, vm.reviewQueue.single().id)
+    }
 }
