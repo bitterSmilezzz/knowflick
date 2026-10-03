@@ -133,15 +133,30 @@ private struct StatsSections: View {
                         (dist.hesitantCount, InsightColor.warning),
                         (dist.needsReviewCount, InsightColor.textMuted)
                     ].filter { $0.0 > 0 }
-                    let usable = max(0, geometry.size.width - CGFloat(max(0, segments.count - 1)) * 3)
-                    HStack(spacing: 3) {
-                        ForEach(segments.indices, id: \.self) { index in
-                            Capsule().fill(segments[index].1)
-                                .frame(width: usable * CGFloat(segments[index].0) / CGFloat(total))
+                    let usable = max(0, geometry.size.width - CGFloat(max(0, segments.count - 1)) * 2)
+                    ZStack(alignment: .leading) {
+                        // 轨道：未掌握段本身占 92% 时整条几乎全灰——给轨道一层纸面底色，
+                        // 让「已掌握/学习中」的彩色段成为落在纸上的墨块
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(InsightColor.surfaceSunken)
+                        HStack(spacing: 2) {
+                            ForEach(segments.indices, id: \.self) { index in
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(segments[index].1)
+                                    .overlay(
+                                        // 顶部 40% 微高光：不引入渐变装饰，只让墨块有厚度
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.18), .clear],
+                                            startPoint: .top, endPoint: .center
+                                        )
+                                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                    )
+                                    .frame(width: usable * CGFloat(segments[index].0) / CGFloat(total))
+                            }
                         }
                     }
                 }
-                .frame(height: 10)
+                .frame(height: 12)
                 .accessibilityHidden(true)
                 HStack(spacing: InsightSpacing.large) {
                     legend(
@@ -166,7 +181,8 @@ private struct StatsSections: View {
 
     private func legend(_ title: String, count: Int, percent: Int, color: Color) -> some View {
         HStack(spacing: InsightSpacing.small) {
-            Circle().fill(color).frame(width: 7, height: 7)
+            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                .fill(color).frame(width: 8, height: 8)
             Text(title).font(InsightFont.caption).foregroundStyle(InsightColor.textSecondary)
             Text("\(count) 张 (\(percent)%)")
                 .font(InsightFont.monoSmall).monospacedDigit()
@@ -185,24 +201,22 @@ private struct StatsSections: View {
                         .font(InsightFont.captionSmall).foregroundStyle(InsightColor.textMuted)
                 }
                 HStack(spacing: InsightSpacing.compact) {
-                    metricTile(
-                        title: "今日到期",
-                        value: "\(plan.due.count)", unit: "张",
-                        tone: plan.due.isEmpty ? .success : .warning
-                    )
-                    metricTile(title: "今日已复习", value: "\(plan.completedToday)", unit: "张", tone: .success)
-                    metricTile(title: "掌握度估算", value: "\(dist.retentionRate)", unit: "%", tone: .accent)
+                    metricTile(title: "今日到期", value: "\(plan.due.count)", unit: "张", emphasized: !plan.due.isEmpty)
+                    metricTile(title: "今日已复习", value: "\(plan.completedToday)", unit: "张")
+                    metricTile(title: "掌握度估算", value: "\(dist.retentionRate)", unit: "%")
                 }
             }
         }
     }
 
-    private func metricTile(title: String, value: String, unit: String, tone: InsightPill.Tone) -> some View {
+    /// 间隔复习数据块：数字一律墨色（`emphasized` 才用印记色）——三个彩色数字并排是色噪，
+    /// 彩色只留给真正需要拉注意力的那一个（今日到期且非空）。
+    private func metricTile(title: String, value: String, unit: String, emphasized: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: InsightSpacing.tiny) {
             HStack(alignment: .firstTextBaseline, spacing: InsightSpacing.hair) {
                 Text(value)
                     .font(InsightFont.statMedium)
-                    .foregroundStyle(tone.foreground)
+                    .foregroundStyle(emphasized ? InsightColor.seal : InsightColor.textPrimary)
                     .monospacedDigit()
                 Text(unit)
                     .font(InsightFont.caption)
@@ -235,21 +249,37 @@ private struct StatsSections: View {
                 }
                 HStack(alignment: .bottom, spacing: InsightSpacing.small) {
                     ForEach(schedule) { item in
-                        VStack(spacing: InsightSpacing.tiny) {
-                            Text("\(item.count)")
+                        VStack(spacing: InsightSpacing.small) {
+                            // 非零才挂数字：零日不显示「0」，避免七列数字噪声
+                            Text(item.count > 0 ? "\(item.count)" : " ")
                                 .font(InsightFont.captionSmall).monospacedDigit()
-                                .foregroundStyle(item.isToday ? InsightColor.warning : (item.count > 0 ? InsightColor.textPrimary : InsightColor.textMuted))
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(item.isToday ? InsightColor.warning : (item.count > 0 ? InsightColor.accent : InsightColor.surfaceSunken))
-                                .frame(height: max(6, CGFloat(item.count) / CGFloat(maxCount) * 64))
+                                .foregroundStyle(item.isToday ? InsightColor.seal : InsightColor.textSecondary)
+                            // 零值日：基线上的一枚刻度点，而不是空轨道——七天节奏一眼可读
+                            Group {
+                                if item.count > 0 {
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(item.isToday ? InsightColor.seal : InsightColor.accent.opacity(0.85))
+                                        .frame(width: 40, height: max(8, CGFloat(item.count) / CGFloat(maxCount) * 72))
+                                } else {
+                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        .fill(InsightColor.borderStrong)
+                                        .frame(width: 12, height: 3)
+                                }
+                            }
+                            .frame(height: 72, alignment: .bottom)
                             Text(dayLabel(item.date))
-                                .font(InsightFont.captionSmall)
-                                .foregroundStyle(item.isToday ? InsightColor.warning : InsightColor.textTertiary)
+                                .font(item.isToday ? InsightFont.caption : InsightFont.captionSmall)
+                                .fontWeight(item.isToday ? .semibold : .regular)
+                                .foregroundStyle(item.isToday ? InsightColor.seal : InsightColor.textTertiary)
                         }
                         .frame(maxWidth: .infinity)
                     }
                 }
-                .frame(height: 112, alignment: .bottom)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(InsightColor.divider).frame(height: 1)
+                        .padding(.bottom, 22)
+                }
+                .frame(height: 118, alignment: .bottom)
             }
         }
     }
@@ -273,18 +303,16 @@ private struct StatsSections: View {
                 Text("学习足迹").font(InsightFont.headline).foregroundStyle(InsightColor.textPrimary)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 5) {
                     ForEach(daily35, id: \.day) { item in
+                        // 墨密度四级：阅读量即落墨浓度——与「纸与墨」同源，替代 GitHub 绿
                         let color: Color = {
                             if item.count == 0 { return InsightColor.surfaceSunken }
-                            if item.count <= 2 { return InsightColor.success.opacity(0.35) }
-                            if item.count <= 5 { return InsightColor.success.opacity(0.65) }
-                            return InsightColor.success
+                            if item.count <= 2 { return InsightColor.accent.opacity(0.18) }
+                            if item.count <= 5 { return InsightColor.accent.opacity(0.42) }
+                            if item.count <= 9 { return InsightColor.accent.opacity(0.70) }
+                            return InsightColor.accent
                         }()
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(color).aspectRatio(1, contentMode: .fit)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .strokeBorder(item.count > 0 ? Color.white.opacity(0.10) : InsightColor.border, lineWidth: 0.8)
-                            )
                             .help(Self.dateFormatter.string(from: item.day) + ": 阅读 \(item.count) 张")
                             .accessibilityLabel(Self.dateFormatter.string(from: item.day) + ": 阅读 \(item.count) 张")
                     }
@@ -294,8 +322,9 @@ private struct StatsSections: View {
                     Spacer()
                     Text("少").font(InsightFont.captionSmall).foregroundStyle(InsightColor.textMuted)
                     HStack(spacing: 3) {
-                        ForEach([InsightColor.surfaceSunken, InsightColor.success.opacity(0.35),
-                                 InsightColor.success.opacity(0.65), InsightColor.success], id: \.self) { c in
+                        ForEach([InsightColor.surfaceSunken, InsightColor.accent.opacity(0.18),
+                                 InsightColor.accent.opacity(0.42), InsightColor.accent.opacity(0.70),
+                                 InsightColor.accent], id: \.self) { c in
                             RoundedRectangle(cornerRadius: 2).fill(c).frame(width: 9, height: 9)
                         }
                     }
