@@ -407,12 +407,21 @@ class CardStore(
             val category = primary.category.ifBlank { secondary.category }
             val headline = primary.headline.ifBlank { secondary.headline }
             val summary = primary.summary.ifBlank { secondary.summary }
-            val details = if (primary.details.isBlank()) {
-                secondary.details
-            } else if (primary.details.length >= secondary.details.length) {
-                primary.details
-            } else {
-                secondary.details
+            // details 冲突（docs/SYNC_PROTOCOL.md §5，修「用户缩短被旧长文覆盖」）：
+            // 双方均有 editedAt 且不等 → 新者赢（即使更短，缩短本身就是编辑）；
+            // 任一方缺失或时间戳持平 → 沿用 v1「较长者」规则，兼容历史数据且保证对称确定。
+            val details = when {
+                a.editedAt != null && b.editedAt != null && a.editedAt != b.editedAt ->
+                    (if (a.editedAt > b.editedAt) a else b).details
+                primary.details.isBlank() -> secondary.details
+                primary.details.length >= secondary.details.length -> primary.details
+                else -> secondary.details
+            }
+            // 合并后的编辑时间取较新者（墓碑合并的卡片时间戳随之保持最新编辑口径）
+            val mergedEditedAt = when {
+                a.editedAt != null && b.editedAt != null -> maxOf(a.editedAt, b.editedAt)
+                a.editedAt != null -> a.editedAt
+                else -> b.editedAt
             }
             val links = if (primary.links.isNotEmpty()) primary.links else secondary.links
             val source = if (primary.source == CardSource.SEED && secondary.source != CardSource.SEED) {
@@ -538,6 +547,7 @@ class CardStore(
                 links = links,
                 source = source,
                 createdAt = createdAt,
+                editedAt = mergedEditedAt,
                 seenAt = seenAt,
                 swiped = swiped,
                 isFavorite = isFavorite,
