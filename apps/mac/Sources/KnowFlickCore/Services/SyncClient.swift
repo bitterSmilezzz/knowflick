@@ -155,7 +155,7 @@ public enum SyncClient {
     public static func executeBidirectionalSync(
         target: String,
         localCards: [KnowledgeCard],
-        onApplyRemoteCards: @Sendable ([KnowledgeCard]) async -> (added: Int, restored: Int, ignored: Int)
+        onApplyRemoteCards: @Sendable ([KnowledgeCard], [SyncTombstone]) async -> (added: Int, restored: Int, ignored: Int, deleted: Int)
     ) async throws -> SyncResult {
         let parsed = try parseTarget(target)
 
@@ -172,11 +172,11 @@ public enum SyncClient {
         let (pulledData, _) = try await performRequestWithRetry(getReq)
         let pulled = try CardImportEngine.parseJSON(data: pulledData)
 
-        // 2. 本地应用并合并拉取到的卡片（对端墓碑的合并语义由合并入口承接）
-        let mergeResult = await onApplyRemoteCards(pulled.cards)
+        // 2. 本地应用对端载荷（卡片 + 墓碑，协议 §4 对称合并）
+        let mergeResult = await onApplyRemoteCards(pulled.cards, pulled.tombstones)
 
         // 3. 推送本地卡片到对端（带重试与退避）。本地墓碑表随载荷发出（协议 §3），
-        //    表的接线在墓碑合并落地时接入。
+        //    推送合并后快照 + 真实墓碑表的接线见后续改动
         let localData = try CardExportEngine.exportJSONArchive(cards: localCards)
         guard localData.count <= SyncServer.maxRequestBodyBytes else {
             throw NSError(domain: "SyncClient", code: -6, userInfo: [NSLocalizedDescriptionKey: "本机卡片数据超过 25 MiB 同步上限"])

@@ -138,6 +138,148 @@ struct SyncProtocolFixtureTests {
         #expect(CardImportEngine.mergeCard(editedEmpty, olderLong).details == "更长的正文内容")
     }
 
+    /// F3：墓碑抵抗与复活（协议 §4 规则 1/2，卡片时间戳 = editedAt 优先否则 createdAt）。
+    /// 卡片 createdAt=1727900000000 遇墓碑 deletedAt=1727900001000 → 拒收（不复活）；
+    /// createdAt=1727900002000 → 复活合并（清除本地同 id 墓碑）。
+    @Test("F3 墓碑抵抗：deletedAt ≥ 卡片时间戳拒收；卡片更新则复活合并并清墓碑")
+    func f3TombstoneResistsAndResurrects() {
+        let cardId = UUID(uuidString: "F1A73039-3A26-4C67-9E5D-52D5F3B35E1F")!
+        func card(createdAt: Date) -> KnowledgeCard {
+            KnowledgeCard(
+                id: cardId, category: "冷知识", headline: "测试卡", summary: "摘要", details: "正文",
+                source: .seed, createdAt: createdAt
+            )
+        }
+        let tombstones = [SyncTombstone(id: cardId.uuidString, deletedAt: 1_727_900_001_000)]
+
+        // 场景一：卡片时间戳 1727900000000 ≤ deletedAt 1727900001000 → 拒收
+        let resisted = CardImportEngine.mergeSyncPayload(
+            existing: [],
+            localTombstones: tombstones,
+            incomingCards: [card(createdAt: Date(timeIntervalSince1970: 1_727_900_000))],
+            incomingTombstones: []
+        )
+        #expect(resisted.cards.isEmpty, "墓碑必须抵抗更旧的卡片")
+        #expect(resisted.added == 0)
+        #expect(resisted.ignored == 1, "被抵抗的卡片计入 ignored")
+        #expect(resisted.tombstones == tombstones, "拒收不清除墓碑")
+
+        // 场景二：卡片时间戳 1727900002000 > deletedAt 1727900001000 → 复活合并
+        let resurrected = CardImportEngine.mergeSyncPayload(
+            existing: [],
+            localTombstones: tombstones,
+            incomingCards: [card(createdAt: Date(timeIntervalSince1970: 1_727_900_002))],
+            incomingTombstones: []
+        )
+        #expect(resurrected.cards.map(\.id) == [cardId])
+        #expect(resurrected.added == 1)
+        #expect(resurrected.tombstones.isEmpty, "复活必须清除本地同 id 墓碑")
+
+        // 规则 1 对偶场景：本地有旧卡、对端发来墓碑 → 删除本地卡并记墓碑
+        let deletedByTombstone = CardImportEngine.mergeSyncPayload(
+            existing: [card(createdAt: Date(timeIntervalSince1970: 1_727_900_000))],
+            localTombstones: [],
+            incomingCards: [],
+            incomingTombstones: tombstones
+        )
+        #expect(deletedByTombstone.cards.isEmpty)
+        #expect(deletedByTombstone.deleted == 1, "deleted 仅统计规则 1 实际触发的本地删除")
+        #expect(deletedByTombstone.tombstones == tombstones)
+
+        // 卡片比对端删除时更新（删除后重建）→ 保留卡片、忽略墓碑
+        let rebuilt = CardImportEngine.mergeSyncPayload(
+            existing: [card(createdAt: Date(timeIntervalSince1970: 1_727_900_002))],
+            localTombstones: [],
+            incomingCards: [],
+            incomingTombstones: tombstones
+        )
+        #expect(rebuilt.cards.count == 1)
+        #expect(rebuilt.deleted == 0)
+        #expect(rebuilt.tombstones.isEmpty)
+    }
+
+    /// 墓碑交换律（协议 §4 的核心不变量）：A 给 B 的墓碑+卡片 与 B 给 A 的对称场景，
+    /// 终态（卡片集 + 墓碑表 + 计数）必须一致。
+    @Test("墓碑交换律：对称场景下两端终态一致")
+    func tombstoneMergeIsCommutativeAcrossPeers() {
+        let xId = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let yId = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        func card(id: UUID) -> KnowledgeCard {
+            KnowledgeCard(
+                id: id, category: "冷知识", headline: "卡-\(id.uuidString.prefix(4))", summary: "摘要", details: "正文",
+                source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+            )
+        }
+        // A：有卡 X；已删除 Y（墓碑 {Y,t1}）
+        // B：有卡 Y；已删除 X（墓碑 {X,t1}）
+        let cardX = card(id: xId)
+        let cardY = card(id: yId)
+        let t1: Int64 = 1_727_900_001_000
+
+        // B 应用 A 的载荷（A 的卡 X 被墓碑抵抗；A 的墓碑 {Y,t1} 删除 B 的卡 Y）
+        let outcomeOnB = CardImportEngine.mergeSyncPayload(
+            existing: [cardY],
+            localTombstones: [SyncTombstone(id: xId.uuidString, deletedAt: t1)],
+            incomingCards: [cardX],
+            incomingTombstones: [SyncTombstone(id: yId.uuidString, deletedAt: t1)]
+        )
+        // A 应用 B 的载荷（对称镜像）
+        let outcomeOnA = CardImportEngine.mergeSyncPayload(
+            existing: [cardX],
+            localTombstones: [SyncTombstone(id: yId.uuidString, deletedAt: t1)],
+            incomingCards: [cardY],
+            incomingTombstones: [SyncTombstone(id: xId.uuidString, deletedAt: t1)]
+        )
+
+        // 终态一致：两张卡都被删除，墓碑表都含 {X,t1} 与 {Y,t1}，deleted 计数一致
+        #expect(outcomeOnA.cards.isEmpty)
+        #expect(outcomeOnB.cards.isEmpty)
+        #expect(outcomeOnA.deleted == 1)
+        #expect(outcomeOnB.deleted == 1)
+        func tombstoneKeys(_ tombstones: [SyncTombstone]) -> Set<String> {
+            Set(tombstones.map { "\($0.id.lowercased())@\($0.deletedAt)" })
+        }
+        let expected: Set<String> = ["\(xId.uuidString.lowercased())@\(t1)", "\(yId.uuidString.lowercased())@\(t1)"]
+        #expect(tombstoneKeys(outcomeOnA.tombstones) == expected)
+        #expect(tombstoneKeys(outcomeOnB.tombstones) == expected)
+    }
+
+    /// 应用顺序不变量：先卡片后墓碑与先墓碑后卡片在同一状态上结果一致（协议 §4 规则可交换）。
+    @Test("墓碑与卡片应用顺序不影响终态")
+    func tombstoneAndCardApplicationOrderDoesNotMatter() {
+        let cardId = UUID()
+        let staleCard = KnowledgeCard(
+            id: cardId, category: "冷知识", headline: "测试卡", summary: "摘要", details: "正文",
+            source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+        let tombstone = SyncTombstone(id: cardId.uuidString, deletedAt: 1_727_900_001_000)
+
+        // 当前实现：先卡片（合并旧卡）后墓碑（删除并记录）
+        let cardsFirst = CardImportEngine.mergeSyncPayload(
+            existing: [staleCard], localTombstones: [],
+            incomingCards: [staleCard], incomingTombstones: [tombstone]
+        )
+
+        // 镜像：先墓碑（删除并记录）后卡片（被墓碑抵抗）
+        let phase1 = CardImportEngine.mergeSyncPayload(
+            existing: [staleCard], localTombstones: [],
+            incomingCards: [], incomingTombstones: [tombstone]
+        )
+        let phase2 = CardImportEngine.mergeSyncPayload(
+            existing: phase1.cards, localTombstones: phase1.tombstones,
+            incomingCards: [staleCard], incomingTombstones: []
+        )
+
+        #expect(cardsFirst.cards.isEmpty)
+        #expect(phase2.cards.isEmpty)
+        #expect(cardsFirst.deleted == 1)
+        #expect(phase2.cards.isEmpty && phase2.added == 0, "后到的卡片必须被已记录的墓碑抵抗")
+        #expect(
+            Set(cardsFirst.tombstones.map { $0.id.lowercased() }) ==
+            Set(phase2.tombstones.map { $0.id.lowercased() })
+        )
+    }
+
     /// editedAt 的线格式契约（协议 §5/§9）：可选字段缺省不落键；旧数据缺键解码为 nil。
     @Test("editedAt 编码缺省不落键、旧数据缺键解码为 nil")
     func editedAtWireFormatIsOptionalAndBackwardCompatible() throws {
@@ -218,5 +360,44 @@ struct SyncProtocolFixtureTests {
         let stamp = edited.editedAt
         #expect(store.updateCardContent(id: subject.id, headline: "新标题", category: "冷知识", summary: "原摘要", details: "原正文"))
         #expect(store.cards.first?.editedAt == stamp)
+    }
+
+    /// 合并入口（协议 §4）：对端墓碑删除本地卡并落盘墓碑表；复活的卡片清除墓碑。
+    @Test("applySyncPayload：墓碑删卡落盘、复活清墓碑")
+    @MainActor
+    func applySyncPayloadAppliesTombstonesAndPersists() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = Storage(baseDir: directory)
+        let store = AppStore(storage: storage)
+        defer { store.flushPersistence(); try? FileManager.default.removeItem(at: directory) }
+        store.isLoadingSeed = false
+
+        let card = KnowledgeCard(
+            category: "冷知识", headline: "将被对端删除的卡", summary: "摘要", details: "正文",
+            source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+        store.cards = [card]
+        let tombstone = SyncTombstone(id: card.id.uuidString, deletedAt: 1_727_900_001_000)
+
+        // 规则 1：墓碑删除本地卡，deleted 计数如实上报
+        let outcome = store.applySyncPayload(cards: [], tombstones: [tombstone])
+        #expect(outcome.deleted == 1)
+        #expect(outcome.added == 0)
+        #expect(store.cards.isEmpty)
+        #expect(store.currentTombstones == [tombstone])
+
+        // 落盘：卡片库与墓碑表都可重载
+        store.flushPersistence()
+        #expect(Storage(baseDir: directory).loadCards().isEmpty)
+        #expect(Storage(baseDir: directory).loadTombstones() == [tombstone])
+
+        // 复活：更晚时间戳的卡片到达 → 墓碑清除、卡片入库
+        var rebuilt = card
+        rebuilt.createdAt = Date(timeIntervalSince1970: 1_727_900_002)
+        let resurrect = store.applySyncPayload(cards: [rebuilt], tombstones: [])
+        #expect(resurrect.added == 1)
+        #expect(store.currentTombstones.isEmpty)
+        store.flushPersistence()
+        #expect(Storage(baseDir: directory).loadTombstones().isEmpty)
     }
 }

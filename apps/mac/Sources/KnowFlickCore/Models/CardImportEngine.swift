@@ -685,6 +685,78 @@ public enum CardImportEngine {
         return (working, addedCount, updatedCount, ignoredCount)
     }
 
+    // MARK: - 3.5 同步墓碑合并（协议 v2 §4，两端同源、对称可交换）
+
+    /// 卡片参与墓碑判定的「卡片时间戳」：有 `editedAt` 用 `editedAt`，否则 `createdAt`（协议 §4.3，epoch 毫秒）。
+    public static func cardTimestampMs(_ card: KnowledgeCard) -> Int64 {
+        let date = card.editedAt ?? card.createdAt
+        return Int64((date.timeIntervalSince1970 * 1000).rounded())
+    }
+
+    /// 把对端同步载荷（卡片 + 墓碑）合并进本地状态（协议 §4）：
+    ///
+    /// - **规则 2（收到卡片）**：本地墓碑表存在该 id 且 `deletedAt` ≥ 卡片时间戳 → 拒收（不复活，
+    ///   计入 ignored）；否则正常合并，并清除本地同 id 墓碑（复活场景）。
+    /// - **规则 1（收到墓碑）**：本地存在同 id 卡片且卡片时间戳 ≤ `deletedAt` → 删除本地卡片、
+    ///   记入墓碑表（deletedAt 取较大者），计入 deleted；卡片时间戳 > `deletedAt`（对端删除后
+    ///   又有新编辑/重建）→ 保留卡片、忽略该墓碑；本地无此卡 → 仅记墓碑（防止更早副本经第三方回流）。
+    ///
+    /// 先卡片后墓碑与先墓碑后卡片结果一致（规则天然可交换，由跨端交换律测试守护）。
+    /// 返回合并后的卡片、墓碑表与各项计数；墓碑表由调用方落盘。
+    public static func mergeSyncPayload(
+        existing: [KnowledgeCard],
+        localTombstones: [SyncTombstone],
+        incomingCards: [KnowledgeCard],
+        incomingTombstones: [SyncTombstone]
+    ) -> (cards: [KnowledgeCard], tombstones: [SyncTombstone], added: Int, updated: Int, ignored: Int, deleted: Int) {
+        // 墓碑 id 统一小写做匹配键：mac UUID 字符串为大写，对端可能发小写；非 UUID id 原样小写保留
+        var tombstoneById: [String: (deletedAt: Int64, displayId: String)] = [:]
+        func record(_ tombstone: SyncTombstone) {
+            let key = tombstone.id.lowercased()
+            let current = tombstoneById[key]
+            tombstoneById[key] = (max(current?.deletedAt ?? .min, tombstone.deletedAt), current?.displayId ?? tombstone.id)
+        }
+        for tombstone in localTombstones { record(tombstone) }
+
+        // 规则 2：应用对端卡片
+        var effectiveIncoming: [KnowledgeCard] = []
+        effectiveIncoming.reserveCapacity(incomingCards.count)
+        var rejectedCount = 0
+        for card in incomingCards {
+            let key = card.id.uuidString.lowercased()
+            if let deletedAt = tombstoneById[key]?.deletedAt, deletedAt >= cardTimestampMs(card) {
+                rejectedCount += 1   // 墓碑抵抗：拒收，不复活
+                continue
+            }
+            tombstoneById[key] = nil   // 正常合并/复活：清除本地同 id 墓碑
+            effectiveIncoming.append(card)
+        }
+
+        let (merged, added, updated, ignored) = mergeCardList(existing: existing, incoming: effectiveIncoming)
+
+        // 规则 1：应用对端墓碑
+        var working = merged
+        var deletedCount = 0
+        for tombstone in incomingTombstones {
+            let key = tombstone.id.lowercased()
+            if let index = working.firstIndex(where: { $0.id.uuidString.lowercased() == key }) {
+                if cardTimestampMs(working[index]) <= tombstone.deletedAt {
+                    working.remove(at: index)
+                    deletedCount += 1
+                    record(tombstone)
+                }
+                // else：卡片比对端删除时更新（删除后重建/新编辑）→ 保留卡片、忽略该墓碑
+            } else {
+                record(tombstone)   // 本地无此卡：记墓碑，挡住更早副本回流
+            }
+        }
+
+        let tombstones = tombstoneById
+            .map { SyncTombstone(id: $0.value.displayId, deletedAt: $0.value.deletedAt) }
+            .sorted { ($0.deletedAt, $0.id) < ($1.deletedAt, $1.id) }
+        return (working, tombstones, added, updated, ignored + rejectedCount, deletedCount)
+    }
+
     public static func deduplicateAndMerge(
         existing: [KnowledgeCard],
         incoming: [KnowledgeCard]

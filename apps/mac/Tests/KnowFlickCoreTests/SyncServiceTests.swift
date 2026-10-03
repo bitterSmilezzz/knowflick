@@ -22,7 +22,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "123456",
             getCards: { [] },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
 
         let result = server.start(preferredPort: 18998)
@@ -43,7 +44,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "654321",
             getCards: { [serverCard] },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
 
         let startRes = server.start(preferredPort: 18999)
@@ -68,7 +70,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "334455",
             getCards: { [serverCard] },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
         let startRes = server.start(preferredPort: 19011)
         guard case .success(let port) = startRes else {
@@ -108,9 +111,10 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "888999",
             getCards: { [serverCard] },
-            onReceiveCards: { incoming in
+            getTombstones: { [] },
+            onReceiveCards: { incoming, _ in
                 receivedBox.set(incoming)
-                return (added: incoming.count, restored: 0, ignored: 0)
+                return (added: incoming.count, restored: 0, ignored: 0, deleted: 0)
             }
         )
 
@@ -125,10 +129,11 @@ struct SyncServiceTests {
         let result = try await SyncClient.executeBidirectionalSync(
             target: target,
             localCards: [clientCard]
-        ) { pulled in
+        ) { pulled, tombstones in
             #expect(pulled.count == 1)
             #expect(pulled[0].headline == "中子星")
-            return (added: 1, restored: 0, ignored: 0)
+            #expect(tombstones.isEmpty)
+            return (added: 1, restored: 0, ignored: 0, deleted: 0)
         }
 
         #expect(result.pushedCount == 1)
@@ -277,7 +282,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "999888",
             getCards: { [] },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
         let startRes = server.start(preferredPort: 19003)
         guard case .success(let port) = startRes else {
@@ -316,7 +322,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "135790",
             getCards: { cards },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
         let startRes = server.start(preferredPort: 19107)
         guard case .success(let port) = startRes else {
@@ -367,7 +374,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "246810",
             getCards: { cards },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
         let startRes = server.start(preferredPort: 19109)
         guard case .success(let port) = startRes else {
@@ -389,6 +397,65 @@ struct SyncServiceTests {
         let info = try await SyncClient.fetchRemoteInfo(target: "127.0.0.1:\(port)#246810")
         #expect(info.cardCount == 200)
         #expect(info.deviceName.isEmpty == false)
+    }
+
+    // MARK: - Wave B B3：服务端墓碑语义（协议 §4）
+
+    /// 端到端：POST 载荷携带墓碑 → 服务端按规则 1 删除本地卡、响应上报 "deleted":1，
+    /// 之后 GET 载荷带出更新后的本地墓碑表。
+    @Test("B3 POST 墓碑删卡并上报 deleted，GET 带出本地墓碑表")
+    func syncServerAppliesPeerTombstones() async throws {
+        let cardId = UUID()
+        let card = KnowledgeCard(
+            id: cardId, category: "冷知识", headline: "待删卡", summary: "摘要", details: "正文",
+            source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+        let tombstone = SyncTombstone(id: cardId.uuidString, deletedAt: 1_727_900_001_000)
+        let state = ServerSyncState(cards: [card])
+
+        let server = SyncServer(
+            accessCode: "778899",
+            getCards: { await state.cards },
+            getTombstones: { await state.tombstones },
+            onReceiveCards: { incoming, tombstones in
+                await state.apply(incoming, tombstones)
+            }
+        )
+        let startRes = server.start(preferredPort: 19013)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        // POST 信封：无卡片、带墓碑
+        let body = try CardExportEngine.exportJSONArchive(cards: [], tombstones: [tombstone])
+        let peer = try RawLoopbackPeer(port: UInt16(port))
+        let response = try peer.request(
+            "POST /api/cards HTTP/1.1\r\nHost: 127.0.0.1\r\n\(SyncServer.authHeader): 778899\r\n"
+                + "Content-Type: application/json; charset=utf-8\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+                + String(decoding: body, as: UTF8.self)
+        )
+        guard let headerEnd = response.range(of: Data("\r\n\r\n".utf8)) else {
+            Issue.record("响应缺少头部结束标记")
+            return
+        }
+        let postResult = try #require(JSONSerialization.jsonObject(with: response.subdata(in: headerEnd.upperBound..<response.count)) as? [String: Any])
+        #expect(postResult["status"] as? String == "success")
+        #expect(postResult["deleted"] as? Int == 1, "POST 响应必须上报规则 1 实际删除的本地卡数")
+        #expect(postResult["total"] as? Int == 0)
+
+        // GET 载荷：卡片已删、本地墓碑表带出墓碑
+        let getResponse = try RawLoopbackPeer(port: UInt16(port)).request(
+            "GET /api/cards HTTP/1.1\r\nHost: 127.0.0.1\r\n\(SyncServer.authHeader): 778899\r\nConnection: close\r\n\r\n"
+        )
+        guard let getHeaderEnd = getResponse.range(of: Data("\r\n\r\n".utf8)) else {
+            Issue.record("GET 响应缺少头部结束标记")
+            return
+        }
+        let payload = try CardImportEngine.parseJSON(data: getResponse.subdata(in: getHeaderEnd.upperBound..<getResponse.count))
+        #expect(payload.cards.isEmpty)
+        #expect(payload.tombstones == [tombstone])
     }
 
     /// 退避重试必须尊重取消：取消后应当立刻以 `CancellationError` 结束，而不是把用户自己的
@@ -443,6 +510,29 @@ private final class ReceivedBox: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return cards
+    }
+}
+
+/// 服务端同步状态（测试用）：按协议 §4 对称语义合并对端载荷，供端到端墓碑测试驱动。
+private actor ServerSyncState {
+    private(set) var cards: [KnowledgeCard]
+    private(set) var tombstones: [SyncTombstone]
+
+    init(cards: [KnowledgeCard], tombstones: [SyncTombstone] = []) {
+        self.cards = cards
+        self.tombstones = tombstones
+    }
+
+    func apply(_ incoming: [KnowledgeCard], _ incomingTombstones: [SyncTombstone]) -> (added: Int, restored: Int, ignored: Int, deleted: Int) {
+        let outcome = CardImportEngine.mergeSyncPayload(
+            existing: cards,
+            localTombstones: tombstones,
+            incomingCards: incoming,
+            incomingTombstones: incomingTombstones
+        )
+        cards = outcome.cards
+        tombstones = outcome.tombstones
+        return (outcome.added, outcome.updated, outcome.ignored, outcome.deleted)
     }
 }
 

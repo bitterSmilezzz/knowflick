@@ -186,6 +186,38 @@ public struct Storage: Sendable {
         return .saved
     }
 
+    // MARK: - 同步墓碑表（协议 v2 §3/§4）
+
+    /// 加载本地墓碑表（tombstones.json，与卡片库同目录的独立小文件）。
+    /// 文件缺失 → 空表；损坏 → 保留隔离副本并返回空表（删除记忆丢失是可接受的退化：
+    /// 已删卡片最多在下一次同步中被对端墓碑再次删除）。
+    public func loadTombstones() -> [SyncTombstone] {
+        let url = fileURL("tombstones.json")
+        guard fileManager.fileExists(atPath: url.path) else { return [] }
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode([SyncTombstone].self, from: data)
+        } catch {
+            NSLog("KnowFlick: tombstones.json 损坏，将保留隔离副本: %@", error.localizedDescription)
+            quarantineIfPresent(url)
+            return []
+        }
+    }
+
+    /// 原子写本地墓碑表；超出协议容量上限（1000）时裁最老（deletedAt 最小的先淘汰）。
+    public func saveTombstones(_ tombstones: [SyncTombstone]) {
+        var trimmed = tombstones
+        if trimmed.count > SyncProtocol.maxTombstoneCount {
+            trimmed = Array(trimmed.sorted { $0.deletedAt < $1.deletedAt }.suffix(SyncProtocol.maxTombstoneCount))
+        }
+        do {
+            let data = try JSONEncoder().encode(trimmed)
+            try data.write(to: fileURL("tombstones.json"), options: .atomic)
+        } catch {
+            NSLog("KnowFlick: 墓碑表落盘失败: %@", error.localizedDescription)
+        }
+    }
+
     // MARK: - 设置（key 除外）
 
     public func loadSettings() -> AISettings {

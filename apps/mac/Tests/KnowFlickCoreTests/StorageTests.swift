@@ -120,6 +120,42 @@ final class StorageTests {
             .filter { $0.contains("corrupt-") }
         #expect(quarantined.count == 3)
     }
+
+    // MARK: - 同步墓碑表（协议 v2 §3/§4）
+
+    @Test func tombstonesRoundTripAndMissingFileReturnsEmpty() {
+        #expect(storage.loadTombstones().isEmpty, "无墓碑文件按空表处理")
+
+        let tombstones = [
+            SyncTombstone(id: "ABCDEF01-2222-3333-4444-555555555555", deletedAt: 1_727_900_001_000),
+            SyncTombstone(id: "dead", deletedAt: 1_727_900_002_000)
+        ]
+        storage.saveTombstones(tombstones)
+        #expect(storage.loadTombstones() == tombstones)
+    }
+
+    @Test func corruptedTombstoneFileIsQuarantinedAndReturnsEmpty() throws {
+        storage.saveTombstones([SyncTombstone(id: "x", deletedAt: 1)])
+        try Data("{bad".utf8).write(to: tempDir.appendingPathComponent("tombstones.json"))
+
+        #expect(storage.loadTombstones().isEmpty)
+        let quarantined = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.contains(".corrupt-") }
+        #expect(quarantined.count == 1, "损坏的墓碑文件保留隔离副本")
+    }
+
+    @Test func tombstoneTablePrunesOldestBeyondProtocolCapacity() {
+        // 协议 §4：容量上限 1000，超出裁最老（deletedAt 最小的先淘汰）
+        let oversized = (0..<(SyncProtocol.maxTombstoneCount + 5)).map {
+            SyncTombstone(id: "id-\($0)", deletedAt: Int64(1_727_900_000_000 + $0))
+        }
+        storage.saveTombstones(oversized)
+
+        let loaded = storage.loadTombstones()
+        #expect(loaded.count == SyncProtocol.maxTombstoneCount)
+        #expect(loaded.map(\.deletedAt).min() == Int64(1_727_900_000_000 + 5), "最老（deletedAt 最小）的 5 条被裁掉")
+        #expect(loaded.map(\.deletedAt).max() == Int64(1_727_900_000_000 + SyncProtocol.maxTombstoneCount + 4))
+    }
 }
 
 extension StorageTests {
