@@ -33,6 +33,12 @@ import kotlinx.serialization.json.put
  */
 object CardJson {
 
+    /**
+     * 局域网同步协议版本（docs/SYNC_PROTOCOL.md 定版）：/api/info 与信封载荷共同携带。
+     * 加可选字段不升版本；改字段语义/删字段/改结构才 +1（§9）。
+     */
+    const val PROTOCOL_VERSION = 2
+
     /** 与 Swift `JSONEncoder.dateEncodingStrategy = .iso8601` 一致：秒级 ISO8601（UTC，Z 后缀） */
     fun encodeDate(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis).toString()
 

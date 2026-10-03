@@ -421,6 +421,10 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** 同步结果的对端版本提示（协议 §2）：旧端/更新各一条文案，版本一致无提示。纯逻辑在 sync 包便于单测 */
+    fun syncVersionHint(peerProtocolVersion: Int?): String? =
+        com.knowflick.app.sync.syncVersionHint(peerProtocolVersion)
+
     /** 连通性测试：返回用户可读状态 */
     suspend fun testConnection(temp: AiSettings, apiKey: String): String {
         return try {
