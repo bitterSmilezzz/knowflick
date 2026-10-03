@@ -13,7 +13,9 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.knowflick.app.MainActivity
 import com.knowflick.app.R
 import com.knowflick.app.domain.KnowledgeCard
@@ -109,6 +111,9 @@ class SpeechPlaybackService : Service() {
             ACTION_PREV -> activeController?.advancePrevious()
             ACTION_STOP -> {
                 activeController?.stop()
+                // 经 startForegroundService 送达的每次投递都要补齐 startForeground（5s 契约），
+                // 否则系统直接抛 ForegroundServiceDidNotStartInTime 杀掉应用
+                promoteToForegroundQuietly()
                 stopForegroundInternal()
                 stopSelf()
             }
@@ -162,8 +167,36 @@ class SpeechPlaybackService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-        } catch (_: Exception) {
-            // Android 13+ 权限或系统限制保护
+        } catch (e: Exception) {
+            // 前台化失败（系统限制/类型不允许等）：继续裸播放既无通知也无前台保护，
+            // 不如干净停止并把原因回传给 controller 呈现
+            Log.w(TAG, "startForeground 失败，停止语音朗读", e)
+            activeController?.onForegroundServiceLost("系统拒绝了前台播放保护，已停止朗读")
+            stopSelf()
+        }
+    }
+
+    /** STOP 流程补挂前台以满足 startForegroundService 的 5 秒契约；失败只记日志，停止本身照常 */
+    private fun promoteToForegroundQuietly() {
+        val notification = buildNotification(
+            headline = "正在停止朗读",
+            category = "KnowFlick",
+            cardId = null,
+            isPlaying = false,
+            isAmbientMode = false,
+        )
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "停止前补挂前台失败", e)
         }
     }
 
@@ -297,6 +330,7 @@ class SpeechPlaybackService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        private const val TAG = "KnowFlickSpeech"
         const val CHANNEL_ID = "knowflick_speech_playback"
         const val NOTIFICATION_ID = 2026
 
@@ -354,8 +388,12 @@ class SpeechPlaybackService : Service() {
                 val intent = Intent(context, SpeechPlaybackService::class.java).apply {
                     action = ACTION_STOP
                 }
-                context.startService(intent)
+                // O+ 后台直接 startService 会抛 IllegalStateException（被吞后服务停不掉，
+                // 前台通知与 MediaSession 残留）；统一走 startForegroundService，
+                // 服务侧 STOP 分支补挂前台满足契约后再 stopSelf
+                ContextCompat.startForegroundService(context, intent)
             } catch (_: Exception) {
+                // 12+ 从后台启动 FGS 受限时仍可能失败：此时无前台服务可停，静默即可
             }
         }
     }

@@ -10,6 +10,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -181,7 +182,21 @@ object SyncClient {
         target: String,
         localCards: List<KnowledgeCard>,
         onApplyRemoteCards: (List<KnowledgeCard>) -> CardStore.ArchiveRestoreResult,
-    ): Result<SyncResult> = runCatching {
+    ): Result<SyncResult> = try {
+        Result.success(bidirectionalSync(target, localCards, onApplyRemoteCards))
+    } catch (cancelled: CancellationException) {
+        // 关闭同步面板等正常取消不是同步失败：原样上抛交给协程机制收尾，
+        // 否则取消会被包成 Result.failure 以假错误回调 onDone（与全仓 rethrow 惯例一致）
+        throw cancelled
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
+    private suspend fun bidirectionalSync(
+        target: String,
+        localCards: List<KnowledgeCard>,
+        onApplyRemoteCards: (List<KnowledgeCard>) -> CardStore.ArchiveRestoreResult,
+    ): SyncResult {
         val parsed = withContext(Dispatchers.IO) { parseTarget(target) }
         val pulledCards = withContext(Dispatchers.IO) {
             val response = requestWithRetry(parsed, "GET", "/api/cards")
@@ -198,7 +213,7 @@ object SyncClient {
             if (response.status !in 200..299) error("推送卡片至对端失败 HTTP ${response.status}")
         }
 
-        SyncResult(
+        return SyncResult(
             pushedCount = localCards.size,
             pulledCount = pulledCards.size,
             addedCount = mergeResult.added,

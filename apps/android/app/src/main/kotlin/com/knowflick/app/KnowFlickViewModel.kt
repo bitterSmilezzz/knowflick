@@ -49,7 +49,8 @@ private data class SettingsSaveResult(
  */
 class KnowFlickViewModel(application: Application) : AndroidViewModel(application) {
     val model: AppModel = AppModel(
-        storage = CardStorage(File(application.filesDir, "store")),
+        // 目录级共享实例：与桌面微件的写回汇入同一把 CardStorage 实例锁（A5 竞态收口）
+        storage = CardStorage.shared(File(application.filesDir, "store")),
         seedCards = SeedLoader(application).load(),
     )
 
@@ -361,6 +362,8 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
         if (isSyncServerRunning) return
 
+        // 异常回调需要比对「出事的是不是当前这台」：构造期引用尚未就绪，用局部持有者转接
+        var startedServer: SyncServer? = null
         val server = SyncServer(
             accessCode = syncAccessCode,
             getCards = {
@@ -374,7 +377,16 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
                     result
                 }
             },
+            onAbnormallyStopped = { error ->
+                // accept 循环带病退出：UI 必须能感知「服务异常停止」，不能继续显示已启动
+                viewModelScope.launch(Dispatchers.Main.immediate) {
+                    if (syncServer === startedServer) syncServer = null
+                    isSyncServerRunning = false
+                    generateNotice = "局域网同步服务异常停止：${error.message ?: "未知原因"}"
+                }
+            },
         )
+        startedServer = server
         server.start().fold(
             onSuccess = { port ->
                 syncServer = server
@@ -878,13 +890,22 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     var reviewInitialTotal by mutableStateOf(0)
         private set
 
-    /** 今日待复习卡片总数（到期复习队列） */
+    /**
+     * 今日待复习卡片总数（到期复习队列）。
+     *
+     * 到期计划构造是全库三遍扫描（时区换数 + 掌握度 + 排序，O(n log n)），而该 getter
+     * 每次重组都会被读；按 (version, LocalDate) 记忆化，version 推进纪律与卡堆重组同源。
+     */
+    private val duePlanMemo = VersionedMemo { today ->
+        com.knowflick.app.domain.LearningPlan(model.store.cards, today)
+    }
+
     val dueCardsCount: Int
-        get() = com.knowflick.app.domain.LearningPlan(model.store.cards, java.time.LocalDate.now()).due.size
+        get() = duePlanMemo.get(version).due.size
 
     /** 开启专属复习卡堆模式 */
     fun enterReviewDeckMode() {
-        val due = com.knowflick.app.domain.LearningPlan(model.store.cards, java.time.LocalDate.now()).due
+        val due = duePlanMemo.get(version).due
         reviewQueue = due
         reviewInitialTotal = due.size
         reviewSessionCount = 0
