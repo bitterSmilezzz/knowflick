@@ -54,6 +54,8 @@ class SyncEngineTest {
             assertTrue("Fetch remote info should succeed", infoResult.isSuccess)
             val info = infoResult.getOrThrow()
             assertEquals(2, info.cardCount)
+            // 协议 v2 握手（SYNC_PROTOCOL.md §2）：/api/info 必须带 protocolVersion
+            assertEquals(2, info.protocolVersion)
 
             // 2. 测试双向同步
             val clientCards = listOf(
@@ -73,6 +75,8 @@ class SyncEngineTest {
             val result = syncResult.getOrThrow()
             assertEquals(1, result.pushedCount)
             assertEquals(2, result.pulledCount)
+            // 协议版本随同步结果上浮（SYNC_PROTOCOL.md §2）
+            assertEquals(2, result.peerProtocolVersion)
             assertEquals(2, localApplied.size)
             assertEquals(3, serverCards.size)
         } finally {

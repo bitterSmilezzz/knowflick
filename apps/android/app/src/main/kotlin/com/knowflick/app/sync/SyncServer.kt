@@ -21,6 +21,8 @@ data class RemoteDeviceInfo(
     val cardCount: Int,
     val favoriteCount: Int,
     val timestamp: Long,
+    /** 对端协议版本（/api/info 的 protocolVersion）；null = 旧端缺字段 */
+    val protocolVersion: Int? = null,
 )
 
 /**
@@ -240,6 +242,8 @@ class SyncServer(
                         put("cardCount", cards.size)
                         put("favoriteCount", favCount)
                         put("timestamp", System.currentTimeMillis())
+                        // 协议 v2 握手字段（SYNC_PROTOCOL.md §2）；旧端缺此字段，客户端据此提示「对端较旧」
+                        put("protocolVersion", CardJson.PROTOCOL_VERSION)
                     }.toString()
                     sendResponse(out, 200, "OK", "application/json; charset=utf-8", json)
                 } else {
