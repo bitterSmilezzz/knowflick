@@ -27,6 +27,9 @@ public struct Storage: Sendable {
     // 常态跳过全量解码（每次落盘省一整轮 JSON decode）；保存成功后复位。
     // 另记录「最近一次 loadCards 是否拿到了可用卡片库」，供 AppStore 区分「合法空库」与「无库」（见 loadCards）。
     private let state = StorageStateBox()
+    /// 追问会话内存表（Wave C2）：值类型 Storage 的各副本共享同一张表（引用盒），
+    /// 每个 init 一份——不同 baseDir 的实例互不串缓存。见 `ChatSessionTable`。
+    private let chatTable = ChatSessionTable()
 
     /// 默认存储目录（Application Support/KnowFlick）
     public init() {
@@ -70,6 +73,37 @@ public struct Storage: Sendable {
 
         func setLibraryUsable(_ newValue: Bool) {
             lock.lock(); usable = newValue; lock.unlock()
+        }
+    }
+
+    /// 追问会话内存表（Wave C2）：读一次、之后每次落盘只做全量 encode。
+    ///
+    /// 为什么用引用盒：`Storage` 是值类型，`AppStore` / `ChatSessionStore` 与测试各自持有副本，
+    /// 只有盒能让所有副本看到同一张表；每个 `Storage.init` 生成独立盒子，不同 baseDir 不串缓存。
+    private final class ChatSessionTable: @unchecked Sendable {
+        /// 磁盘指纹：存在性 + 修改时间 + 大小。用来感知「文件刚出现 / 别的实例刚写过」，
+        /// 每次访问只做 stat、不解码；指纹未变就完全复用内存表（这是「读一次」的判据）。
+        struct FileStamp: Equatable {
+            let exists: Bool
+            let modified: Date?
+            let size: Int?
+        }
+
+        struct State {
+            var loaded = false
+            var sessions: [UUID: CardChatSession] = [:]
+            var stamp: FileStamp?
+            /// 全量读盘次数（测试护栏：每条消息的落盘不得再触发 decode）
+            var decodeCount = 0
+        }
+
+        private let lock = NSLock()
+        private var state = State()
+
+        func withLock<T>(_ body: (inout State) throws -> T) rethrows -> T {
+            lock.lock()
+            defer { lock.unlock() }
+            return try body(&state)
         }
     }
 
@@ -283,8 +317,77 @@ public struct Storage: Sendable {
     }
 
     // MARK: - 卡片追问会话 (Card Chat Sessions)
+    //
+    // Wave C2 主线程减负（c）：旧实现每条消息落盘都要 load+decode 整个 chat_sessions.json，
+    // 会话一长就是每次一整轮全量解码。现在会话表常驻内存（每个 Storage 实例一份）：
+    // 磁盘指纹未变时读只走内存、写只做全量 encode；指纹变化（文件刚出现 / 别的实例刚写过）
+    // 或上一次写失败时才重新读盘。取舍与口径：文件仍是唯一真源，只是不再每条消息重解一遍。
+
+    /// 追问会话表全量读盘次数（测试护栏，同 `deckRecomputeTrace` 口径）：
+    /// 验证「读一次、写只 encode」——每条消息的落盘不得再触发 decode。
+    var chatSessionDecodeCount: Int {
+        chatTable.withLock { $0.decodeCount }
+    }
 
     public func loadChatSessions() -> [UUID: CardChatSession] {
+        chatTable.withLock { table in
+            refreshChatSessions(&table)
+            return table.sessions
+        }
+    }
+
+    public func loadChatSession(for cardId: UUID) -> CardChatSession? {
+        loadChatSessions()[cardId]
+    }
+
+    public func saveChatSessionThrowing(_ session: CardChatSession) throws {
+        try chatTable.withLock { table in
+            refreshChatSessions(&table)
+            table.sessions[session.cardId] = session
+            try writeChatSessions(&table)
+        }
+    }
+
+    public func clearChatSessionThrowing(for cardId: UUID) throws {
+        try chatTable.withLock { table in
+            refreshChatSessions(&table)
+            table.sessions.removeValue(forKey: cardId)
+            try writeChatSessions(&table)
+        }
+    }
+
+    /// 锁内刷新（调用方已持锁）：首次访问，或磁盘指纹已变（文件刚出现 / 别的实例刚写过）
+    /// 时全量读一次；否则直接复用内存表。
+    private func refreshChatSessions(_ table: inout ChatSessionTable.State) {
+        let stamp = chatSessionsStamp()
+        guard !table.loaded || table.stamp != stamp else { return }
+        table.sessions = readChatSessionsFromDisk()
+        table.stamp = stamp
+        table.loaded = true
+        table.decodeCount += 1
+    }
+
+    /// 锁内全量落盘（调用方已持锁）：只 encode 内存表，不再 load+decode 一遍。
+    /// 写失败作废内存表——下次访问回到磁盘真源，与旧实现「失败即磁盘不变」一致。
+    private func writeChatSessions(_ table: inout ChatSessionTable.State) throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data: Data
+        do { data = try encoder.encode(Array(table.sessions.values)) }
+        catch {
+            table.loaded = false
+            throw StorageWriteError.encoding(error.localizedDescription)
+        }
+        do { try data.write(to: fileURL("chat_sessions.json"), options: .atomic) }
+        catch {
+            table.loaded = false
+            throw StorageWriteError.writing(error.localizedDescription)
+        }
+        table.stamp = chatSessionsStamp()
+    }
+
+    /// 读盘（锁内）：文件缺失按空表；损坏则保留隔离副本并按空表处理（口径与旧实现一致）
+    private func readChatSessionsFromDisk() -> [UUID: CardChatSession] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let url = fileURL("chat_sessions.json")
@@ -307,34 +410,19 @@ public struct Storage: Sendable {
         return dict
     }
 
-    public func loadChatSession(for cardId: UUID) -> CardChatSession? {
-        loadChatSessions()[cardId]
-    }
-
-    public func saveChatSessionThrowing(_ session: CardChatSession) throws {
-        var sessions = loadChatSessions()
-        sessions[session.cardId] = session
-        let list = Array(sessions.values)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let data: Data
-        do { data = try encoder.encode(list) }
-        catch { throw StorageWriteError.encoding(error.localizedDescription) }
-        do { try data.write(to: fileURL("chat_sessions.json"), options: .atomic) }
-        catch { throw StorageWriteError.writing(error.localizedDescription) }
-    }
-
-    public func clearChatSessionThrowing(for cardId: UUID) throws {
-        var sessions = loadChatSessions()
-        sessions.removeValue(forKey: cardId)
-        let list = Array(sessions.values)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let data: Data
-        do { data = try encoder.encode(list) }
-        catch { throw StorageWriteError.encoding(error.localizedDescription) }
-        do { try data.write(to: fileURL("chat_sessions.json"), options: .atomic) }
-        catch { throw StorageWriteError.writing(error.localizedDescription) }
+    /// 磁盘指纹（锁内 stat，不解码）：存在性 + 修改时间 + 大小。
+    /// 只要文件被任何一方改过（包括本进程的另一个 Storage 副本），指纹就会变化。
+    private func chatSessionsStamp() -> ChatSessionTable.FileStamp {
+        let url = fileURL("chat_sessions.json")
+        guard fileManager.fileExists(atPath: url.path) else {
+            return ChatSessionTable.FileStamp(exists: false, modified: nil, size: nil)
+        }
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        return ChatSessionTable.FileStamp(
+            exists: true,
+            modified: values?.contentModificationDate,
+            size: values?.fileSize
+        )
     }
 
     // MARK: - 搜索历史 (Search History)

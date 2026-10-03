@@ -502,23 +502,23 @@ public struct AIService: Sendable {
 
     // MARK: - 流式网络调用
 
-    /// 流式请求 + 增量提取：收到 targetCount 个完整对象即停（省时省额度），429/5xx 自动重试
+    /// 流式请求 + 增量提取：收到 targetCount 个完整对象即停（省时省额度），429/5xx 自动重试。
+    /// 重试参数与判定收敛在 `RetryPolicy.cardGeneration`（与追问路径同一值类型）。
     private func streamPayloadsWithRetry(
         messages: [[String: String]],
         settings: AISettings,
         maxTokens: Int,
         targetCount: Int
     ) async throws -> [AICardPayload] {
+        let policy = RetryPolicy.cardGeneration(retryBaseDelay: retryBaseDelay)
         var lastError: Error = AIError.network("未知错误")
-        for attempt in 0..<3 {
+        for attempt in 0..<policy.maxAttempts {
             do {
                 return try await streamPayloads(messages: messages, settings: settings, maxTokens: maxTokens, targetCount: targetCount)
             } catch let e as AIError {
-                guard case let .httpStatus(code, _) = e, code == 429 || (500...599).contains(code), attempt < 2 else {
-                    throw e
-                }
+                guard policy.shouldRetry(after: e, attempt: attempt) else { throw e }
                 lastError = e
-                try await Task.sleep(for: .seconds(retryBaseDelay * pow(2.0, Double(attempt))))
+                try await Task.sleep(for: .seconds(policy.delayBeforeRetry(attempt: attempt)))
             } catch {
                 lastError = error
                 throw error
@@ -684,10 +684,12 @@ public struct AIService: Sendable {
                     "stream": true
                 ]
 
-                // 与生成路径同级的 429/5xx 重试；一旦产出过内容则不再重来（用户已看到部分回答）
+                // 与生成路径同一份重试策略（RetryPolicy.cardChat）；差异只有一条：
+                // 一旦产出过内容则不再重来（用户已看到部分回答，重放会把它吞掉）
+                let retryPolicy = RetryPolicy.cardChat(retryBaseDelay: retryBaseDelay)
                 var hasYielded = false
                 do {
-                    attempt: for attempt in 0..<3 {
+                    attempt: for attempt in 0..<retryPolicy.maxAttempts {
                         do {
                             var request = try makeRequest(settings: settings, timeout: 90)
                             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -715,10 +717,8 @@ public struct AIService: Sendable {
                             continuation.finish()
                             return
                         } catch let e as AIError {
-                            guard case let .httpStatus(code, _) = e,
-                                  code == 429 || (500...599).contains(code),
-                                  !hasYielded, attempt < 2 else { throw e }
-                            try await Task.sleep(for: .seconds(retryBaseDelay * pow(2.0, Double(attempt))))
+                            guard retryPolicy.shouldRetry(after: e, attempt: attempt, hasYielded: hasYielded) else { throw e }
+                            try await Task.sleep(for: .seconds(retryPolicy.delayBeforeRetry(attempt: attempt)))
                             continue attempt
                         }
                     }
