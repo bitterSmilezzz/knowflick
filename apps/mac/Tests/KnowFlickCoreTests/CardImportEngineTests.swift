@@ -20,7 +20,7 @@ struct CardImportEngineTests {
         ]
         """
         let data = jsonStr.data(using: .utf8)!
-        let cards = try CardImportEngine.parseJSON(data: data)
+        let cards = try CardImportEngine.parseJSON(data: data).cards
 
         #expect(cards.count == 1)
         #expect(cards[0].category == "经济学")
@@ -207,7 +207,7 @@ struct CardImportEngineTests {
           }
         ]
         """
-        let cards = try CardImportEngine.parseJSON(data: jsonStr.data(using: .utf8)!)
+        let cards = try CardImportEngine.parseJSON(data: jsonStr.data(using: .utf8)!).cards
         #expect(cards.count == 2)
         #expect(cards.map(\.headline) == ["毫秒日期卡", "坏邻居旁边的正常卡"])
         // 毫秒级 ISO8601 已正确解析（2026-01-02T03:04:05.678Z ≈ 1767325445.678）

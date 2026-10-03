@@ -6,12 +6,28 @@ public struct RemoteDeviceInfo: Sendable, Equatable {
     public let cardCount: Int
     public let favoriteCount: Int
     public let timestamp: Int64
+    /// 对端协议版本（/api/info 的 `protocolVersion`）。
+    /// `nil` = 缺字段 = v1 旧端（协议 §2：提示「建议两端升级」，不阻断同步）。
+    public let protocolVersion: Int?
 
-    public init(deviceName: String, cardCount: Int, favoriteCount: Int, timestamp: Int64) {
+    public init(deviceName: String, cardCount: Int, favoriteCount: Int, timestamp: Int64, protocolVersion: Int? = nil) {
         self.deviceName = deviceName
         self.cardCount = cardCount
         self.favoriteCount = favoriteCount
         self.timestamp = timestamp
+        self.protocolVersion = protocolVersion
+    }
+
+    /// /api/info 响应解析：缺 `protocolVersion` 字段的旧端解析为 nil。
+    /// 单独成函数以便对「缺字段=旧端」的契约做无网络单测。
+    static func parseInfo(_ json: [String: Any]) -> RemoteDeviceInfo {
+        RemoteDeviceInfo(
+            deviceName: json["deviceName"] as? String ?? "未知设备",
+            cardCount: json["cardCount"] as? Int ?? 0,
+            favoriteCount: json["favoriteCount"] as? Int ?? 0,
+            timestamp: (json["timestamp"] as? NSNumber)?.int64Value ?? 0,
+            protocolVersion: json["protocolVersion"] as? Int
+        )
     }
 }
 
@@ -34,16 +50,87 @@ public final class SyncServer: @unchecked Sendable {
 
     private let accessCode: String
     private let getCards: @Sendable () async -> [KnowledgeCard]
-    private let onReceiveCards: @Sendable ([KnowledgeCard]) async -> (added: Int, restored: Int, ignored: Int)
+    /// 本地墓碑表来源（协议 v2 §3）：GET 载荷的 tombstones 字段由此取值
+    private let getTombstones: @Sendable () async -> [SyncTombstone]
+    /// 合并入口（协议 v2 §4）：对端卡片 + 墓碑一并交给合并方；
+    /// `deleted` 仅统计「收到墓碑 → 实际删除本地卡片」的数量，随 POST 响应 `"deleted":n` 上报
+    private let onReceiveCards: @Sendable ([KnowledgeCard], [SyncTombstone]) async -> (added: Int, restored: Int, ignored: Int, deleted: Int)
+    /// 401 失败滑动窗口（B6 配对码防枚举）；状态随 server 生命周期，start() 重置
+    private let authWindow: AuthFailureWindow
+
+    // MARK: - B6 配对码防枚举
+
+    /// 401 失败滑动窗口：60s 内第 5 次鉴权失败起，后续 30s 内所有请求直接 429
+    /// （配对码仅 6 位数字，不设防可被局域网攻击者在握手超时内穷举）。
+    /// 锁保护：handleClient 跑在并发的 Task 上。
+    private final class AuthFailureWindow: @unchecked Sendable {
+        static let windowMs: Int64 = 60_000
+        static let threshold = 5
+        static let throttleMs: Int64 = 30_000
+
+        enum Verdict { case allow, throttled }
+
+        private let lock = NSLock()
+        private var failureTimestamps: [Int64] = []
+        private var throttledUntil: Int64 = 0
+        private let now: @Sendable () -> Int64
+
+        init(now: @escaping @Sendable () -> Int64) {
+            self.now = now
+        }
+
+        /// 鉴权前判定：限速激活期间直接 429——**不再比对配对码**，
+        /// 否则攻击者可用正确码在限速期探测出「码已猜中」。
+        func verdict() -> Verdict {
+            lock.lock(); defer { lock.unlock() }
+            return now() < throttledUntil ? .throttled : .allow
+        }
+
+        /// 记录一次鉴权失败；窗口内失败数达到阈值即武装 30s 限速。
+        func recordFailure() {
+            lock.lock(); defer { lock.unlock() }
+            let current = now()
+            failureTimestamps.append(current)
+            failureTimestamps = failureTimestamps.filter { current - $0 < Self.windowMs }
+            if failureTimestamps.count >= Self.threshold {
+                throttledUntil = current + Self.throttleMs
+            }
+        }
+
+        /// 状态随 server 生命周期：重新 start 时清空（换配对码后旧窗口不应残留）
+        func reset() {
+            lock.lock(); defer { lock.unlock() }
+            failureTimestamps = []
+            throttledUntil = 0
+        }
+    }
+
+    /// 常量时间字符串比较（B6）：比较耗时只取决于输入长度，与是否相等无关，
+    /// 不给「逐位逼近配对码」的时序侧信道。长度差异也参与累积，不提前返回。
+    static func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {
+        let left = Array(lhs.utf8)
+        let right = Array(rhs.utf8)
+        var difference = UInt8(left.count == right.count ? 0 : 1)
+        for index in 0..<max(left.count, right.count) {
+            let leftByte = index < left.count ? left[index] : 0
+            let rightByte = index < right.count ? right[index] : 0
+            difference |= leftByte ^ rightByte
+        }
+        return difference == 0
+    }
 
     public init(
         accessCode: String,
         getCards: @escaping @Sendable () async -> [KnowledgeCard],
-        onReceiveCards: @escaping @Sendable ([KnowledgeCard]) async -> (added: Int, restored: Int, ignored: Int)
+        getTombstones: @escaping @Sendable () async -> [SyncTombstone],
+        onReceiveCards: @escaping @Sendable ([KnowledgeCard], [SyncTombstone]) async -> (added: Int, restored: Int, ignored: Int, deleted: Int),
+        now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
     ) {
         self.accessCode = accessCode
         self.getCards = getCards
+        self.getTombstones = getTombstones
         self.onReceiveCards = onReceiveCards
+        self.authWindow = AuthFailureWindow(now: now)
     }
 
     public func start(preferredPort: Int = 8998) -> Result<Int, Error> {
@@ -94,6 +181,8 @@ public final class SyncServer: @unchecked Sendable {
         self.serverFd = boundFd
         self.boundPort = port
         self.isRunning = true
+        // B6：限速窗口随 server 生命周期重置
+        authWindow.reset()
 
         let listenFd = boundFd
         let thread = Thread { [weak self] in
@@ -199,9 +288,17 @@ public final class SyncServer: @unchecked Sendable {
             }
         }
 
-        // 验证 6 位配对码
+        // B6 配对码防枚举：限速激活期间直接 429（明确文案），不再比对配对码，
+        // 避免攻击者借「正确码在限速期也返回 401→200 突变」探测出码已猜中
+        if authWindow.verdict() == .throttled {
+            sendResponse(clientFd, code: 429, message: "Too Many Requests", contentType: "application/json", body: #"{"error":"配对码尝试过于频繁，请 30 秒后再试"}"#)
+            return
+        }
+
+        // 验证 6 位配对码（常量时间比较，防时序侧信道枚举）
         let providedAuth = headers[Self.authHeader.lowercased()]
-        if providedAuth != accessCode {
+        if !Self.constantTimeEquals(providedAuth ?? "", accessCode) {
+            authWindow.recordFailure()
             sendResponse(clientFd, code: 401, message: "Unauthorized", contentType: "application/json", body: #"{"error":"Invalid pairing code"}"#)
             return
         }
@@ -231,7 +328,9 @@ public final class SyncServer: @unchecked Sendable {
                     "deviceName": hostName,
                     "cardCount": cards.count,
                     "favoriteCount": favCount,
-                    "timestamp": timestamp
+                    "timestamp": timestamp,
+                    // 协议 v2 §2：版本握手。旧端缺此字段按「建议两端升级」提示，不阻断同步。
+                    "protocolVersion": SyncProtocol.currentVersion
                 ]
                 if let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict),
                    let jsonString = String(data: jsonData, encoding: .utf8) {
@@ -244,7 +343,9 @@ public final class SyncServer: @unchecked Sendable {
         case "/api/cards":
             if method == "GET" {
                 let cards = await getCards()
-                if let jsonString = try? CardExportEngine.exportToJSON(cards: cards) {
+                let tombstones = await getTombstones()
+                // 协议 v2 §3：GET 响应为信封，携带本地墓碑表
+                if let jsonString = try? CardExportEngine.exportToJSON(cards: cards, tombstones: tombstones) {
                     sendResponse(clientFd, code: 200, message: "OK", contentType: "application/json; charset=utf-8", body: jsonString)
                 } else {
                     sendResponse(clientFd, code: 500, message: "Internal Server Error", contentType: "application/json", body: #"{"error":"Encode failed"}"#)
@@ -254,8 +355,8 @@ public final class SyncServer: @unchecked Sendable {
                     sendResponse(clientFd, code: 400, message: "Bad Request", contentType: "application/json", body: #"{"error":"Invalid card JSON"}"#)
                     return
                 }
-
-                let mergeResult = await onReceiveCards(incoming)
+                // 协议 v2 §4：信封里的墓碑一并交给合并方按对称语义应用
+                let mergeResult = await onReceiveCards(incoming.cards, incoming.tombstones)
                 let totalCards = await getCards().count
 
                 let respDict: [String: Any] = [
@@ -263,7 +364,9 @@ public final class SyncServer: @unchecked Sendable {
                     "restored": mergeResult.restored,
                     "added": mergeResult.added,
                     "ignored": mergeResult.ignored,
-                    "total": totalCards
+                    "total": totalCards,
+                    // 协议 v2 §1：本次被对端墓碑删除的本地卡数（旧端不认识则忽略）
+                    "deleted": mergeResult.deleted
                 ]
                 if let respData = try? JSONSerialization.data(withJSONObject: respDict),
                    let respString = String(data: respData, encoding: .utf8) {

@@ -92,28 +92,51 @@ public final class PersistenceCoordinator {
         }
     }
 
-    /// 应用退出前同步保存最后状态，并等待已提交的写入完成。
+    /// 退出 flush 的主线程有界等待上限（协议 §8：≤2s，超时不再阻塞退出）
+    static let flushWaitLimit: DispatchTimeInterval = .seconds(2)
+
+    /// 应用退出前保存最后状态：写入提交到后台串行队列执行，调用方（主线程）**有界等待**。
+    ///
+    /// 旧实现在主线程 `persistenceQueue.sync` 等全库编码+写盘，退出可能被无限阻塞（B8）：
+    /// 现在写入仍在同一条后台队列完成（先于本调用提交的写入都会跑完，屏障语义不变），
+    /// 主线程最多等 2s，超时放弃等待不再阻塞退出——数据仍会继续在后台写（原子写保证不损坏）。
+    /// 等待成功后照旧同步上浮告警；「退出前数据落盘」的既有测试语义保持不变。
     public func flushPersistence(cards: [KnowledgeCard], settings: AISettings, skipCards: Bool) {
         persistTask?.cancel()
         persistTask = nil
         settingsPersistTask?.cancel()
         settingsPersistTask = nil
         persistenceRevision &+= 1
-        let storage = self.storage
         settingsPersistRevision &+= 1
-        let (result, warning): (CardSaveResult, String?) = persistenceQueue.sync {
-            let warning: String?
-            do { try storage.saveSettingsThrowing(settings); warning = nil }
-            catch { warning = "设置保存失败：\(error.localizedDescription)" }
-            return (skipCards ? .saved : storage.saveCards(cards), warning)
+        let storage = self.storage
+        let outcome = FlushOutcome()
+        let group = DispatchGroup()
+        group.enter()
+        persistenceQueue.async {
+            defer { group.leave() }
+            do { try storage.saveSettingsThrowing(settings); outcome.settingsWarning = nil }
+            catch { outcome.settingsWarning = "设置保存失败：\(error.localizedDescription)" }
+            outcome.cardResult = skipCards ? .saved : storage.saveCards(cards)
         }
-        settingsWarning = warning
-        receiveSaveResult(result)
+        if group.wait(timeout: .now() + Self.flushWaitLimit) == .success {
+            settingsWarning = outcome.settingsWarning
+            receiveSaveResult(outcome.cardResult)
+        }
     }
 
     /// 让已排队的异步写入跑完（测试用同步屏障：与写入共用同一条串行队列）
     func waitForPendingWrites() {
         persistenceQueue.sync {}
+    }
+
+    // MARK: - 同步墓碑表
+
+    /// 墓碑表落盘（协议 v2 §4）：与卡片写入共用同一条串行队列，
+    /// 保证「删卡（cards.json）→ 记墓碑（tombstones.json）」的跨文件先后顺序。
+    /// 失败只进日志不打横幅：墓碑表丢失的退化（已删卡可能再次被对端删除）下次同步自愈。
+    public func saveTombstones(_ tombstones: [SyncTombstone]) {
+        let storage = self.storage
+        persistenceQueue.async { storage.saveTombstones(tombstones) }
     }
 
     // MARK: - 设置落盘（非密钥类）
@@ -190,5 +213,23 @@ public final class PersistenceCoordinator {
         case .savedWithoutBackup(let message):
             cardWarning = "卡片已保存，但备份未能更新。\n\(message)"
         }
+    }
+}
+
+/// flush 结果盒（B8）：写入在持久化队列完成、主线程在 group.wait 返回后读取。
+/// 锁保证跨线程可见性——Swift 6 严格并发下不用裸捕获变量。
+private final class FlushOutcome: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _settingsWarning: String?
+    private var _cardResult: CardSaveResult = .saved
+
+    var settingsWarning: String? {
+        get { lock.lock(); defer { lock.unlock() }; return _settingsWarning }
+        set { lock.lock(); _settingsWarning = newValue; lock.unlock() }
+    }
+
+    var cardResult: CardSaveResult {
+        get { lock.lock(); defer { lock.unlock() }; return _cardResult }
+        set { lock.lock(); _cardResult = newValue; lock.unlock() }
     }
 }

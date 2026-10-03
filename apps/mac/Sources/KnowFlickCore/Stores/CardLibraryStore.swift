@@ -119,15 +119,26 @@ public final class CardLibraryStore {
     }
 
     /// Edit content without replacing the card or its learning state.
+    /// 编辑器保存（CardEditorView 唯一的落库漏斗）时任一字段变更即写 `editedAt = now`
+    /// （协议 v2 §5），供双端同步合并 details 冲突时判新旧。
     @discardableResult
     public func updateCardContent(id: UUID, headline: String, category: String, summary: String, details: String) -> Bool {
         let fields = [headline, category, summary, details].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard fields.allSatisfy({ !$0.isEmpty }), let index = cards.firstIndex(where: { $0.id == id }) else { return false }
         var updated = cards
+        let contentChanged = updated[index].headline != fields[0]
+            || updated[index].category != fields[1]
+            || updated[index].summary != fields[2]
+            || updated[index].details != fields[3]
         updated[index].headline = fields[0]
         updated[index].category = fields[1]
         updated[index].summary = fields[2]
         updated[index].details = fields[3]
+        if contentChanged {
+            // 编辑时间戳截断到整秒：线格式是秒级 ISO8601，内存态与落盘重载态必须逐字段相等，
+            // 否则任何「内存卡 == 重载卡」的整卡比较都会被亚秒噪声打破（合并比较也不受影响）
+            updated[index].editedAt = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down))
+        }
         cards = updated
         persist()
         return true

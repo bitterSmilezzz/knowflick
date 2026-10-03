@@ -93,6 +93,9 @@ public final class AppStore {
     private let settingsStore: SettingsStore
     /// 卡片库子系统（拆分方案 B Step 5）：卡片池 / 卡堆 / 历史 / 收藏的状态所有权与卡片域动作
     private let library: CardLibraryStore
+    /// 本地同步墓碑表（协议 v2 §4）：内存快照由 facade 持有，落盘走持久化队列。
+    /// 本轮无删除 UI，本地永不主动产生墓碑——表内容只来自对端同步（含规则 1 触发的删除记录）。
+    private var tombstones: [SyncTombstone]
 
     public init(
         storage: Storage = Storage(),
@@ -115,6 +118,7 @@ public final class AppStore {
         // 初始设置此刻必为 .default（init 内没有任何 settings 赋值）；此后 settings.didSet
         // 单漏斗把每次变更同步进子系统
         self.library = CardLibraryStore(persistence: persistence)
+        self.tombstones = storage.loadTombstones()
         self.searchHistory = storage.loadSearchHistory()
 
         syncSpeechService()
@@ -396,6 +400,37 @@ public final class AppStore {
     @discardableResult
     public func mergeCards(_ incoming: [KnowledgeCard], insertNewAtTop: Bool = false) -> (added: Int, updated: Int, ignored: Int) {
         library.mergeCards(incoming, insertNewAtTop: insertNewAtTop)
+    }
+
+    // MARK: - 局域网同步（协议 v2）
+
+    /// 本地墓碑表内存快照：SyncServer 的 `getTombstones` 闭包由此取值（GET 载荷携带本地墓碑表）。
+    public var currentTombstones: [SyncTombstone] { tombstones }
+
+    /// 局域网同步合并入口（协议 §4）：合并对端卡片 + 应用对端墓碑，墓碑表变更落盘。
+    ///
+    /// - 卡片有变更（新增/更新/被对端墓碑删除）时**立即落盘**（persistImmediately，
+    ///   不等 350ms 节流）——对应协议 §8「合并落库后显式落盘」，消除同步完成点的 kill-app 丢数窗口。
+    /// - 墓碑表变更经持久化队列落盘，与卡片写入保持「先删卡后记墓碑」的跨文件顺序。
+    /// - 返回 (added, updated, ignored, deleted)：`deleted` 仅统计规则 1 实际触发的本地删除
+    ///   （POST 响应的 `"deleted":n` 上报给对端）。
+    @discardableResult
+    public func applySyncPayload(cards incomingCards: [KnowledgeCard], tombstones incomingTombstones: [SyncTombstone]) -> (added: Int, updated: Int, ignored: Int, deleted: Int) {
+        let outcome = CardImportEngine.mergeSyncPayload(
+            existing: cards,
+            localTombstones: tombstones,
+            incomingCards: incomingCards,
+            incomingTombstones: incomingTombstones
+        )
+        if outcome.added > 0 || outcome.updated > 0 || outcome.deleted > 0 {
+            cards = outcome.cards
+            persistImmediately()
+        }
+        if outcome.tombstones != tombstones {
+            tombstones = outcome.tombstones
+            persistence.saveTombstones(outcome.tombstones)
+        }
+        return (outcome.added, outcome.updated, outcome.ignored, outcome.deleted)
     }
 
     /// 通过 AI 将长文笔记提纯为知识卡片

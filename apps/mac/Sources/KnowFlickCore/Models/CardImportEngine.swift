@@ -13,12 +13,131 @@ public struct CardImportResult: Sendable {
     }
 }
 
+/// JSON 载荷解析结果：卡片 + 墓碑 + 载荷版本（协议 v2 §3）。
+///
+/// - v2 信封：`protocolVersion` = 信封值，`tombstones` = 信封值；
+/// - v1 裸列表 / 单卡对象：`protocolVersion` = nil（旧端），墓碑为空。
+public struct ParsedCardPayload: Sendable, Equatable {
+    public let cards: [KnowledgeCard]
+    public let tombstones: [SyncTombstone]
+    public let protocolVersion: Int?
+
+    public init(cards: [KnowledgeCard], tombstones: [SyncTombstone] = [], protocolVersion: Int? = nil) {
+        self.cards = cards
+        self.tombstones = tombstones
+        self.protocolVersion = protocolVersion
+    }
+}
+
 /// 卡片导入与笔记提炼引擎
 public enum CardImportEngine {
 
-    // MARK: - 1. JSON 备份解析
+    // MARK: - 1. JSON 备份解析（协议 v2 §3 兼容规则）
 
-    public static func parseJSON(data: Data) throws -> [KnowledgeCard] {
+    /// 三种输入的兼容解析：
+    /// ① 顶层 JSON 数组 → v1 裸列表（墓碑为空、版本 nil）；
+    /// ② 顶层对象且有 `cards` → v2 信封（cards + tombstones + protocolVersion）；
+    /// ③ 其他 → throw（同步服务端据此回 400）。
+    /// 单卡对象仍被接受：文件导入路径的历史行为（协议载荷不会发单卡对象）。
+    public static func parseJSON(data: Data) throws -> ParsedCardPayload {
+        let decoder = makeTolerantJSONDecoder()
+
+        // ① v1 裸列表（顶层 JSON 数组）。空数组是「合法但内容为空」，不是解析失败
+        //（与卡片库本身的口径一致，见 Storage.loadCards）：旧实现在这里静默跳过空数组，
+        // 最后抛「无法解析 JSON 文件」，把「没有卡片」误报成格式错误。
+        if let list = try? decoder.decode([KnowledgeCard].self, from: data) {
+            return ParsedCardPayload(cards: list)
+        }
+
+        // ② 顶层对象
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let rawCards = object["cards"] {
+                // v2 信封（协议 §3 判据：顶层对象、有 cards）
+                return try parseEnvelope(
+                    rawCards: rawCards,
+                    rawTombstones: object["tombstones"],
+                    protocolVersion: object["protocolVersion"] as? Int,
+                    decoder: decoder
+                )
+            }
+            if let single = try? decoder.decode(KnowledgeCard.self, from: data) {
+                return ParsedCardPayload(cards: [single])
+            }
+        }
+
+        // ③ 顶层是数组但存在坏卡：逐卡挽救，一张坏卡不再拖垮整个文件（校验必填字段仍是单卡硬门槛）
+        if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            let salvaged = salvageCards(from: array, decoder: decoder)
+            if !salvaged.isEmpty {
+                return ParsedCardPayload(cards: salvaged)
+            }
+        }
+        throw AIError.parse("无法解析 JSON 文件，格式与 KnowFlick 卡片结构不匹配")
+    }
+
+    public static func parseJSON(_ text: String) -> ParsedCardPayload? {
+        guard let data = text.data(using: .utf8) else { return nil }
+        return try? parseJSON(data: data)
+    }
+
+    /// v2 信封解析：cards 与 tombstones 分开取；tombstones 缺省为空表，
+    /// 存在但格式非法则抛错（400）——**绝不静默丢弃删除信息**。
+    private static func parseEnvelope(
+        rawCards: Any,
+        rawTombstones: Any?,
+        protocolVersion: Int?,
+        decoder: JSONDecoder
+    ) throws -> ParsedCardPayload {
+        guard let cardsArray = rawCards as? [Any] else {
+            throw AIError.parse("信封 cards 字段必须是数组")
+        }
+        let tombstones = try parseTombstones(rawTombstones)
+
+        let cardsData: Data
+        do { cardsData = try JSONSerialization.data(withJSONObject: cardsArray) }
+        catch { throw AIError.parse("信封 cards 字段编码无效") }
+        if let cards = try? decoder.decode([KnowledgeCard].self, from: cardsData) {
+            return ParsedCardPayload(cards: cards, tombstones: tombstones, protocolVersion: protocolVersion)
+        }
+        // 逐卡挽救：一张坏卡不再拖垮整个载荷
+        let salvaged = cardsArray.compactMap { item -> KnowledgeCard? in
+            guard let item = item as? [String: Any],
+                  let itemData = try? JSONSerialization.data(withJSONObject: item) else { return nil }
+            return try? decoder.decode(KnowledgeCard.self, from: itemData)
+        }
+        guard !salvaged.isEmpty else {
+            throw AIError.parse("无法解析信封 cards 字段，格式与 KnowFlick 卡片结构不匹配")
+        }
+        return ParsedCardPayload(cards: salvaged, tombstones: tombstones, protocolVersion: protocolVersion)
+    }
+
+    /// 墓碑数组解析（协议 §3 线格式 `[{"id":"…","deletedAt":毫秒}]`）。
+    /// `id` 按字符串解析（对端 id 格式不一定是 UUID，如规格夹具 "dead"）。
+    private static func parseTombstones(_ raw: Any?) throws -> [SyncTombstone] {
+        guard let raw else { return [] }
+        guard let array = raw as? [[String: Any]] else {
+            throw AIError.parse("信封 tombstones 字段必须是数组")
+        }
+        return try array.map { entry in
+            guard let id = entry["id"] as? String else {
+                throw AIError.parse("墓碑缺少 id 字段")
+            }
+            guard let timestamp = entry["deletedAt"] as? NSNumber else {
+                throw AIError.parse("墓碑缺少 deletedAt 时间戳")
+            }
+            return SyncTombstone(id: id, deletedAt: timestamp.int64Value)
+        }
+    }
+
+    private static func salvageCards(from array: [[String: Any]], decoder: JSONDecoder) -> [KnowledgeCard] {
+        array.compactMap { item -> KnowledgeCard? in
+            guard let itemData = try? JSONSerialization.data(withJSONObject: item) else { return nil }
+            return try? decoder.decode(KnowledgeCard.self, from: itemData)
+        }
+    }
+
+    /// 卡片/备份解析共用的宽容日期解码器：兼容 ISO8601（含毫秒）与秒级数字。
+    private static func makeTolerantJSONDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
@@ -37,31 +156,7 @@ public enum CardImportEngine {
             }
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "日期字段类型无效")
         }
-
-        if let list = try? decoder.decode([KnowledgeCard].self, from: data) {
-            // 空数组是「合法但内容为空」，不是解析失败（与卡片库本身的口径一致，见 Storage.loadCards）：
-            // 旧实现在这里静默跳过空数组，最后抛「无法解析 JSON 文件」，把「没有卡片」误报成格式错误。
-            return list
-        }
-        if let single = try? decoder.decode(KnowledgeCard.self, from: data) {
-            return [single]
-        }
-        // 逐卡挽救：一张坏卡不再拖垮整个文件（校验必填字段仍是单卡硬门槛）
-        if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            let salvaged = array.compactMap { item -> KnowledgeCard? in
-                guard let itemData = try? JSONSerialization.data(withJSONObject: item) else { return nil }
-                return try? decoder.decode(KnowledgeCard.self, from: itemData)
-            }
-            if !salvaged.isEmpty {
-                return salvaged
-            }
-        }
-        throw AIError.parse("无法解析 JSON 文件，格式与 KnowFlick 卡片结构不匹配")
-    }
-
-    public static func parseJSON(_ text: String) -> [KnowledgeCard]? {
-        guard let data = text.data(using: .utf8) else { return nil }
-        return try? parseJSON(data: data)
+        return decoder
     }
 
     // MARK: - 2. Markdown / 纯文本规则解析
@@ -374,9 +469,34 @@ public enum CardImportEngine {
         let category = primary.category.isEmpty ? secondary.category : primary.category
         let headline = primary.headline.isEmpty ? secondary.headline : primary.headline
         let summary = primary.summary.isEmpty ? secondary.summary : primary.summary
-        let details = primary.details.isEmpty ? secondary.details : (primary.details.count >= secondary.details.count ? primary.details : secondary.details)
+        // details 冲突（协议 v2 §5，修「用户缩短被旧长文覆盖」）：
+        // 双方均有 editedAt → 新者赢；任一方缺失（或编辑时间相同）→ 沿用 v1「较长者」规则，兼容历史数据。
+        // 空正文仍一律让位给非空一方（非空优先是所有字段合并的外层守卫）。
+        let details: String
+        if a.details.isEmpty {
+            details = b.details
+        } else if b.details.isEmpty {
+            details = a.details
+        } else if let editedA = a.editedAt, let editedB = b.editedAt, editedA != editedB {
+            details = editedA > editedB ? a.details : b.details
+        } else {
+            details = primary.details.count >= secondary.details.count ? primary.details : secondary.details
+        }
         let links = primary.links.isEmpty ? secondary.links : primary.links
         let source = primary.source == .seed && secondary.source != .seed ? secondary.source : primary.source
+
+        // 编辑时间：取双方较新者（对称、确定性）；双方皆历史卡则保持 nil
+        let editedAt: Date?
+        switch (a.editedAt, b.editedAt) {
+        case let (editedA?, editedB?):
+            editedAt = max(editedA, editedB)
+        case let (editedA?, nil):
+            editedAt = editedA
+        case let (nil, editedB?):
+            editedAt = editedB
+        case (nil, nil):
+            editedAt = nil
+        }
 
         // 3. 浏览足迹与意图（seenAt, swiped）：
         // 保留最新浏览时间；swiped 归属最新浏览那一端
@@ -490,6 +610,7 @@ public enum CardImportEngine {
             links: links,
             source: source,
             createdAt: createdAt,
+            editedAt: editedAt,
             seenAt: seenAt,
             swiped: swiped,
             isFavorite: isFavorite,
@@ -562,6 +683,78 @@ public enum CardImportEngine {
         }
 
         return (working, addedCount, updatedCount, ignoredCount)
+    }
+
+    // MARK: - 3.5 同步墓碑合并（协议 v2 §4，两端同源、对称可交换）
+
+    /// 卡片参与墓碑判定的「卡片时间戳」：有 `editedAt` 用 `editedAt`，否则 `createdAt`（协议 §4.3，epoch 毫秒）。
+    public static func cardTimestampMs(_ card: KnowledgeCard) -> Int64 {
+        let date = card.editedAt ?? card.createdAt
+        return Int64((date.timeIntervalSince1970 * 1000).rounded())
+    }
+
+    /// 把对端同步载荷（卡片 + 墓碑）合并进本地状态（协议 §4）：
+    ///
+    /// - **规则 2（收到卡片）**：本地墓碑表存在该 id 且 `deletedAt` ≥ 卡片时间戳 → 拒收（不复活，
+    ///   计入 ignored）；否则正常合并，并清除本地同 id 墓碑（复活场景）。
+    /// - **规则 1（收到墓碑）**：本地存在同 id 卡片且卡片时间戳 ≤ `deletedAt` → 删除本地卡片、
+    ///   记入墓碑表（deletedAt 取较大者），计入 deleted；卡片时间戳 > `deletedAt`（对端删除后
+    ///   又有新编辑/重建）→ 保留卡片、忽略该墓碑；本地无此卡 → 仅记墓碑（防止更早副本经第三方回流）。
+    ///
+    /// 先卡片后墓碑与先墓碑后卡片结果一致（规则天然可交换，由跨端交换律测试守护）。
+    /// 返回合并后的卡片、墓碑表与各项计数；墓碑表由调用方落盘。
+    public static func mergeSyncPayload(
+        existing: [KnowledgeCard],
+        localTombstones: [SyncTombstone],
+        incomingCards: [KnowledgeCard],
+        incomingTombstones: [SyncTombstone]
+    ) -> (cards: [KnowledgeCard], tombstones: [SyncTombstone], added: Int, updated: Int, ignored: Int, deleted: Int) {
+        // 墓碑 id 统一小写做匹配键：mac UUID 字符串为大写，对端可能发小写；非 UUID id 原样小写保留
+        var tombstoneById: [String: (deletedAt: Int64, displayId: String)] = [:]
+        func record(_ tombstone: SyncTombstone) {
+            let key = tombstone.id.lowercased()
+            let current = tombstoneById[key]
+            tombstoneById[key] = (max(current?.deletedAt ?? .min, tombstone.deletedAt), current?.displayId ?? tombstone.id)
+        }
+        for tombstone in localTombstones { record(tombstone) }
+
+        // 规则 2：应用对端卡片
+        var effectiveIncoming: [KnowledgeCard] = []
+        effectiveIncoming.reserveCapacity(incomingCards.count)
+        var rejectedCount = 0
+        for card in incomingCards {
+            let key = card.id.uuidString.lowercased()
+            if let deletedAt = tombstoneById[key]?.deletedAt, deletedAt >= cardTimestampMs(card) {
+                rejectedCount += 1   // 墓碑抵抗：拒收，不复活
+                continue
+            }
+            tombstoneById[key] = nil   // 正常合并/复活：清除本地同 id 墓碑
+            effectiveIncoming.append(card)
+        }
+
+        let (merged, added, updated, ignored) = mergeCardList(existing: existing, incoming: effectiveIncoming)
+
+        // 规则 1：应用对端墓碑
+        var working = merged
+        var deletedCount = 0
+        for tombstone in incomingTombstones {
+            let key = tombstone.id.lowercased()
+            if let index = working.firstIndex(where: { $0.id.uuidString.lowercased() == key }) {
+                if cardTimestampMs(working[index]) <= tombstone.deletedAt {
+                    working.remove(at: index)
+                    deletedCount += 1
+                    record(tombstone)
+                }
+                // else：卡片比对端删除时更新（删除后重建/新编辑）→ 保留卡片、忽略该墓碑
+            } else {
+                record(tombstone)   // 本地无此卡：记墓碑，挡住更早副本回流
+            }
+        }
+
+        let tombstones = tombstoneById
+            .map { SyncTombstone(id: $0.value.displayId, deletedAt: $0.value.deletedAt) }
+            .sorted { ($0.deletedAt, $0.id) < ($1.deletedAt, $1.id) }
+        return (working, tombstones, added, updated, ignored + rejectedCount, deletedCount)
     }
 
     public static func deduplicateAndMerge(

@@ -96,18 +96,20 @@ struct CardExportEngineTests {
         // 缺陷形态：旧实现签名是 `([KnowledgeCard]) -> String`，用 try? 吞掉编码错误并返回 "[]"，
         // 调用方只能 toast「已成功导出」。修复后签名必须为 throws，失败才能走到失败分支。
         // 以 throws 目标类型赋值：签名不符时编译期即失败（跨 Swift 5/6 语言模式稳定）。
-        let throwingExport: ([KnowledgeCard]) throws -> String = CardExportEngine.exportToJSON
+        // （v2 起 exportToJSON 带默认参 tombstones:，默认参不参与函数引用，这里用闭包定形）
+        let throwingExport: ([KnowledgeCard]) throws -> String = { try CardExportEngine.exportToJSON(cards: $0) }
 
         // 成功路径依然可用，且不会退化成空归档
         let cards = makeSampleCards()
         let json = try throwingExport(cards)
         #expect(json != "[]")
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode([KnowledgeCard].self, from: Data(json.utf8))
-        #expect(decoded.count == cards.count)
-        #expect(decoded[0].headline == cards[0].headline)
+        // v2 起 JSON 归档是信封（协议 §3）：顶层对象、cards 与导出卡逐字段一致
+        let payload = try CardImportEngine.parseJSON(data: Data(json.utf8))
+        #expect(payload.protocolVersion == SyncProtocol.currentVersion)
+        #expect(payload.tombstones.isEmpty)
+        #expect(payload.cards.count == cards.count)
+        #expect(payload.cards[0].headline == cards[0].headline)
     }
 
     @Test("JSON 归档数据可反序列化还原")
@@ -115,12 +117,14 @@ struct CardExportEngineTests {
         let cards = makeSampleCards()
         let data = try CardExportEngine.exportJSONArchive(cards: cards)
 
+        // 归档日期为 ISO8601（与既有线格式一致），解码需对称配置
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode([KnowledgeCard].self, from: data)
+        let envelope = try decoder.decode(CardSyncEnvelope.self, from: data)
 
-        #expect(decoded.count == 2)
-        #expect(decoded[0].headline == cards[0].headline)
-        #expect(decoded[1].category == cards[1].category)
+        #expect(envelope.protocolVersion == SyncProtocol.currentVersion)
+        #expect(envelope.cards.count == 2)
+        #expect(envelope.cards[0].headline == cards[0].headline)
+        #expect(envelope.cards[1].category == cards[1].category)
     }
 }

@@ -22,7 +22,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "123456",
             getCards: { [] },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
 
         let result = server.start(preferredPort: 18998)
@@ -43,7 +44,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "654321",
             getCards: { [serverCard] },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
 
         let startRes = server.start(preferredPort: 18999)
@@ -59,6 +61,47 @@ struct SyncServiceTests {
         #expect(!info.deviceName.isEmpty)
     }
 
+    // MARK: - Wave B B1：/api/info 协议版本握手（协议 v2 §2）
+
+    /// 服务端 /api/info 必须携带 protocolVersion=2，客户端解析出对端版本。
+    @Test("B1 /api/info 返回 protocolVersion=2 且客户端解析出对端版本")
+    func infoEndpointCarriesProtocolVersion() async throws {
+        let serverCard = createTestCard(headline: "版本握手")
+        let server = SyncServer(
+            accessCode: "334455",
+            getCards: { [serverCard] },
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
+        )
+        let startRes = server.start(preferredPort: 19011)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        let info = try await SyncClient.fetchRemoteInfo(target: "127.0.0.1:\(port)#334455")
+        #expect(info.protocolVersion == SyncProtocol.currentVersion)
+    }
+
+    /// 缺 `protocolVersion` 字段 = v1 旧端 → 解析为 nil（UI 提示「建议两端升级」，不阻断）；
+    /// 高于本端支持版本的值如实透出（UI 提示「对端版本更新」，同样不阻断）。
+    @Test("B1 缺 protocolVersion 字段按旧端解析（nil），更高版本如实透出")
+    func infoVersionParsingTreatsMissingFieldAsLegacyPeer() {
+        let legacy = RemoteDeviceInfo.parseInfo([
+            "deviceName": "旧端设备", "cardCount": 3, "favoriteCount": 1, "timestamp": 1_727_900_000_000
+        ])
+        #expect(legacy.protocolVersion == nil)
+        #expect(legacy.deviceName == "旧端设备")
+        #expect(legacy.cardCount == 3)
+
+        let newer = RemoteDeviceInfo.parseInfo([
+            "deviceName": "新端设备", "cardCount": 3, "favoriteCount": 1, "timestamp": 1_727_900_000_000,
+            "protocolVersion": SyncProtocol.currentVersion + 1
+        ])
+        #expect(newer.protocolVersion == SyncProtocol.currentVersion + 1)
+    }
+
     @Test func syncClientBidirectionalSync() async throws {
         let serverCard = createTestCard(headline: "中子星")
         let clientCard = createTestCard(headline: "黑洞")
@@ -68,9 +111,10 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "888999",
             getCards: { [serverCard] },
-            onReceiveCards: { incoming in
+            getTombstones: { [] },
+            onReceiveCards: { incoming, _ in
                 receivedBox.set(incoming)
-                return (added: incoming.count, restored: 0, ignored: 0)
+                return (added: incoming.count, restored: 0, ignored: 0, deleted: 0)
             }
         )
 
@@ -81,24 +125,81 @@ struct SyncServiceTests {
         }
         defer { server.stop() }
 
+        // 客户端本地状态：合并回调把拉到的卡片并入本地，currentCards 返回合并后的最新快照
+        let localState = ServerSyncState(cards: [clientCard])
+
         let target = "127.0.0.1:\(port)#888999"
         let result = try await SyncClient.executeBidirectionalSync(
             target: target,
-            localCards: [clientCard]
-        ) { pulled in
-            #expect(pulled.count == 1)
-            #expect(pulled[0].headline == "中子星")
-            return (added: 1, restored: 0, ignored: 0)
+            currentCards: { await localState.cards },
+            currentTombstones: { await localState.tombstones }
+        ) { incoming, tombstones in
+            #expect(incoming.count == 1)
+            #expect(incoming[0].headline == "中子星")
+            #expect(tombstones.isEmpty)
+            return await localState.apply(incoming, tombstones)
         }
 
-        #expect(result.pushedCount == 1)
+        #expect(result.pushedCount == 2, "推送计数必须是合并后快照（黑洞 + 刚拉到的中子星）")
         #expect(result.pulledCount == 1)
         #expect(result.addedCount == 1)
+        #expect(result.peerProtocolVersion == SyncProtocol.currentVersion, "对端 GET 载荷是 v2 信封")
 
-        // 验证服务端收到 clientCard
+        // 验证服务端收到的是合并后快照：clientCard + 刚拉到的 serverCard（修复前只推送合并前的
+        // localCards 快照，刚拉到的中子星会被重复推回对端一次）
         let received = receivedBox.get()
-        #expect(received.count == 1)
-        #expect(received[0].headline == "黑洞")
+        #expect(received.count == 2)
+        #expect(Set(received.map(\.headline)) == ["黑洞", "中子星"])
+    }
+
+    /// 推送载荷必须携带本地墓碑表（协议 §3）：本地已删除的卡片不再推给对端，
+    /// 删除记录以墓碑形式广播，防止对端把已删卡片再推回来。
+    @Test("B5 推送载荷携带合并后快照与本地墓碑表")
+    func syncClientPushIncludesPostMergeSnapshotAndTombstones() async throws {
+        let deletedCardId = UUID()
+        let deletedCard = KnowledgeCard(
+            id: deletedCardId, category: "冷知识", headline: "本地已删卡", summary: "摘要", details: "正文",
+            source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+        let tombstone = SyncTombstone(id: deletedCardId.uuidString, deletedAt: 1_727_900_001_000)
+        let survivor = KnowledgeCard(
+            category: "冷知识", headline: "幸存卡", summary: "摘要", details: "正文",
+            source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+
+        // 服务端状态：曾删除过 deletedCard（墓碑 {X,t}），当前只有幸存卡
+        let serverState = ServerSyncState(cards: [survivor], tombstones: [tombstone])
+
+        let server = SyncServer(
+            accessCode: "556677",
+            getCards: { await serverState.cards },
+            getTombstones: { await serverState.tombstones },
+            onReceiveCards: { incoming, tombstones in
+                await serverState.apply(incoming, tombstones)
+            }
+        )
+        let startRes = server.start(preferredPort: 19015)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        // 客户端本地状态：同样删除过该卡（对称墓碑），只剩幸存卡
+        let localState = ServerSyncState(cards: [survivor], tombstones: [tombstone])
+
+        let result = try await SyncClient.executeBidirectionalSync(
+            target: "127.0.0.1:\(port)#556677",
+            currentCards: { await localState.cards },
+            currentTombstones: { await localState.tombstones }
+        ) { incoming, incomingTombstones in
+            await localState.apply(incoming, incomingTombstones)
+        }
+
+        // 服务端终态：无新增（幸存卡已存在、墓碑对称），本地墓碑表仍在
+        #expect(result.pushedCount == 1)
+        #expect(await serverState.cards.map(\.headline) == ["幸存卡"])
+        #expect(await serverState.tombstones == [tombstone])
     }
 
     @Test func fieldLevelMergeCommutative() {
@@ -237,7 +338,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "999888",
             getCards: { [] },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
         let startRes = server.start(preferredPort: 19003)
         guard case .success(let port) = startRes else {
@@ -276,7 +378,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "135790",
             getCards: { cards },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
         let startRes = server.start(preferredPort: 19107)
         guard case .success(let port) = startRes else {
@@ -302,9 +405,12 @@ struct SyncServiceTests {
         }
         let body = response.subdata(in: headerEnd.upperBound..<response.count)
         #expect(body.count == declaredBytes, "实际收到 \(body.count) 字节，头部声明 \(declaredBytes) 字节")
-        let parsed = try CardImportEngine.parseJSON(data: body)
-        #expect(parsed.count == 200)
-        #expect(parsed.map(\.headline) == cards.map(\.headline))
+        // 协议 v2 §3：GET 响应为信封（cards 与请求前的卡库逐张一致，tombstones 为空表预留）
+        let payload = try CardImportEngine.parseJSON(data: body)
+        #expect(payload.protocolVersion == SyncProtocol.currentVersion)
+        #expect(payload.tombstones.isEmpty)
+        #expect(payload.cards.count == 200)
+        #expect(payload.cards.map(\.headline) == cards.map(\.headline))
     }
 
     /// 对端提前断开：客户端发完请求立即 close，服务端向已断开的连接写响应不得崩溃
@@ -324,7 +430,8 @@ struct SyncServiceTests {
         let server = SyncServer(
             accessCode: "246810",
             getCards: { cards },
-            onReceiveCards: { _ in (added: 0, restored: 0, ignored: 0) }
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) }
         )
         let startRes = server.start(preferredPort: 19109)
         guard case .success(let port) = startRes else {
@@ -346,6 +453,122 @@ struct SyncServiceTests {
         let info = try await SyncClient.fetchRemoteInfo(target: "127.0.0.1:\(port)#246810")
         #expect(info.cardCount == 200)
         #expect(info.deviceName.isEmpty == false)
+    }
+
+    // MARK: - Wave B B3：服务端墓碑语义（协议 §4）
+
+    /// 端到端：POST 载荷携带墓碑 → 服务端按规则 1 删除本地卡、响应上报 "deleted":1，
+    /// 之后 GET 载荷带出更新后的本地墓碑表。
+    @Test("B3 POST 墓碑删卡并上报 deleted，GET 带出本地墓碑表")
+    func syncServerAppliesPeerTombstones() async throws {
+        let cardId = UUID()
+        let card = KnowledgeCard(
+            id: cardId, category: "冷知识", headline: "待删卡", summary: "摘要", details: "正文",
+            source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+        let tombstone = SyncTombstone(id: cardId.uuidString, deletedAt: 1_727_900_001_000)
+        let state = ServerSyncState(cards: [card])
+
+        let server = SyncServer(
+            accessCode: "778899",
+            getCards: { await state.cards },
+            getTombstones: { await state.tombstones },
+            onReceiveCards: { incoming, tombstones in
+                await state.apply(incoming, tombstones)
+            }
+        )
+        let startRes = server.start(preferredPort: 19013)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        // POST 信封：无卡片、带墓碑
+        let body = try CardExportEngine.exportJSONArchive(cards: [], tombstones: [tombstone])
+        let peer = try RawLoopbackPeer(port: UInt16(port))
+        let response = try peer.request(
+            "POST /api/cards HTTP/1.1\r\nHost: 127.0.0.1\r\n\(SyncServer.authHeader): 778899\r\n"
+                + "Content-Type: application/json; charset=utf-8\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+                + String(decoding: body, as: UTF8.self)
+        )
+        guard let headerEnd = response.range(of: Data("\r\n\r\n".utf8)) else {
+            Issue.record("响应缺少头部结束标记")
+            return
+        }
+        let postResult = try #require(JSONSerialization.jsonObject(with: response.subdata(in: headerEnd.upperBound..<response.count)) as? [String: Any])
+        #expect(postResult["status"] as? String == "success")
+        #expect(postResult["deleted"] as? Int == 1, "POST 响应必须上报规则 1 实际删除的本地卡数")
+        #expect(postResult["total"] as? Int == 0)
+
+        // GET 载荷：卡片已删、本地墓碑表带出墓碑
+        let getResponse = try RawLoopbackPeer(port: UInt16(port)).request(
+            "GET /api/cards HTTP/1.1\r\nHost: 127.0.0.1\r\n\(SyncServer.authHeader): 778899\r\nConnection: close\r\n\r\n"
+        )
+        guard let getHeaderEnd = getResponse.range(of: Data("\r\n\r\n".utf8)) else {
+            Issue.record("GET 响应缺少头部结束标记")
+            return
+        }
+        let payload = try CardImportEngine.parseJSON(data: getResponse.subdata(in: getHeaderEnd.upperBound..<getResponse.count))
+        #expect(payload.cards.isEmpty)
+        #expect(payload.tombstones == [tombstone])
+    }
+
+    // MARK: - Wave B B6：配对码防枚举
+
+    /// 60s 滑动窗口内第 5 次鉴权失败触发 30s 限速（第 6 次起直接 429，正确码也被限速），
+    /// 窗口过期后恢复：正确码放行、错误码回到 401。时钟注入使「窗口过期」无需真等 30s。
+    @Test("B6 第 5 次配对码失败后触发限速，窗口过期恢复")
+    func authThrottleTriggersAfterFifthFailureAndRecoversAfterWindow() async throws {
+        let clock = MutableClock(startMs: 1_727_900_000_000)
+        let server = SyncServer(
+            accessCode: "246813",
+            getCards: { [] },
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) },
+            now: { clock.nowMs() }
+        )
+        let startRes = server.start(preferredPort: 19017)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        func status(for authValue: String) throws -> Int {
+            let response = try RawLoopbackPeer(port: UInt16(port)).request(
+                "GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\n\(SyncServer.authHeader): \(authValue)\r\nConnection: close\r\n\r\n"
+            )
+            let statusLine = String(decoding: response.prefix(while: { $0 != UInt8(ascii: "\r") }), as: UTF8.self)
+            let parts = statusLine.split(separator: " ")
+            return Int(parts.count > 1 ? parts[1] : "0") ?? 0
+        }
+
+        // 前 4 次失败 → 401
+        for _ in 0..<4 {
+            #expect(try status(for: "000000") == 401)
+        }
+        // 第 5 次失败触发限速（本次仍是 401），后续请求直接 429——正确码也被限速
+        #expect(try status(for: "000000") == 401)
+        #expect(try status(for: "000000") == 429, "第 6 次请求必须命中限速")
+        #expect(try status(for: "246813") == 429, "限速期内正确码同样被限速（不泄露码正确性）")
+
+        // 窗口过期（推进 31s）→ 恢复：正确码放行、错误码回到 401
+        clock.advance(byMs: 31_000)
+        #expect(try status(for: "246813") == 200, "限速窗口过期后必须恢复服务")
+        #expect(try status(for: "000000") == 401, "过期后错误码回到普通 401")
+    }
+
+    /// 配对码比较语义：常量时间实现的正确性契约（相等/不等/长度不等/空串）。
+    @Test("B6 配对码常量时间比较结果正确")
+    func pairingCodeConstantTimeComparisonIsExact() {
+        #expect(SyncServer.constantTimeEquals("123456", "123456"))
+        #expect(!SyncServer.constantTimeEquals("123456", "123457"), "末位差异必须判不等")
+        #expect(!SyncServer.constantTimeEquals("123456", "1234567"), "长度不同必须判不等")
+        #expect(!SyncServer.constantTimeEquals("", "123456"))
+        #expect(SyncServer.constantTimeEquals("", ""))
+        // 首位差异与末位差异结果一致（时序上不可区分是常量时间实现的前提）
+        #expect(!SyncServer.constantTimeEquals("923456", "123456"))
     }
 
     /// 退避重试必须尊重取消：取消后应当立刻以 `CancellationError` 结束，而不是把用户自己的
@@ -400,6 +623,49 @@ private final class ReceivedBox: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return cards
+    }
+}
+
+/// 可手动推进的毫秒时钟（B6 限速窗口测试用）：免真等 30s 验证「窗口过期恢复」。
+private final class MutableClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var currentMs: Int64
+
+    init(startMs: Int64) {
+        currentMs = startMs
+    }
+
+    func nowMs() -> Int64 {
+        lock.lock(); defer { lock.unlock() }
+        return currentMs
+    }
+
+    func advance(byMs: Int64) {
+        lock.lock(); defer { lock.unlock() }
+        currentMs += byMs
+    }
+}
+
+/// 服务端同步状态（测试用）：按协议 §4 对称语义合并对端载荷，供端到端墓碑测试驱动。
+private actor ServerSyncState {
+    private(set) var cards: [KnowledgeCard]
+    private(set) var tombstones: [SyncTombstone]
+
+    init(cards: [KnowledgeCard], tombstones: [SyncTombstone] = []) {
+        self.cards = cards
+        self.tombstones = tombstones
+    }
+
+    func apply(_ incoming: [KnowledgeCard], _ incomingTombstones: [SyncTombstone]) -> (added: Int, restored: Int, ignored: Int, deleted: Int) {
+        let outcome = CardImportEngine.mergeSyncPayload(
+            existing: cards,
+            localTombstones: tombstones,
+            incomingCards: incoming,
+            incomingTombstones: incomingTombstones
+        )
+        cards = outcome.cards
+        tombstones = outcome.tombstones
+        return (outcome.added, outcome.updated, outcome.ignored, outcome.deleted)
     }
 }
 
