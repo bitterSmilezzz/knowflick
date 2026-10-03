@@ -21,7 +21,8 @@ object WidgetCardRepository {
 
     /** 获取当前可用卡片列表（优先卡库存储，空库时自动加载预置种子） */
     fun getAvailableCards(context: Context): List<KnowledgeCard> {
-        val storage = CardStorage(File(context.filesDir, "store"))
+        // 与应用侧共用同一目录级共享实例：读写与 App 持久化队列在同一把锁上串行化
+        val storage = CardStorage.shared(File(context.filesDir, "store"))
         val loaded = storage.loadCards()
         if (loaded.isNotEmpty()) {
             return loaded
@@ -90,21 +91,28 @@ object WidgetCardRepository {
         return prevCard
     }
 
-    /** 桌面微件切换当前卡片收藏状态，并原子写回 CardStorage */
+    /**
+     * 桌面微件切换当前卡片收藏状态。
+     *
+     * 经共享 [CardStorage.updateCards] 做锁内原子读-改-写：以锁内最新卡库为基线翻转
+     * 目标卡的收藏，而不是拿本函数开始时捕获的快照整库写回——否则应用在两个读之间
+     * 落库的刷卡/收藏会被旧快照整库冲掉（last-writer-wins）。
+     * VM 未创建（进程仅因微件存活）时该路径同样成立，不依赖任何内存态卡库。
+     */
     fun toggleFavorite(context: Context): KnowledgeCard? {
         val current = getCurrentCard(context) ?: return null
-        val storage = CardStorage(File(context.filesDir, "store"))
-        val allCards = getAvailableCards(context).toMutableList()
-        val index = allCards.indexOfFirst { it.id == current.id }
-        if (index == -1) return current
-
-        val updated = current.copy(
-            isFavorite = !current.isFavorite,
-            favoritedAt = if (!current.isFavorite) System.currentTimeMillis() else null,
-        )
-        allCards[index] = updated
-        storage.saveCards(allCards)
-        return updated
+        val storage = CardStorage.shared(File(context.filesDir, "store"))
+        var updated: KnowledgeCard? = null
+        storage.updateCards { allCards ->
+            val target = allCards.firstOrNull { it.id == current.id } ?: return@updateCards allCards
+            val toggled = target.copy(
+                isFavorite = !target.isFavorite,
+                favoritedAt = if (!target.isFavorite) System.currentTimeMillis() else null,
+            )
+            updated = toggled
+            allCards.map { if (it.id == target.id) toggled else it }
+        }
+        return updated ?: current
     }
 
     /** 设定当前展示卡片 ID */

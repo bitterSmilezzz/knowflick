@@ -49,7 +49,8 @@ private data class SettingsSaveResult(
  */
 class KnowFlickViewModel(application: Application) : AndroidViewModel(application) {
     val model: AppModel = AppModel(
-        storage = CardStorage(File(application.filesDir, "store")),
+        // 目录级共享实例：与桌面微件的写回汇入同一把 CardStorage 实例锁（A5 竞态收口）
+        storage = CardStorage.shared(File(application.filesDir, "store")),
         seedCards = SeedLoader(application).load(),
     )
 
