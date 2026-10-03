@@ -55,4 +55,7 @@ object CardFileIO {
 
     /** 备份文件路径（供测试断言轮转行为） */
     fun backupFile(baseDir: File): File = File(baseDir, "cards.backup.json")
+
+    /** 第二代备份文件路径（B7 数据纵深：主文件 → backup → backup.2） */
+    fun backup2File(baseDir: File): File = File(baseDir, "cards.backup.2.json")
 }

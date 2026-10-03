@@ -39,6 +39,34 @@ class CardStorageTest {
     }
 
     @Test
+    fun B7_backupRotationKeepsTwoGenerations() {
+        // 数据纵深（SYNC_PROTOCOL.md §8）：主文件 → backup → backup.2 两代轮转
+        storage.saveCards(listOf(makeCard("第一版")))
+        storage.saveCards(listOf(makeCard("第二版")))
+        storage.saveCards(listOf(makeCard("第三版")))
+        storage.saveCards(listOf(makeCard("第四版")))
+        assertEquals(listOf("第四版"), storage.loadCards().map { it.headline })
+        assertEquals(listOf("第三版"), CardFileIO.decodeList(CardFileIO.backupFile(baseDir).readText()).map { it.headline })
+        assertEquals(listOf("第二版"), CardFileIO.decodeList(CardFileIO.backup2File(baseDir).readText()).map { it.headline })
+    }
+
+    @Test
+    fun B7_corruptedMainAndBackupFallBackToSecondGeneration() {
+        storage.saveCards(listOf(makeCard("一代")))
+        storage.saveCards(listOf(makeCard("二代")))
+        storage.saveCards(listOf(makeCard("三代")))
+        cardsFile().writeText("{ bad")
+        CardFileIO.backupFile(baseDir).writeText("{ also bad")
+
+        assertEquals(
+            listOf("一代"),
+            storage.loadCards().map { it.headline },
+            "主文件与一代备份双坏 → 二代兜底",
+        )
+        assertEquals(listOf("一代"), CardFileIO.decodeList(cardsFile().readText()).map { it.headline }, "恢复后主文件重建")
+    }
+
+    @Test
     fun corruptedMainFallsBackToBackupAndRepairs() {
         storage.saveCards(listOf(makeCard("健康版")))
         cardsFile().writeText("{ not valid json")
