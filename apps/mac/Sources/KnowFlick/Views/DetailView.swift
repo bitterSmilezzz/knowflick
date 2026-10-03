@@ -14,7 +14,11 @@ struct DetailView: View {
     let onNext: () -> Void
     let onPrevious: () -> Void
     let onClose: () -> Void
-    var store: AppStore? = nil
+    /// 语音朗读 / 追问对话 / 收藏等都要经 AppStore 的全局 speechService——
+    /// 曾经的可选 + `?? SpeechSynthesizerService()` 兜底会在 store 缺席时每次 body
+    /// 求值新建与全局状态脱钩的语音服务（朗读按钮永远显示未播放）。现有全部调用点
+    /// 均传非 nil store，故收紧为非可选，编译期杜绝该兜底路径。
+    let store: AppStore
     var relatedCards: [RelatedCardItem] = []
     var onSelectCard: ((KnowledgeCard) -> Void)? = nil
     var onCompleteReading: (() -> Void)? = nil
@@ -25,11 +29,11 @@ struct DetailView: View {
     @State private var showPosterSheet = false
     @State private var showChatSheet = false
     @State private var showConsoleSheet = false
-    private var isFavorited: Bool { store?.isFavorite(card) ?? card.isFavorite }
+    private var isFavorited: Bool { store.isFavorite(card) }
 
     init(
         card: KnowledgeCard,
-        store: AppStore? = nil,
+        store: AppStore,
         showAIMark: Bool,
         hasPrevious: Bool,
         hasNext: Bool,
@@ -317,21 +321,17 @@ struct DetailView: View {
             }
         }
         .sheet(isPresented: $showChatSheet) {
-            if let store {
-                CardFollowUpChatView(card: card, store: store) {
-                    showChatSheet = false
-                }
+            CardFollowUpChatView(card: card, store: store) {
+                showChatSheet = false
             }
         }
         .sheet(isPresented: $showConsoleSheet) {
-            if let store {
-                SpeechConsoleView(store: store, onClose: {
-                    showConsoleSheet = false
-                })
-            }
+            SpeechConsoleView(store: store, onClose: {
+                showConsoleSheet = false
+            })
         }
         .onChange(of: card.id, initial: true) { _, _ in
-            guard let store, store.settings.autoSpeakOnDetailOpen,
+            guard store.settings.autoSpeakOnDetailOpen,
                   !store.speechService.isAmbientMode,
                   store.speechService.state.activeCardId != card.id else { return }
             store.speechService.speak(card: card)
@@ -655,7 +655,7 @@ struct DetailView: View {
     // MARK: - 语音朗读声学导读组件
 
     private var speechTopButton: some View {
-        let service = store?.speechService ?? SpeechSynthesizerService()
+        let service = store.speechService
         let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
 
         return Button {
@@ -683,7 +683,7 @@ struct DetailView: View {
     }
 
     private var audioPlayerBar: some View {
-        let service = store?.speechService ?? SpeechSynthesizerService()
+        let service = store.speechService
         let isSpeakingThis = service.state.activeCardId == card.id && service.state.isPlaying
         let isPausedThis = service.state.activeCardId == card.id && service.state.isPaused
         let progress = (service.state.activeCardId == card.id) ? service.state.progress : 0.0
@@ -735,7 +735,7 @@ struct DetailView: View {
                     // 走设置通道：既即时灌进语音服务（settings.didSet），也能跨重启保留
                     ForEach(Self.speedTiers, id: \.rate) { tier in
                         Button(tier.label) {
-                            store?.applySettingsChange { $0.speechRate = tier.rate }
+                            store.applySettingsChange { $0.speechRate = tier.rate }
                         }
                     }
                 } label: {
