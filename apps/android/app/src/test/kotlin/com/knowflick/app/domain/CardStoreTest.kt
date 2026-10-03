@@ -344,4 +344,176 @@ class CardStoreTest {
         assertEquals(1_000L, restored.seenAt, "已读卡再划后撤销，必须还原原 seenAt 而非置 null")
         assertEquals(SwipeDirection.RIGHT, restored.swiped, "swiped 还原为刷卡前的值")
     }
+
+
+    // ---------- 墓碑合并语义（SYNC_PROTOCOL.md §4，两端同源逐条对齐） ----------
+
+    private fun cardWithId(id: String, headline: String, createdAt: Long, editedAt: Long? = null) =
+        KnowledgeCard.create("物理", headline, "摘要", "正文", source = CardSource.SEED, createdAt = createdAt)
+            .copy(id = id, editedAt = editedAt)
+
+    @Test
+    fun restoreSyncPayloadDeletesLocalCardOlderThanTombstone() {
+        // 规则 1：卡片时间戳 ≤ deletedAt → 删除 + 记墓碑（deletedAt 取较大者）
+        val store = CardStore(seedCards = emptyList())
+        val old = cardWithId("x-1", "旧卡", createdAt = 1_000L)
+        store.replaceAll(listOf(old))
+
+        val result = store.restoreSyncPayload(emptyList(), listOf(Tombstone("x-1", 2_000L)))
+
+        assertTrue(store.cards.none { it.id == "x-1" }, "时间戳早于墓碑的本地卡必须被删除")
+        assertEquals(1, result.deleted)
+        assertEquals(listOf(Tombstone("x-1", 2_000L)), store.tombstones)
+    }
+
+    @Test
+    fun restoreSyncPayloadDeletesByEditedAtWhenPresent() {
+        // §4.3：卡片时间戳取 editedAt 优先，否则 createdAt
+        val store = CardStore(seedCards = emptyList())
+        val edited = cardWithId("x-2", "编辑过", createdAt = 1_000L, editedAt = 3_000L)
+        store.replaceAll(listOf(edited))
+
+        // deletedAt=2000 早于 editedAt=3000 → 保留
+        val keep = store.restoreSyncPayload(emptyList(), listOf(Tombstone("x-2", 2_000L)))
+        assertEquals(0, keep.deleted)
+        assertEquals(1, store.cards.size)
+
+        // deletedAt=4000 晚于 editedAt=3000 → 删除
+        store.restoreSyncPayload(emptyList(), listOf(Tombstone("x-2", 4_000L)))
+        assertTrue(store.cards.isEmpty())
+        assertEquals(4_000L, store.tombstones.single { it.id == "x-2" }.deletedAt, "记墓碑时 deletedAt 取较大者")
+    }
+
+    @Test
+    fun restoreSyncPayloadKeepsCardNewerThanTombstone() {
+        // 规则 1 反向：对端删除后本端又有新编辑/重建 → 保留卡片、忽略墓碑、不记表
+        val store = CardStore(seedCards = emptyList())
+        val rebuilt = cardWithId("x-3", "重建卡", createdAt = 5_000L)
+        store.replaceAll(listOf(rebuilt))
+
+        val result = store.restoreSyncPayload(emptyList(), listOf(Tombstone("x-3", 2_000L)))
+
+        assertEquals(1, store.cards.size, "比墓碑更新的卡片必须保留")
+        assertEquals(0, result.deleted)
+        assertEquals(emptyList<Tombstone>(), store.tombstones, "未触发删除不得记墓碑")
+    }
+
+    @Test
+    fun restoreSyncPayloadRejectsCardResistedByLocalTombstone() {
+        // 规则 2：本地墓碑 deletedAt ≥ 卡片时间戳 → 拒收（不复活）
+        val store = CardStore(seedCards = emptyList())
+        store.loadTombstones(listOf(Tombstone("x-4", 2_000L)))
+
+        val result = store.restoreSyncPayload(listOf(cardWithId("x-4", "对端旧卡", createdAt = 1_000L)), emptyList())
+
+        assertTrue(store.cards.isEmpty(), "被墓碑抵抗的卡片不得复活")
+        assertEquals(0, result.added)
+        assertEquals(1, result.ignored, "拒收卡计入 ignored")
+        assertEquals(listOf(Tombstone("x-4", 2_000L)), store.tombstones, "抵抗后墓碑保留")
+    }
+
+    @Test
+    fun restoreSyncPayloadRevivesCardNewerThanLocalTombstone() {
+        // 规则 2 复活分支：deletedAt < 卡片时间戳 → 正常合并并清除本地墓碑
+        val store = CardStore(seedCards = emptyList())
+        store.loadTombstones(listOf(Tombstone("x-5", 2_000L)))
+
+        val revived = cardWithId("x-5", "复活卡", createdAt = 3_000L)
+        val result = store.restoreSyncPayload(listOf(revived), emptyList())
+
+        assertEquals(listOf("x-5"), store.cards.map { it.id })
+        assertEquals(1, result.added)
+        assertEquals(emptyList<Tombstone>(), store.tombstones, "复活后本地墓碑必须清除")
+    }
+
+    @Test
+    fun restoreSyncPayloadTombstoneThenNewerCardInSamePayloadConverges() {
+        // 同一载荷既带墓碑又带同 id 更新卡：先按规则 1 删旧卡，再按规则 2 以新卡复活
+        val store = CardStore(seedCards = emptyList())
+        store.replaceAll(listOf(cardWithId("x-6", "旧版本", createdAt = 1_000L)))
+
+        val result = store.restoreSyncPayload(
+            listOf(cardWithId("x-6", "新版本", createdAt = 1_000L, editedAt = 5_000L)),
+            listOf(Tombstone("x-6", 2_000L)),
+        )
+
+        assertEquals(listOf("x-6"), store.cards.map { it.id })
+        assertEquals(emptyList<Tombstone>(), store.tombstones, "复活清除墓碑")
+        // 规则 1 实际删过本地旧版 → deleted=1；新卡随后按 added 合并（id 复用）
+        assertEquals(1, result.deleted, "deleted 仅统计规则 1 实际触发的删除")
+        assertEquals(1, result.added)
+        assertEquals(0, result.restored)
+    }
+
+
+    // ---------- details 合并冲突（SYNC_PROTOCOL.md §5：修「用户缩短被旧长文覆盖」） ----------
+
+    private fun detailsCard(details: String, editedAt: Long? = null) =
+        KnowledgeCard.create("物理", "同一张卡", "摘要", details, source = CardSource.SEED, createdAt = 1_000L)
+            .copy(id = "same-id", editedAt = editedAt)
+
+    @Test
+    fun detailsConflictNewerEditedAtWinsEvenIfShorter() {
+        val a = detailsCard("短", editedAt = 2_000L)
+        val b = detailsCard("更长的正文内容", editedAt = 1_000L)
+
+        val merged = CardStore.mergeCard(a, b)
+
+        assertEquals("短", merged.details, "双方均有 editedAt → 新者赢（即使更短）")
+        assertEquals(merged, CardStore.mergeCard(b, a), "合并必须对称")
+    }
+
+    @Test
+    fun detailsConflictFallsBackToLongerWhenEitherEditedAtMissing() {
+        val noStamp = detailsCard("短")
+        val stampedLong = detailsCard("更长的正文内容", editedAt = 1_000L)
+
+        assertEquals("更长的正文内容", CardStore.mergeCard(noStamp, stampedLong).details, "任一方缺失 editedAt → 沿用 v1 较长者规则")
+
+        val stampedShort = detailsCard("短", editedAt = 2_000L)
+        val noStampLong = detailsCard("更长的正文内容")
+        assertEquals("更长的正文内容", CardStore.mergeCard(stampedShort, noStampLong).details, "任一方缺失 editedAt → 沿用 v1 较长者规则")
+    }
+
+    @Test
+    fun detailsConflictEqualEditedAtFallsBackToLonger() {
+        val a = detailsCard("短", editedAt = 2_000L)
+        val b = detailsCard("更长的正文内容", editedAt = 2_000L)
+
+        assertEquals("更长的正文内容", CardStore.mergeCard(a, b).details, "editedAt 持平退回较长者，保证对称确定")
+    }
+
+    @Test
+    fun mergedCardCarriesNewestEditedAt() {
+        val a = detailsCard("正文", editedAt = 2_000L)
+        val b = detailsCard("正文", editedAt = 1_000L)
+        assertEquals(2_000L, CardStore.mergeCard(a, b).editedAt)
+
+        val noStamp = detailsCard("正文")
+        assertEquals(2_000L, CardStore.mergeCard(a, noStamp).editedAt, "单方有 editedAt 时保留")
+        assertNull(CardStore.mergeCard(noStamp, detailsCard("正文")).editedAt, "双方缺失时保持 null")
+    }
+
+    // ---------- 外部单卡回灌（A5：微件收藏落库后回灌 App 内存态） ----------
+
+    @Test
+    fun replaceCardUpdatesSingleCardInPlace() {
+        val store = CardStore(seedCards = emptyList())
+        val original = card("原卡")
+        store.replaceAll(listOf(original, card("其他")))
+
+        val flipped = original.copy(isFavorite = true, favoritedAt = 1_234L)
+        assertTrue(store.replaceCard(flipped), "存在的 id 必须回灌成功")
+        assertEquals(flipped, store.cards.single { it.id == original.id })
+        assertEquals(1, store.cards.count { it.isFavorite })
+    }
+
+    @Test
+    fun replaceCardReturnsFalseForUnknownId() {
+        val store = CardStore(seedCards = emptyList())
+        store.replaceAll(listOf(card("原卡")))
+
+        assertTrue(!store.replaceCard(card("陌生人").copy(id = "ghost-id")))
+        assertEquals(1, store.cards.size, "未知 id 不得新增卡片")
+    }
 }

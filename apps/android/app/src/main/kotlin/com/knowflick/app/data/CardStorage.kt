@@ -29,6 +29,7 @@ class CardStorage(private val baseDir: File) {
 
     private val cardsFile: File get() = File(baseDir, "cards.json")
     private val backupFile: File get() = File(baseDir, "cards.backup.json")
+    private val backup2File: File get() = CardFileIO.backup2File(baseDir)
 
     /** 损坏标记：加载发现主文件损坏后置位，下次备份轮转前解码校验（快路径常态零解码） */
     @Volatile
@@ -38,6 +39,9 @@ class CardStorage(private val baseDir: File) {
         // 同一目录进程级共享同一实例：应用持久化队列与桌面微件写回必须在同一把实例锁上
         // 串行化，各造各的实例会让 @Synchronized 形同虚设（A5 微件整库写回竞态）。
         private val sharedInstances = java.util.concurrent.ConcurrentHashMap<String, CardStorage>()
+
+        /** 墓碑表容量上限（SYNC_PROTOCOL.md §4），超出裁最老 */
+        const val TOMBSTONE_CAP = 1000
 
         /** 按目录取进程级共享实例；应用与微件的整库读写都应经此入口 */
         fun shared(baseDir: File): CardStorage =
@@ -71,7 +75,12 @@ class CardStorage(private val baseDir: File) {
             }
             else -> previous
         }
-        val backupError = atomicWrite(backupFile, backupData)
+        val backupError = run {
+            // B7 两代轮转：先把现有一代备份挪进 backup.2，再写新的一代备份。
+            // 轮转失败不阻塞主链路：最坏情况 backup.2 停留旧代，一代备份仍照常写入。
+            rotateBackupToSecondGeneration()
+            atomicWrite(backupFile, backupData)
+        }
         return atomicWrite(cardsFile, data).let { mainError ->
             if (mainError == null) {
                 corruptionFlag = false   // 主文件已是本进程写出的健康内容
@@ -82,7 +91,21 @@ class CardStorage(private val baseDir: File) {
         }
     }
 
-    /** 加载卡片：主文件 → 备份（并重建主文件）→ 空（种子合并由调用方负责） */
+    /** B7：把一代备份文件原子挪到 backup.2（无一代备份时为空操作） */
+    private fun rotateBackupToSecondGeneration() {
+        try {
+            if (backupFile.exists()) {
+                Files.move(
+                    backupFile.toPath(),
+                    backup2File.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /** 加载卡片：主文件 → 备份（并重建主文件）→ 二代备份 → 空（种子合并由调用方负责） */
     fun loadCards(): List<KnowledgeCard> {
         val main = readFileSafe(cardsFile)
         val mainCards = main?.let { bytes ->
@@ -99,6 +122,18 @@ class CardStorage(private val baseDir: File) {
             saveCards(backupCards)   // 重建健康主文件
             return backupCards
         }
+
+        // B7：主文件与一代备份双坏时用二代兜底
+        val backup2 = readFileSafe(backup2File)
+        val backup2Cards = backup2?.let { bytes ->
+            runCatching { CardFileIO.decodeList(bytes.decodeToString()) }.getOrNull()
+        }
+        if (!backup2Cards.isNullOrEmpty()) {
+            corruptionFlag = true
+            saveCards(backup2Cards)   // 重建健康主文件
+            return backup2Cards
+        }
+
         corruptionFlag = true
         return emptyList()
     }
@@ -116,6 +151,34 @@ class CardStorage(private val baseDir: File) {
 
     fun saveSpeechJson(json: String): Boolean =
         atomicWrite(File(baseDir, "speech.json"), json.toByteArray(Charsets.UTF_8)) == null
+
+    // ---------- 墓碑表（SYNC_PROTOCOL.md §4：与卡片库同目录的独立小文件，上限 1000 裁最老） ----------
+
+    private val tombstoneFile: File get() = File(baseDir, "tombstones.json")
+    private val tombstoneSerializer = ListSerializer(com.knowflick.app.domain.Tombstone.serializer())
+
+    /** 加载墓碑表：文件损坏时隔离（返回空表），不得让坏字节拖垮同步与卡库 */
+    fun loadTombstones(): List<com.knowflick.app.domain.Tombstone> {
+        val bytes = readFileSafe(tombstoneFile) ?: return emptyList()
+        return try {
+            jsonSerializer.decodeFromString(tombstoneSerializer, bytes.decodeToString())
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    /** 原子写墓碑表；超出上限（1000）按 deletedAt 裁最老，落盘保持时间升序 */
+    fun saveTombstones(tombstones: List<com.knowflick.app.domain.Tombstone>): Boolean {
+        val capped = if (tombstones.size <= TOMBSTONE_CAP) tombstones else {
+            tombstones.sortedBy { it.deletedAt }.takeLast(TOMBSTONE_CAP)
+        }
+        val raw = try {
+            jsonSerializer.encodeToString(tombstoneSerializer, capped)
+        } catch (_: Throwable) {
+            return false
+        }
+        return atomicWrite(tombstoneFile, raw.toByteArray(Charsets.UTF_8)) == null
+    }
 
     // ---------- 搜索历史 (Search History) ----------
 

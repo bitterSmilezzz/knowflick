@@ -432,6 +432,7 @@ class MainActivity : ComponentActivity() {
                             accessCode = viewModel.syncAccessCode,
                             onToggleServer = viewModel::setSyncServerEnabled,
                             onExecuteSync = viewModel::executeLanSync,
+                            versionHint = viewModel::syncVersionHint,
                             onClose = { viewModel.closeSyncSheet() },
                         )
                     }

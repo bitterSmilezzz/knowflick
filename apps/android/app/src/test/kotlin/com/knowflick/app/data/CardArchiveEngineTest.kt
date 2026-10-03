@@ -61,7 +61,8 @@ class CardArchiveEngineTest {
         assertTrue(entries.containsKey("README.txt"))
 
         val cardsJsonText = String(entries["cards.json"]!!, Charsets.UTF_8)
-        val decodedCards = CardFileIO.decodeList(cardsJsonText)
+        // 归档导出走 v2 信封（SYNC_PROTOCOL.md §3）；导入侧双兼容见 CardFileIOTest
+        val decodedCards = com.knowflick.app.domain.CardJson.decodeEnvelope(cardsJsonText).cards
         assertEquals(2, decodedCards.size)
         assertEquals("CARD_1", decodedCards[0].id)
         assertEquals("邓宁-克鲁格效应", decodedCards[0].headline)
@@ -109,7 +110,7 @@ class CardArchiveEngineTest {
     fun testBuildJsonArchive() {
         val jsonBytes = CardArchiveEngine.buildJsonArchive(sampleCards)
         val jsonText = String(jsonBytes, Charsets.UTF_8)
-        val decoded = CardFileIO.decodeList(jsonText)
+        val decoded = com.knowflick.app.domain.CardJson.decodeEnvelope(jsonText).cards
         assertEquals(2, decoded.size)
         assertEquals("邓宁-克鲁格效应", decoded[0].headline)
         assertEquals("第一性原理", decoded[1].headline)

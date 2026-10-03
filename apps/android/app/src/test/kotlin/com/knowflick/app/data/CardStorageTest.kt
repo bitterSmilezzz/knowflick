@@ -39,6 +39,34 @@ class CardStorageTest {
     }
 
     @Test
+    fun B7_backupRotationKeepsTwoGenerations() {
+        // 数据纵深（SYNC_PROTOCOL.md §8）：主文件 → backup → backup.2 两代轮转
+        storage.saveCards(listOf(makeCard("第一版")))
+        storage.saveCards(listOf(makeCard("第二版")))
+        storage.saveCards(listOf(makeCard("第三版")))
+        storage.saveCards(listOf(makeCard("第四版")))
+        assertEquals(listOf("第四版"), storage.loadCards().map { it.headline })
+        assertEquals(listOf("第三版"), CardFileIO.decodeList(CardFileIO.backupFile(baseDir).readText()).map { it.headline })
+        assertEquals(listOf("第二版"), CardFileIO.decodeList(CardFileIO.backup2File(baseDir).readText()).map { it.headline })
+    }
+
+    @Test
+    fun B7_corruptedMainAndBackupFallBackToSecondGeneration() {
+        storage.saveCards(listOf(makeCard("一代")))
+        storage.saveCards(listOf(makeCard("二代")))
+        storage.saveCards(listOf(makeCard("三代")))
+        cardsFile().writeText("{ bad")
+        CardFileIO.backupFile(baseDir).writeText("{ also bad")
+
+        assertEquals(
+            listOf("一代"),
+            storage.loadCards().map { it.headline },
+            "主文件与一代备份双坏 → 二代兜底",
+        )
+        assertEquals(listOf("一代"), CardFileIO.decodeList(cardsFile().readText()).map { it.headline }, "恢复后主文件重建")
+    }
+
+    @Test
     fun corruptedMainFallsBackToBackupAndRepairs() {
         storage.saveCards(listOf(makeCard("健康版")))
         cardsFile().writeText("{ not valid json")
@@ -73,6 +101,41 @@ class CardStorageTest {
     fun settingsJsonRoundTrip() {
         storage.saveSettingsJson("""{"apiKeySet":true}""")
         assertEquals("""{"apiKeySet":true}""", storage.loadSettingsJson())
+    }
+
+    // ---------- 墓碑表持久化（SYNC_PROTOCOL.md §4：store 目录独立小文件） ----------
+
+    @Test
+    fun tombstonesRoundTrip() {
+        val tombstones = listOf(
+            com.knowflick.app.domain.Tombstone("dead-1", 1_727_900_001_000),
+            com.knowflick.app.domain.Tombstone("dead-2", 1_727_900_002_000),
+        )
+        assertTrue(storage.saveTombstones(tombstones))
+        assertEquals(tombstones, storage.loadTombstones())
+    }
+
+    @Test
+    fun corruptTombstoneFileIsIsolatedAndLoadsEmpty() {
+        File(baseDir, "tombstones.json").writeText("{ not valid json")
+        assertTrue(storage.loadTombstones().isEmpty(), "损坏墓碑文件必须隔离并返回空，不得拖垮同步")
+        // 之后的保存照常覆盖坏文件
+        assertTrue(storage.saveTombstones(listOf(com.knowflick.app.domain.Tombstone("ok", 1L))))
+        assertEquals(listOf(com.knowflick.app.domain.Tombstone("ok", 1L)), storage.loadTombstones())
+    }
+
+    @Test
+    fun tombstoneTableCapsAt1000EvictingOldest() {
+        val over = (0 until 1005).map {
+            com.knowflick.app.domain.Tombstone("id-$it", 1_000_000L + it)
+        }
+        assertTrue(storage.saveTombstones(over))
+        val loaded = storage.loadTombstones()
+        assertEquals(1000, loaded.size, "超出 1000 上限必须裁最老")
+        assertTrue(loaded.none { it.id == "id-0" }, "最老墓碑应被裁掉")
+        assertTrue(loaded.none { it.id == "id-4" })
+        assertEquals("id-5", loaded.first().id)
+        assertEquals("id-1004", loaded.last().id)
     }
 
     @Test

@@ -85,6 +85,7 @@ fun SyncSheet(
     accessCode: String,
     onToggleServer: (Boolean) -> Unit,
     onExecuteSync: (target: String, onDone: (Result<SyncResult>) -> Unit) -> Unit,
+    versionHint: (peerProtocolVersion: Int?) -> String?,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -473,6 +474,15 @@ fun SyncSheet(
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                                     )
+                                    // 协议版本握手提示（§2）：旧端/更新各一条文案，不阻断同步
+                                    versionHint(res.peerProtocolVersion)?.let { hint ->
+                                        Text(
+                                            text = hint,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = EditorialColor.aiAmber,
+                                        )
+                                    }
                                 }
                             }
                         }
