@@ -514,6 +514,63 @@ struct SyncServiceTests {
         #expect(payload.tombstones == [tombstone])
     }
 
+    // MARK: - Wave B B6：配对码防枚举
+
+    /// 60s 滑动窗口内第 5 次鉴权失败触发 30s 限速（第 6 次起直接 429，正确码也被限速），
+    /// 窗口过期后恢复：正确码放行、错误码回到 401。时钟注入使「窗口过期」无需真等 30s。
+    @Test("B6 第 5 次配对码失败后触发限速，窗口过期恢复")
+    func authThrottleTriggersAfterFifthFailureAndRecoversAfterWindow() async throws {
+        let clock = MutableClock(startMs: 1_727_900_000_000)
+        let server = SyncServer(
+            accessCode: "246813",
+            getCards: { [] },
+            getTombstones: { [] },
+            onReceiveCards: { _, _ in (added: 0, restored: 0, ignored: 0, deleted: 0) },
+            now: { clock.nowMs() }
+        )
+        let startRes = server.start(preferredPort: 19017)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        func status(for authValue: String) throws -> Int {
+            let response = try RawLoopbackPeer(port: UInt16(port)).request(
+                "GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\n\(SyncServer.authHeader): \(authValue)\r\nConnection: close\r\n\r\n"
+            )
+            let statusLine = String(decoding: response.prefix(while: { $0 != UInt8(ascii: "\r") }), as: UTF8.self)
+            let parts = statusLine.split(separator: " ")
+            return Int(parts.count > 1 ? parts[1] : "0") ?? 0
+        }
+
+        // 前 4 次失败 → 401
+        for _ in 0..<4 {
+            #expect(try status(for: "000000") == 401)
+        }
+        // 第 5 次失败触发限速（本次仍是 401），后续请求直接 429——正确码也被限速
+        #expect(try status(for: "000000") == 401)
+        #expect(try status(for: "000000") == 429, "第 6 次请求必须命中限速")
+        #expect(try status(for: "246813") == 429, "限速期内正确码同样被限速（不泄露码正确性）")
+
+        // 窗口过期（推进 31s）→ 恢复：正确码放行、错误码回到 401
+        clock.advance(byMs: 31_000)
+        #expect(try status(for: "246813") == 200, "限速窗口过期后必须恢复服务")
+        #expect(try status(for: "000000") == 401, "过期后错误码回到普通 401")
+    }
+
+    /// 配对码比较语义：常量时间实现的正确性契约（相等/不等/长度不等/空串）。
+    @Test("B6 配对码常量时间比较结果正确")
+    func pairingCodeConstantTimeComparisonIsExact() {
+        #expect(SyncServer.constantTimeEquals("123456", "123456"))
+        #expect(!SyncServer.constantTimeEquals("123456", "123457"), "末位差异必须判不等")
+        #expect(!SyncServer.constantTimeEquals("123456", "1234567"), "长度不同必须判不等")
+        #expect(!SyncServer.constantTimeEquals("", "123456"))
+        #expect(SyncServer.constantTimeEquals("", ""))
+        // 首位差异与末位差异结果一致（时序上不可区分是常量时间实现的前提）
+        #expect(!SyncServer.constantTimeEquals("923456", "123456"))
+    }
+
     /// 退避重试必须尊重取消：取消后应当立刻以 `CancellationError` 结束，而不是把用户自己的
     /// 取消伪装成一条网络故障。
     ///
@@ -566,6 +623,26 @@ private final class ReceivedBox: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return cards
+    }
+}
+
+/// 可手动推进的毫秒时钟（B6 限速窗口测试用）：免真等 30s 验证「窗口过期恢复」。
+private final class MutableClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var currentMs: Int64
+
+    init(startMs: Int64) {
+        currentMs = startMs
+    }
+
+    func nowMs() -> Int64 {
+        lock.lock(); defer { lock.unlock() }
+        return currentMs
+    }
+
+    func advance(byMs: Int64) {
+        lock.lock(); defer { lock.unlock() }
+        currentMs += byMs
     }
 }
 

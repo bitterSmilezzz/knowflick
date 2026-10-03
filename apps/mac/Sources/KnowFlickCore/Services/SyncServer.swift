@@ -55,17 +55,82 @@ public final class SyncServer: @unchecked Sendable {
     /// 合并入口（协议 v2 §4）：对端卡片 + 墓碑一并交给合并方；
     /// `deleted` 仅统计「收到墓碑 → 实际删除本地卡片」的数量，随 POST 响应 `"deleted":n` 上报
     private let onReceiveCards: @Sendable ([KnowledgeCard], [SyncTombstone]) async -> (added: Int, restored: Int, ignored: Int, deleted: Int)
+    /// 401 失败滑动窗口（B6 配对码防枚举）；状态随 server 生命周期，start() 重置
+    private let authWindow: AuthFailureWindow
+
+    // MARK: - B6 配对码防枚举
+
+    /// 401 失败滑动窗口：60s 内第 5 次鉴权失败起，后续 30s 内所有请求直接 429
+    /// （配对码仅 6 位数字，不设防可被局域网攻击者在握手超时内穷举）。
+    /// 锁保护：handleClient 跑在并发的 Task 上。
+    private final class AuthFailureWindow: @unchecked Sendable {
+        static let windowMs: Int64 = 60_000
+        static let threshold = 5
+        static let throttleMs: Int64 = 30_000
+
+        enum Verdict { case allow, throttled }
+
+        private let lock = NSLock()
+        private var failureTimestamps: [Int64] = []
+        private var throttledUntil: Int64 = 0
+        private let now: @Sendable () -> Int64
+
+        init(now: @escaping @Sendable () -> Int64) {
+            self.now = now
+        }
+
+        /// 鉴权前判定：限速激活期间直接 429——**不再比对配对码**，
+        /// 否则攻击者可用正确码在限速期探测出「码已猜中」。
+        func verdict() -> Verdict {
+            lock.lock(); defer { lock.unlock() }
+            return now() < throttledUntil ? .throttled : .allow
+        }
+
+        /// 记录一次鉴权失败；窗口内失败数达到阈值即武装 30s 限速。
+        func recordFailure() {
+            lock.lock(); defer { lock.unlock() }
+            let current = now()
+            failureTimestamps.append(current)
+            failureTimestamps = failureTimestamps.filter { current - $0 < Self.windowMs }
+            if failureTimestamps.count >= Self.threshold {
+                throttledUntil = current + Self.throttleMs
+            }
+        }
+
+        /// 状态随 server 生命周期：重新 start 时清空（换配对码后旧窗口不应残留）
+        func reset() {
+            lock.lock(); defer { lock.unlock() }
+            failureTimestamps = []
+            throttledUntil = 0
+        }
+    }
+
+    /// 常量时间字符串比较（B6）：比较耗时只取决于输入长度，与是否相等无关，
+    /// 不给「逐位逼近配对码」的时序侧信道。长度差异也参与累积，不提前返回。
+    static func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {
+        let left = Array(lhs.utf8)
+        let right = Array(rhs.utf8)
+        var difference = UInt8(left.count == right.count ? 0 : 1)
+        for index in 0..<max(left.count, right.count) {
+            let leftByte = index < left.count ? left[index] : 0
+            let rightByte = index < right.count ? right[index] : 0
+            difference |= leftByte ^ rightByte
+        }
+        return difference == 0
+    }
 
     public init(
         accessCode: String,
         getCards: @escaping @Sendable () async -> [KnowledgeCard],
         getTombstones: @escaping @Sendable () async -> [SyncTombstone],
-        onReceiveCards: @escaping @Sendable ([KnowledgeCard], [SyncTombstone]) async -> (added: Int, restored: Int, ignored: Int, deleted: Int)
+        onReceiveCards: @escaping @Sendable ([KnowledgeCard], [SyncTombstone]) async -> (added: Int, restored: Int, ignored: Int, deleted: Int),
+        now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
     ) {
         self.accessCode = accessCode
         self.getCards = getCards
         self.getTombstones = getTombstones
         self.onReceiveCards = onReceiveCards
+        self.authWindow = AuthFailureWindow(now: now)
     }
 
     public func start(preferredPort: Int = 8998) -> Result<Int, Error> {
@@ -116,6 +181,8 @@ public final class SyncServer: @unchecked Sendable {
         self.serverFd = boundFd
         self.boundPort = port
         self.isRunning = true
+        // B6：限速窗口随 server 生命周期重置
+        authWindow.reset()
 
         let listenFd = boundFd
         let thread = Thread { [weak self] in
@@ -221,9 +288,17 @@ public final class SyncServer: @unchecked Sendable {
             }
         }
 
-        // 验证 6 位配对码
+        // B6 配对码防枚举：限速激活期间直接 429（明确文案），不再比对配对码，
+        // 避免攻击者借「正确码在限速期也返回 401→200 突变」探测出码已猜中
+        if authWindow.verdict() == .throttled {
+            sendResponse(clientFd, code: 429, message: "Too Many Requests", contentType: "application/json", body: #"{"error":"配对码尝试过于频繁，请 30 秒后再试"}"#)
+            return
+        }
+
+        // 验证 6 位配对码（常量时间比较，防时序侧信道枚举）
         let providedAuth = headers[Self.authHeader.lowercased()]
-        if providedAuth != accessCode {
+        if !Self.constantTimeEquals(providedAuth ?? "", accessCode) {
+            authWindow.recordFailure()
             sendResponse(clientFd, code: 401, message: "Unauthorized", contentType: "application/json", body: #"{"error":"Invalid pairing code"}"#)
             return
         }
