@@ -878,13 +878,22 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     var reviewInitialTotal by mutableStateOf(0)
         private set
 
-    /** 今日待复习卡片总数（到期复习队列） */
+    /**
+     * 今日待复习卡片总数（到期复习队列）。
+     *
+     * 到期计划构造是全库三遍扫描（时区换数 + 掌握度 + 排序，O(n log n)），而该 getter
+     * 每次重组都会被读；按 (version, LocalDate) 记忆化，version 推进纪律与卡堆重组同源。
+     */
+    private val duePlanMemo = VersionedMemo { today ->
+        com.knowflick.app.domain.LearningPlan(model.store.cards, today)
+    }
+
     val dueCardsCount: Int
-        get() = com.knowflick.app.domain.LearningPlan(model.store.cards, java.time.LocalDate.now()).due.size
+        get() = duePlanMemo.get(version).due.size
 
     /** 开启专属复习卡堆模式 */
     fun enterReviewDeckMode() {
-        val due = com.knowflick.app.domain.LearningPlan(model.store.cards, java.time.LocalDate.now()).due
+        val due = duePlanMemo.get(version).due
         reviewQueue = due
         reviewInitialTotal = due.size
         reviewSessionCount = 0
