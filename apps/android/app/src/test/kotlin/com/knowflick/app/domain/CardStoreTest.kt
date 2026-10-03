@@ -444,4 +444,53 @@ class CardStoreTest {
         assertEquals(1, result.added)
         assertEquals(0, result.restored)
     }
+
+
+    // ---------- details 合并冲突（SYNC_PROTOCOL.md §5：修「用户缩短被旧长文覆盖」） ----------
+
+    private fun detailsCard(details: String, editedAt: Long? = null) =
+        KnowledgeCard.create("物理", "同一张卡", "摘要", details, source = CardSource.SEED, createdAt = 1_000L)
+            .copy(id = "same-id", editedAt = editedAt)
+
+    @Test
+    fun detailsConflictNewerEditedAtWinsEvenIfShorter() {
+        val a = detailsCard("短", editedAt = 2_000L)
+        val b = detailsCard("更长的正文内容", editedAt = 1_000L)
+
+        val merged = CardStore.mergeCard(a, b)
+
+        assertEquals("短", merged.details, "双方均有 editedAt → 新者赢（即使更短）")
+        assertEquals(merged, CardStore.mergeCard(b, a), "合并必须对称")
+    }
+
+    @Test
+    fun detailsConflictFallsBackToLongerWhenEitherEditedAtMissing() {
+        val noStamp = detailsCard("短")
+        val stampedLong = detailsCard("更长的正文内容", editedAt = 1_000L)
+
+        assertEquals("更长的正文内容", CardStore.mergeCard(noStamp, stampedLong).details, "任一方缺失 editedAt → 沿用 v1 较长者规则")
+
+        val stampedShort = detailsCard("短", editedAt = 2_000L)
+        val noStampLong = detailsCard("更长的正文内容")
+        assertEquals("更长的正文内容", CardStore.mergeCard(stampedShort, noStampLong).details, "任一方缺失 editedAt → 沿用 v1 较长者规则")
+    }
+
+    @Test
+    fun detailsConflictEqualEditedAtFallsBackToLonger() {
+        val a = detailsCard("短", editedAt = 2_000L)
+        val b = detailsCard("更长的正文内容", editedAt = 2_000L)
+
+        assertEquals("更长的正文内容", CardStore.mergeCard(a, b).details, "editedAt 持平退回较长者，保证对称确定")
+    }
+
+    @Test
+    fun mergedCardCarriesNewestEditedAt() {
+        val a = detailsCard("正文", editedAt = 2_000L)
+        val b = detailsCard("正文", editedAt = 1_000L)
+        assertEquals(2_000L, CardStore.mergeCard(a, b).editedAt)
+
+        val noStamp = detailsCard("正文")
+        assertEquals(2_000L, CardStore.mergeCard(a, noStamp).editedAt, "单方有 editedAt 时保留")
+        assertNull(CardStore.mergeCard(noStamp, detailsCard("正文")).editedAt, "双方缺失时保持 null")
+    }
 }
