@@ -27,6 +27,17 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         ),
+        // app 层（视图目标）测试：只放不依赖窗口/渲染循环的纯逻辑用例（路由枚举等）。
+        // 本目标依赖执行文件，需要完整 Xcode（CI 的 macos-15 runner 与本地 Xcode 均满足）；
+        // `./tools/test.sh --core-only` 只构建 Core 测试目标，不受影响。
+        .testTarget(
+            name: "KnowFlickAppTests",
+            dependencies: ["KnowFlick"],
+            path: "Tests/KnowFlickAppTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ]
+        ),
         .testTarget(
             name: "KnowFlickCoreTests",
             dependencies: ["KnowFlickCore"],
