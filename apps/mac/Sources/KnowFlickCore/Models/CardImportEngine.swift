@@ -469,9 +469,34 @@ public enum CardImportEngine {
         let category = primary.category.isEmpty ? secondary.category : primary.category
         let headline = primary.headline.isEmpty ? secondary.headline : primary.headline
         let summary = primary.summary.isEmpty ? secondary.summary : primary.summary
-        let details = primary.details.isEmpty ? secondary.details : (primary.details.count >= secondary.details.count ? primary.details : secondary.details)
+        // details 冲突（协议 v2 §5，修「用户缩短被旧长文覆盖」）：
+        // 双方均有 editedAt → 新者赢；任一方缺失（或编辑时间相同）→ 沿用 v1「较长者」规则，兼容历史数据。
+        // 空正文仍一律让位给非空一方（非空优先是所有字段合并的外层守卫）。
+        let details: String
+        if a.details.isEmpty {
+            details = b.details
+        } else if b.details.isEmpty {
+            details = a.details
+        } else if let editedA = a.editedAt, let editedB = b.editedAt, editedA != editedB {
+            details = editedA > editedB ? a.details : b.details
+        } else {
+            details = primary.details.count >= secondary.details.count ? primary.details : secondary.details
+        }
         let links = primary.links.isEmpty ? secondary.links : primary.links
         let source = primary.source == .seed && secondary.source != .seed ? secondary.source : primary.source
+
+        // 编辑时间：取双方较新者（对称、确定性）；双方皆历史卡则保持 nil
+        let editedAt: Date?
+        switch (a.editedAt, b.editedAt) {
+        case let (editedA?, editedB?):
+            editedAt = max(editedA, editedB)
+        case let (editedA?, nil):
+            editedAt = editedA
+        case let (nil, editedB?):
+            editedAt = editedB
+        case (nil, nil):
+            editedAt = nil
+        }
 
         // 3. 浏览足迹与意图（seenAt, swiped）：
         // 保留最新浏览时间；swiped 归属最新浏览那一端
@@ -585,6 +610,7 @@ public enum CardImportEngine {
             links: links,
             source: source,
             createdAt: createdAt,
+            editedAt: editedAt,
             seenAt: seenAt,
             swiped: swiped,
             isFavorite: isFavorite,
