@@ -56,6 +56,9 @@ public final class AppStore {
     /// 全库重排轨迹（测试护栏，见 `CardLibraryStore.recomputeTrace`）
     var deckRecomputeTrace: [Int] { library.recomputeTrace }
 
+    /// 测试护栏：等待在途的后台全量重排落地（转发到卡库；生产路径不需要等待）
+    func awaitPendingRearrange() async { await library.awaitPendingRearrange() }
+
     /// 语音朗读与磨耳朵服务
     public let speechService: SpeechSynthesizerService
 
