@@ -218,6 +218,19 @@ class CardStore(
         recompute()
     }
 
+    /**
+     * 外部写入者（桌面微件）改动的单卡回灌（A5）：按 id 整卡替换内存态。
+     * 与 [restoreArchive] 的字段级合并分开——回灌的是磁盘上的权威整卡，不做字段挑选。
+     * 找不到该 id（已同步删除等）返回 false。持久化与重组由调用方纪律负责。
+     */
+    fun replaceCard(updated: KnowledgeCard): Boolean {
+        val index = cards.indexOfFirst { it.id == updated.id }
+        if (index < 0) return false
+        cards = cards.toMutableList().apply { set(index, updated) }
+        recompute()
+        return true
+    }
+
     /** 置顶到待刷卡堆（全局搜索快速定位） */
     fun promoteToDeckTop(card: KnowledgeCard) {
         if (deck.firstOrNull()?.id == card.id) return

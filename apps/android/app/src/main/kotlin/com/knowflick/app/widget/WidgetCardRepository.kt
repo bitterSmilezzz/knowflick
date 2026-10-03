@@ -2,6 +2,7 @@ package com.knowflick.app.widget
 
 import android.content.Context
 import androidx.glance.appwidget.updateAll
+import com.knowflick.app.data.CardSaveResult
 import com.knowflick.app.data.CardStorage
 import com.knowflick.app.data.SeedLoader
 import com.knowflick.app.domain.KnowledgeCard
@@ -103,7 +104,7 @@ object WidgetCardRepository {
         val current = getCurrentCard(context) ?: return null
         val storage = CardStorage.shared(File(context.filesDir, "store"))
         var updated: KnowledgeCard? = null
-        storage.updateCards { allCards ->
+        val result = storage.updateCards { allCards ->
             val target = allCards.firstOrNull { it.id == current.id } ?: return@updateCards allCards
             val toggled = target.copy(
                 isFavorite = !target.isFavorite,
@@ -112,7 +113,13 @@ object WidgetCardRepository {
             updated = toggled
             allCards.map { if (it.id == target.id) toggled else it }
         }
-        return updated ?: current
+        val toggled = updated ?: return current
+        // A5 残留收口：磁盘态已变，广播给同进程的 App 内存态按 id 回灌。
+        // VM 不在（无收集者）时事件被丢弃——磁盘态即真相；写盘失败则不广播（磁盘未变）。
+        if (result !is CardSaveResult.Failed) {
+            WidgetSyncBus.emitFavoriteChanged(toggled.id)
+        }
+        return toggled
     }
 
     /** 设定当前展示卡片 ID */
