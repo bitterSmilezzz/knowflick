@@ -51,7 +51,9 @@ public enum CardTransferService {
             let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
             let json = fileName?.lowercased().hasSuffix(".json") == true || text.hasPrefix("{") ||
                 text.range(of: #"^\[\s*(?:\{|"|\[|\]|$)"#, options: .regularExpression) != nil
-            return try json ? CardImportEngine.parseJSON(data: Data(text.utf8)) : CardImportEngine.parseMarkdown(text: text)
+            // JSON 备份自 v2 起是信封（protocolVersion + cards + tombstones）；文件导入只取卡片，
+            // 兼容旧版导出的裸数组（协议 §3 兼容规则）
+            return try json ? CardImportEngine.parseJSON(data: Data(text.utf8)).cards : CardImportEngine.parseMarkdown(text: text)
         }
     }
 

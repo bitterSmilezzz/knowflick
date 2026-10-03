@@ -35,7 +35,7 @@ struct ImportExportRegressionTests {
             source: .imported, createdAt: date, seenAt: date, swiped: .right,
             reviewCount: 7, masteryLevel: 2, lastReviewedAt: date)
         let archive = try CardExportEngine.exportJSONArchive(cards: [original])
-        store.importCards(try CardImportEngine.parseJSON(data: archive))
+        store.importCards(try CardImportEngine.parseJSON(data: archive).cards)
         store.flushPersistence()
         #expect(storage.loadCards().first == original)
         #expect(store.history.first?.id == original.id)

@@ -306,13 +306,16 @@ public enum CardExportEngine {
         return lines.joined(separator: "\n")
     }
 
-    // MARK: - 4. JSON 结构化备份归档
+    // MARK: - 4. JSON 结构化备份归档（v2 信封，协议 §3）
 
-    public static func exportJSONArchive(cards: [KnowledgeCard]) throws -> Data {
+    /// JSON 归档 = v2 信封 `{"protocolVersion":2,"cards":[…],"tombstones":[…]}`。
+    /// 同步 GET/POST 与文件导出共用同一编码；导入端兼容旧裸数组（协议 §3 兼容规则），
+    /// 因此导出文件变信封后，旧版本 KnowFlick 的文件导入路径仍可读（只丢信封新字段）。
+    public static func exportJSONArchive(cards: [KnowledgeCard], tombstones: [SyncTombstone] = []) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(cards)
+        return try encoder.encode(CardSyncEnvelope(cards: cards, tombstones: tombstones))
     }
 
     public static func exportToSingleMarkdown(cards: [KnowledgeCard], title: String = "KnowFlick 知识卡片") -> String {
@@ -328,8 +331,8 @@ public enum CardExportEngine {
     }
 
     /// JSON 备份文本；编码失败直接抛出，调用方必须走失败分支，不得伪装成空归档。
-    public static func exportToJSON(cards: [KnowledgeCard]) throws -> String {
-        let data = try exportJSONArchive(cards: cards)
+    public static func exportToJSON(cards: [KnowledgeCard], tombstones: [SyncTombstone] = []) throws -> String {
+        let data = try exportJSONArchive(cards: cards, tombstones: tombstones)
         guard let str = String(data: data, encoding: .utf8) else {
             throw AIError.parse("JSON 归档编码结果不是合法 UTF-8 文本")
         }

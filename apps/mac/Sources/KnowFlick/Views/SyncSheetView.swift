@@ -334,8 +334,9 @@ struct SyncSheetView: View {
                         Text("向对端推送 \(res.pushedCount) 张，从对端拉取 \(res.pulledCount) 张（本机新增 \(res.addedCount) 张，更新学习进度 \(res.restoredCount) 张）。")
                             .font(InsightFont.caption)
                             .foregroundStyle(InsightColor.textSecondary)
-                        // 协议 v2 §2：版本握手提示——不阻断同步，仅提醒两端升级
-                        if let hint = peerVersionHint(remoteInfo?.protocolVersion) {
+                        // 协议 v2 §2/§3：版本握手提示——优先用本次同步载荷的实际版本，
+                        // 尚未同步过时回退到 /api/info 的检测结果；不阻断同步，仅提醒两端升级
+                        if let hint = peerVersionHint(res.peerProtocolVersion ?? remoteInfo?.protocolVersion) {
                             versionHintRow(hint)
                         }
                     }

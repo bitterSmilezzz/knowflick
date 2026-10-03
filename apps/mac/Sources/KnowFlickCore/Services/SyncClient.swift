@@ -5,12 +5,15 @@ public struct SyncResult: Sendable, Equatable {
     public let pulledCount: Int
     public let addedCount: Int
     public let restoredCount: Int
+    /// 对端载荷协议版本（协议 v2 §3）：取自拉取载荷的 `protocolVersion`；nil = v1 旧端。
+    public let peerProtocolVersion: Int?
 
-    public init(pushedCount: Int, pulledCount: Int, addedCount: Int, restoredCount: Int) {
+    public init(pushedCount: Int, pulledCount: Int, addedCount: Int, restoredCount: Int, peerProtocolVersion: Int? = nil) {
         self.pushedCount = pushedCount
         self.pulledCount = pulledCount
         self.addedCount = addedCount
         self.restoredCount = restoredCount
+        self.peerProtocolVersion = peerProtocolVersion
     }
 }
 
@@ -167,12 +170,13 @@ public enum SyncClient {
         getReq.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let (pulledData, _) = try await performRequestWithRetry(getReq)
-        let pulledCards = try CardImportEngine.parseJSON(data: pulledData)
+        let pulled = try CardImportEngine.parseJSON(data: pulledData)
 
-        // 2. 本地应用并合并拉取到的卡片
-        let mergeResult = await onApplyRemoteCards(pulledCards)
+        // 2. 本地应用并合并拉取到的卡片（对端墓碑的合并语义由合并入口承接）
+        let mergeResult = await onApplyRemoteCards(pulled.cards)
 
-        // 3. 推送本地卡片到对端（带重试与退避）
+        // 3. 推送本地卡片到对端（带重试与退避）。本地墓碑表随载荷发出（协议 §3），
+        //    表的接线在墓碑合并落地时接入。
         let localData = try CardExportEngine.exportJSONArchive(cards: localCards)
         guard localData.count <= SyncServer.maxRequestBodyBytes else {
             throw NSError(domain: "SyncClient", code: -6, userInfo: [NSLocalizedDescriptionKey: "本机卡片数据超过 25 MiB 同步上限"])
@@ -188,9 +192,10 @@ public enum SyncClient {
 
         return SyncResult(
             pushedCount: localCards.count,
-            pulledCount: pulledCards.count,
+            pulledCount: pulled.cards.count,
             addedCount: mergeResult.added,
-            restoredCount: mergeResult.restored
+            restoredCount: mergeResult.restored,
+            peerProtocolVersion: pulled.protocolVersion
         )
     }
 }
