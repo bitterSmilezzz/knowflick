@@ -3,6 +3,10 @@ package com.knowflick.app.sync
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.CardStore
 import com.knowflick.app.domain.KnowledgeCard
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -96,6 +100,29 @@ class SyncEngineTest {
         } finally {
             server.stop()
         }
+    }
+
+    @Test
+    fun testCancelledSyncRethrowsInsteadOfFakeFailure() = runBlocking {
+        val outcome = CompletableDeferred<String>()
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                val result = SyncClient.executeBidirectionalSync(
+                    target = "127.0.0.1:1#123456",
+                    localCards = emptyList(),
+                    onApplyRemoteCards = { CardStore.ArchiveRestoreResult(0, 0, 0) },
+                )
+                outcome.complete("returned:$result")
+            } catch (cancelled: CancellationException) {
+                outcome.complete("rethrown")
+            } catch (e: Exception) {
+                outcome.complete("swallowed:$e")
+            }
+        }
+        // UNDISPATCHED 已把协程推进到第一个挂起点（withContext(IO)）；此刻取消，
+        // 取消必须以 CancellationException 原样上抛，而不是被包成 Result.failure 假错误
+        job.cancel()
+        assertEquals("rethrown", outcome.await())
     }
 
     @Test
