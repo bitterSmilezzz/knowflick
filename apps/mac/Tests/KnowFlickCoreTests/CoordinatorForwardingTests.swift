@@ -124,4 +124,80 @@ struct CoordinatorForwardingTests {
         #expect(coordinator.persistenceWarning == nil)
     }
 
+    // MARK: - Wave B B8：退出 flush 移后台 + 主线程有界等待
+
+    /// 队列被长任务卡住时，flush 的有界等待必须生效：≈2s 返回、不再无限阻塞退出，
+    /// 且不吞掉排在后面的写入（长任务仍在后台跑完）。
+    /// 旧实现 `persistenceQueue.sync` 会等满 3s（≥ 长任务时长），本用例在旧实现下必然变红。
+    @Test("B8 队列被卡住时退出 flush 有界等待（≤2s），不再无限阻塞")
+    @MainActor
+    func flushPersistenceWaitsBoundedWhenQueueIsStalled() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = Storage(baseDir: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let stalledQueue = DispatchQueue(label: "test.knowflick.stalled-persistence", qos: .utility)
+        let coordinator = PersistenceCoordinator(storage: storage, queue: stalledQueue)
+
+        // 队列里塞一个 3s 的长任务（模拟超大盘库的编码+写盘）
+        let finished = ThreadSafeFlag()
+        stalledQueue.async {
+            Thread.sleep(forTimeInterval: 3)
+            finished.set()
+        }
+        Thread.sleep(forTimeInterval: 0.1)   // 确保长任务先于 flush 入队
+
+        let start = Date()
+        coordinator.flushPersistence(cards: [], settings: .default, skipCards: false)
+        let elapsed = Date().timeIntervalSince(start)
+
+        #expect(elapsed >= 1.5, "flush 应等到限值附近（≥1.5s，实际 \(elapsed)s）")
+        #expect(elapsed < 2.9, "flush 必须在 ≤2s 有界等待后返回，不得等满长任务（实际 \(elapsed)s）")
+        #expect(finished.isSet == false, "长任务尚未完成时 flush 已返回（不再阻塞）")
+        // 收尾：等长任务跑完，避免泄漏到后续测试
+        finished.waitUntilTrue(timeout: 5)
+    }
+
+    /// 屏障语义不变：flush 返回后，「退出前数据落盘」成立（含先于它提交的异步写入）。
+    @Test("B8 flush 返回后数据已落盘（退出前落盘语义不变）")
+    @MainActor
+    func flushPersistenceStillLandsDataBeforeReturning() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = Storage(baseDir: directory)
+        let store = AppStore(storage: storage)
+        defer { store.closeChat(); try? FileManager.default.removeItem(at: directory) }
+        store.isLoadingSeed = false
+
+        let card = KnowledgeCard(category: "冷知识", headline: "退出前的最后一张卡", summary: "摘要", details: "正文", source: .imported)
+        store.cards = [card]
+        store.flushPersistence()
+
+        #expect(Storage(baseDir: directory).loadCards().contains { $0.id == card.id })
+    }
+}
+
+/// 线程安全布尔旗标（B8 测试用）
+private final class ThreadSafeFlag: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var _value = false
+
+    var isSet: Bool {
+        condition.lock(); defer { condition.unlock() }
+        return _value
+    }
+
+    func set() {
+        condition.lock()
+        _value = true
+        condition.signal()
+        condition.unlock()
+    }
+
+    func waitUntilTrue(timeout: TimeInterval) {
+        condition.lock()
+        let deadline = Date().addingTimeInterval(timeout)
+        while !_value && Date() < deadline {
+            _ = condition.wait(until: deadline)
+        }
+        condition.unlock()
+    }
 }
