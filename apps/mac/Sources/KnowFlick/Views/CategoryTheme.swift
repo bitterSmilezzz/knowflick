@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Observation
 import KnowFlickCore
 
 /// 分类视觉主题：背景图 + 主色 + ambient 色温（自动适配深色与浅色模式）
@@ -180,8 +181,15 @@ struct CategoryTheme {
     ]
 }
 
-/// 背景图缓存：ImageIO 降采样解码 + NSCache 自动响应内存压力
+/// 背景图缓存：ImageIO 降采样解码 + NSCache 自动响应内存压力。
+///
+/// Wave C2 主线程减负（b）：未命中不再在调用线程（视图 body = 主线程）上同步解码 900px 底图，
+/// 而是把解码排到后台、完成后回主线程写入 NSCache——同步 API `image(named:)` 与调用方零改动，
+/// 双限（24 张 / 64MiB）不变。代价是「未命中的第一次调用返回 nil、图晚一帧到」：
+/// 用 `decodeRevision`（`@Observable`）在回填时通知读过本缓存的视图重绘，避免图一直缺到
+/// 下一次无关的状态变化才出现。
 @MainActor
+@Observable
 final class BackgroundImageCache {
     static let shared = BackgroundImageCache()
     private let cache = NSCache<NSString, NSImage>()
@@ -189,25 +197,69 @@ final class BackgroundImageCache {
     /// 最大边长：卡片显示尺寸的 2x 足够，避免全尺寸解码吃内存
     private let maxPixel: CGFloat = 900
 
-    private init() {
+    /// 解码实现：生产走 ImageIO 降采样；测试注入替身以验证「后台解码、主线程回填」。
+    /// 非隔离闭包：必须在后台线程执行，不能碰主线程专属状态。
+    @ObservationIgnored
+    var decode: @Sendable (URL, CGFloat) -> NSImage? = { url, maxPixel in
+        BackgroundImageCache.downsampledImage(url: url, maxPixel: maxPixel)
+    }
+
+    /// 在途解码的 key：同一张底图并发未命中只排一次后台解码
+    @ObservationIgnored
+    private var decodeInFlight: Set<String> = []
+    /// 在途解码任务（仅供测试等待；生产路径靠回填自行生效）
+    @ObservationIgnored
+    private var pendingDecodes: [String: Task<Void, Never>] = [:]
+    /// 解码回填计数：视图 body 调用 `image(named:)` 时会读到它，回填后据此自动重绘
+    private(set) var decodeRevision = 0
+
+    init() {
         cache.countLimit = 24          // 最多缓存 24 张活跃底图，浏览时平滑换入换出
         cache.totalCostLimit = 64 * 1024 * 1024
     }
 
     func image(named key: String) -> NSImage? {
+        _ = decodeRevision   // 登记观察依赖：解码回填后让读到这里的视图重新取值
         if let hit = cache.object(forKey: key as NSString) { return hit }
         // 底图为 WebP：与 Android 端共用 shared/assets/bg 的同一份文件（macOS 11+ 原生支持解码）
-        guard let url = CoreResources.bundle.url(forResource: key, withExtension: "webp", subdirectory: nil)
-                ?? CoreResources.bundle.urls(forResourcesWithExtension: "webp", subdirectory: nil)?.first(where: { $0.lastPathComponent == "\(key).webp" }) else {
-            return nil
-        }
-        guard let img = Self.downsampledImage(url: url, maxPixel: maxPixel) else { return nil }
-        cache.setObject(img, forKey: key as NSString, cost: Self.estimatedCost(img))
-        return img
+        guard let url = Self.backgroundURL(for: key) else { return nil }
+        // 未命中：排后台解码，本次返回 nil（解码落地后再次调用即命中）
+        scheduleDecode(key: key, url: url)
+        return nil
     }
 
-    /// ImageIO 缩略解码：不全量解压原图，直接生成目标尺寸位图
-    private static func downsampledImage(url: URL, maxPixel: CGFloat) -> NSImage? {
+    /// 测试护栏：等待在途解码全部落地（生产路径不需要等待）
+    func awaitPendingDecodes() async {
+        for task in Array(pendingDecodes.values) { await task.value }
+    }
+
+    private func scheduleDecode(key: String, url: URL) {
+        guard decodeInFlight.insert(key).inserted else { return }
+        let decode = self.decode
+        let maxPixel = self.maxPixel
+        pendingDecodes[key] = Task.detached(priority: .utility) { [weak self] in
+            let image = decode(url, maxPixel)
+            await self?.backfill(image, forKey: key)
+        }
+    }
+
+    /// 回填（主线程）：写入同参数的 NSCache，并递增 revision 触发读取方重绘
+    private func backfill(_ image: NSImage?, forKey key: String) {
+        decodeInFlight.remove(key)
+        pendingDecodes[key] = nil
+        guard let image else { return }
+        cache.setObject(image, forKey: key as NSString, cost: Self.estimatedCost(image))
+        decodeRevision &+= 1
+    }
+
+    private static func backgroundURL(for key: String) -> URL? {
+        CoreResources.bundle.url(forResource: key, withExtension: "webp", subdirectory: nil)
+            ?? CoreResources.bundle.urls(forResourcesWithExtension: "webp", subdirectory: nil)?.first(where: { $0.lastPathComponent == "\(key).webp" })
+    }
+
+    /// ImageIO 缩略解码：不全量解压原图，直接生成目标尺寸位图。
+    /// `nonisolated`：纯函数（只用传入的 URL 与尺寸），后台解码线程可直接调用。
+    nonisolated private static func downsampledImage(url: URL, maxPixel: CGFloat) -> NSImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
