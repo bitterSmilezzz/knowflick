@@ -353,9 +353,15 @@ struct SyncSheetView: View {
 
     private var bottomBar: some View {
         HStack {
-            Text("KnowFlick 局域网协议 · 严格本地加密验证 · 0 外部依赖")
-                .font(InsightFont.captionSmall)
-                .foregroundStyle(InsightColor.textMuted)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("KnowFlick 局域网协议 · 严格本地加密验证 · 0 外部依赖")
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textMuted)
+                // 常驻明示文案（协议 §8）：两个标签页都可见，关面板即停服务
+                Text("关闭此面板即停止本机同步服务，对端进行中的同步会中断")
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textMuted)
+            }
             Spacer()
             Button("关闭") {
                 onClose()
