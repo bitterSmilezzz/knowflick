@@ -13,6 +13,7 @@ import java.net.Socket
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.intOrNull
@@ -32,8 +33,9 @@ data class SyncResult(
 /** 局域网同步客户端。仅允许回环、链路本地和 RFC1918 IPv4，避免把卡库误传到公网主机。 */
 object SyncClient {
 
-    private const val CONNECT_TIMEOUT_MS = 5_000
-    private const val READ_TIMEOUT_MS = 15_000
+    // B5 超时对齐（SYNC_PROTOCOL.md §6）：连接 6s、读 20s（双端一致；Android 由 5s/15s 对齐过来）
+    internal const val CONNECT_TIMEOUT_MS = 6_000
+    internal const val READ_TIMEOUT_MS = 20_000
     private const val MAX_RESPONSE_BODY_BYTES = SyncServer.MAX_REQUEST_BODY_BYTES
 
     private data class Target(val address: InetAddress, val hostLabel: String, val port: Int, val accessCode: String)
@@ -119,7 +121,7 @@ object SyncClient {
         }
     }
 
-    private fun requestWithRetry(
+    private suspend fun requestWithRetry(
         target: Target,
         method: String,
         path: String,
@@ -150,11 +152,11 @@ object SyncClient {
                 }
                 lastException = e
                 if (attempt < maxAttempts) {
+                    // B5 退避（§6）：500ms×2^(n-1) + ≤100ms 抖动；协程 delay 释放 IO 线程，
+                    // 且取消期间可被协作式打断（原 Thread.sleep 吞中断不可取消）
                     val baseDelay = 500L * (1L shl (attempt - 1))
                     val jitter = (Math.random() * 100).toLong()
-                    try {
-                        Thread.sleep(baseDelay + jitter)
-                    } catch (_: InterruptedException) {}
+                    delay(baseDelay + jitter)
                 }
             }
         }
