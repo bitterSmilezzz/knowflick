@@ -145,12 +145,8 @@ public enum SyncClient {
             throw NSError(domain: "SyncClient", code: -5, userInfo: [NSLocalizedDescriptionKey: "对端返回了无法解析的 JSON 数据"])
         }
 
-        let name = json["deviceName"] as? String ?? "未知设备"
-        let count = json["cardCount"] as? Int ?? 0
-        let fav = json["favoriteCount"] as? Int ?? 0
-        let ts = json["timestamp"] as? Int64 ?? (json["timestamp"] as? NSNumber)?.int64Value ?? 0
-
-        return RemoteDeviceInfo(deviceName: name, cardCount: count, favoriteCount: fav, timestamp: ts)
+        // 协议 v2 §2：解析对端版本；缺字段（v1 旧端）→ nil，由 UI 提示且不阻断
+        return RemoteDeviceInfo.parseInfo(json)
     }
 
     public static func executeBidirectionalSync(
