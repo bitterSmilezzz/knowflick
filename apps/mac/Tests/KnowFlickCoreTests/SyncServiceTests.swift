@@ -125,25 +125,81 @@ struct SyncServiceTests {
         }
         defer { server.stop() }
 
+        // 客户端本地状态：合并回调把拉到的卡片并入本地，currentCards 返回合并后的最新快照
+        let localState = ServerSyncState(cards: [clientCard])
+
         let target = "127.0.0.1:\(port)#888999"
         let result = try await SyncClient.executeBidirectionalSync(
             target: target,
-            localCards: [clientCard]
-        ) { pulled, tombstones in
-            #expect(pulled.count == 1)
-            #expect(pulled[0].headline == "中子星")
+            currentCards: { await localState.cards },
+            currentTombstones: { await localState.tombstones }
+        ) { incoming, tombstones in
+            #expect(incoming.count == 1)
+            #expect(incoming[0].headline == "中子星")
             #expect(tombstones.isEmpty)
-            return (added: 1, restored: 0, ignored: 0, deleted: 0)
+            return await localState.apply(incoming, tombstones)
         }
 
-        #expect(result.pushedCount == 1)
+        #expect(result.pushedCount == 2, "推送计数必须是合并后快照（黑洞 + 刚拉到的中子星）")
         #expect(result.pulledCount == 1)
         #expect(result.addedCount == 1)
+        #expect(result.peerProtocolVersion == SyncProtocol.currentVersion, "对端 GET 载荷是 v2 信封")
 
-        // 验证服务端收到 clientCard
+        // 验证服务端收到的是合并后快照：clientCard + 刚拉到的 serverCard（修复前只推送合并前的
+        // localCards 快照，刚拉到的中子星会被重复推回对端一次）
         let received = receivedBox.get()
-        #expect(received.count == 1)
-        #expect(received[0].headline == "黑洞")
+        #expect(received.count == 2)
+        #expect(Set(received.map(\.headline)) == ["黑洞", "中子星"])
+    }
+
+    /// 推送载荷必须携带本地墓碑表（协议 §3）：本地已删除的卡片不再推给对端，
+    /// 删除记录以墓碑形式广播，防止对端把已删卡片再推回来。
+    @Test("B5 推送载荷携带合并后快照与本地墓碑表")
+    func syncClientPushIncludesPostMergeSnapshotAndTombstones() async throws {
+        let deletedCardId = UUID()
+        let deletedCard = KnowledgeCard(
+            id: deletedCardId, category: "冷知识", headline: "本地已删卡", summary: "摘要", details: "正文",
+            source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+        let tombstone = SyncTombstone(id: deletedCardId.uuidString, deletedAt: 1_727_900_001_000)
+        let survivor = KnowledgeCard(
+            category: "冷知识", headline: "幸存卡", summary: "摘要", details: "正文",
+            source: .seed, createdAt: Date(timeIntervalSince1970: 1_727_900_000)
+        )
+
+        // 服务端状态：曾删除过 deletedCard（墓碑 {X,t}），当前只有幸存卡
+        let serverState = ServerSyncState(cards: [survivor], tombstones: [tombstone])
+
+        let server = SyncServer(
+            accessCode: "556677",
+            getCards: { await serverState.cards },
+            getTombstones: { await serverState.tombstones },
+            onReceiveCards: { incoming, tombstones in
+                await serverState.apply(incoming, tombstones)
+            }
+        )
+        let startRes = server.start(preferredPort: 19015)
+        guard case .success(let port) = startRes else {
+            Issue.record("Server start failed")
+            return
+        }
+        defer { server.stop() }
+
+        // 客户端本地状态：同样删除过该卡（对称墓碑），只剩幸存卡
+        let localState = ServerSyncState(cards: [survivor], tombstones: [tombstone])
+
+        let result = try await SyncClient.executeBidirectionalSync(
+            target: "127.0.0.1:\(port)#556677",
+            currentCards: { await localState.cards },
+            currentTombstones: { await localState.tombstones }
+        ) { incoming, incomingTombstones in
+            await localState.apply(incoming, incomingTombstones)
+        }
+
+        // 服务端终态：无新增（幸存卡已存在、墓碑对称），本地墓碑表仍在
+        #expect(result.pushedCount == 1)
+        #expect(await serverState.cards.map(\.headline) == ["幸存卡"])
+        #expect(await serverState.tombstones == [tombstone])
     }
 
     @Test func fieldLevelMergeCommutative() {
