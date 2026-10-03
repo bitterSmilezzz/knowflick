@@ -9,6 +9,10 @@ import com.knowflick.app.domain.KnowledgeCard
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -95,6 +99,29 @@ class WidgetCardRepositoryTest {
         val storedCard = storedCards.firstOrNull { it.id == card.id }
         assertNotNull(storedCard)
         assertEquals(!initialFavorite, storedCard.isFavorite, "CardStorage 中的卡片收藏状态也必须同步更新")
+    }
+
+    @Test
+    fun A5_toggleFavoriteEmitsCardIdToWidgetSyncBus() = runTest {
+        val received = mutableListOf<String>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
+            WidgetSyncBus.favoriteChanges.collect { received += it }
+        }
+
+        // 预置已知卡库，避免走种子加载路径
+        val card = makeCard("bus-1", "总线卡")
+        CardStorage.shared(storeDir).saveCards(listOf(card))
+        WidgetCardRepository.setCurrentCardId(app, "bus-1")
+
+        val updated = WidgetCardRepository.toggleFavorite(app)
+        assertNotNull(updated, "已知 id 的 toggle 必须成功")
+        runCurrent()
+        job.cancel()
+
+        assertTrue(
+            received.contains("bus-1"),
+            "落库成功后必须向 WidgetSyncBus 发射卡片 id，实际：$received",
+        )
     }
 
     @Test

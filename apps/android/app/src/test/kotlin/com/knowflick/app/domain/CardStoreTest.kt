@@ -493,4 +493,27 @@ class CardStoreTest {
         assertEquals(2_000L, CardStore.mergeCard(a, noStamp).editedAt, "单方有 editedAt 时保留")
         assertNull(CardStore.mergeCard(noStamp, detailsCard("正文")).editedAt, "双方缺失时保持 null")
     }
+
+    // ---------- 外部单卡回灌（A5：微件收藏落库后回灌 App 内存态） ----------
+
+    @Test
+    fun replaceCardUpdatesSingleCardInPlace() {
+        val store = CardStore(seedCards = emptyList())
+        val original = card("原卡")
+        store.replaceAll(listOf(original, card("其他")))
+
+        val flipped = original.copy(isFavorite = true, favoritedAt = 1_234L)
+        assertTrue(store.replaceCard(flipped), "存在的 id 必须回灌成功")
+        assertEquals(flipped, store.cards.single { it.id == original.id })
+        assertEquals(1, store.cards.count { it.isFavorite })
+    }
+
+    @Test
+    fun replaceCardReturnsFalseForUnknownId() {
+        val store = CardStore(seedCards = emptyList())
+        store.replaceAll(listOf(card("原卡")))
+
+        assertTrue(!store.replaceCard(card("陌生人").copy(id = "ghost-id")))
+        assertEquals(1, store.cards.size, "未知 id 不得新增卡片")
+    }
 }

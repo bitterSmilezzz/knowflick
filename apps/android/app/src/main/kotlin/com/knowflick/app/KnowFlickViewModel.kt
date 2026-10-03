@@ -153,6 +153,9 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     /** 进行中的局域网同步任务：关面板即取消（与 macOS 同步面板 PR #25 同语义） */
     private var lanSyncJob: Job? = null
 
+    /** A5：微件落库事件收集任务；onCleared 显式取消（viewModelScope 亦会兜底） */
+    private var widgetSyncJob: Job? = null
+
     init {
         model.bootstrap()
         // 墓碑表（SYNC_PROTOCOL.md §4）：启动时从持久化层灌入内存态，合并后写回
@@ -182,6 +185,20 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         speech.onSettingsChanged = { updated ->
             speechSettings = updated
             model.storage.saveSpeechJson(updated.toJson())
+        }
+        // A5 残留收口：微件 toggleFavorite 经 CardStorage.shared 落库后，App 内存态不知情，
+        // 后续整库持久化会反向覆盖。按 id 从共享存储重读该卡并回灌内存 store——
+        // 磁盘已是权威态，故只 bump version 触发重组，不再整库重写。VM 不在时无收集者，
+        // 事件被丢弃，磁盘态即真相。
+        widgetSyncJob = viewModelScope.launch {
+            com.knowflick.app.widget.WidgetSyncBus.favoriteChanges.collect { cardId ->
+                val fresh = withContext(Dispatchers.IO) {
+                    model.storage.loadCards().firstOrNull { it.id == cardId }
+                } ?: return@collect
+                if (model.store.replaceCard(fresh)) {
+                    version++
+                }
+            }
         }
     }
 
@@ -1026,6 +1043,10 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     override fun onCleared() {
         syncServer?.stop()
         syncServer = null
+        lanSyncJob?.cancel()
+        lanSyncJob = null
+        widgetSyncJob?.cancel()
+        widgetSyncJob = null
         persistJob?.cancel()
         persistJob = null
         persistenceQueue.closeAfter(model.store.cards)
