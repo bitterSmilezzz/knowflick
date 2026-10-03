@@ -405,10 +405,13 @@ struct SyncSheetView: View {
             getCards: { [store] in
                 await MainActor.run { store.cards }
             },
-            onReceiveCards: { [store] incoming in
+            getTombstones: { [store] in
+                await MainActor.run { store.currentTombstones }
+            },
+            onReceiveCards: { [store] incoming, tombstones in
                 await MainActor.run {
-                    let result = store.mergeCards(incoming, insertNewAtTop: false)
-                    return (added: result.added, restored: result.updated, ignored: result.ignored)
+                    let result = store.applySyncPayload(cards: incoming, tombstones: tombstones)
+                    return (added: result.added, restored: result.updated, ignored: result.ignored, deleted: result.deleted)
                 }
             }
         )
@@ -473,10 +476,10 @@ struct SyncSheetView: View {
                 let result = try await SyncClient.executeBidirectionalSync(
                     target: targetInput,
                     localCards: localCards
-                ) { incoming in
+                ) { incoming, tombstones in
                     await MainActor.run {
-                        let res = store.mergeCards(incoming, insertNewAtTop: false)
-                        return (added: res.added, restored: res.updated, ignored: res.ignored)
+                        let res = store.applySyncPayload(cards: incoming, tombstones: tombstones)
+                        return (added: res.added, restored: res.updated, ignored: res.ignored, deleted: res.deleted)
                     }
                 }
                 guard !Task.isCancelled else { return }

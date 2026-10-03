@@ -50,15 +50,21 @@ public final class SyncServer: @unchecked Sendable {
 
     private let accessCode: String
     private let getCards: @Sendable () async -> [KnowledgeCard]
-    private let onReceiveCards: @Sendable ([KnowledgeCard]) async -> (added: Int, restored: Int, ignored: Int)
+    /// 本地墓碑表来源（协议 v2 §3）：GET 载荷的 tombstones 字段由此取值
+    private let getTombstones: @Sendable () async -> [SyncTombstone]
+    /// 合并入口（协议 v2 §4）：对端卡片 + 墓碑一并交给合并方；
+    /// `deleted` 仅统计「收到墓碑 → 实际删除本地卡片」的数量，随 POST 响应 `"deleted":n` 上报
+    private let onReceiveCards: @Sendable ([KnowledgeCard], [SyncTombstone]) async -> (added: Int, restored: Int, ignored: Int, deleted: Int)
 
     public init(
         accessCode: String,
         getCards: @escaping @Sendable () async -> [KnowledgeCard],
-        onReceiveCards: @escaping @Sendable ([KnowledgeCard]) async -> (added: Int, restored: Int, ignored: Int)
+        getTombstones: @escaping @Sendable () async -> [SyncTombstone],
+        onReceiveCards: @escaping @Sendable ([KnowledgeCard], [SyncTombstone]) async -> (added: Int, restored: Int, ignored: Int, deleted: Int)
     ) {
         self.accessCode = accessCode
         self.getCards = getCards
+        self.getTombstones = getTombstones
         self.onReceiveCards = onReceiveCards
     }
 
@@ -262,8 +268,9 @@ public final class SyncServer: @unchecked Sendable {
         case "/api/cards":
             if method == "GET" {
                 let cards = await getCards()
-                // 协议 v2 §3：GET 响应为信封（含本地墓碑表；表的接线在墓碑持久化落地时接入）
-                if let jsonString = try? CardExportEngine.exportToJSON(cards: cards) {
+                let tombstones = await getTombstones()
+                // 协议 v2 §3：GET 响应为信封，携带本地墓碑表
+                if let jsonString = try? CardExportEngine.exportToJSON(cards: cards, tombstones: tombstones) {
                     sendResponse(clientFd, code: 200, message: "OK", contentType: "application/json; charset=utf-8", body: jsonString)
                 } else {
                     sendResponse(clientFd, code: 500, message: "Internal Server Error", contentType: "application/json", body: #"{"error":"Encode failed"}"#)
@@ -273,8 +280,8 @@ public final class SyncServer: @unchecked Sendable {
                     sendResponse(clientFd, code: 400, message: "Bad Request", contentType: "application/json", body: #"{"error":"Invalid card JSON"}"#)
                     return
                 }
-                // 协议 v2 §3：信封里的墓碑随载荷到达，合并方在墓碑合并落地时承接（协议 §4）
-                let mergeResult = await onReceiveCards(incoming.cards)
+                // 协议 v2 §4：信封里的墓碑一并交给合并方按对称语义应用
+                let mergeResult = await onReceiveCards(incoming.cards, incoming.tombstones)
                 let totalCards = await getCards().count
 
                 let respDict: [String: Any] = [
@@ -282,7 +289,9 @@ public final class SyncServer: @unchecked Sendable {
                     "restored": mergeResult.restored,
                     "added": mergeResult.added,
                     "ignored": mergeResult.ignored,
-                    "total": totalCards
+                    "total": totalCards,
+                    // 协议 v2 §1：本次被对端墓碑删除的本地卡数（旧端不认识则忽略）
+                    "deleted": mergeResult.deleted
                 ]
                 if let respData = try? JSONSerialization.data(withJSONObject: respDict),
                    let respString = String(data: respData, encoding: .utf8) {

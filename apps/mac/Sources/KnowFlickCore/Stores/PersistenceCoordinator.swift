@@ -116,6 +116,16 @@ public final class PersistenceCoordinator {
         persistenceQueue.sync {}
     }
 
+    // MARK: - 同步墓碑表
+
+    /// 墓碑表落盘（协议 v2 §4）：与卡片写入共用同一条串行队列，
+    /// 保证「删卡（cards.json）→ 记墓碑（tombstones.json）」的跨文件先后顺序。
+    /// 失败只进日志不打横幅：墓碑表丢失的退化（已删卡可能再次被对端删除）下次同步自愈。
+    public func saveTombstones(_ tombstones: [SyncTombstone]) {
+        let storage = self.storage
+        persistenceQueue.async { storage.saveTombstones(tombstones) }
+    }
+
     // MARK: - 设置落盘（非密钥类）
 
     /// 非密钥类设置的轻量变更（外观循环、磨耳朵语速等高频开关）：
