@@ -472,10 +472,15 @@ struct SyncSheetView: View {
         syncTask?.cancel()
         syncTask = Task {
             do {
-                let localCards = await MainActor.run { store.cards }
                 let result = try await SyncClient.executeBidirectionalSync(
                     target: targetInput,
-                    localCards: localCards
+                    // 推送的是「合并后的最新快照」：合并回调可能新增/更新/删除本地卡（协议 §4）
+                    currentCards: { [store] in
+                        await MainActor.run { store.cards }
+                    },
+                    currentTombstones: { [store] in
+                        await MainActor.run { store.currentTombstones }
+                    }
                 ) { incoming, tombstones in
                     await MainActor.run {
                         let res = store.applySyncPayload(cards: incoming, tombstones: tombstones)
@@ -484,6 +489,9 @@ struct SyncSheetView: View {
                 }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
+                    // 协议 §8「推送完成后显式 flush」：合并落库已在 applySyncPayload 内立即落盘，
+                    // 这里收口整个持久化队列（有界等待 ≤2s，见 PersistenceCoordinator.flushPersistence）
+                    store.flushPersistence()
                     self.syncResult = result
                     self.isSyncing = false
                     AudioEffectManager.shared.playMasteryChime()
