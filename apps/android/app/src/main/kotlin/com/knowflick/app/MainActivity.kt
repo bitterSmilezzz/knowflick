@@ -4,9 +4,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,6 +64,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Android 13+ 通知运行时权限：启动时一次性请求，拒绝也不纠缠（媒体通知会被系统隐藏） */
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        // 无论授权与否都照常运行：拒绝只是锁屏/通知栏看不到媒体播控，应用内播控不受影响
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         screen = Screen.entries.firstOrNull { it.name == savedInstanceState?.getString("screen") } ?: Screen.DECK
@@ -69,6 +79,7 @@ class MainActivity : ComponentActivity() {
             it.name == savedInstanceState?.getString("detailReturnScreen")
         } ?: Screen.DECK
         handleIncomingIntent(intent)
+        maybeRequestNotificationPermission()
         enableEdgeToEdge()
         setContent {
             KnowFlickTheme(paperTheme = viewModel.currentPaperTheme) {
@@ -439,6 +450,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    /** 一次性请求 POST_NOTIFICATIONS：仅 API 33+ 且未授权时发起，不重复纠缠 */
+    private fun maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
