@@ -398,7 +398,7 @@ struct SyncSheetView: View {
         HStack(spacing: 6) {
             Image(systemName: "arrow.up.circle")
                 .foregroundStyle(InsightColor.textMuted)
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(InsightFont.caption)
                 .foregroundStyle(InsightColor.textMuted)
         }
