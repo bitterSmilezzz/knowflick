@@ -252,3 +252,50 @@ extension StorageTests {
         #expect(storage.loadCards().map(\.headline) == ["备份"])
     }
 }
+
+// MARK: - settings 备份轮转与恢复（Wave D4：settings.json 此前损坏即重置）
+
+extension StorageTests {
+    private func writeSettingsFile(_ data: Data) throws {
+        try data.write(to: tempDir.appendingPathComponent("settings.json"))
+    }
+
+    private func decodeSettings(_ name: String) throws -> AISettings {
+        try JSONDecoder().decode(AISettings.self, from: Data(contentsOf: tempDir.appendingPathComponent(name)))
+    }
+
+    @Test func settingsSaveRotatesTwoBackupGenerations() throws {
+        var s1 = AISettings.default
+        s1.speechRate = 0.75
+        var s2 = AISettings.default
+        s2.speechRate = 1.5
+        var s3 = AISettings.default
+        s3.speechRate = 2.0
+        try storage.saveSettingsThrowing(s1)
+        try storage.saveSettingsThrowing(s2)
+        try storage.saveSettingsThrowing(s3)
+
+        #expect(try decodeSettings("settings.backup.json").speechRate == 1.5, "backup 应是上一版（s2）")
+        #expect(try decodeSettings("settings.backup.2.json").speechRate == 0.75, "backup.2 应是上上版（s1）")
+        #expect(storage.loadSettings().speechRate == 2.0)
+    }
+
+    @Test func corruptSettingsMainRecoversFromBackupAndRewritesMain() throws {
+        var s1 = AISettings.default
+        s1.speechRate = 0.75
+        var s2 = AISettings.default
+        s2.speechRate = 1.5
+        try storage.saveSettingsThrowing(s1)
+        try storage.saveSettingsThrowing(s2)
+
+        try writeSettingsFile(Data("broken".utf8))
+        // 主文件损坏：backup（s1）顶上，且主文件被回写收敛
+        #expect(storage.loadSettings().speechRate == 0.75)
+        #expect(storage.loadSettings().speechRate == 0.75, "回写后的主文件应可直接解码，不应二次回退")
+    }
+
+    @Test func corruptSettingsWithoutBackupResetsToDefault() throws {
+        try writeSettingsFile(Data("broken".utf8))
+        #expect(storage.loadSettings() == AISettings.default)
+    }
+}
