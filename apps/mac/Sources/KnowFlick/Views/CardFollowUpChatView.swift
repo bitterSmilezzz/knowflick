@@ -328,7 +328,7 @@ struct CardFollowUpChatView: View {
                     if msg.sender == .user {
                         Spacer()
                     }
-                    Text(msg.sender == .user ? "你" : "KnowFlick 伴学导师")
+                    Text(LocalizedStringKey(msg.sender == .user ? "你" : "KnowFlick 伴学导师"))
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(InsightColor.textTertiary)
                 }
