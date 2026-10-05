@@ -272,7 +272,7 @@ struct ImportNotesModalView: View {
             }
         }
         .padding(16)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     // MARK: - Processing Placeholder
@@ -287,7 +287,7 @@ struct ImportNotesModalView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(30)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     // MARK: - Extracted Cards Preview Card
@@ -352,7 +352,7 @@ struct ImportNotesModalView: View {
             .padding(.top, 4)
         }
         .padding(16)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     // MARK: - Bottom Action Bar
