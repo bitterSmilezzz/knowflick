@@ -44,7 +44,7 @@ struct WebClipModalView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(18)
-                        .editorialGlassCard()
+                        .insightPanelCard()
                     }
 
                     if let digest {
@@ -148,7 +148,7 @@ struct WebClipModalView: View {
             }
         }
         .padding(16)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     private func pagePreview(_ digest: WebClipDigest) -> some View {
@@ -191,7 +191,7 @@ struct WebClipModalView: View {
             }
         }
         .padding(16)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     private var cardPreview: some View {
@@ -251,7 +251,7 @@ struct WebClipModalView: View {
             .toggleStyle(.checkbox)
         }
         .padding(16)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     private var footer: some View {
