@@ -29,6 +29,11 @@ enum InsightDestination: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// 本地化导航名：词典键即 rawValue（"今日"→"Today"），miss 时回退中文
+    var localizedName: String {
+        String(localized: String.LocalizationValue(rawValue))
+    }
+
     var icon: String {
         switch self {
         case .swipe: return "rectangle.stack"
@@ -333,7 +338,7 @@ struct InsightShell<Content: View>: View {
                 Image(systemName: InsightDestination.tools.contains(selection) ? selection.icon : "ellipsis")
                     .frame(width: 20)
                 if isSidebarExpanded {
-                    Text(InsightDestination.tools.contains(selection) ? selection.rawValue : "更多工具")
+                    Text(LocalizedStringKey(InsightDestination.tools.contains(selection) ? selection.rawValue : "更多工具"))
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.down").font(.system(size: 9))
                 }
@@ -360,21 +365,34 @@ struct InsightShell<Content: View>: View {
 
     private func navigationHelp(for destination: InsightDestination) -> String {
         let count = badgeCounts[destination] ?? 0
+        // String(localized:) 的插值会生成 %lld 模式键，与 en 词典条目一致
         let detail: String
         switch destination {
-        case .today: detail = "查看今日目标、下一张阅读与复习安排\n今日已完成 \(count) 张"
-        case .swipe: detail = "逐张浏览知识，记录兴趣并收藏\n还有 \(count) 张可阅读"
-        case .map: detail = "按主题选择学习范围，查看各主题的阅读与掌握进度"
-        case .review: detail = "先回忆，再揭晓答案；每轮最多 10 张\n当前有 \(count) 张到期"
-        case .library: detail = "浏览全部卡片、收藏与历史，或添加自己的资料\n卡库共 \(count) 张"
-        case .favorites: detail = "重读已收藏的知识，或导出为笔记与闪卡\n已收藏 \(count) 张"
-        case .stats: detail = "查看阅读记录、知识掌握度与未来复习安排"
-        case .history: detail = "回看浏览过的卡片，按兴趣与主题筛选\n已有 \(count) 张浏览记录"
-        case .graph: detail = "从知识星图中查看主题与卡片的关联"
-        case .quiz: detail = "进行自由测验，检验回忆并记录掌握程度"
-        case .console: detail = "朗读知识卡片，控制语速与连续播放"
+        case .today:
+            detail = String(localized: "查看今日目标、下一张阅读与复习安排\n今日已完成 \(count) 张")
+        case .swipe:
+            detail = String(localized: "逐张浏览知识，记录兴趣并收藏\n还有 \(count) 张可阅读")
+        case .map:
+            detail = String(localized: "按主题选择学习范围，查看各主题的阅读与掌握进度")
+        case .review:
+            detail = String(localized: "先回忆，再揭晓答案；每轮最多 10 张\n当前有 \(count) 张到期")
+        case .library:
+            detail = String(localized: "浏览全部卡片、收藏与历史，或添加自己的资料\n卡库共 \(count) 张")
+        case .favorites:
+            detail = String(localized: "重读已收藏的知识，或导出为笔记与闪卡\n已收藏 \(count) 张")
+        case .stats:
+            detail = String(localized: "查看阅读记录、知识掌握度与未来复习安排")
+        case .history:
+            detail = String(localized: "回看浏览过的卡片，按兴趣与主题筛选\n已有 \(count) 张浏览记录")
+        case .graph:
+            detail = String(localized: "从知识星图中查看主题与卡片的关联")
+        case .quiz:
+            detail = String(localized: "进行自由测验，检验回忆并记录掌握程度")
+        case .console:
+            detail = String(localized: "朗读知识卡片，控制语速与连续播放")
         }
-        return "\(destination.rawValue)\n\(detail)"
+        let name = destination.localizedName
+        return "\(name)\n\(detail)"
     }
 
 }

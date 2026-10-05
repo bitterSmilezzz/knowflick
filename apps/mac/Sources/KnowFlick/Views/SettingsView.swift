@@ -307,9 +307,48 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            Divider().overlay(InsightColor.divider)
+
+            // 界面语言（i18n Wave）：跟随系统或手动覆盖。写 AppleLanguages 是
+            // macOS 标准做法，Bundle 语言解析在下次启动时生效，故提示重启。
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("界面语言")
+                        .font(InsightFont.bodyStrong)
+                        .foregroundStyle(InsightColor.textPrimary)
+                    Text("跟随系统或手动固定；切换后重启应用生效。")
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textMuted)
+                }
+                Spacer()
+                Picker("", selection: languageBinding) {
+                    Text("跟随系统").tag("system")
+                    Text("简体中文").tag("zh-Hans")
+                    Text("English").tag("en")
+                }
+                .labelsHidden()
+                .frame(width: 150)
+                .accessibilityLabel("界面语言")
+            }
         }
         .padding(18)
         .editorialGlassCard()
+    }
+
+    /// 语言覆盖的直接写盘 Binding：语言是应用级偏好，不走「保存配置」缓冲
+    /// （SettingsEditBuffer 只管 AI/语音设置），改动即时落 UserDefaults。
+    private var languageBinding: Binding<String> {
+        Binding(
+            get: { UserDefaults.standard.stringArray(forKey: "AppleLanguages")?.first ?? "system" },
+            set: { choice in
+                if choice == "system" {
+                    UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+                } else {
+                    UserDefaults.standard.set([choice], forKey: "AppleLanguages")
+                }
+            }
+        )
     }
 
     // MARK: - 卡片 1：AI 服务配置
