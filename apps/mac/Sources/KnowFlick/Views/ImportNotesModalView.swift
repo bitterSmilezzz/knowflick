@@ -542,7 +542,11 @@ struct ImportNotesModalView: View {
         guard !cardsToImport.isEmpty else { return }
 
         let result = store.importCards(cardsToImport, insertAtTop: insertAtTop)
-        toast.show("已成功导入 \(result.parsedCards.count) 张卡片\(result.duplicateCount > 0 ? "（去重跳过 \(result.duplicateCount) 张）" : "")")
+        if result.duplicateCount > 0 {
+                                toast.show(String(localized: "已成功导入 \(result.parsedCards.count) 张卡片，跳过重复卡 \(result.duplicateCount) 张"))
+                            } else {
+                                toast.show(String(localized: "已成功导入 \(result.parsedCards.count) 张卡片"))
+                            }
 
         closeTask = Task {
             do { try await Task.sleep(for: .seconds(1.2)) } catch { return }
