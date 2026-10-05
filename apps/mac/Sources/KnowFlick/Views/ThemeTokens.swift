@@ -346,67 +346,13 @@ public struct DynamicScrimOverlay: View {
     }
 }
 
-// MARK: - 杂志微质感卡片修饰符
-
-public struct EditorialGlassCardModifier: ViewModifier {
-    public var cornerRadius: CGFloat
-    public var strokeColor: Color
-    public var backgroundColor: Color
-
-    public init(
-        cornerRadius: CGFloat = EditorialRadius.container,
-        strokeColor: Color = EditorialColor.glassBorder,
-        backgroundColor: Color = EditorialColor.glassSurface
-    ) {
-        self.cornerRadius = cornerRadius
-        self.strokeColor = strokeColor
-        self.backgroundColor = backgroundColor
-    }
-
-    public func body(content: Content) -> some View {
-        content
-            .background {
-                ZStack {
-                    backgroundColor
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(0.06), location: 0),
-                            .init(color: Color.clear, location: 0.35)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.28), location: 0),
-                                .init(color: Color.white.opacity(0.12), location: 0.4),
-                                .init(color: strokeColor, location: 1)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
-    }
-}
+// MARK: - 卡片修饰符（旧玻璃卡已随视觉轮收敛删除）
+//
+// 原 `EditorialGlassCardModifier`（白 sheen + 对角三段渐变描边 + 0.18 广域影）
+// 在设置/同步/导入/导出/剪藏/历史七处与知识库的扁平卡两制并存，
+// 2026-10-05 视觉轮归一到 `insightPanelCard`（InsightDesignSystem.swift）。
 
 public extension View {
-    func editorialGlassCard(
-        cornerRadius: CGFloat = EditorialRadius.container,
-        strokeColor: Color = EditorialColor.glassBorder,
-        backgroundColor: Color = EditorialColor.glassSurface
-    ) -> some View {
-        modifier(EditorialGlassCardModifier(cornerRadius: cornerRadius, strokeColor: strokeColor, backgroundColor: backgroundColor))
-    }
-
     // MARK: 阴影便捷方法（按层级取档，消灭 7 套规格漂移）
 
     /// 控件级阴影（按钮、徽章、Toast）

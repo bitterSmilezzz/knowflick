@@ -205,7 +205,7 @@ struct SyncSheetView: View {
                 }
             }
             .padding(16)
-            .editorialGlassCard()
+            .insightPanelCard()
             // 配对信息块随服务开关插入/移除
             .animation(EditorialSpring.state, value: isServerRunning)
         }
@@ -353,7 +353,7 @@ struct SyncSheetView: View {
                 }
             }
             .padding(16)
-            .editorialGlassCard()
+            .insightPanelCard()
             // 状态块（错误 / 对端信息 / 同步结果）插入移除的统一动画上下文
             .animation(EditorialSpring.state, value: errorMessage)
             .animation(EditorialSpring.state, value: remoteInfo?.deviceName)

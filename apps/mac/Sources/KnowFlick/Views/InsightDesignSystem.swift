@@ -225,6 +225,37 @@ public enum InsightRadius {
     public static let pill: CGFloat = 999
 }
 
+// MARK: - 面板卡片（视觉轮口径：七面板一件外套）
+
+/// 面板卡片容器：surface + 1pt 描边 + 近距浮影。
+/// 取代旧 `EditorialGlassCard`（白 sheen + 对角三段渐变描边 + 0.18 广域影）——
+/// 此前设置/同步/导入/导出/剪藏/历史/详情各自穿着画报风的玻璃外套，
+/// 与知识库、工作台的扁平卡片语言两制并存。归一到与本店同源的「纸面 + 发丝边」。
+public struct InsightPanelCardModifier: ViewModifier {
+    var cornerRadius: CGFloat
+
+    public func body(content: Content) -> some View {
+        content
+            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(InsightColor.border, lineWidth: 1)
+            )
+            .shadow(
+                color: EditorialShadow.elevationNearColor,
+                radius: EditorialShadow.elevationNear.radius,
+                y: EditorialShadow.elevationNear.y
+            )
+    }
+}
+
+public extension View {
+    /// 面板卡片：设置 / 同步 / 导入 / 导出 / 剪藏 / 编辑器等 sheet 的统一卡面
+    func insightPanelCard(cornerRadius: CGFloat = InsightRadius.cardOuter) -> some View {
+        modifier(InsightPanelCardModifier(cornerRadius: cornerRadius))
+    }
+}
+
 // MARK: - 布局常量
 
 public enum InsightLayout {
