@@ -272,3 +272,132 @@
 "关闭详情" = "Close details";
 "一键追问：%@" = "Ask: %@";
 "精选" = "Curated";
+
+/* MARK: - Batch 3：测验（QuizView / QuizCardView） */
+
+"沉浸式知识测验" = "Immersive Quiz";
+"到期复习" = "Due Review";
+"%@ · 专项测验" = "%@ Quiz";
+"退出测验 (Esc)" = "Quit quiz (Esc)";
+"没想起来" = "Forgotten";
+"犹豫想起" = "Fuzzy";
+"熟练掌握" = "Mastered";
+"按 空格键/回车 翻看背面答案 · ⌘1 没想起来 · ⌘2 犹豫想起 · ⌘3 熟练掌握" = "Space/⏎ to flip · ⌘1 forgot · ⌘2 fuzzy · ⌘3 mastered";
+"本轮记忆测验已完成" = "Quiz complete";
+"艾宾浩斯记忆模型表明，及时主动提取能显著提升神经突触的长期连接。" = "Active recall on schedule builds lasting memory.";
+"记忆留存率" = "Retention";
+"需要强化" = "Needs work";
+"本轮待强化卡片 (%lld 张)" = "Cards to reinforce (%lld)";
+"点击就地复盘" = "Click to review inline";
+"置顶卡堆" = "To top";
+"已置顶卡堆" = "On top";
+"针对性重测弱项 (%lld 题)" = "Re-quiz weak ones (%lld)";
+"再测一组 (%lld 题)" = "Another round (%lld)";
+"完成并返回" = "Done";
+"暂无可测验的卡片" = "No cards to quiz";
+"请先在主界面多浏览几张知识卡片，或将感兴趣的冷知识加入收藏阁。" = "Read a few cards first, or save some to quiz later.";
+"返回主界面" = "Back";
+"主动回忆" = "Active recall";
+"尝试在脑海中组织语言：" = "Try to phrase it in your head:";
+"这个知识的核心机制、前因后果或关键结论是什么？组织好思路后，翻看背面核对。" = "What's the core mechanism or key takeaway? Flip to check.";
+"查看答案与解析" = "Reveal answer";
+"答案解析" = "Answer";
+"回看题目" = "Question";
+"翻回题目正面 (空格键)" = "Back to question (Space)";
+"核心要点" = "Key point";
+"向 AI 追问本卡解析" = "Ask AI about this card";
+"回忆难度评级（艾宾浩斯间隔记忆）" = "Rate your recall (spaced repetition)";
+"学习中" = "Learning";
+"待强化" = "To reinforce";
+"解析：%@" = "Analysis: %@";
+
+/* MARK: - Batch 3：学习地图（LearningMapView） */
+
+"%lld 张卡 · 未限定范围" = "%lld cards · no scope";
+"正在限定范围学习" = "Scoped learning";
+"退出范围" = "Exit scope";
+"返回学科列表" = "All subjects";
+"卡库还是空的，先去生成或导入一些卡片" = "Library is empty — generate or import some cards";
+"%lld 张 · 已看 %lld · 已掌握 %lld · %lld 条支线" = "%lld cards · %lld read · %lld mastered · %lld branches";
+"%lld 张 · 已看 %lld · 已掌握 %lld" = "%lld cards · %lld read · %lld mastered";
+"已在范围" = "In scope";
+"专学这条支线" = "Focus this branch";
+"加入混合" = "Add to mix";
+"移出混合" = "Remove from mix";
+"按难度选" = "By level";
+"点一下加进范围，再点取消；只选难度时自动按顺序推进" = "Click to add, again to remove. Levels-only scopes play in order.";
+
+/* MARK: - Batch 3：听书（SpeechConsole / AmbientBar） */
+
+"语音听书控制台" = "Speech Console";
+"关闭 (Esc)" = "Close (Esc)";
+"正在朗读" = "Reading";
+"已暂停" = "Paused";
+"正在合成语音…" = "Synthesizing…";
+"已停止" = "Stopped";
+"尚未开始朗读" = "Not started";
+"点下方播放键朗读当前卡片，或回到卡堆按 ⌘P 开始听书。" = "Press play to read this card, or hit ⌘P in the deck.";
+"上一张" = "Previous";
+"下一张" = "Next";
+"快退 5 秒" = "Back 5s";
+"快进 5 秒" = "Forward 5s";
+"暂停朗读" = "Pause";
+"暂停朗读 (⌘P)" = "Pause (⌘P)";
+"继续朗读" = "Resume";
+"继续朗读 (⌘P)" = "Resume (⌘P)";
+"朗读进度" = "Progress";
+"朗读语速" = "Speed";
+"听书档位" = "Presets";
+"温和真人" = "Natural";
+"睡前轻缓" = "Bedtime";
+"手调过语速或音调后的自定义组合" = "Custom speed and pitch";
+"低沉" = "Deep";
+"清亮" = "Bright";
+"低沉 0.85x" = "Deep 0.85x";
+"标准 1.0x" = "Standard 1.0x";
+"清亮 1.15x" = "Bright 1.15x";
+"充裕 3.0s" = "Relaxed 3.0s";
+"单张播完后自动朗读下一张卡片" = "Auto-advance to the next card";
+"磨耳朵模式下两张卡之间的缓冲" = "Gap between cards in ambient mode";
+"磨耳朵连续听书" = "Ambient listening";
+"翻卡停顿间隔" = "Card gap";
+"睡眠定时" = "Sleep timer";
+"未开启" = "Off";
+"15 分钟" = "15 min";
+"30 分钟" = "30 min";
+"60 分钟" = "60 min";
+"到点自动停止朗读并退出磨耳朵" = "Stops playback when time is up";
+"睡眠 %@" = "Sleep %@";
+"剩余 %@" = "%@ left";
+"仅作用于系统声音；云端朗读的音调由所选音色决定" = "System voice only; cloud voices set their own pitch.";
+"当前是系统音色，这一档只能近似；在设置里接上云端真人语音（如 CosyVoice）才更像真人朗读" = "Approximated on the system voice; connect a cloud voice in Settings for natural results.";
+"磨耳朵" = "Ambient";
+"暂无卡片" = "No cards";
+"上一张 (⌘Z)" = "Previous (⌘Z)";
+"切到下一张" = "Next card";
+"切换朗读语速" = "Change speed";
+"切换朗读语速 (当前 %@)" = "Change speed (now %@)";
+"语音听书控制台 ⌥⌘P" = "Speech Console ⌥⌘P";
+"退出磨耳朵模式" = "Exit ambient mode";
+"睡眠定时器剩余时间" = "Sleep timer remaining";
+"睡眠定时器剩余 %@" = "Sleep timer %@ left";
+
+/* MARK: - Batch 3：星图（KnowledgeGraphView） */
+
+"全景知识星图" = "Knowledge Graph";
+"%lld 颗星宿 · %lld 条引力线" = "%lld stars · %lld links";
+"全部星系" = "All galaxies";
+"检索星图知识…" = "Search stars…";
+"正在连接知识…" = "Connecting knowledge…";
+"缩小星图" = "Zoom out";
+"放大星图" = "Zoom in";
+"重置视野" = "Reset view";
+"重置缩放与平移视野 (空格键)" = "Reset zoom and pan (Space)";
+"拖拽平移 · 滚轮/捏合缩放 · 点击星宿探秘知识灵感" = "Drag to pan · scroll to zoom · click a star to explore";
+"%lld 条关联引力线" = "%lld links";
+"查看完整卡片" = "Open card";
+"置顶进入卡堆" = "To deck top";
+"把这张卡片提到卡堆顶部，接着就能刷到它" = "Promote to the top of the deck";
+"关闭星图 (Esc)" = "Close graph (Esc)";
+"点击 ✕ 或再次点击该星宿关闭" = "Click ✕ or the star again to close";
+"剩余 %lld 秒" = "%lld s";
