@@ -139,38 +139,17 @@ public struct AIService: Sendable {
             rem -= b
         }
 
-        let allPayloads: [AICardPayload]
-        if batches.count == 1 {
-            allPayloads = try await requestBatch(
+        // 多批聚合：部分成功即返回成功部分（任一批失败不再作废全部，见 aggregateBatches）
+        let allPayloads: [AICardPayload] = try await Self.aggregateBatches(batches) { batchCount in
+            try await self.requestBatch(
                 systemPrompt: systemPrompt,
                 settings: settings,
-                batchCount: batches[0],
+                batchCount: batchCount,
                 topic: topic,
                 customHint: customHint,
                 excludeList: Array(excludeListParam.prefix(100)),
                 preferredSources: preferredSources
             )
-        } else {
-            allPayloads = try await withThrowingTaskGroup(of: [AICardPayload].self) { group in
-                for batch in batches {
-                    group.addTask {
-                        try await self.requestBatch(
-                            systemPrompt: systemPrompt,
-                            settings: settings,
-                            batchCount: batch,
-                            topic: topic,
-                            customHint: customHint,
-                            excludeList: Array(excludeListParam.prefix(100)),
-                            preferredSources: preferredSources
-                        )
-                    }
-                }
-                var aggregated: [AICardPayload] = []
-                for try await batchResults in group {
-                    aggregated.append(contentsOf: batchResults)
-                }
-                return aggregated
-            }
         }
 
         var excludedKeys = excludedKeysParam
@@ -554,22 +533,75 @@ public struct AIService: Sendable {
                 throw AIError.httpStatus(http.statusCode, await Self.readErrorBody(from: bytes))
             }
             let scanner = IncrementalObjectScanner()
-            for try await line in bytes.lines {
-                try Task.checkCancellation()
-                if line.trimmingCharacters(in: .whitespaces) == "data: [DONE]" { break }
-                guard let delta = Self.sseContentDelta(line) else { continue }
-                scanner.append(delta)
-                if scanner.objects.count >= targetCount {
-                    // 够数即停（省时省额度）但**不丢弃**已扫描的完整对象：同一 delta 常一次
-                    // 带出多个对象，多出的部分是已付费内容，且下游还有 ≥80 字门槛与近重复
-                    // 过滤会再筛一遍——只交前 targetCount 张，会让「前几张没过筛」的批次
-                    // 白白报「无可用产出」。全量交下游，最终输出数量仍由调用方 count 收口。
-                    return scanner.objects
+            do {
+                for try await line in bytes.lines {
+                    try Task.checkCancellation()
+                    if line.trimmingCharacters(in: .whitespaces) == "data: [DONE]" { break }
+                    guard let delta = Self.sseContentDelta(line) else { continue }
+                    scanner.append(delta)
+                    if scanner.objects.count >= targetCount {
+                        // 够数即停（省时省额度）但**不丢弃**已扫描的完整对象：同一 delta 常一次
+                        // 带出多个对象，多出的部分是已付费内容，且下游还有 ≥80 字门槛与近重复
+                        // 过滤会再筛一遍——只交前 targetCount 张，会让「前几张没过筛」的批次
+                        // 白白报「无可用产出」。全量交下游，最终输出数量仍由调用方 count 收口。
+                        return scanner.objects
+                    }
                 }
+            } catch {
+                // 流中断（连接断开 / 解码失败等）不再整批丢弃：对齐聊天会话的「保留部分」语义
+                return try Self.resolveInterruptedScan(objects: scanner.objects, interrupt: error)
             }
             // 流结束兜底：buffer 中所有完整对象
             return scanner.objects
         }()
+    }
+
+    /// 流中断产出裁定（Wave C：此前中断即 throw，已扫出的完整对象全部丢弃）。
+    /// - 用户取消（CancellationError）= 明确放弃，产出一并丢弃；
+    /// - 其他中断：已扫出的完整对象经过增量扫描器闭合校验且费用已发生，非空则保留；
+    /// - 无产出时原样抛出，保持既有重试语义（RetryPolicy 决定是否重试）。
+    static func resolveInterruptedScan(objects: [AICardPayload], interrupt: Error) throws -> [AICardPayload] {
+        if interrupt is CancellationError { throw interrupt }
+        guard objects.isEmpty else { return objects }
+        throw interrupt
+    }
+
+    /// 多批聚合（Wave C：此前任一批失败即整体 throw，已成功批次的产出一并作废）。
+    /// 逐批收结果，**部分成功即返回成功部分**；仅当全部批次失败时抛最后一个错误，
+    /// 保持「完全失败」的既有语义（上层文案/重试不变）。
+    static func aggregateBatches(
+        _ batches: [Int],
+        runner: @escaping @Sendable (Int) async throws -> [AICardPayload]
+    ) async throws -> [AICardPayload] {
+        guard let first = batches.first else { return [] }
+        guard batches.count > 1 else {
+            return try await runner(first)
+        }
+        return try await withThrowingTaskGroup(of: Result<[AICardPayload], Error>.self) { group in
+            for batch in batches {
+                group.addTask {
+                    // Result(catching:) 不支持 async 体，用 do/catch 显式收拢
+                    do { return .success(try await runner(batch)) }
+                    catch { return .failure(error) }
+                }
+            }
+            var aggregated: [AICardPayload] = []
+            var lastError: Error?
+            for try await outcome in group {
+                switch outcome {
+                case .success(let payloads):
+                    aggregated.append(contentsOf: payloads)
+                case .failure(let error):
+                    lastError = error
+                }
+            }
+            if aggregated.isEmpty, let lastError { throw lastError }
+            if let lastError {
+                NSLog("KnowFlick: 多批生成部分失败，已保留 %d 张成功批产出: %@",
+                      aggregated.count, String(describing: lastError))
+            }
+            return aggregated
+        }
     }
 
     /// 轻量连通性探测：发一个极小请求，只验证网络/鉴权/URL 拼装，仅使用少量 token

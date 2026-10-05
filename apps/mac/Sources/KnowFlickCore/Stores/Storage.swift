@@ -302,8 +302,21 @@ public struct Storage: Sendable {
             let data = try Data(contentsOf: url)
             return try JSONDecoder().decode(AISettings.self, from: data)
         } catch {
-            NSLog("KnowFlick: settings.json 损坏，将保留隔离副本: %@", error.localizedDescription)
+            NSLog("KnowFlick: settings.json 损坏，尝试从备份恢复: %@", error.localizedDescription)
             quarantineIfPresent(url)
+            // 备份回退链（与 cards.json 同纪律）：backup → backup.2，取第一个可解码的。
+            // 恢复后回写主文件让状态收敛，下一次保存会重建整条备份链。
+            for backupName in ["settings.backup.json", "settings.backup.2.json"] {
+                let backupURL = fileURL(backupName)
+                guard fileManager.fileExists(atPath: backupURL.path),
+                      let data = try? Data(contentsOf: backupURL),
+                      let restored = try? JSONDecoder().decode(AISettings.self, from: data) else { continue }
+                if (try? data.write(to: url, options: .atomic)) != nil {
+                    NSLog("KnowFlick: settings.json 已从 %@ 恢复", backupName)
+                }
+                return restored
+            }
+            NSLog("KnowFlick: settings.json 无可用备份，重置默认设置")
             return .default
         }
     }
@@ -312,7 +325,27 @@ public struct Storage: Sendable {
         let data: Data
         do { data = try JSONEncoder().encode(settings) }
         catch { throw StorageWriteError.encoding(error.localizedDescription) }
-        do { try data.write(to: fileURL("settings.json"), options: .atomic) }
+        let url = fileURL("settings.json")
+        let backup = fileURL("settings.backup.json")
+        let backup2 = fileURL("settings.backup.2.json")
+        // 两代备份轮转（Wave D4：settings.json 此前完全没有备份，损坏即重置）。
+        // 纪律与 cards.json 三代链一致：上一版字节数据轮进 backup、上上版进 backup.2；
+        // 上一版解不开（损坏中）时备份位改放本次健康数据，坏字节绝不混进备份链。
+        // 第三代失败不阻断主流程——它只是恢复链的最末位。
+        let previous = try? Data(contentsOf: url)
+        let backupData: Data
+        if let previous, (try? JSONDecoder().decode(AISettings.self, from: previous)) != nil {
+            backupData = previous
+        } else {
+            backupData = data
+        }
+        if let previousBackup = try? Data(contentsOf: backup) {
+            do { try previousBackup.write(to: backup2, options: .atomic) }
+            catch { NSLog("KnowFlick: settings 第三代备份轮转失败: %@", error.localizedDescription) }
+        }
+        do { try backupData.write(to: backup, options: .atomic) }
+        catch { NSLog("KnowFlick: settings 备份轮转失败: %@", error.localizedDescription) }
+        do { try data.write(to: url, options: .atomic) }
         catch { throw StorageWriteError.writing(error.localizedDescription) }
     }
 
