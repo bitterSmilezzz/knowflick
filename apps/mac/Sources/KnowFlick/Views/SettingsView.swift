@@ -196,7 +196,7 @@ struct SettingsView: View {
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
                 Spacer()
-                Text(buffer.appearance.title)
+                Text(LocalizedStringKey(buffer.appearance.title))
                     .font(InsightFont.caption)
                     .foregroundStyle(InsightColor.textMuted)
             }
@@ -214,7 +214,7 @@ struct SettingsView: View {
                         HStack(spacing: 8) {
                             Image(systemName: mode.icon)
                                 .font(.system(size: 14, weight: .semibold))
-                            Text(mode.title)
+                            Text(LocalizedStringKey(mode.title))
                                 .font(InsightFont.bodyStrong)
                         }
                         .frame(maxWidth: .infinity)
@@ -276,10 +276,10 @@ struct SettingsView: View {
                                     )
 
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(theme.title)
+                                    Text(LocalizedStringKey(theme.title))
                                         .font(InsightFont.bodyStrong)
                                         .foregroundStyle(isSelected ? InsightColor.accent : InsightColor.textPrimary)
-                                    Text(theme.subtitle)
+                                    Text(LocalizedStringKey(theme.subtitle))
                                         .font(InsightFont.captionSmall)
                                         .foregroundStyle(InsightColor.textMuted)
                                 }
@@ -373,7 +373,7 @@ struct SettingsView: View {
                                     Button {
                                         selectProvider(preset)
                                     } label: {
-                                        Label(preset.name, systemImage: preset.icon)
+                                        Label(LocalizedStringKey(preset.name), systemImage: preset.icon)
                                     }
                                 }
                             }
@@ -383,7 +383,7 @@ struct SettingsView: View {
                             Image(systemName: currentPreset.icon)
                                 .foregroundStyle(InsightColor.warning)
                                 .frame(width: 18)
-                            Text(currentPreset.name)
+                            Text(LocalizedStringKey(currentPreset.name))
                                 .font(InsightFont.bodyStrong)
                                 .foregroundStyle(InsightColor.textPrimary)
                             Spacer()
@@ -399,7 +399,7 @@ struct SettingsView: View {
                 }
 
                 if !currentPreset.helpText.isEmpty {
-                    Text(currentPreset.helpText)
+                    Text(LocalizedStringKey(currentPreset.helpText))
                         .font(InsightFont.captionSmall)
                         .foregroundStyle(InsightColor.textTertiary)
                         .padding(.top, -3)
@@ -701,7 +701,7 @@ struct SettingsView: View {
             // 默认语速倍率
             SpeechSettingsEditor(settings: $buffer.speech)
 
-            fieldRow(label: "默认朗读语速 (当前: \(String(format: "%.2fx", buffer.speechRate)))") {
+            fieldRow(label: String(localized: "默认朗读语速 (当前: \(String(format: "%.2fx", buffer.speechRate)))")) {
                 HStack(spacing: 12) {
                     Slider(value: $buffer.speechRate, in: 0.75...2.0, step: 0.25)
                         .tint(InsightColor.success)
@@ -724,7 +724,7 @@ struct SettingsView: View {
             }
 
             // 默认音调倍率（仅系统合成器生效）
-            fieldRow(label: "默认朗读音调 (当前: \(String(format: "%.2fx", buffer.speechPitch)))") {
+            fieldRow(label: String(localized: "默认朗读音调 (当前: \(String(format: "%.2fx", buffer.speechPitch)))")) {
                 HStack(spacing: 12) {
                     Slider(value: $buffer.speechPitch, in: 0.5...2.0, step: 0.05)
                         .tint(InsightColor.accent)
@@ -747,7 +747,7 @@ struct SettingsView: View {
             }
 
             // 磨耳朵换卡缓冲时间
-            fieldRow(label: "磨耳朵模式换卡缓冲间隔 (当前: \(String(format: "%.1f", buffer.ambientGapSeconds)) 秒)") {
+            fieldRow(label: String(localized: "磨耳朵模式换卡缓冲间隔 (当前: \(String(format: "%.1f", buffer.ambientGapSeconds)) 秒)")) {
                 HStack(spacing: 10) {
                     ForEach([1.0, 1.5, 2.0, 3.0], id: \.self) { sec in
                         Button("\(String(format: "%.1f", sec)) 秒") {
@@ -942,14 +942,14 @@ struct SettingsView: View {
 
     private var diagnosticsSummaryText: String {
         guard let summary = diagnosticsSummary else { return "" }
-        guard summary.fileCount > 0 else { return "暂无记录" }
+        guard summary.fileCount > 0 else { return String(localized: "暂无记录") }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         let size = formatter.string(fromByteCount: summary.totalBytes)
         if let last = summary.lastModified {
-            return "\(summary.fileCount) 个文件 · \(size) · 最近 \(last.formatted(.dateTime.month().day()))"
+            return String(localized: "\(summary.fileCount) 个文件 · \(size) · 最近 \(last.formatted(.dateTime.month().day()))")
         }
-        return "\(summary.fileCount) 个文件 · \(size)"
+        return String(localized: "\(summary.fileCount) 个文件 · \(size)")
     }
 
     private func refreshDiagnosticsSummary() {
@@ -1090,7 +1090,7 @@ struct SettingsView: View {
 
     private func fieldRow<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(InsightFont.captionSmall.weight(.semibold))
                 .foregroundStyle(InsightColor.textTertiary)
             content()
