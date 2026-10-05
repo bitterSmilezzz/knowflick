@@ -335,7 +335,7 @@ struct QuizCardView: View {
                 HStack(spacing: InsightSpacing.small) {
                     Image(systemName: rating.icon)
                         .font(.system(size: 13, weight: .bold))
-                    Text(rating.title)
+                    Text(LocalizedStringKey(rating.title))
                         .font(InsightFont.bodyStrong)
                 }
                 .foregroundStyle(tint)
