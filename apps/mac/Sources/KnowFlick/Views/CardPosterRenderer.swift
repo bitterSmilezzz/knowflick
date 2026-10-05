@@ -7,6 +7,7 @@ import KnowFlickCore
 public enum CardPosterStyle: String, CaseIterable, Identifiable {
     case editorial = "画报风"
     case polaroid = "拍立得"
+    case swiss = "瑞士风"
 
     public var id: String { rawValue }
 
@@ -14,6 +15,7 @@ public enum CardPosterStyle: String, CaseIterable, Identifiable {
         switch self {
         case .editorial: return "newspaper.fill"
         case .polaroid: return "camera.macro"
+        case .swiss: return "square.grid.2x2.fill"
         }
     }
 
@@ -21,6 +23,7 @@ public enum CardPosterStyle: String, CaseIterable, Identifiable {
         switch self {
         case .editorial: return "典雅杂志长图 · 深度知识排版"
         case .polaroid: return "文艺胶片相纸 · 极简生活留白"
+        case .swiss: return "国际主义栅格 · 极简高对比现代排版"
         }
     }
 
@@ -28,6 +31,7 @@ public enum CardPosterStyle: String, CaseIterable, Identifiable {
         switch self {
         case .editorial: return CGSize(width: 540, height: 760)
         case .polaroid: return CGSize(width: 520, height: 680)
+        case .swiss: return CGSize(width: 540, height: 760)
         }
     }
 }
@@ -54,6 +58,8 @@ public struct CardPosterRendererView: View {
                 editorialPoster
             case .polaroid:
                 polaroidPoster
+            case .swiss:
+                swissPoster
             }
         }
         .frame(width: style.canvasSize.width, height: style.canvasSize.height)
@@ -128,7 +134,7 @@ public struct CardPosterRendererView: View {
                     .padding(.vertical, 6.5)
                     .background(theme.accent, in: Capsule())
                     .overlay(Capsule().strokeBorder(Color.white.opacity(0.4), lineWidth: 0.8))
-                    .shadow(color: theme.accent.opacity(0.4), radius: 8, y: 3)
+                    .shadow(color: Color.black.opacity(0.18), radius: 4, y: 2)
 
                     // 来源标签
                     Text(card.source == .ai ? "AI 精研" : (card.source == .imported ? "导入笔记" : "预置典藏"))
@@ -155,7 +161,7 @@ public struct CardPosterRendererView: View {
                 // 核心内容区
                 VStack(alignment: .leading, spacing: 0) {
                     // 衬线大标题
-                    Text(card.headline)
+                    Text(card.displayHeadline)
                         .font(.system(size: 26, weight: .bold, design: .serif))
                         .foregroundStyle(Color.white)
                         .lineSpacing(6.5)
@@ -182,7 +188,7 @@ public struct CardPosterRendererView: View {
                             .foregroundStyle(theme.accent.opacity(0.85))
                             .offset(y: -4)
 
-                        Text(card.summary)
+                        Text(card.displaySummary)
                             .font(.system(size: 15, weight: .medium, design: .serif))
                             .foregroundStyle(Color.white.opacity(0.92))
                             .lineSpacing(6.0)
@@ -315,7 +321,7 @@ public struct CardPosterRendererView: View {
                 // 底部相纸留白与手写感排版
                 VStack(alignment: .leading, spacing: 10) {
                     // 主标题
-                    Text(card.headline)
+                    Text(card.displayHeadline)
                         .font(.system(size: 21, weight: .bold, design: .serif))
                         .foregroundStyle(Color(red: 0.15, green: 0.16, blue: 0.18))
                         .lineSpacing(5)
@@ -323,7 +329,7 @@ public struct CardPosterRendererView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     // 摘要
-                    Text(card.summary)
+                    Text(card.displaySummary)
                         .font(.system(size: 13.5, weight: .regular, design: .serif))
                         .foregroundStyle(Color(red: 0.38, green: 0.40, blue: 0.44))
                         .lineSpacing(4.5)
@@ -351,6 +357,194 @@ public struct CardPosterRendererView: View {
                     }
                 }
                 .padding(.top, 24)
+                .padding(.horizontal, 36)
+                .padding(.bottom, 28)
+            }
+        }
+    }
+
+    // MARK: - 3. 瑞士国际主义风 (Swiss International Typographic Poster)
+
+    private var swissPoster: some View {
+        ZStack(alignment: .topLeading) {
+            // 背景底色：极深哑光黑曜岩质感
+            Color(red: 0.05, green: 0.06, blue: 0.07)
+
+            VStack(alignment: .leading, spacing: 0) {
+                // 1. 瑞士网格顶栏：序号大标 + 坐标刻度 + 国际十字
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("№ \(String(format: "%02d", Int(CardThemeResolver.deterministicHash(card.headline) % 99) + 1))")
+                            .font(.system(size: 38, weight: .black, design: .default))
+                            .tracking(-1.5)
+                            .foregroundStyle(Color.white)
+
+                        Text("ARCHIVE / SYSTEM SPECIFICATION")
+                            .font(.system(size: 8.5, weight: .heavy, design: .monospaced))
+                            .tracking(2.0)
+                            .foregroundStyle(Color.white.opacity(0.40))
+                    }
+
+                    Spacer()
+
+                    // 瑞士十字标与分类徽标
+                    VStack(alignment: .trailing, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Text("CH-8001")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(theme.accent)
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .black))
+                                .foregroundStyle(Color.white.opacity(0.8))
+                        }
+
+                        Text(card.category.uppercased())
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(1.4)
+                            .foregroundStyle(Color.white.opacity(0.85))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.white.opacity(0.08), in: Rectangle())
+                            .overlay(Rectangle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
+                    }
+                }
+                .padding(.horizontal, 36)
+                .padding(.top, 34)
+
+                // 细如发丝的网格分割线
+                Rectangle()
+                    .fill(Color.white.opacity(0.14))
+                    .frame(height: 1)
+                    .padding(.horizontal, 36)
+                    .padding(.top, 18)
+
+                // 2. 结构化影像板块 (含对准角标十字)
+                ZStack {
+                    if let img = theme.image {
+                        Image(nsImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 468, height: 230)
+                            .clipped()
+                            .saturation(0.9)
+                            .contrast(1.1)
+                    } else {
+                        LinearGradient(colors: [theme.accent.opacity(0.7), Color.black], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            .frame(width: 468, height: 230)
+                    }
+
+                    // 国际主义版面标尺角标
+                    VStack {
+                        HStack {
+                            Text("+")
+                            Spacer()
+                            Text("+")
+                        }
+                        Spacer()
+                        HStack {
+                            Text("+")
+                            Spacer()
+                            Text("+")
+                        }
+                    }
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.75))
+                    .padding(8)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
+                .padding(.horizontal, 36)
+                .padding(.top, 18)
+
+                // 3. 核心大标题与观点 (Swiss Helvetica / Grotesque 严谨构图)
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(card.displayHeadline)
+                        .font(.system(size: 26, weight: .heavy, design: .default))
+                        .tracking(-0.8)
+                        .foregroundStyle(Color.white)
+                        .lineSpacing(4.5)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(alignment: .top, spacing: 14) {
+                        Rectangle()
+                            .fill(theme.accent)
+                            .frame(width: 4)
+
+                        Text(card.displaySummary)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.82))
+                            .lineSpacing(5.5)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal, 36)
+                .padding(.top, 22)
+
+                Spacer()
+
+                // 4. 瑞士技术参数矩阵 (2×2 Spec Matrix)
+                VStack(spacing: 12) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(height: 1)
+
+                    HStack(spacing: 24) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("SOURCE SPEC")
+                                .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.40))
+                            Text(card.source == .ai ? "AI SYNTHESIS" : "EDITORIAL CURATED")
+                                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.90))
+                        }
+                        Spacer()
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("DOMAIN CODE")
+                                .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.40))
+                            Text(theme.domainCode)
+                                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                                .foregroundStyle(theme.accent)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 3) {
+                            Text("RELEASE DATE")
+                                .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.40))
+                            Text(currentDateFormatted)
+                                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.90))
+                        }
+                    }
+
+                    Rectangle()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(height: 1)
+
+                    // 5. 条形码与版权印章
+                    HStack(alignment: .center) {
+                        // 仿真数据条形码
+                        HStack(spacing: 2.2) {
+                            ForEach(0..<28, id: \.self) { i in
+                                Rectangle()
+                                    .fill(Color.white.opacity((i % 4 == 0 || i % 7 == 0) ? 0.85 : 0.35))
+                                    .frame(width: (i % 3 == 0) ? 2.5 : 1.2, height: 18)
+                            }
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("KNOWFLICK ARCHIVE")
+                                .font(.system(size: 9.5, weight: .black))
+                                .tracking(1.8)
+                                .foregroundStyle(Color.white.opacity(0.90))
+                            Text("VERIFIED KNOWLEDGE ARTIFACT")
+                                .font(.system(size: 7.5, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.45))
+                        }
+                    }
+                }
                 .padding(.horizontal, 36)
                 .padding(.bottom, 28)
             }

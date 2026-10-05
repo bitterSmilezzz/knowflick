@@ -10,6 +10,7 @@ import Testing
 /// ① 并发守卫：生成中重入直接返回，不产生第二次请求、不重复追加；
 /// ② exclude 组装：排除列表是**整池**标题（不是前 100 条），池内已有标题不得被再次生成；
 /// ③ 节流判定：24h 窗口内的边界（纯函数，时间显式注入）。
+@Suite(.serialized)
 @MainActor
 struct GenerationCoordinatorTests {
     private func card(_ headline: String) -> KnowledgeCard {
