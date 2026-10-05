@@ -657,10 +657,6 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("启用预置精选知识库", isOn: $buffer.enableSeed)
-                    .font(InsightFont.callout)
-                    .foregroundStyle(InsightColor.textPrimary)
-
                 Toggle("启用 AI 智能生成卡片", isOn: $buffer.enableAI)
                     .font(InsightFont.callout)
                     .foregroundStyle(InsightColor.textPrimary)

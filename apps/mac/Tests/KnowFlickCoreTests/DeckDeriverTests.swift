@@ -77,7 +77,6 @@ struct DeckDeriverTests {
         let derived = DeckDeriver.derive(
             cards: allCards,
             currentDeck: currentDeck,
-            enableSeed: true,
             enableAI: true,
             preferredCategories: [],
             lastSwipedCardId: returning.id,
@@ -96,7 +95,6 @@ struct DeckDeriverTests {
         let derived = DeckDeriver.derive(
             cards: [returning] + rest,
             currentDeck: rest,
-            enableSeed: true,
             enableAI: true,
             preferredCategories: [],
             lastSwipedCardId: returning.id,
@@ -109,7 +107,7 @@ struct DeckDeriverTests {
 
     @Test func deriveEmptyPoolYieldsEmptyEverything() {
         let derived = DeckDeriver.derive(
-            cards: [], currentDeck: [], enableSeed: true, enableAI: true,
+            cards: [], currentDeck: [], enableAI: true,
             preferredCategories: [], lastSwipedCardId: nil, lastSwipedKey: nil
         )
         #expect(derived.deck.isEmpty)
@@ -117,15 +115,18 @@ struct DeckDeriverTests {
         #expect(derived.favorites.isEmpty)
     }
 
-    /// 来源全关：队列为空（含导入卡片），历史/收藏仍照常派生
-    @Test func deriveWithAllSourcesDisabledEmptiesTheDeck() {
-        let seed = card("预置"), ai = card("生成", source: .ai), imported = card("导入", source: .imported)
+    /// AI 来源关闭：只屏蔽 AI 生成卡，剪藏/导入与历史来源照常进堆。
+    /// 旧口径「来源全关则队列为空（含导入卡片）」随预置库退役作废——把用户自己存的东西
+    /// 藏起来，比少看几张 AI 卡危险得多。
+    @Test func deriveWithAIDisabledKeepsImportedAndLegacyCards() {
+        let legacy = card("旧卡"), ai = card("生成", source: .ai), imported = card("导入", source: .imported)
         let derived = DeckDeriver.derive(
-            cards: [seed, ai, imported], currentDeck: [seed, ai, imported],
-            enableSeed: false, enableAI: false, preferredCategories: [],
+            cards: [legacy, ai, imported], currentDeck: [legacy, ai, imported],
+            enableAI: false, preferredCategories: [],
             lastSwipedCardId: nil, lastSwipedKey: nil
         )
-        #expect(derived.deck.isEmpty)
+        #expect(!derived.deck.contains { $0.id == ai.id }, "关闭 AI 后不得出现 AI 生成卡")
+        #expect(Set(derived.deck.map(\.id)) == Set([legacy.id, imported.id]))
         #expect(derived.history.isEmpty)
     }
 
@@ -134,7 +135,7 @@ struct DeckDeriverTests {
         let elsewhere = card("别处", category: "历史")
         let derived = DeckDeriver.derive(
             cards: [elsewhere], currentDeck: [],
-            enableSeed: true, enableAI: true, preferredCategories: ["AI"],
+            enableAI: true, preferredCategories: ["AI"],
             lastSwipedCardId: nil, lastSwipedKey: nil
         )
         #expect(derived.deck.map(\.id) == [elsewhere.id])
@@ -152,7 +153,7 @@ struct DeckDeriverTests {
 
         let derived = DeckDeriver.derive(
             cards: [older, newer, unreadFavorite], currentDeck: [],
-            enableSeed: true, enableAI: true, preferredCategories: [],
+            enableAI: true, preferredCategories: [],
             lastSwipedCardId: nil, lastSwipedKey: nil
         )
         #expect(derived.history.map(\.id) == [newer.id, older.id])

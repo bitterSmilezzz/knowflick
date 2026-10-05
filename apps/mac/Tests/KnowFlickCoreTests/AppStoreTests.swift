@@ -48,17 +48,16 @@ struct AppStoreTests {
         return session
     }
 
-    @Test func sourceSwitchesRespectAllFourCombinations() throws {
+    /// AI 来源开关只作用于 AI 生成卡；其他来源（剪藏/导入/历史卡）不受影响
+    @Test func aiSourceSwitchFiltersOnlyAICards() throws {
         try withStore { store, _, _ in
-            let seed = card("种子"), ai = card("人工智能", source: .ai)
-            store.cards = [seed, ai]
-            for seedEnabled in [true, false] {
-                for aiEnabled in [true, false] {
-                    store.settings.enableSeed = seedEnabled
-                    store.settings.enableAI = aiEnabled
-                    let expected = [seedEnabled ? seed.id : nil, aiEnabled ? ai.id : nil].compactMap { $0 }
-                    #expect(Set(store.deck.map(\.id)) == Set(expected))
-                }
+            let legacy = card("旧卡"), ai = card("人工智能", source: .ai)
+            let clipped = card("剪藏", source: .imported)
+            store.cards = [legacy, ai, clipped]
+            for aiEnabled in [true, false] {
+                store.settings.enableAI = aiEnabled
+                let expected = aiEnabled ? [legacy.id, ai.id, clipped.id] : [legacy.id, clipped.id]
+                #expect(Set(store.deck.map(\.id)) == Set(expected))
             }
         }
     }

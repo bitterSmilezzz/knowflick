@@ -11,7 +11,7 @@ struct KnowledgeSearchEngineTests {
             summary: "表外租机队终于上了资产负债表，一律确认使用权资产和租赁负债。",
             details: "依据CAS 21准则要求承租人采用单一模型，除短期和低价值资产外，全部进入资产负债表核算。",
             links: [ScienceLink(title: "财政部会计司规范", url: "https://kjs.mof.gov.cn")],
-            source: .seed,
+            source: .imported,
             createdAt: Date(timeIntervalSince1970: 1000)
         ),
         KnowledgeCard(
@@ -52,8 +52,9 @@ struct KnowledgeSearchEngineTests {
         let categoryResults = engine.search(query: "O", category: "计算机", in: testCards)
         #expect(categoryResults.allSatisfy { $0.card.category == "计算机" })
 
-        let seedResults = engine.search(query: "O", source: .seed, in: testCards)
-        #expect(seedResults.allSatisfy { $0.card.source == .seed })
+        let importedResults = engine.search(query: "租赁", source: .imported, in: testCards)
+        #expect(importedResults.count == 1)
+        #expect(importedResults.allSatisfy { $0.card.source == .imported })
 
         let aiResults = engine.search(query: "量子", source: .ai, in: testCards)
         #expect(aiResults.count == 1)

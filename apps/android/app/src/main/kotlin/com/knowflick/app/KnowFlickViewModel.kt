@@ -21,7 +21,6 @@ import com.knowflick.app.ai.MessageSender
 import com.knowflick.app.data.ChatSessionStorage
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.data.CredentialStore
-import com.knowflick.app.data.SeedLoader
 import java.io.File
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +50,6 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     val model: AppModel = AppModel(
         // 目录级共享实例：与桌面微件的写回汇入同一把 CardStorage 实例锁（A5 竞态收口）
         storage = CardStorage.shared(File(application.filesDir, "store")),
-        seedCards = SeedLoader(application).load(),
     )
 
     private val credentials: CredentialStore = com.knowflick.app.data.SystemCredentialStore(application)
@@ -265,7 +263,6 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun applySettings(loaded: AiSettings) {
         // 卡堆口径：来源开关与偏好分类与设置联动
-        model.store.enableSeed = loaded.enableSeed
         model.store.enableAI = loaded.enableAI
         model.store.preferredCategories = loaded.preferredCategories.toSet()
         model.store.recompute()

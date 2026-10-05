@@ -6,6 +6,15 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [Unreleased]
+
+- 产品转向（规格见 [剪藏提炼复习设计规格](docs/CLIP_INGEST_DESIGN_2026-10.md)）：知识内容不再由 App 预置，改为「URL → AI 提炼知识点 → 复习」。
+- macOS / Android：**移除预置知识库**——删除 `shared/assets/seed_cards.json`（214 张），两端启动不再播种、不再做「种子增量合并」，空库成为正常起点；`AppStore.isLoadingSeed` 随之更名为 `isLibraryLoading`。
+- macOS / Android：来源开关收敛为 `enableAI` 一档，关闭 AI 只屏蔽 AI 生成卡，剪藏/导入与历史来源照常进堆（旧「全关则队列为空，含导入卡片」口径作废）；搜索来源筛选项「预置精选」改为「剪藏导入」。
+- macOS：卡堆为空的界面文案区分两种空态——「还没有第一批知识」给出剪藏/导入入口，「今天的知识刷完了」才给重新探索；设置页移除「启用预置精选知识库」开关。
+- 工具链与 CI：`sync_shared_assets.sh` 不再搬运种子卡并改为校验底图数量；`build_app.sh` 与两条 workflow 的产物校验从「种子卡数量/SHA」改为底图数量一致性；`tools/check_taxonomy.py` 的内容校验改为「给定路径存在才跑」。
+- 文档：`README.md` 与 `CONTEXT.md` 中关于预置库、来源开关、存储回退与增量合并的口径同步更新。
+
 ## [v0.2.0] - 2026-10-02
 
 - macOS：优化学习工作台、统计与搜索的内容层级、字阶、对比度和窄窗口布局；减少装饰性光晕、重复信息与动效。

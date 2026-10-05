@@ -44,10 +44,10 @@ public final class AppStore {
 
     // MARK: - 运行期状态
 
-    /// 首启是否还在加载预置库。所有权在卡片库（守卫判据须与 `cards.isEmpty` 动态结合），这里转发。
-    public var isLoadingSeed: Bool {
-        get { library.isLoadingSeed }
-        set { library.isLoadingSeed = newValue }
+    /// 启动加载是否还没完成。所有权在卡片库（守卫判据须与 `cards.isEmpty` 动态结合），这里转发。
+    public var isLibraryLoading: Bool {
+        get { library.isLibraryLoading }
+        set { library.isLibraryLoading = newValue }
     }
 
     public var deck: [KnowledgeCard] { library.deck }
@@ -220,8 +220,7 @@ public final class AppStore {
         GenerationCoordinator.autoTopUpAllowed(lastAutoTopUpAt: lastAutoTopUpAt, now: now, interval: interval)
     }
 
-    /// 启动引导（四段）：加载回退与种子解码 → 卡片/设置落位（空库保持 / 重新播种 / 种子增量合并）
-    /// → 钥匙串迁移 → 自动补卡。
+    /// 启动引导（三段）：加载回退 → 卡片/设置落位 → 钥匙串迁移 → 自动补卡。
     ///
     /// 拆段（Wave C2）只改代码组织，不改 await 序列：阶段之间没有任何新增挂起点，
     /// os_signpost 的 begin/end 仍逐段包住原来的区间（Instruments 启动基线与拆分前逐点对照）。
@@ -229,7 +228,7 @@ public final class AppStore {
     /// - 设置先于卡片就位（卡堆派生依赖设置，否则启动白排两遍）；
     /// - 钥匙串迁移只补密钥（不触碰派生输入，不触发全库重排）。
     public func bootstrap() async {
-        guard isLoadingSeed else { return }
+        guard isLibraryLoading else { return }
         // 启动耗时打点：分阶段 signpost（Instruments 的 os_signpost 轨道可直接看）+ 结束时
         // 一条汇总日志。这是启动速度的测量基线——没有它，任何「启动更快」的改动都无法证实。
         let signposter = OSSignposter(subsystem: "com.knowflick.app", category: "bootstrap")
@@ -255,48 +254,32 @@ public final class AppStore {
         await generation.autoTopUpIfNeeded()
     }
 
-    /// 阶段 1：文件 IO 与种子解码（338KB JSON）放后台线程，钥匙串读取保持主线程（协议隔离）；
+    /// 阶段 1：文件 IO 放后台线程，钥匙串读取保持主线程（协议隔离）；
     /// 卡片与设置一次性带回主线程赋值，避免逐字段变更触发 didSet → recompute 风暴。
-    private func loadLibraryStage(signposter: OSSignposter) async -> (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings) {
+    private func loadLibraryStage(signposter: OSSignposter) async -> (loaded: [KnowledgeCard], settings: AISettings) {
         let storage = self.storage
         let loadState = signposter.beginInterval("loadLibrary")
-        let io = Task.detached(priority: .userInitiated) { () -> (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings) in
-            (storage.loadCards(), Self.loadSeedCards(), storage.loadSettings())
+        let io = Task.detached(priority: .userInitiated) { () -> (loaded: [KnowledgeCard], settings: AISettings) in
+            (storage.loadCards(), storage.loadSettings())
         }
         let loaded = await io.value
         signposter.endInterval("loadLibrary", loadState)
         return loaded
     }
 
-    /// 阶段 2：卡片与设置落位——三级加载回退结果的处置（合法空库保持 / 预置库重新播种）
-    /// 与种子增量合并。注意赋值顺序：设置先于卡片。
-    private func installLibraryStage(_ loaded: (loaded: [KnowledgeCard], seeds: [KnowledgeCard], settings: AISettings)) {
+    /// 阶段 2：卡片与设置落位。注意赋值顺序：设置先于卡片。
+    private func installLibraryStage(_ loaded: (loaded: [KnowledgeCard], settings: AISettings)) {
         // 设置先于卡片就位：卡堆派生（来源开关 / 偏好分类）依赖设置。若把设置赋值留在
         // 钥匙串迁移之后（旧实现），cards 赋值会先按 .default 全库派生一遍、结尾再按真实
         // 设置重排一遍——启动白排两遍。此刻卡池还是空的，这次派生是 O(1)。
         settings = loaded.settings
 
         // 卡片库状态已经确定（无论空与否），从这里开始落盘就是安全的：先解除守卫再写盘。
-        // 反过来（先写盘再解除）会让 bootstrap 期间的落盘被守卫吞掉，种子增量合并就永远存不下来。
-        isLoadingSeed = false
-        if !loaded.loaded.isEmpty {
-            var merged = loaded.loaded
-            // 自动同步增量种子卡：若内置 seed 库有新扩充卡片，增量合并到用户卡库。
-            // 口径与导入去重一致：归一化 headline 比较，用户改过标点/大小写的种子卡不重复灌入
-            let existingHeadlines = Set(merged.map { CardImportEngine.normalizeHeadline($0.headline) })
-            let newSeeds = loaded.seeds.filter { !existingHeadlines.contains(CardImportEngine.normalizeHeadline($0.headline)) }
-            merged.append(contentsOf: newSeeds)
-            cards = merged
-            if !newSeeds.isEmpty { persist() }
-        } else if storage.libraryWasUsable {
-            // 卡片文件解出来就是**合法的空数组**（用户清空过卡片库）：如实保持空库。
-            // 旧实现会把它判成损坏并在这里灌入预置库——用户看到「自己的卡片没了，还多出一堆预置卡」。
-            cards = []
-        } else {
-            // 首次启动，或主文件与备份都不可恢复：这才允许用预置库重新播种
-            cards = loaded.seeds
-            persist()
-        }
+        // 反过来（先写盘再解除）会让 bootstrap 期间的落盘被守卫吞掉。
+        isLibraryLoading = false
+        // 三级加载回退的结果如实反映：合法空库保持空，损坏库经隔离后也是空。
+        // 预置库退役后不再有任何「自动灌回来」的内容——用户看到空库就是自己真的清空过。
+        cards = loaded.loaded
     }
 
     /// 阶段 3：钥匙串迁移——只补密钥字段（apiKey / TTS key），不触碰卡堆派生输入。
@@ -654,34 +637,5 @@ public final class AppStore {
         // 落盘编排与告警口径统一走 PersistenceCoordinator：失败上浮 persistenceWarning 横幅，
         // 与卡片/设置一致（原先直写队列失败只进 NSLog，用户无从得知）
         persistence.scheduleSearchHistoryPersist(searchHistory)
-    }
-
-    // MARK: - 预置库
-
-    private nonisolated static func loadSeedCards() -> [KnowledgeCard] {
-        // 用 CoreResources.bundle 而非 Bundle.module：后者在 Xcode 26.x 构建的 .app 里
-        // 找不到 Contents/Resources 下的资源 bundle（详见 CoreResources 的说明）
-        guard let url = CoreResources.bundle.url(forResource: "seed_cards", withExtension: "json"),
-              let data = try? Data(contentsOf: url) else { return [] }
-        struct SeedCard: Decodable {
-            let category: String
-            let headline: String
-            let summary: String
-            let details: String
-            let links: [ScienceLink]
-        }
-        guard let seeds = try? JSONDecoder().decode([SeedCard].self, from: data) else { return [] }
-        let now = Date()
-        return seeds.map {
-            KnowledgeCard(
-                category: $0.category,
-                headline: $0.headline,
-                summary: $0.summary,
-                details: $0.details,
-                links: $0.links,
-                source: .seed,
-                createdAt: now
-            )
-        }
     }
 }

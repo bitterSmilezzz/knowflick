@@ -4,17 +4,19 @@
 > 覆盖范围：当前词条只描述 mac 端（`apps/mac`）的领域词汇；Android 端（`apps/android`）尚未收录，其语言以该端源码与发布记录为准。
 
 ## 卡片（Card）
-一条领域知识（不限冷知识）：`category` / `headline` / `summary` / `details` / `links`，来源 `source`（seed 预置 / ai 生成）；学科坐标 `subject` / `branch` / `level` / `track` / `orderKey` / `prereq` 全部可选（见「学科体系」）。内容与浏览状态在同一结构上（`KnowledgeCard`），浏览状态字段见下。
+一条领域知识（不限冷知识）：`category` / `headline` / `summary` / `details` / `links`，来源 `source`（`seed` 预置库遗留值 / `ai` 生成 / `imported` 剪藏与导入）；学科坐标 `subject` / `branch` / `level` / `track` / `orderKey` / `prereq` 全部可选（见「学科体系」）。内容与浏览状态在同一结构上（`KnowledgeCard`），浏览状态字段见下。
+
+> **预置库已退役（2026-10）**：仓库不再自带内容库，App 不会在任何启动路径往库里灌卡。`source = seed` 只作为**线格式历史值**保留（旧 cards.json / 旧归档解得出来），不再生成。
 
 ## 分类体系（CategoryRegistry）
-**内置「冷知识」分类（不可删改，收纳 160 张预置卡）+ 用户自定义分类（可增删改，默认预置：AI / AI 开发 / AI Agent / 中级会计 / 投资理财，各带内容方向描述）**。`resolve(_:custom:)` 解析到有效分类（别名映射仅在目标分类存在时生效）；`normalize` 无法识别时兜底到第一个自定义分类（无自定义则冷知识）——偏好解析用 resolve（剔除未知），AI 生成用 normalize。AI 生成白名单 = `allCategoryNames`（内置+自定义），每类按描述定制内容方向。
+**内置「冷知识」分类（不可删改，预置库退役后作为别名表与未归类内容的兜底落点）+ 用户自定义分类（可增删改，默认预置：AI / AI 开发 / AI Agent / 中级会计 / 投资理财，各带内容方向描述）**。`resolve(_:custom:)` 解析到有效分类（别名映射仅在目标分类存在时生效）；`normalize` 无法识别时兜底到第一个自定义分类（无自定义则冷知识）——偏好解析用 resolve（剔除未知），AI 生成用 normalize。AI 生成白名单 = `allCategoryNames`（内置+自定义），每类按描述定制内容方向。
 
 ## 学科体系（SubjectRegistry）
 **学科 → 分支 → 难度** 三级：`subject`（如 english）/ `branch`（如 grammar）/ `level` 1..5（内容难度，**与 FSRS 的 `difficulty`「记忆难度」是两个概念，不得混用**），另有 `track`（应试标尺：高中英语 / 大学英语四级 / 大学英语六级、初级 / 中级会计 / 注册会计师）、`orderKey`（分支内序号，决定「一点点看」的推进顺序）与 `prereq`（前置卡 id，学习路径的边）。
 
 六个字段**全部可选且只在有值时写盘**：历史卡与旧同步包缺字段时解出 null/nil，行为与升级前完全一致；`category` 仍是界面展示用的叶子名（全仓数百处引用），学科能力一律读 `taxonomy(of:)` 的派生结果——**显式字段优先，缺失时按 `legacyCategoryMap` 从 category 派生，未列入映射表的分类保持「未分级」，不臆测**。
 
-三处事实来源必须同源：`shared/assets/taxonomy_map.json`（契约）、mac `SubjectRegistry.swift`、Android `SubjectRegistry.kt`（各自内嵌，运行时不读文件以避开 SwiftPM bundle / APK 资产的历史坑）。一致性分两层守：两端各自的 parity 测试逐字段比对契约（`SubjectRegistryTests` / `SubjectRegistryTest`），`tools/check_taxonomy.py` 在 CI 做契约自洽 + 种子内容合法 + 三处条目集合一致。
+三处事实来源必须同源：`shared/assets/taxonomy_map.json`（契约）、mac `SubjectRegistry.swift`、Android `SubjectRegistry.kt`（各自内嵌，运行时不读文件以避开 SwiftPM bundle / APK 资产的历史坑）。一致性分两层守：两端各自的 parity 测试逐字段比对契约（`SubjectRegistryTests` / `SubjectRegistryTest`），`tools/check_taxonomy.py` 在 CI 做契约自洽 + 三处条目集合一致（内容库校验改为「给定路径存在才跑」）。
 
 ## 刷卡（Swipe）
 用户把当前卡片划走的行为，记录为 `seenAt` + `swiped`。
@@ -42,7 +44,7 @@
 macOS 入口在学习工作台、知识库和「文件 → 从网页剪藏…」，抓取后先展示正文预览，用户显式点击 AI 提炼后才发送正文；Android 入口是 `ACTION_SEND text/plain`（**不注册 `ACTION_VIEW`**，否则本 App 会被列成系统默认浏览器候选）+ 卡堆 ⋮ 菜单，分享进来直接开面板并自动抽取。两端提炼后的卡片都把原文链接放在 `links` 首位。
 
 ## 卡堆 / 队列（Deck）
-未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关（enableSeed/enableAI）在偏好过滤前生效**：只开其一则只看该来源，**全关则队列为空（含导入卡片）**。**卡堆输出前统一经 `CardThemeResolver.arrangeWithMinDistance(minDistance: 5)` 处理**：先按确定性盐值哈希全局打散，再贪心排布保证同背景图 key 间隔 ≥ 5 张（key 多样性充足时成立；候选不足时退化为「最大化间隔」的贪心选择，不保证严格间隔），杜绝日常刷卡连续撞图，并有性质测试护栏（CardThemeResolverTests）。
+未看过（`seenAt == nil`）的卡片，`deck.first` 为顶卡。**偏好分类开启时优先只刷偏好分类；偏好分类未看卡耗尽后回退全量**（不藏死其他卡）。偏好解析用 `CategoryRegistry.resolve`（无法识别的输入剔除，不做「科技」兜底——否则未知输入会伪装成真实科技偏好）。**来源开关只剩 `enableAI`（预置库退役）**：关闭时只屏蔽 `ai` 生成卡，剪藏/导入与历史来源照常进堆——旧「全关则队列为空（含导入卡片）」的口径作废，因为把用户自己存的东西藏起来比少看几张 AI 卡危险得多。**卡堆输出前统一经 `CardThemeResolver.arrangeWithMinDistance(minDistance: 5)` 处理**：先按确定性盐值哈希全局打散，再贪心排布保证同背景图 key 间隔 ≥ 5 张（key 多样性充足时成立；候选不足时退化为「最大化间隔」的贪心选择，不保证严格间隔），杜绝日常刷卡连续撞图，并有性质测试护栏（CardThemeResolverTests）。
 
 ## 历史（History）
 看过（`seenAt != nil`）的卡片，按时间倒序。
@@ -54,7 +56,7 @@ macOS 入口在学习工作台、知识库和「文件 → 从网页剪藏…」
 卡片内容/分类名 → 视觉主题（背景图 key / accent / ambient）。采用**领域关联多图池（Thematic Multi-Image Pools）+ 细化语义识别 + 标题哈希兜底**的多维映射机制：划分计算机与 AI、商业财会金融、自然宇宙科学、人文心智四大领域多图池（计算机与 AI 15 张、自然宇宙科学 15 张、人文心智 10 张、商业财会金融 8 张，共 42 张专属摄影底图），即使在「中级会计」或「AI Agent」等单分类内刷卡也张张不同；配合确定性打散与相邻防重，彻底杜绝连续撞图。主窗口环境背景光（ambient）与当前卡片及划卡飞出动画实时深度联动。
 
 ## 存储（Storage）
-`Storage` 实例可注入目录。卡片文件三级回退：cards.json → cards.backup.json（轮转保留上一版）→ 重播种。API key 单独存 Keychain，不入 JSON。AppStore 内所有落盘统一经 `persist()` 单入口：**350ms 节流合并 + Task.detached 后台执行**（连续刷卡只写最后一次，JSON 编码与文件 IO 不卡主线程）。应用启动时自动执行**种子库增量合并**，自动引入新版本内置扩充的卡片，老用户无缝获得全新内容。
+`Storage` 实例可注入目录。卡片文件三级回退：cards.json → cards.backup.json（轮转保留上一版）→ 隔离损坏文件后如实保持空库（预置库退役，已无重播种路径）。API key 单独存 Keychain，不入 JSON。AppStore 内所有落盘统一经 `persist()` 单入口：**350ms 节流合并 + Task.detached 后台执行**（连续刷卡只写最后一次，JSON 编码与文件 IO 不卡主线程）。
 
 ## AI 服务与服务商预设（AIService / AIProviderPreset）
 OpenAI 兼容端点客户端，**流式生成**：SSE 逐行接收 + 增量对象扫描，拿到目标数量即提前终止（省时省额度）；429/5xx 自动重试。失败通道统一为抛 `AIError`：传输/解析层失败抛对应 case；「请求成功但无可用产出」抛 `noUsableCards`。排除标题截断上限（100）由服务单点决定；max_tokens 按生成数量动态计算（≈900/张 + 400 缓冲）。

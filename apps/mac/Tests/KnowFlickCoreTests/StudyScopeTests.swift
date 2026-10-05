@@ -161,7 +161,6 @@ struct StudyScopeTests {
             DeckDeriver.derive(
                 cards: cards,
                 currentDeck: [],
-                enableSeed: true,
                 enableAI: true,
                 preferredCategories: ["中级会计"],
                 studyScope: scope,
@@ -194,7 +193,6 @@ struct StudyScopeTests {
         let derived = DeckDeriver.derive(
             cards: many,
             currentDeck: [],
-            enableSeed: true,
             enableAI: true,
             preferredCategories: [],
             studyScope: StudyScope(subjects: ["trivia"], sequential: true),

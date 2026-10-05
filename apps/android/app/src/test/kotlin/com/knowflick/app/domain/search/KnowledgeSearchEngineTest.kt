@@ -20,7 +20,7 @@ class KnowledgeSearchEngineTest {
             summary = "表外租机队终于上了资产负债表，一律确认使用权资产和租赁负债。",
             details = "依据CAS 21准则要求承租人采用单一模型，除短期和低价值资产外，全部进入资产负债表核算。",
             links = listOf(ScienceLink(title = "财政部会计司规范", url = "https://kjs.mof.gov.cn")),
-            source = CardSource.SEED,
+            source = CardSource.IMPORTED,
             createdAt = 1000L,
             seenAt = 1500L,
             swiped = SwipeDirection.RIGHT,
@@ -103,8 +103,9 @@ class KnowledgeSearchEngineTest {
         assertTrue(categoryResults.isNotEmpty())
         assertTrue(categoryResults.all { it.card.category == "计算机" })
 
-        val seedResults = engine.search(query = "O", source = SearchSourceFilter.SEED, cards = testCards)
-        assertTrue(seedResults.all { it.card.source == CardSource.SEED })
+        val importedResults = engine.search(query = "租赁", source = SearchSourceFilter.IMPORTED, cards = testCards)
+        assertTrue(importedResults.isNotEmpty())
+        assertTrue(importedResults.all { it.card.source == CardSource.IMPORTED })
 
         val aiResults = engine.search(query = "量子", source = SearchSourceFilter.AI, cards = testCards)
         assertEquals(1, aiResults.size)

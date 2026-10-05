@@ -42,15 +42,19 @@ struct ImportExportRegressionTests {
         #expect(store.deck.isEmpty)
     }
 
+    /// 关闭 AI 来源后导入的 AI 卡不得进卡堆，而剪藏/导入卡始终可见
+    /// （预置库退役前这条测试断言的是「seed 关闭时导入的种子卡也不进堆」——把用户自己
+    /// 存的东西藏起来不是来源开关该有的语义）。
     @Test @MainActor func importPromotionRespectsDisabledSources() {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = AppStore(storage: Storage(baseDir: directory))
         defer { store.flushPersistence(); try? FileManager.default.removeItem(at: directory) }
-        store.settings.enableSeed = false
-        let card = KnowledgeCard(category: "物理", headline: "种子", summary: "摘要", details: "正文", source: .seed)
-        store.importCards([card])
-        #expect(store.cards.count == 1)
-        #expect(store.deck.isEmpty)
+        store.settings.enableAI = false
+        let aiCard = KnowledgeCard(category: "物理", headline: "生成", summary: "摘要", details: "正文", source: .ai)
+        let clipped = KnowledgeCard(category: "物理", headline: "剪藏", summary: "摘要", details: "正文", source: .imported)
+        store.importCards([aiCard, clipped])
+        #expect(store.cards.count == 2)
+        #expect(store.deck.map(\.headline) == ["剪藏"])
     }
 
     @Test func markdownPreservesCodeAndInlineLinkParagraph() throws {

@@ -7,7 +7,7 @@ import com.knowflick.app.domain.SwipeDirection
 /** 搜索来源与状态维度过滤 */
 enum class SearchSourceFilter(val title: String) {
     ALL("全部来源"),
-    SEED("预置精选"),
+    IMPORTED("剪藏导入"),
     AI("AI 生成"),
     FAVORITES("仅已收藏"),
     SEEN("学习足迹"),
@@ -101,7 +101,7 @@ class KnowledgeSearchEngine {
             }
             when (source) {
                 SearchSourceFilter.ALL -> true
-                SearchSourceFilter.SEED -> card.source == CardSource.SEED
+                SearchSourceFilter.IMPORTED -> card.source == CardSource.IMPORTED
                 SearchSourceFilter.AI -> card.source == CardSource.AI
                 SearchSourceFilter.FAVORITES -> card.isFavorite || card.id in favorites
                 SearchSourceFilter.SEEN -> card.seenAt != null
