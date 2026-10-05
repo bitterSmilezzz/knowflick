@@ -25,7 +25,7 @@ struct InsightContentScaffold<Actions: View, Content: View>: View {
         VStack(spacing: 0) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: InsightSpacing.hair) {
-                    Text(title)
+                    Text(LocalizedStringKey(title))
                         .font(InsightFont.title)
                         .foregroundStyle(InsightColor.textPrimary)
                     Text(subtitle)

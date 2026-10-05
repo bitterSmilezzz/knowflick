@@ -186,7 +186,7 @@ private struct StatsSections: View {
         HStack(spacing: InsightSpacing.small) {
             RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                 .fill(color).frame(width: 8, height: 8)
-            Text(title).font(InsightFont.caption).foregroundStyle(InsightColor.textSecondary)
+            Text(LocalizedStringKey(title)).font(InsightFont.caption).foregroundStyle(InsightColor.textSecondary)
             Text("\(count) 张 (\(percent)%)")
                 .font(InsightFont.monoSmall).monospacedDigit()
                 .foregroundStyle(InsightColor.textPrimary)
@@ -226,7 +226,7 @@ private struct StatsSections: View {
                     .font(InsightFont.caption)
                     .foregroundStyle(InsightColor.textSecondary)
             }
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(InsightFont.caption)
                 .foregroundStyle(InsightColor.textTertiary)
         }
@@ -317,8 +317,8 @@ private struct StatsSections: View {
                         }()
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(color).aspectRatio(1, contentMode: .fit)
-                            .help(Self.dateFormatter.string(from: item.day) + ": 阅读 \(item.count) 张")
-                            .accessibilityLabel(Self.dateFormatter.string(from: item.day) + ": 阅读 \(item.count) 张")
+                            .help(String(localized: "\(Self.dayLabel(item.day)): 阅读 \(item.count) 张"))
+                            .accessibilityLabel(String(localized: "\(Self.dayLabel(item.day)): 阅读 \(item.count) 张"))
                     }
                 }
                 .frame(maxWidth: 340, alignment: .leading)
@@ -426,9 +426,8 @@ private struct StatsSections: View {
         .buttonStyle(.plain)
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "M月d日"
-        return f
-    }()
+    private static func dayLabel(_ date: Date) -> String {
+        // 日期展示随系统 locale（en: Oct 5 / zh: 10月5日）
+        date.formatted(.dateTime.month().day())
+    }
 }
