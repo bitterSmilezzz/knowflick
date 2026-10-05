@@ -352,7 +352,7 @@ struct InsightStatBlock: View {
             if let progress {
                 InsightProgressBar(value: progress, tint: tone.foreground)
             }
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(InsightFont.caption)
                 .foregroundStyle(InsightColor.textSecondary)
                 .lineLimit(1)
