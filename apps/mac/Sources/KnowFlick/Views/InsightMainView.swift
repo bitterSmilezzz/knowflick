@@ -508,7 +508,7 @@ struct InsightMainView: View {
             // 2. 待刷队列随动雷达
             VStack(alignment: .leading, spacing: InsightSpacing.compact) {
                 HStack {
-                    InsightSectionLabel(text: "待刷队列", trailing: "\(store.deck.count) 张待读")
+                    InsightSectionLabel(text: "待刷队列", trailing: String(localized: "\(store.deck.count) 张待读"))
                     Spacer()
                 }
 
@@ -591,7 +591,7 @@ struct InsightMainView: View {
                 .padding(.vertical, 2)
                 .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 3))
                 .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(InsightColor.border, lineWidth: 0.8))
-            Text(desc)
+            Text(LocalizedStringKey(desc))
                 .font(InsightFont.captionSmall)
                 .foregroundStyle(InsightColor.textTertiary)
                 .lineLimit(1)
@@ -724,10 +724,11 @@ struct InsightMainView: View {
 
     private var subtitleText: String {
         if store.studyScope.isActive {
-            return "\(store.studyScope.describe()) · 还剩 \(StudyMap.remaining(store.cards, scope: store.studyScope)) 张"
+            // 范围描述是用户内容（主题名），保持原语言；仅计数短语走查表
+            return store.studyScope.describe() + String(localized: " · 还剩 \(StudyMap.remaining(store.cards, scope: store.studyScope)) 张")
         }
         if store.deck.count > 0 {
-            return "\(store.deck.count) 张待刷"
+            return String(localized: "\(store.deck.count) 张待刷")
         }
         return ""
     }
@@ -1107,7 +1108,7 @@ struct InsightMainView: View {
     }
 
     private func badge(_ text: String, color: Color, icon: String) -> some View {
-        Label(text, systemImage: icon)
+        Label(LocalizedStringKey(text), systemImage: icon)
             .font(.system(size: 16, weight: .bold))
             .tracking(1.1)
             .padding(.horizontal, 18)
@@ -1320,7 +1321,7 @@ private struct ActionButtonItem: View {
         }
         .buttonStyle(PressableButtonStyle(scale: 0.95))
         .onHover { isHovered = $0 }
-        .help(help)
+        .help(Text(LocalizedStringKey(help)))
         .accessibilityLabel(help)
     }
 }

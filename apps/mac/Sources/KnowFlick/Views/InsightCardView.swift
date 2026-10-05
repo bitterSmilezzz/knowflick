@@ -290,7 +290,7 @@ struct InsightCardView: View {
                     )
             }
             .buttonStyle(PressableButtonStyle(scale: 0.92))
-            .help(isFavorited ? "取消收藏 (⌘D / F)" : "加入知识收藏阁 (⌘D / F)")
+            .help(Text(LocalizedStringKey(isFavorited ? "取消收藏 (⌘D / F)" : "加入知识收藏阁 (⌘D / F)")))
         }
     }
 
@@ -317,7 +317,7 @@ struct InsightCardView: View {
                     )
             }
             .buttonStyle(PressableButtonStyle(scale: 0.92))
-            .help(isSpeakingThis ? "暂停朗读 (Space)" : (isPausedThis ? "继续朗读 (Space)" : "朗读卡片 (Space)"))
+            .help(Text(LocalizedStringKey(isSpeakingThis ? "暂停朗读 (Space)" : (isPausedThis ? "继续朗读 (Space)" : "朗读卡片 (Space)"))))
         }
     }
 
@@ -331,9 +331,9 @@ struct InsightCardView: View {
         case .ai: items.append("AI 生成")
         case .imported: items.append("导入")
         }
-        items.append("\(card.details.count) 字")
+        items.append(String(localized: "\(card.details.count) 字"))
         if !card.links.isEmpty {
-            items.append("\(card.links.count) 条链接")
+            items.append(String(localized: "\(card.links.count) 条链接"))
         }
         return items
     }

@@ -159,3 +159,116 @@
 /* MARK: - 工作台补充 */
 
 "/ %lld 张" = "/ %lld";
+
+/* MARK: - Batch 2：卡片正面（InsightCardView） */
+
+"AI 探索" = "AI explored";
+"精选知识" = "Curated";
+"%lld 字" = "%lld chars";
+"%lld 条链接" = "%lld links";
+"详情" = "Details";
+"朗读" = "Read";
+"取消收藏 (⌘D / F)" = "Remove from Saved (⌘D / F)";
+"加入知识收藏阁 (⌘D / F)" = "Save (⌘D / F)";
+"暂停朗读 (Space)" = "Pause (Space)";
+"继续朗读 (Space)" = "Resume (Space)";
+"朗读卡片 (Space)" = "Read aloud (Space)";
+
+/* MARK: - Batch 2：刷卡视图（InsightMainView） */
+
+"%lld 张待刷" = "%lld to swipe";
+"AI 探索中" = "AI exploring";
+"选择学习范围" = "Choose scope";
+"换一批卡片" = "New batch";
+"重新浏览已读卡片" = "Re-read everything";
+"今日目标已达成 ✨" = "Daily goal reached ✨";
+"%lld 张待读" = "%lld to read";
+"队列即将见底，完成本次刷卡或换一批。" = "Queue is running low. Finish swiping or fetch a new batch.";
+"高频快捷键" = "Shortcuts";
+"朗读卡片" = "Read aloud";
+"跳过 / 喜欢" = "Skip / Like";
+"查看详情" = "Details";
+"快速收藏" = "Quick save";
+"撤销操作" = "Undo";
+"AI 伴学" = "Ask AI";
+"不喜欢" = "Dislike";
+"感兴趣" = "Like";
+"已跳过" = "Skipped";
+"撤销上一张 ⌘Z" = "Undo last ⌘Z";
+"不喜欢 ←" = "Dislike ←";
+"查看详情 ⏎" = "Details ⏎";
+"感兴趣 →" = "Like →";
+"AI 生成 3 张新卡 ⌘N" = "Generate 3 cards ⌘N";
+"配置 AI 后可生成新卡" = "Configure AI to generate cards";
+"今天的知识刷完了" = "All caught up";
+"当前已关闭全部知识来源（预置精选库与 AI 生成），开启后即可继续刷卡片" = "All sources are off. Turn on curated or AI to keep swiping.";
+"去设置里配置 AI 服务，就能持续生成新知识" = "Configure AI in Settings to keep the queue full";
+"已看完全部卡片。换一批新知识，或重新探索全部卡片。" = "You've seen everything. Fetch new cards or start over.";
+"搜索知识库" = "Search library";
+"打开偏好设置" = "Open Settings";
+"重新探索全部卡片" = "Start over";
+"生成新知识" = "Generate new";
+"重试保存" = "Retry save";
+"已加入收藏阁 ⭐️" = "Saved ⭐️";
+"已从收藏阁移除" = "Removed from Saved";
+"从知识收藏阁移除" = "Remove from Saved";
+"加入知识收藏阁 ⌘D" = "Save ⌘D";
+"生成分享海报... ⌘S" = "Share as poster… ⌘S";
+"查看卡片详情 ⏎" = "Card details ⏎";
+"在全景星图中探索 ⌘G" = "Explore in Knowledge Graph ⌘G";
+"向卡片追问 (AI 伴学) ⌘J" = "Ask AI ⌘J";
+"暂停朗读 ⌘P" = "Pause ⌘P";
+"朗读卡片观点 ⌘P" = "Read aloud ⌘P";
+"退出磨耳朵连续播报" = "Stop ambient playback";
+"开启磨耳朵连续播报" = "Start ambient playback";
+"退出磨耳朵连续朗读 ⇧⌘P" = "Stop ambient listening ⇧⌘P";
+"磨耳朵连续朗读 ⇧⌘P" = "Ambient listening ⇧⌘P";
+"隐藏刷卡伴侣侧栏" = "Hide companion dock";
+"显示刷卡伴侣侧栏" = "Show companion dock";
+"当前学习范围（点击退出，回到全景卡堆）" = "Active study scope (click to exit)";
+
+/* MARK: - Batch 2：详情页（DetailView） */
+
+"AI 追问" = "Ask AI";
+"收藏" = "Save";
+"已收藏" = "Saved";
+"海报" = "Poster";
+"向 AI 深入探讨此卡片知识 ⌘J" = "Discuss this card with AI ⌘J";
+"AI 伴学透镜" = "AI Lens";
+"自定义提问" = "Ask your own";
+"通俗比喻" = "Analogy";
+"现实应用" = "Applications";
+"跨界碰撞" = "Cross-domain";
+"相关灵感脉络" = "Related ideas";
+"知识网状联想" = "Web of associations";
+"延伸阅读" = "Further reading";
+"跳过" = "Skip";
+"上一张 ←" = "Previous ←";
+"下一张 →" = "Next →";
+"⏎ / Esc 关闭详情 · ⌘S 导出海报" = "⏎ / Esc close · ⌘S poster";
+"⏎ / Esc 关闭详情 · ⌘S 导出海报 · ⌘Z 撤销上一张" = "⏎ / Esc close · ⌘S poster · ⌘Z undo";
+"读完，再回忆一下。" = "Done reading — recall it.";
+"完成后计入今日目标，自动安排复习。" = "Counts toward today's goal and schedules review.";
+"完成阅读" = "Finish reading";
+"暂停" = "Pause";
+"继续" = "Resume";
+"导读" = "Read";
+"语音听书控制台：进度定位、语速音调与睡眠定时" = "Speech console: position, speed, pitch and sleep timer";
+"从头重新朗读" = "Read from start";
+"0.75x 慢速精听" = "0.75x Slow";
+"1.0x 正常标准" = "1.0x Normal";
+"1.25x 高效快读" = "1.25x Fast";
+"1.5x 快速浏览" = "1.5x Faster";
+"2.0x 极速浏览" = "2.0x Fastest";
+"由 AI 生成，请通过下方「延伸阅读」链接核实内容真实性" = "AI-generated. Verify via the further reading links below.";
+"预置精选" = "Curated";
+"AI 生成" = "AI-generated";
+"同领域深化" = "Deepen";
+"交叉学科碰撞" = "Cross-field";
+"核心概念共鸣" = "Concept bridge";
+"灵感偶遇" = "Serendipity";
+"取消收藏 ⌘D" = "Remove from Saved ⌘D";
+"导出画报长图/拍立得分享海报 ⌘S" = "Export poster ⌘S";
+"关闭详情" = "Close details";
+"一键追问：%@" = "Ask: %@";
+"精选" = "Curated";
