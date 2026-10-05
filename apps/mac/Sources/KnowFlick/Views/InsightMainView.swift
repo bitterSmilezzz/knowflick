@@ -1246,11 +1246,9 @@ struct InsightMainView: View {
 
     private var emptyState: some View {
         VStack(spacing: InsightSpacing.large) {
-            Image(systemName: "square.stack.3d.up.slash")
-                .font(.system(size: 40))
-                .foregroundStyle(InsightColor.textMuted)
+            InsightInkEmptyArt(size: 104, sealDot: true)
             Text("今天的知识刷完了")
-                .font(InsightFont.title)
+                .font(InsightFont.display(22))
                 .foregroundStyle(InsightColor.textPrimary)
             Text(emptyStateSubtitle)
                 .font(InsightFont.body)

@@ -869,3 +869,10 @@
 "低调沉静 · 石板冷灰" = "Quiet slate grey";
 "暖曜黑" = "Warm Obsidian";
 "深邃曜黑 · 暗夜沉浸" = "Deep black, night immersion";
+
+/* MARK: - 视觉轮补：空态专属文案 */
+
+"还没有收藏" = "Nothing saved yet";
+"刷卡时右滑，或按 → 键把感兴趣的卡片收进这里。" = "Swipe right — or press → — to keep cards here.";
+"浏览过的卡片会按时间出现在这里。" = "Cards you read show up here, newest first.";
+"去刷卡" = "Start swiping";
