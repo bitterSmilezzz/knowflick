@@ -509,6 +509,6 @@ struct GlassIconButton: View {
                 .overlay(Circle().strokeBorder(EditorialColor.glassBorder, lineWidth: 1))
         }
         .buttonStyle(PressableButtonStyle())
-        .help(help)
+        .help(Text(LocalizedStringKey(help)))
     }
 }

@@ -67,7 +67,7 @@ struct SpeechConsoleView: View {
             Spacer()
             if let seconds = sleepSeconds {
                 // 睡眠定时状态药丸（状态即语义：面板主色 accent）
-                InsightPill(text: "睡眠 \(clock(seconds: seconds))", tone: .accent, icon: "moon.zzz.fill")
+                InsightPill(text: String(localized: "睡眠 \(clock(seconds: seconds))"), tone: .accent, icon: "moon.zzz.fill")
                     .transition(.opacity)
                     .animation(EditorialSpring.state, value: sleepSeconds == nil)
             }
@@ -105,7 +105,7 @@ struct SpeechConsoleView: View {
                             .font(InsightFont.caption)
                             .hidden()
                             .overlay(alignment: .leading) {
-                                Text(statusText)
+                                Text(LocalizedStringKey(statusText))
                                     .font(InsightFont.caption)
                                     .foregroundStyle(isSpeaking ? InsightColor.success : InsightColor.textMuted)
                             }
@@ -289,7 +289,7 @@ struct SpeechConsoleView: View {
 
             tuningRow(
                 title: "翻卡停顿间隔",
-                detail: String(format: "%.1f 秒", service.ambientGapSeconds),
+                detail: String(localized: "剩余 \(Int(service.ambientGapSeconds.rounded())) 秒"),
                 note: "磨耳朵模式下两张卡之间的缓冲",
                 options: [
                     ("紧凑 0.8s", 0.8), ("适中 1.5s", 1.5), ("充裕 3.0s", 3.0),
@@ -374,8 +374,8 @@ struct SpeechConsoleView: View {
     }
 
     private var sleepDescription: String {
-        guard let seconds = sleepSeconds, seconds > 0 else { return "未开启" }
-        return "剩余 \(clock(seconds: seconds))"
+        guard let seconds = sleepSeconds, seconds > 0 else { return String(localized: "未开启") }
+        return String(localized: "剩余 \(clock(seconds: seconds))")
     }
 
     /// 当前选中的睡眠档位：按剩余秒数就近归档（与 Android 端一致）
