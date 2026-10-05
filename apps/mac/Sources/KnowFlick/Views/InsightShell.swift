@@ -32,24 +32,27 @@ enum InsightDestination: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .swipe: return "rectangle.stack"
-        case .today: return "sun.max"
+        case .today: return "calendar"
         case .map: return "map"
-        case .review: return "arrow.triangle.2.circlepath"
+        case .review: return "arrow.counterclockwise"
         case .library: return "square.grid.2x2"
-        case .favorites: return "heart"
-        case .stats: return "chart.bar"
+        case .favorites: return "bookmark"
+        case .stats: return "chart.bar.xaxis"
         case .history: return "clock"
         case .graph: return "point.3.connected.trianglepath.dotted"
-        case .quiz: return "graduationcap.fill"
+        case .quiz: return "graduationcap"
         case .console: return "headphones"
         }
     }
 
-    /// 分区：false = 主导航，true = 工具区（渲染时分组）
-    var isUtility: Bool {
+    /// Core learning flow matching ⌘1-4 shortcuts: Today, Swipe, Review, Library.
+    static let primary: [Self] = [.today, .swipe, .review, .library]
+    static let tools: [Self] = [.map, .quiz, .graph, .stats, .console]
+
+    var sidebarDestination: Self {
         switch self {
-        case .swipe, .today, .map, .review, .library: return false
-        case .favorites, .stats, .history, .graph, .quiz, .console: return true
+        case .favorites, .history: return .library
+        default: return self
         }
     }
 
@@ -79,6 +82,8 @@ struct InsightShell<Content: View>: View {
 
     @State private var availableWidth: CGFloat = .infinity
     @State private var brandHovered = false
+    @State private var searchHovered = false
+    @State private var toolsHovered = false
     private var isSidebarExpanded: Bool { sidebarExpanded && availableWidth >= 1040 }
 
     /// 系统减弱动态效果：侧栏整壳移动属 large motion，塌为直出（ui-research 共识 5 的分层判据）
@@ -101,13 +106,18 @@ struct InsightShell<Content: View>: View {
                     // 展开走长弹簧、折叠走短弹簧：动画参数按「这扇门往哪开」取档（ui-research 共识 27）
                     .animation(shellTiming, value: isSidebarExpanded)
 
-                // 内容区：与侧栏之间留出画布色缝隙，形成 Cutline 的结构分区
+                // 内容区：与侧栏之间留出平整结构分区
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(InsightColor.canvas)
                     .clipShape(RoundedRectangle(cornerRadius: InsightRadius.sidebar, style: .continuous))
-                    .padding(.trailing, 8)
-                    .padding(.vertical, 8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: InsightRadius.sidebar, style: .continuous)
+                            .strokeBorder(InsightColor.border, lineWidth: 1)
+                    )
+                    .padding(.leading, 2)
+                    .padding(.trailing, 6)
+                    .padding(.vertical, 6)
                     .animation(shellTiming, value: isSidebarExpanded)
             }
             .onAppear { availableWidth = geometry.size.width }
@@ -177,25 +187,8 @@ struct InsightShell<Content: View>: View {
                     // 搜索入口（Cutline 侧栏顶部固定搜索框）
                     sidebarSearchButton
 
-                    // 主导航
-                    navGroup(items: InsightDestination.allCases.filter { !$0.isUtility }, label: "学习")
-
-                    // 工具导航
-                    navGroup(items: InsightDestination.allCases.filter { $0.isUtility }, label: "资料与工具")
-
-                    if isSidebarExpanded {
-                        VStack(alignment: .leading, spacing: InsightSpacing.compact) {
-                            InsightSectionLabel(text: "采集")
-                                .padding(.leading, 10)
-                            InsightSidebarRow(icon: "square.and.arrow.down", title: "导入笔记", isExpanded: true, helpText: "导入笔记\n将 Markdown、文本或资料整理成知识卡片") {
-                                onOpenSheet(.importNotes)
-                            }
-                            InsightSidebarRow(icon: "link", title: "网页剪藏", isExpanded: true, helpText: "网页剪藏\n输入网页链接，将文章内容保存为知识卡片") {
-                                onOpenSheet(.webClip)
-                            }
-                        }
-                        .transition(.opacity)
-                    }
+                    navGroup(items: InsightDestination.primary, label: "学习")
+                    toolsMenu
                 }
                 .padding(.horizontal, isSidebarExpanded ? 10 : 12)
             }
@@ -264,6 +257,8 @@ struct InsightShell<Content: View>: View {
         }
         .buttonStyle(.plain)
         .onHover { brandHovered = $0 }
+        // 折叠态品牌钮：logo ↔ 展开图标的交替不能硬蹦
+        .animation(reduceMotion ? nil : InsightMotion.tactile, value: brandHovered)
         .onDisappear { brandHovered = false }
         .disabled(availableWidth < 1040)
         .sidebarHoverTip(availableWidth < 1040
@@ -291,14 +286,17 @@ struct InsightShell<Content: View>: View {
             .padding(.horizontal, isSidebarExpanded ? 10 : 0)
             .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: isSidebarExpanded ? .leading : .center)
-            .background(InsightColor.surfaceSunken, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
+            .background(searchHovered ? InsightColor.surfaceRaised : InsightColor.surfaceSunken,
+                        in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
-                    .strokeBorder(InsightColor.border, lineWidth: 1)
+                    .strokeBorder(searchHovered ? InsightColor.borderStrong : InsightColor.border, lineWidth: 1)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { searchHovered = $0 }
+        .animation(reduceMotion ? nil : InsightMotion.tactile, value: searchHovered)
         .help(isSidebarExpanded ? "搜索知识 · ⌘F\n按标题、正文或拼音查找卡片，可筛选主题、来源与收藏" : "")
         .sidebarHoverTip("搜索知识 · ⌘F\n按标题、正文或拼音查找卡片，可筛选主题、来源与收藏", enabled: !isSidebarExpanded)
         .accessibilityLabel("搜索知识")
@@ -316,7 +314,7 @@ struct InsightShell<Content: View>: View {
                     icon: item.icon,
                     title: item.rawValue,
                     count: InsightDestination.count(for: item, badgeCounts: badgeCounts),
-                    isSelected: selection == item,
+                    isSelected: selection.sidebarDestination == item,
                     isExpanded: isSidebarExpanded,
                     helpText: navigationHelp(for: item)
                 ) {
@@ -325,6 +323,41 @@ struct InsightShell<Content: View>: View {
             }
         }
     }
+    private var toolsMenu: some View {
+        Menu {
+            ForEach(InsightDestination.tools) { item in
+                Button(item.rawValue, systemImage: item.icon) { selection = item }
+            }
+        } label: {
+            HStack(spacing: InsightSpacing.compact) {
+                Image(systemName: InsightDestination.tools.contains(selection) ? selection.icon : "ellipsis")
+                    .frame(width: 20)
+                if isSidebarExpanded {
+                    Text(InsightDestination.tools.contains(selection) ? selection.rawValue : "更多工具")
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down").font(.system(size: 9))
+                }
+            }
+            .font(InsightFont.body)
+            .foregroundStyle(InsightColor.textSecondary)
+            .padding(.horizontal, isSidebarExpanded ? 10 : 0)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: isSidebarExpanded ? .leading : .center)
+            .background(
+                InsightDestination.tools.contains(selection) ? InsightColor.neutralSoft
+                    : (toolsHovered ? InsightColor.neutralSoft.opacity(0.55) : .clear),
+                in: RoundedRectangle(cornerRadius: InsightRadius.control))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { toolsHovered = $0 }
+        .animation(reduceMotion ? nil : InsightMotion.tactile, value: toolsHovered)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .sidebarHoverTip("更多工具\n学习地图、自由测验、知识星图、统计与听书", enabled: !isSidebarExpanded)
+        .help(isSidebarExpanded ? "学习地图、自由测验、知识星图、统计与听书" : "")
+        .accessibilityLabel("更多学习工具")
+    }
+
     private func navigationHelp(for destination: InsightDestination) -> String {
         let count = badgeCounts[destination] ?? 0
         let detail: String
@@ -333,7 +366,7 @@ struct InsightShell<Content: View>: View {
         case .swipe: detail = "逐张浏览知识，记录兴趣并收藏\n还有 \(count) 张可阅读"
         case .map: detail = "按主题选择学习范围，查看各主题的阅读与掌握进度"
         case .review: detail = "先回忆，再揭晓答案；每轮最多 10 张\n当前有 \(count) 张到期"
-        case .library: detail = "浏览全部卡片，按主题、来源与学习状态筛选\n卡库共 \(count) 张"
+        case .library: detail = "浏览全部卡片、收藏与历史，或添加自己的资料\n卡库共 \(count) 张"
         case .favorites: detail = "重读已收藏的知识，或导出为笔记与闪卡\n已收藏 \(count) 张"
         case .stats: detail = "查看阅读记录、知识掌握度与未来复习安排"
         case .history: detail = "回看浏览过的卡片，按兴趣与主题筛选\n已有 \(count) 张浏览记录"

@@ -6,6 +6,7 @@ import KnowFlickCore
 struct CardFollowUpChatView: View {
     let card: KnowledgeCard
     @Bindable var store: AppStore
+    var initialPrompt: String? = nil
     let onClose: () -> Void
 
     @State private var inputText: String = ""
@@ -17,11 +18,39 @@ struct CardFollowUpChatView: View {
         CategoryTheme.theme(for: card, cache: .shared)
     }
 
-    private let starters: [(icon: String, text: String)] = [
-        ("lightbulb", "用小学生都能听懂的生活比喻，解释它的底层运转机理"),
-        ("magnifyingglass", "在工业界、现实生活或前沿科技中有哪些典型应用或反转案例？"),
-        ("bolt", "这个概念与哪些其他学科存在意料之外的交叉与碰撞？"),
-        ("questionmark.circle", "学术界最初是如何发现它的？背后有什么争议或思维迭代？")
+    private struct StarterItem: Identifiable {
+        let id = UUID()
+        let icon: String
+        let title: String
+        let subtitle: String
+        let prompt: String
+    }
+
+    private let starters: [StarterItem] = [
+        StarterItem(
+            icon: "lightbulb.fill",
+            title: "生活化比喻",
+            subtitle: "用小学生都能懂的生活比喻拆解运转机理",
+            prompt: "用小学生都能听懂的生活比喻，解释它的底层运转机理"
+        ),
+        StarterItem(
+            icon: "atom",
+            title: "现实应用",
+            subtitle: "工业界、日常生活或前沿科技的反转案例",
+            prompt: "在工业界、现实生活或前沿科技中有哪些典型应用或反转案例？"
+        ),
+        StarterItem(
+            icon: "arrow.triangle.merge",
+            title: "跨界交叉",
+            subtitle: "与其他不同学科意料之外的思维交汇与碰撞",
+            prompt: "这个概念与哪些其他学科存在意料之外的交叉与碰撞？"
+        ),
+        StarterItem(
+            icon: "clock.arrow.circlepath",
+            title: "思维演进",
+            subtitle: "最初如何被发现及学术界的争论迭代脉络",
+            prompt: "学术界最初是如何发现它的？背后有什么争议或思维迭代？"
+        )
     ]
 
     var body: some View {
@@ -57,8 +86,14 @@ struct CardFollowUpChatView: View {
         .onDisappear { store.closeChat() }
         .onAppear {
             store.openChat(for: card)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                isInputFocused = true
+            if let prompt = initialPrompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    store.sendChatMessage(prompt: prompt)
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    isInputFocused = true
+                }
             }
         }
     }
@@ -148,75 +183,87 @@ struct CardFollowUpChatView: View {
 
     private var welcomeAndStartersView: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                VStack(spacing: 12) {
+            VStack(spacing: 20) {
+                VStack(spacing: 10) {
                     ZStack {
                         Circle()
                             .fill(RadialGradient(
-                                colors: [InsightColor.warning.opacity(0.25), .clear],
+                                colors: [InsightColor.warning.opacity(0.28), .clear],
                                 center: .center,
                                 startRadius: 0,
-                                endRadius: 36
+                                endRadius: 28
                             ))
-                            .frame(width: 72, height: 72)
+                            .frame(width: 56, height: 56)
 
-                        Image(systemName: "lightbulb")
-                            .font(.system(size: 28, weight: .medium))
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 24, weight: .semibold))
                             .foregroundStyle(InsightColor.warning)
                     }
 
-                    Text("探讨《\(card.headline)》")
-                        .font(.system(size: 16, weight: .bold, design: .serif))
+                    Text("探讨《\(card.displayHeadline)》")
+                        .font(.system(size: 17, weight: .bold, design: .serif))
                         .foregroundStyle(InsightColor.textPrimary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
 
-                    Text("知识卡片篇幅有限，而好奇心无限。\n选择下方启发性切入点，或直接在底部输入你的独特思考。")
+                    Text("选择切入点或在底部直接输入，向 AI 导师追问底层脉络")
                         .font(InsightFont.caption)
                         .foregroundStyle(InsightColor.textSecondary)
                         .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .padding(.horizontal, 28)
                 }
-                .padding(.top, 28)
+                .padding(.top, 24)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("启发式追问 (Click to Ask)")
-                        .font(.system(size: 11, weight: .bold))
+                    Text("启发式切入点 (Click to Ask)")
+                        .font(InsightFont.captionSmall.weight(.bold))
                         .foregroundStyle(InsightColor.textTertiary)
                         .padding(.horizontal, 4)
 
-                    VStack(spacing: 9) {
-                        ForEach(starters, id: \.text) { starter in
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        ForEach(starters) { item in
                             Button(action: {
-                                store.sendChatMessage(prompt: starter.text)
+                                AudioEffectManager.shared.playClick()
+                                store.sendChatMessage(prompt: item.prompt)
                             }) {
-                                HStack(alignment: .top, spacing: 12) {
-                                    Image(systemName: starter.icon)
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundStyle(InsightColor.textTertiary)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 8) {
+                                        ZStack {
+                                            Circle()
+                                                .fill(InsightColor.warning.opacity(0.12))
+                                                .frame(width: 26, height: 26)
+                                            Image(systemName: item.icon)
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundStyle(InsightColor.warning)
+                                        }
 
-                                    Text(starter.text)
-                                        .font(InsightFont.body)
-                                        .foregroundStyle(InsightColor.textPrimary)
+                                        Text(item.title)
+                                            .font(InsightFont.bodyStrong)
+                                            .foregroundStyle(InsightColor.textPrimary)
+
+                                        Spacer()
+
+                                        Image(systemName: "arrow.up.circle.fill")
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(InsightColor.warning.opacity(0.75))
+                                    }
+
+                                    Text(item.subtitle)
+                                        .font(InsightFont.captionSmall)
+                                        .foregroundStyle(InsightColor.textSecondary)
+                                        .lineLimit(2)
                                         .multilineTextAlignment(.leading)
-                                        .lineSpacing(3)
-
-                                    Spacer()
-
-                                    Image(systemName: "arrow.up.circle.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(InsightColor.warning.opacity(0.8))
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .padding(12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                                         .strokeBorder(InsightColor.border, lineWidth: 1)
                                 )
+                                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 1)
                             }
-                            .buttonStyle(PressableButtonStyle())
+                            .buttonStyle(PressableButtonStyle(scale: 0.98))
                         }
                     }
                 }
@@ -245,7 +292,7 @@ struct CardFollowUpChatView: View {
             }
             .onChange(of: messages.count) { _, _ in
                 if let last = messages.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(EditorialSpring.exit) { // 消息追加的滚动锚定：快出曲线，归入 exit 档
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
@@ -313,20 +360,53 @@ struct CardFollowUpChatView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .background(
-                    msg.sender == .user
-                        ? InsightColor.warning.opacity(0.12)
-                        : InsightColor.surface,
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
+                .background {
+                    ZStack {
+                        if msg.sender == .user {
+                            InsightColor.warning.opacity(0.14)
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.08), location: 0),
+                                    .init(color: Color.clear, location: 0.5)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        } else {
+                            InsightColor.surface
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.04), location: 0),
+                                    .init(color: Color.clear, location: 0.4)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        }
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(
                             msg.sender == .user
-                                ? InsightColor.warning.opacity(0.3)
-                                : InsightColor.border,
-                            lineWidth: 1
+                                ? AnyShapeStyle(LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.3), location: 0),
+                                        .init(color: InsightColor.warning.opacity(0.5), location: 0.5),
+                                        .init(color: InsightColor.warning.opacity(0.2), location: 1)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ))
+                                : AnyShapeStyle(InsightColor.doubleBezelStroke),
+                            lineWidth: 1.1
                         )
+                )
+                .shadow(
+                    color: msg.sender == .user ? InsightColor.warning.opacity(0.12) : Color.black.opacity(0.16),
+                    radius: 8,
+                    y: 2
                 )
 
                 // 助手回答工具栏（沉淀为卡片 + 朗读 + 复制）
@@ -525,11 +605,25 @@ struct CardFollowUpChatView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background {
+                    ZStack {
+                        InsightColor.surface
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.04), location: 0),
+                                .init(color: Color.clear, location: 0.5)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(InsightColor.border, lineWidth: 1)
+                        .strokeBorder(isInputFocused ? AnyShapeStyle(InsightColor.accent) : AnyShapeStyle(InsightColor.border), lineWidth: 1)
                 )
+                .shadow(color: Color.black.opacity(isInputFocused ? 0.12 : 0.06), radius: 6, y: 2)
 
             if store.isChatStreaming {
                 Button(action: {
@@ -544,22 +638,30 @@ struct CardFollowUpChatView: View {
                             .foregroundStyle(.white)
                     }
                 }
-                .buttonStyle(PressableButtonStyle())
+                .buttonStyle(PressableButtonStyle(scale: 0.94))
                 .help("停止生成")
             } else {
+                let canSend = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 Button(action: handleSubmit) {
                     ZStack {
                         Circle()
-                            .fill(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.3) : InsightColor.warning)
+                            .fill(canSend ? InsightColor.warning : Color.gray.opacity(0.25))
                             .frame(width: 36, height: 36)
+                        if canSend {
+                            Circle()
+                                .strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+                                .frame(width: 36, height: 36)
+                        }
                         Image(systemName: "arrow.up")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                     }
+                    .shadow(color: canSend ? Color.black.opacity(0.18) : .clear, radius: 6, y: 2)
                 }
-                .buttonStyle(PressableButtonStyle())
-                .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .help("发送追问 (⏎)")
+                .buttonStyle(PressableButtonStyle(scale: 0.94))
+                .disabled(!canSend)
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("发送追问 (⏎ 或 ⌘⏎)")
             }
         }
         .padding(.horizontal, 16)

@@ -58,14 +58,17 @@ struct SyncSheetView: View {
                 .padding(.bottom, 8)
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 16) {
                         if selectedTab == 0 {
                             serverSection
+                                .transition(.opacity)
                         } else {
                             clientSection
+                                .transition(.opacity)
                         }
                     }
-                    .padding(22)
+                    .padding(18)
+                    .animation(EditorialSpring.state, value: selectedTab)
                 }
 
                 Divider().overlay(InsightColor.divider)
@@ -150,7 +153,6 @@ struct SyncSheetView: View {
                         Text("配对同步地址")
                             .font(InsightFont.callout)
                             .foregroundStyle(InsightColor.textSecondary)
-
                         HStack {
                             Text(syncAddressString.isEmpty ? "正在获取 IP 地址…" : syncAddressString)
                                 .font(.system(size: 14, weight: .semibold, design: .monospaced))
@@ -173,7 +175,7 @@ struct SyncSheetView: View {
                                 .padding(.vertical, 5)
                                 .background(InsightColor.accentSoft, in: RoundedRectangle(cornerRadius: 6))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressableButtonStyle(scale: 0.95, playAudio: false))
                         }
                         .padding(12)
                         .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control))
@@ -188,6 +190,7 @@ struct SyncSheetView: View {
                             Text("\(store.cards.count) 张")
                                 .font(InsightFont.bodyStrong)
                                 .foregroundStyle(InsightColor.textPrimary)
+                                .contentTransition(.numericText())
                         }
                         VStack(alignment: .leading, spacing: 2) {
                             Text("6 位动态配对码")
@@ -198,10 +201,13 @@ struct SyncSheetView: View {
                                 .foregroundStyle(InsightColor.accent)
                         }
                     }
+                    .transition(.opacity)
                 }
             }
             .padding(16)
             .editorialGlassCard()
+            // 配对信息块随服务开关插入/移除
+            .animation(EditorialSpring.state, value: isServerRunning)
         }
     }
 
@@ -239,7 +245,7 @@ struct SyncSheetView: View {
                                 .font(.system(size: 13))
                                 .foregroundStyle(InsightColor.textMuted)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle(scale: 0.85, playAudio: false))
                     }
 
                     Button {
@@ -260,7 +266,7 @@ struct SyncSheetView: View {
                         .padding(.vertical, 5)
                         .background(InsightColor.accentSoft, in: RoundedRectangle(cornerRadius: 6))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle(scale: 0.95, playAudio: false))
                     .disabled(targetInput.isEmpty || isChecking)
                 }
                 .padding(10)
@@ -275,6 +281,7 @@ struct SyncSheetView: View {
                             .font(InsightFont.caption)
                             .foregroundStyle(InsightColor.danger)
                     }
+                    .transition(.opacity)
                 }
 
                 if let info = remoteInfo {
@@ -342,10 +349,15 @@ struct SyncSheetView: View {
                     }
                     .padding(12)
                     .background(InsightColor.success.opacity(0.12), in: RoundedRectangle(cornerRadius: InsightRadius.control))
+                    .transition(.opacity)
                 }
             }
             .padding(16)
             .editorialGlassCard()
+            // 状态块（错误 / 对端信息 / 同步结果）插入移除的统一动画上下文
+            .animation(EditorialSpring.state, value: errorMessage)
+            .animation(EditorialSpring.state, value: remoteInfo?.deviceName)
+            .animation(EditorialSpring.state, value: syncResult == nil)
         }
     }
 

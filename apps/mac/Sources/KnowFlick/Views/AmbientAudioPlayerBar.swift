@@ -17,6 +17,7 @@ struct AmbientAudioPlayerBar: View {
 
     /// 连点守卫：切卡动画窗口内的重复点击不应重播当前卡
     @State private var nextRequestInFlight = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var speechService: SpeechSynthesizerService {
         store.speechService
@@ -42,12 +43,12 @@ struct AmbientAudioPlayerBar: View {
                     .frame(width: 22, height: 16)
 
                 Text("磨耳朵")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(InsightColor.warning)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(InsightColor.textSecondary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(InsightColor.warning.opacity(0.15), in: Capsule())
-                    .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.3), lineWidth: 1))
+                    .background(InsightColor.surfaceSunken, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
             }
 
             // 2. 当前正在朗读的卡片标题与进度
@@ -57,7 +58,7 @@ struct AmbientAudioPlayerBar: View {
                         .font(InsightFont.callout)
                         .foregroundStyle(InsightColor.textSecondary)
 
-                    Text(card.headline)
+                    Text(card.displayHeadline)
                         .font(.system(size: 13, weight: .semibold, design: .serif))
                         .foregroundStyle(InsightColor.textPrimary)
                         .lineLimit(1)
@@ -69,6 +70,10 @@ struct AmbientAudioPlayerBar: View {
                         .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 32, alignment: .trailing)
                 }
+                .id(card.id)
+                .transition(.opacity)
+                // 切卡时标题交叉淡化，不再瞬换
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: card.id)
             } else {
                 Text("暂无卡片")
                     .font(InsightFont.caption)
@@ -78,17 +83,8 @@ struct AmbientAudioPlayerBar: View {
             // 3. 控制按钮组 (上一张、播放/暂停、下一张、语速)
             HStack(spacing: 8) {
                 // 上一张
-                Button(action: onPrevious) {
-                    Image(systemName: "backward.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(InsightColor.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(InsightColor.surfaceSunken, in: Circle())
-                }
-                .buttonStyle(PressableButtonStyle())
-                .disabled(store.history.isEmpty)
-                .help("上一张 (⌘Z)")
-                .accessibilityLabel("上一张")
+                BarIconButton(icon: "backward.fill", help: "上一张 (⌘Z)", action: onPrevious)
+                    .disabled(store.history.isEmpty)
 
                 // 播放 / 暂停
                 Button {
@@ -97,28 +93,20 @@ struct AmbientAudioPlayerBar: View {
                     }
                 } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color.black)
-                        .frame(width: 34, height: 34)
-                        .background(InsightColor.success, in: Circle())
+                        .frame(width: 30, height: 30)
+                        .background(Color.white, in: Circle())
+                        .animation(InsightMotion.tactile, value: isPlaying)
                 }
-                .buttonStyle(PressableButtonStyle())
+                .buttonStyle(PressableButtonStyle(scale: 0.94))
                 .disabled(currentCard == nil)
                 .help(isPlaying ? "暂停朗读 (⌘P)" : "继续朗读 (⌘P)")
                 .accessibilityLabel(isPlaying ? "暂停朗读" : "继续朗读")
 
                 // 下一张
-                Button(action: handleNext) {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(InsightColor.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(InsightColor.surfaceSunken, in: Circle())
-                }
-                .buttonStyle(PressableButtonStyle())
-                .disabled(store.deck.count <= 1 || isTransitioning || nextRequestInFlight)
-                .help("切到下一张")
-                .accessibilityLabel("下一张")
+                BarIconButton(icon: "forward.fill", help: "切到下一张", action: handleNext)
+                    .disabled(store.deck.count <= 1 || isTransitioning || nextRequestInFlight)
 
                 // 语速切换 (0.75x -> 1.0x -> 1.25x -> 1.5x)
                 Button {
@@ -138,16 +126,7 @@ struct AmbientAudioPlayerBar: View {
                 .accessibilityValue(speedText)
 
                 // 全功能语音控制台
-                Button(action: onOpenConsole) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(InsightColor.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(InsightColor.surfaceSunken, in: Circle())
-                }
-                .buttonStyle(PressableButtonStyle())
-                .help("语音听书控制台 ⌥⌘P")
-                .accessibilityLabel("语音听书控制台")
+                BarIconButton(icon: "slider.horizontal.3", help: "语音听书控制台 ⌥⌘P", action: onOpenConsole)
             }
 
             Divider()
@@ -158,9 +137,14 @@ struct AmbientAudioPlayerBar: View {
             if let seconds = speechService.sleepTimerRemainingSeconds {
                 Text(clock(seconds: seconds))
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .monospacedDigit()
                     .foregroundStyle(InsightColor.warning)
                     .help("睡眠定时器剩余时间")
                     .accessibilityLabel("睡眠定时器剩余 \(clock(seconds: seconds))")
+                    .transition(.opacity)
+                    // 只在「出现/消失」时过渡；逐秒跳动不参与动画
+                    .animation(reduceMotion ? nil : EditorialSpring.state,
+                               value: speechService.sleepTimerRemainingSeconds == nil)
             }
 
             Button(action: onClose) {
@@ -173,18 +157,12 @@ struct AmbientAudioPlayerBar: View {
             .help("退出磨耳朵模式")
             .accessibilityLabel("退出磨耳朵模式")
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background(InsightColor.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1.2))
-        .shadow(
-            color: InsightColor.dynamic(
-                light: NSColor.black.withAlphaComponent(0.14),
-                dark: NSColor.black.withAlphaComponent(0.55)
-            ),
-            radius: 16,
-            y: 8
-        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(InsightColor.surface.opacity(0.95))
+        .clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.12), radius: 14, y: 5)
     }
 
     private func clock(seconds: Int) -> String {
@@ -225,6 +203,33 @@ struct AmbientAudioPlayerBar: View {
         } else {
             speechService.speedMultiplier = 1.0
         }
+    }
+}
+
+/// 磨耳朵条内的圆底图标钮：悬停提亮底色，按压回缩（静默）
+private struct BarIconButton: View {
+    let icon: String
+    var size: CGFloat = 28
+    var iconSize: CGFloat = 11
+    var help: String
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: iconSize, weight: .semibold))
+                .foregroundStyle(hovering ? InsightColor.textPrimary : InsightColor.textSecondary)
+                .frame(width: size, height: size)
+                .background(hovering ? InsightColor.surfaceRaised : InsightColor.surfaceSunken, in: Circle())
+                .overlay(Circle().strokeBorder(hovering ? InsightColor.borderStrong : .clear, lineWidth: 1))
+                .animation(InsightMotion.tactile, value: hovering)
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.92, playAudio: false))
+        .onHover { hovering = $0 }
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
 

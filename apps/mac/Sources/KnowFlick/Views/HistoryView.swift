@@ -122,6 +122,8 @@ struct HistoryView: View {
                             }
                         }
                         .padding(24)
+                        // 筛选切换时列表重排有过渡，行不再瞬移
+                        .animation(EditorialSpring.state, value: items.map(\.id))
                     }
                 }
             }
@@ -157,7 +159,7 @@ struct HistoryView: View {
         }
         .alert("清空历史记录？", isPresented: $showConfirmClear) {
             Button("清空", role: .destructive) {
-                withAnimation { store.clearHistory() }
+                withAnimation(InsightMotion.shell) { store.clearHistory() }
             }
             Button("取消", role: .cancel) {}
         } message: {
@@ -171,6 +173,8 @@ struct HistoryView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
+        // 海报浮层的开合动画上下文（transition 此前是死的）
+        .animation(EditorialSpring.content, value: sharePosterCard != nil)
         .frame(minWidth: 700, minHeight: 520)
     }
 
@@ -189,7 +193,7 @@ struct HistoryView: View {
                     .overlay(Circle().strokeBorder(mark.color.opacity(0.3), lineWidth: 1))
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(card.headline)
+                    Text(card.displayHeadline)
                         .font(InsightFont.bodyStrong)
                         .foregroundStyle(InsightColor.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
