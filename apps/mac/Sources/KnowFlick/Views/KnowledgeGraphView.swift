@@ -209,7 +209,7 @@ struct KnowledgeGraphView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Color.white.opacity(0.4))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle(scale: 0.85, playAudio: false))
                 }
             }
             .padding(.horizontal, 11)
@@ -256,21 +256,15 @@ struct KnowledgeGraphView: View {
         Button(action: action) {
             Text(title)
                 .font(InsightFont.captionSmall.weight(isSelected ? .bold : .medium))
-                .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.65))
-                .padding(.horizontal, 12)
+                .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.72))
+                .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .background(
-                    isSelected ? InsightColor.accent.opacity(0.85) : Color.white.opacity(0.06),
-                    in: Capsule()
-                )
+                .background(isSelected ? InsightColor.accent : Color.white.opacity(0.06), in: Capsule())
                 .overlay(
-                    Capsule().strokeBorder(
-                        isSelected ? InsightColor.accent : Color.white.opacity(0.1),
-                        lineWidth: 1
-                    )
+                    Capsule().strokeBorder(isSelected ? Color.white.opacity(0.25) : Color.white.opacity(0.12), lineWidth: 1)
                 )
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.98))
     }
 
     // MARK: - 底栏视口控制
@@ -292,6 +286,8 @@ struct KnowledgeGraphView: View {
 
                 Text("\(Int(zoomScale * 100))%")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
                     .foregroundStyle(Color.white.opacity(0.75))
                     .frame(width: 44)
 
@@ -342,13 +338,10 @@ struct KnowledgeGraphView: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
-        .background(
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.65)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .background(Color.black.opacity(0.45))
+        .overlay(alignment: .top) {
+            Divider().overlay(Color.white.opacity(0.1))
+        }
     }
 
     private var controlButtonStyle: some ButtonStyle {
@@ -367,15 +360,13 @@ struct KnowledgeGraphView: View {
             guard let src = nodeMap[edge.sourceId], let dst = nodeMap[edge.targetId] else { continue }
 
             let isEdgeActive = activeNode != nil && (src.cardId == activeNode?.cardId || dst.cardId == activeNode?.cardId)
-            let isCategoryMatched = true
-
             var linePath = Path()
             linePath.move(to: CGPoint(x: src.x, y: src.y))
             linePath.addLine(to: CGPoint(x: dst.x, y: dst.y))
 
             let lineColor = edgeColor(for: edge.kind)
-            let opacity: Double = isEdgeActive ? 0.9 : (isCategoryMatched ? 0.22 : 0.05)
-            let lineWidth: CGFloat = isEdgeActive ? 2.2 : (isCategoryMatched ? 1.0 : 0.5)
+            let opacity: Double = isEdgeActive ? 0.9 : 0.22
+            let lineWidth: CGFloat = isEdgeActive ? 2.2 : 1.0
 
             context.stroke(
                 linePath,
@@ -446,7 +437,7 @@ struct KnowledgeGraphView: View {
                     .position(x: node.x, y: node.y)
                     .contentShape(Circle())
                     .onHover { isHovering in
-                        withAnimation(.easeOut(duration: 0.15)) {
+                        withAnimation(InsightMotion.tactile) {
                             hoveredNode = isHovering ? node : nil
                         }
                     }
@@ -487,22 +478,24 @@ struct KnowledgeGraphView: View {
                         Spacer()
 
                         Button {
-                            withAnimation { selectedNode = nil }
+                            withAnimation(EditorialSpring.state) {
+                                selectedNode = nil
+                            }
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(Color.white.opacity(0.6))
                                 .frame(width: 24, height: 24)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle(scale: 0.88, playAudio: false))
                     }
 
-                    Text(card.headline)
+                    Text(card.displayHeadline)
                         .font(.system(size: 16, weight: .bold, design: .serif))
                         .foregroundStyle(Color.white)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(card.summary)
+                    Text(card.displaySummary)
                         .font(InsightFont.caption)
                         .foregroundStyle(Color.white.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
@@ -559,15 +552,13 @@ struct KnowledgeGraphView: View {
                 }
                 .padding(18)
                 .frame(maxWidth: 420)
-                .background(
-                    Color(red: 0.10, green: 0.12, blue: 0.16).opacity(0.92)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(InsightColor.surfaceRaised)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 1.2)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(InsightColor.border, lineWidth: 1)
                 )
-                .shadow(color: Color.black.opacity(0.55), radius: 24, y: 10)
+                .shadow(color: Color.black.opacity(0.18), radius: 18, y: 6)
                 .padding(.bottom, 60)
             }
         }

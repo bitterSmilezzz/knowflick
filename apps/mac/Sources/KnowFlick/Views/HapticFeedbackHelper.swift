@@ -8,12 +8,20 @@ public final class HapticFeedbackHelper {
     private init() {}
 
     private var hasInitiatedDrag = false
-    private var hasCrossedThreshold = false
+    public private(set) var hasCrossedThreshold = false
+    private var lastTensionStep = 0
 
-    /// 第一阶段：卡片起步拖拽阻尼反馈（位移达 24pt 时触发）
+    /// 第一阶段：卡片起步拖拽阻尼反馈（位移达 18pt 时触发）
     public func dragInitiated() {
         guard !hasInitiatedDrag else { return }
         hasInitiatedDrag = true
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+    }
+
+    /// 物理张力中间刻度齿（每跨过一个阻尼张力区间触发微触觉）
+    public func tensionNotch(step: Int) {
+        guard step != lastTensionStep else { return }
+        lastTensionStep = step
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
     }
 
@@ -27,12 +35,14 @@ public final class HapticFeedbackHelper {
     /// 手势回退至中线或安全区时复位状态
     public func resetThreshold() {
         hasCrossedThreshold = false
+        lastTensionStep = 0
     }
 
     /// 手势完全释放或回位时重置所有触觉阶段
     public func resetAll() {
         hasInitiatedDrag = false
         hasCrossedThreshold = false
+        lastTensionStep = 0
     }
 
     /// 第三阶段（A）：松手未能划走、磁吸回弹时触发柔和吸附反馈
@@ -45,5 +55,18 @@ public final class HapticFeedbackHelper {
     public func cardSwiped() {
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
         resetAll()
+    }
+
+    /// 收藏触发的特制双阶心跳触觉
+    public func favoriteHeartbeat() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+        }
+    }
+
+    /// 机械微动开关按压触觉
+    public func buttonClick() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
     }
 }

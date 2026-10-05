@@ -365,11 +365,36 @@ public struct EditorialGlassCardModifier: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .background(backgroundColor, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background {
+                ZStack {
+                    backgroundColor
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.06), location: 0),
+                            .init(color: Color.clear, location: 0.35)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(strokeColor, lineWidth: 1)
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.28), location: 0),
+                                .init(color: Color.white.opacity(0.12), location: 0.4),
+                                .init(color: strokeColor, location: 1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             )
+            .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
     }
 }
 
@@ -438,6 +463,7 @@ public struct NoiseOverlay: View {
 
 struct PressableButtonStyle: ButtonStyle {
     var scale: CGFloat = 0.97
+    var playAudio: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
@@ -445,6 +471,12 @@ struct PressableButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed && !reduceMotion ? scale : 1.0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
             .animation(reduceMotion ? nil : EditorialSpring.micro, value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { wasPressed, isPressed in
+                if isPressed && !wasPressed && playAudio {
+                    AudioEffectManager.shared.playMechanicalSwitch()
+                    HapticFeedbackHelper.shared.buttonClick()
+                }
+            }
             .onHover { hovering in
                 if hovering {
                     NSCursor.pointingHand.push()

@@ -22,9 +22,11 @@ struct DetailView: View {
     var onUndo: (() -> Void)? = nil
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showPosterSheet = false
     @State private var showChatSheet = false
     @State private var showConsoleSheet = false
+    @State private var pendingChatPrompt: String? = nil
     private var isFavorited: Bool { store.isFavorite(card) }
 
     init(
@@ -69,14 +71,13 @@ struct DetailView: View {
             LinearGradient(colors: theme.ambient, startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
             NoiseOverlay().ignoresSafeArea()
-
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     // 顶部横幅：摄影大图 + 渐变自然晕染
                     ZStack(alignment: .bottomLeading) {
                         Rectangle()
                             .fill(theme.ambient.last ?? InsightColor.canvas)
-                            .frame(height: 230)
+                            .frame(height: 200)
 
                         if let img = theme.image {
                             GeometryReader { geo in
@@ -98,24 +99,30 @@ struct DetailView: View {
                                         )
                                     )
                             }
-                            .frame(height: 230)
+                            .frame(height: 200)
                         }
 
                         // 顶部操作按钮浮层（AI 追问 + 朗读 + 收藏 + 分享海报 + 关闭）
                         VStack {
-                            HStack(spacing: 10) {
+                            HStack(spacing: 8) {
                                 Spacer()
-                                chatTopButton
-                                speechTopButton
-                                favoriteButton
-                                shareButton
+                                HStack(spacing: 2) {
+                                    chatTopButton
+                                    speechTopButton
+                                    favoriteButton
+                                    shareButton
+                                }
+                                .padding(3)
+                                .background(Color.black.opacity(0.50), in: Capsule())
+                                .overlay(Capsule().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
+
                                 closeButton
                             }
                             Spacer()
                         }
-                        .padding(20)
+                        .padding(14)
                     }
-                    .frame(height: 230)
+                    .frame(height: 200)
 
                     VStack(alignment: .leading, spacing: 0) {
                         // 头部徽章行
@@ -134,15 +141,13 @@ struct DetailView: View {
                                     .tracking(1.0)
                                     .opacity(0.92)
                             }
-                            .foregroundStyle(Color.black.opacity(0.88))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(theme.accent, in: Capsule())
+                            .foregroundStyle(theme.accent)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 5)
+                            .background(theme.accent.opacity(0.12), in: Capsule())
                             .overlay(
-                                Capsule()
-                                    .strokeBorder(Color.white.opacity(0.38), lineWidth: 0.8)
+                                Capsule().strokeBorder(theme.accent.opacity(0.28), lineWidth: 1)
                             )
-                            .shadow(color: theme.accent.opacity(0.38), radius: 8, y: 2)
 
                             if card.source == .ai {
                                 // 关闭「AI 内容标记」后，AI 卡片不应被误标为「预置精选」，
@@ -166,19 +171,15 @@ struct DetailView: View {
                             }
                         }
 
-                        // 衬线大标题
-                        Text(card.headline)
-                            .font(InsightFont.title)
+                        // 衬线大标题 (Awwwards 级宏大高对比排版)
+                        Text(card.displayHeadline)
+                            .font(InsightFont.heroTitle)
+                            .tracking(-0.6)
                             .foregroundStyle(InsightColor.textPrimary)
                             .lineSpacing(7.5)
                             .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 18)
-
-                        Rectangle()
-                            .fill(theme.accent)
-                            .frame(width: 38, height: 3.5)
-                            .cornerRadius(1.75)
-                            .padding(.top, 16)
+                            .padding(.top, 14)
+                            .padding(.bottom, 4)
 
                         // AI 内容核实提示条（可按设置隐藏）
                         if showAIMark && card.source == .ai {
@@ -190,33 +191,33 @@ struct DetailView: View {
                                     .foregroundStyle(InsightColor.textSecondary)
                             }
                             .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
+                            .padding(.vertical, 8)
                             .background(InsightColor.warningSoft, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                                     .strokeBorder(InsightColor.warning, lineWidth: 1)
                             )
-                            .padding(.top, 16)
+                            .padding(.top, 12)
                         }
 
                         // 语音朗读声学播放栏
                         audioPlayerBar
 
                         // 正文段落（人文排版）
-                        VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 14) {
                             ForEach(paragraphs, id: \.self) { para in
                                 Text(para)
                                     .font(InsightFont.body)
-                                    .lineSpacing(8.5)
+                                    .lineSpacing(7.5)
                                     .foregroundStyle(InsightColor.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
-                        .padding(.top, 24)
+                        .padding(.top, 14)
 
                         // 科普链接
                         if !card.links.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 10) {
                                 HStack(spacing: 8) {
                                     Image(systemName: "book.pages")
                                         .font(.system(size: 13, weight: .semibold))
@@ -225,7 +226,7 @@ struct DetailView: View {
                                         .font(InsightFont.headline)
                                         .foregroundStyle(InsightColor.textPrimary)
                                 }
-                                .padding(.top, 30)
+                                .padding(.top, 18)
 
                                 ForEach(card.links, id: \.self) { link in
                                     linkRow(link)
@@ -240,7 +241,7 @@ struct DetailView: View {
                         relatedCardsSection
 
                         // 操作底栏：上一张 | 不喜欢 | 跳过 | 感兴趣 | 下一张
-                        VStack(spacing: 14) {
+                        VStack(spacing: 12) {
                             if onCompleteReading == nil {
                             HStack(spacing: 12) {
                                 navButton(icon: "chevron.left", help: "上一张 ←", disabled: !hasPrevious, shortcut: .leftArrow) {
@@ -264,15 +265,20 @@ struct DetailView: View {
                                 .font(InsightFont.captionSmall)
                                 .foregroundStyle(InsightColor.textMuted)
                         }
-                        .padding(.top, 32)
-                        .padding(.bottom, 40)
+                        .padding(.top, 20)
+                        .padding(.bottom, 24)
                     }
-                    .padding(.horizontal, 42)
+                    .padding(.horizontal, InsightLayout.readingPadding)
                 }
-                .frame(maxWidth: 720, alignment: .leading)
+                .frame(maxWidth: 760, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
         }
+        // 详情页内上一张/下一张换卡：ambient 渐变与整页内容此前瞬切。
+        // 以 card.id 重建整页（顺带把滚动位置归零）并做交叉淡化，阅读面保持沉静。
+        .id(card.id)
+        .transition(.opacity)
+        .animation(reduceMotion ? nil : Animation.easeInOut(duration: 0.22), value: card.id)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let onCompleteReading {
                 HStack(spacing: 20) {
@@ -285,7 +291,7 @@ struct DetailView: View {
                     Button(action: onCompleteReading) {
                         Label("完成阅读", systemImage: "checkmark.circle").padding(.vertical, 6)
                     }.buttonStyle(.borderedProminent).tint(InsightColor.accent)
-                }.padding(.horizontal, 28).padding(.vertical, 16)
+                }.padding(.horizontal, InsightLayout.readingPadding).padding(.vertical, 14)
                     .background(.regularMaterial)
                     .overlay(alignment: .top) { Divider() }
             }
@@ -316,9 +322,12 @@ struct DetailView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
+        // 海报浮层的开合动画上下文（transition 此前已声明但没有动画可挂，等于摆设）
+        .animation(reduceMotion ? nil : EditorialSpring.content, value: showPosterSheet)
         .sheet(isPresented: $showChatSheet) {
-            CardFollowUpChatView(card: card, store: store) {
+            CardFollowUpChatView(card: card, store: store, initialPrompt: pendingChatPrompt) {
                 showChatSheet = false
+                pendingChatPrompt = nil
             }
         }
         .sheet(isPresented: $showConsoleSheet) {
@@ -335,135 +344,168 @@ struct DetailView: View {
     }
 
     private var chatTopButton: some View {
-        Button(action: { showChatSheet = true }) {
-            HStack(spacing: 5) {
-                Image(systemName: "cpu")
-                    .font(.system(size: 11.5, weight: .bold))
+        Button(action: {
+            pendingChatPrompt = nil
+            showChatSheet = true
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
                 Text("AI 追问")
-                    .font(InsightFont.captionSmall.weight(.bold))
+                    .font(InsightFont.captionSmall)
             }
-            .foregroundStyle(InsightColor.warning)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.black.opacity(0.45), in: Capsule())
-            .overlay(
-                Capsule().strokeBorder(InsightColor.warning.opacity(0.55), lineWidth: 1)
-            )
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.08), in: Capsule())
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.96))
         .keyboardShortcut("j", modifiers: .command)
-        .help("向 AI 深入探讨此卡片知识 (⌘J)")
+        .help("向 AI 深入探讨此卡片知识 ⌘J")
     }
 
     private var aiCompanionBanner: some View {
-        Button(action: { showChatSheet = true }) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(RadialGradient(
-                            colors: [InsightColor.warning.opacity(0.35), .clear],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: 20
-                        ))
-                        .frame(width: 40, height: 40)
-                    Image(systemName: "cpu")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(InsightColor.warning)
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(InsightColor.accent)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text("向卡片追问")
-                            .font(.system(size: 13.5, weight: .bold, design: .serif))
-                            .foregroundStyle(InsightColor.textPrimary)
-                        Text("AI 伴学 ⌘J")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(InsightColor.warning)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(InsightColor.warning.opacity(0.12), in: Capsule())
-                    }
-                    Text("对底层机理、现实案例或跨界碰撞有疑问？随时与 AI 导师探讨")
-                        .font(InsightFont.caption)
-                        .foregroundStyle(InsightColor.textSecondary)
-                }
+                Text("AI 伴学透镜")
+                    .font(InsightFont.headline)
+                    .foregroundStyle(InsightColor.textPrimary)
+
+                Text("⌘J")
+                    .font(InsightFont.monoSmall)
+                    .foregroundStyle(InsightColor.textTertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(InsightColor.surfaceSunken, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
 
                 Spacer()
 
-                HStack(spacing: 4) {
-                    Text("深入探讨")
-                        .font(.system(size: 12, weight: .bold))
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 11, weight: .bold))
+                Button(action: {
+                    pendingChatPrompt = nil
+                    showChatSheet = true
+                }) {
+                    HStack(spacing: 4) {
+                        Text("自定义提问")
+                            .font(InsightFont.captionSmall.weight(.medium))
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(InsightColor.textSecondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
+                    .background(InsightColor.surfaceSunken, in: Capsule())
+                    .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
-                .foregroundStyle(InsightColor.warning)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(InsightColor.warning.opacity(0.12), in: Capsule())
-                .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.3), lineWidth: 1))
+                .buttonStyle(PressableButtonStyle(scale: 0.96))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            // 3 个即问即答高频速问药丸（一键直达，零等待零中间层）
+            HStack(spacing: 10) {
+                quickAskChip(
+                    icon: "lightbulb.fill",
+                    title: "通俗比喻",
+                    prompt: "用小学生都能听懂的生活比喻，解释它的底层运转机理"
+                )
+
+                quickAskChip(
+                    icon: "atom",
+                    title: "现实应用",
+                    prompt: "在工业界、现实生活或前沿科技中有哪些典型应用或反转案例？"
+                )
+
+                quickAskChip(
+                    icon: "arrow.triangle.merge",
+                    title: "跨界碰撞",
+                    prompt: "这个概念与哪些其他学科存在意料之外的交叉与碰撞？"
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
+                .strokeBorder(InsightColor.border, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
+        .padding(.top, 18)
+    }
+
+    private func quickAskChip(icon: String, title: String, prompt: String) -> some View {
+        Button(action: {
+            AudioEffectManager.shared.playClick()
+            pendingChatPrompt = prompt
+            showChatSheet = true
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(InsightColor.textSecondary)
+                Text(title)
+                    .font(InsightFont.caption.weight(.medium))
+                    .foregroundStyle(InsightColor.textPrimary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(InsightColor.surfaceSunken, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(InsightColor.warning.opacity(0.25), lineWidth: 1)
+                RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
+                    .strokeBorder(InsightColor.border, lineWidth: 1)
             )
         }
-        .buttonStyle(PressableButtonStyle())
-        .padding(.top, 24)
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .help("一键追问：\(prompt)")
     }
 
     private var favoriteButton: some View {
         Button(action: {
-            withAnimation(InsightMotion.pill) {
-                if let onToggleFavorite {
-                    onToggleFavorite()
-                } else {
-                    // 无收藏回调时的兜底：用喜好意图表达「收藏/取消收藏」。
-                    // 右划 = 感兴趣（同时写入收藏），左划 = 不喜欢（同时移出收藏）；
-                    // 不再用 `.skip`（skip 是系统跳过，不表达喜好，会把收藏写成「系统行为」）。
-                    onSwipe(isFavorited ? .left : .right)
-                }
+            if !isFavorited {
+                AudioEffectManager.shared.playMasteryChime()
+            }
+            if let onToggleFavorite {
+                onToggleFavorite()
+            } else {
+                onSwipe(isFavorited ? .left : .right)
             }
         }) {
-            HStack(spacing: 5) {
-                Image(systemName: isFavorited ? "heart.fill" : "heart")
-                    .font(.system(size: 11.5, weight: .bold))
-                    .foregroundStyle(isFavorited ? InsightColor.success : Color.white)
+            HStack(spacing: 4) {
+                Image(systemName: isFavorited ? "bookmark.fill" : "bookmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(isFavorited ? InsightColor.warning : Color.white)
                 Text(isFavorited ? "已收藏" : "收藏")
-                    .font(InsightFont.captionSmall.weight(.bold))
+                    .font(InsightFont.captionSmall)
                     .foregroundStyle(Color.white)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.black.opacity(0.45), in: Capsule())
-            .overlay(
-                Capsule()
-                    .strokeBorder(isFavorited ? InsightColor.success.opacity(0.55) : InsightColor.borderStrong, lineWidth: 1)
-            )
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.08), in: Capsule())
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.96))
+        .animation(InsightMotion.tactile, value: isFavorited)
         .keyboardShortcut("d", modifiers: .command)
         .help(isFavorited ? "取消收藏 ⌘D" : "加入知识收藏阁 ⌘D")
     }
 
     private var shareButton: some View {
         Button(action: { showPosterSheet = true }) {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 11.5, weight: .bold))
-                Text("分享海报")
-                    .font(InsightFont.captionSmall.weight(.bold))
+                    .font(.system(size: 11, weight: .semibold))
+                Text("海报")
+                    .font(InsightFont.captionSmall)
             }
             .foregroundStyle(Color.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.black.opacity(0.45), in: Capsule())
-            .overlay(Capsule().strokeBorder(InsightColor.borderStrong, lineWidth: 1))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.08), in: Capsule())
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.96))
         .keyboardShortcut("s", modifiers: .command)
         .help("导出画报长图/拍立得分享海报 ⌘S")
     }
@@ -471,13 +513,13 @@ struct DetailView: View {
     private var closeButton: some View {
         Button(action: onClose) {
             Image(systemName: "xmark")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color.white)
-                .frame(width: 32, height: 32)
-                .background(Color.black.opacity(0.45), in: Circle())
-                .overlay(Circle().strokeBorder(InsightColor.borderStrong, lineWidth: 1))
+                .frame(width: 28, height: 28)
+                .background(Color.black.opacity(0.50), in: Circle())
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.94))
         .keyboardShortcut(.escape, modifiers: [])
         .accessibilityLabel("关闭详情")
     }
@@ -506,7 +548,11 @@ struct DetailView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .editorialGlassCard(cornerRadius: InsightRadius.control)
+            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
+                    .strokeBorder(InsightColor.border, lineWidth: 1)
+            )
         }
         .buttonStyle(PressableButtonStyle(scale: 0.985))
     }
@@ -517,15 +563,14 @@ struct DetailView: View {
                 .font(InsightFont.bodyStrong)
                 .foregroundStyle(tint)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
+                .padding(.vertical, 10)
+                .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
-                        .strokeBorder(tint.opacity(0.55), lineWidth: 1.3)
+                        .strokeBorder(tint.opacity(0.24), lineWidth: 1)
                 )
-                .shadow(color: tint.opacity(0.2), radius: 8, y: 2)
         }
-        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .buttonStyle(PressableButtonStyle(scale: 0.98))
     }
 
     /// 左右导航按钮：键盘 ←/→ 直接切卡
@@ -533,15 +578,15 @@ struct DetailView: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(disabled ? InsightColor.textMuted.opacity(0.5) : InsightColor.textSecondary)
-                .frame(width: 44, height: 44)
+                .foregroundStyle(disabled ? InsightColor.textMuted.opacity(0.4) : InsightColor.textSecondary)
+                .frame(width: 44, height: 40)
                 .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
                         .strokeBorder(InsightColor.border, lineWidth: 1)
                 )
         }
-        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .buttonStyle(PressableButtonStyle(scale: 0.98))
         .disabled(disabled)
         .keyboardShortcut(shortcut, modifiers: [])
         .help(help)
@@ -568,7 +613,7 @@ struct DetailView: View {
                         .font(InsightFont.captionSmall)
                         .foregroundStyle(InsightColor.textMuted)
                 }
-                .padding(.top, 28)
+                .padding(.top, 18)
 
                 VStack(spacing: 10) {
                     ForEach(relatedCards) { item in
@@ -599,7 +644,7 @@ struct DetailView: View {
 
                                 // 标题与推荐理由
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(item.card.headline)
+                                    Text(item.card.displayHeadline)
                                         .font(.system(size: 13.5, weight: .semibold))
                                         .foregroundStyle(InsightColor.textPrimary)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -659,21 +704,17 @@ struct DetailView: View {
             HapticFeedbackHelper.shared.cardSnapBack()
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: isSpeakingThis ? "pause.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 11.5, weight: .bold))
+                Image(systemName: isSpeakingThis ? "pause.fill" : "speaker.wave.2")
+                    .font(.system(size: 11, weight: .semibold))
                 Text(isSpeakingThis ? "暂停" : "朗读")
-                    .font(InsightFont.captionSmall.weight(.bold))
+                    .font(InsightFont.captionSmall)
             }
             .foregroundStyle(isSpeakingThis ? InsightColor.success : Color.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.black.opacity(0.45), in: Capsule())
-            .overlay(
-                Capsule()
-                    .strokeBorder(isSpeakingThis ? InsightColor.success.opacity(0.55) : InsightColor.borderStrong, lineWidth: 1)
-            )
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(isSpeakingThis ? InsightColor.success.opacity(0.2) : Color.white.opacity(0.08), in: Capsule())
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.96))
         .keyboardShortcut("p", modifiers: .command)
         .help(isSpeakingThis ? "暂停朗读 ⌘P" : "朗读全文 ⌘P")
     }
@@ -686,33 +727,33 @@ struct DetailView: View {
 
         return VStack(spacing: 10) {
             HStack(spacing: 12) {
-                // 播放 / 暂停大按键
+                // 播放 / 暂停按键
                 Button {
                     service.togglePlayPause(for: card)
                     HapticFeedbackHelper.shared.cardSnapBack()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: isSpeakingThis ? "pause.fill" : "play.fill")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(isSpeakingThis ? "暂停朗读" : (isPausedThis ? "继续朗读" : "沉浸导读"))
-                            .font(InsightFont.caption.weight(.semibold))
+                            .font(.system(size: 11, weight: .bold))
+                        Text(isSpeakingThis ? "暂停" : (isPausedThis ? "继续" : "导读"))
+                            .font(InsightFont.caption.weight(.medium))
                     }
                     .foregroundStyle(isSpeakingThis ? Color.black : InsightColor.textPrimary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
                     .background(
-                        isSpeakingThis ? InsightColor.success : InsightColor.surface,
+                        isSpeakingThis ? Color.white : InsightColor.surfaceSunken,
                         in: Capsule()
                     )
                     .overlay(
                         Capsule().strokeBorder(
-                            isSpeakingThis ? InsightColor.success : InsightColor.border,
+                            isSpeakingThis ? Color.white : InsightColor.border,
                             lineWidth: 1
                         )
                     )
-                    .shadow(color: isSpeakingThis ? InsightColor.success.opacity(0.35) : .clear, radius: 6, y: 1)
+                    .animation(InsightMotion.tactile, value: isSpeakingThis)
                 }
-                .buttonStyle(PressableButtonStyle())
+                .buttonStyle(PressableButtonStyle(scale: 0.96))
 
                 // 声浪跳动条
                 AudioWaveformBars(isPlaying: isSpeakingThis)
@@ -721,14 +762,16 @@ struct DetailView: View {
                 if isSpeakingThis || isPausedThis {
                     Text("\(Int(progress * 100))%")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(isSpeakingThis ? InsightColor.success : InsightColor.textSecondary)
+                        .monospacedDigit()
+                        .foregroundStyle(isSpeakingThis ? InsightColor.textPrimary : InsightColor.textSecondary)
+                        .contentTransition(.numericText())
+                        .animation(reduceMotion ? nil : InsightMotion.value, value: progress)
                 }
 
                 Spacer()
 
                 // 语速切换
                 Menu {
-                    // 走设置通道：既即时灌进语音服务（settings.didSet），也能跨重启保留
                     ForEach(Self.speedTiers, id: \.rate) { tier in
                         Button(tier.label) {
                             store.applySettingsChange { $0.speechRate = tier.rate }
@@ -744,7 +787,7 @@ struct DetailView: View {
                     .foregroundStyle(InsightColor.textSecondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(InsightColor.surface, in: Capsule())
+                    .background(InsightColor.surfaceSunken, in: Capsule())
                     .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .menuStyle(.borderlessButton)
@@ -756,13 +799,13 @@ struct DetailView: View {
                     HapticFeedbackHelper.shared.cardSnapBack()
                 } label: {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 28, height: 28)
-                        .background(InsightColor.surface, in: Circle())
+                        .background(InsightColor.surfaceSunken, in: Circle())
                         .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
-                .buttonStyle(PressableButtonStyle())
+                .buttonStyle(PressableButtonStyle(scale: 0.96))
                 .help("语音听书控制台：进度定位、语速音调与睡眠定时")
                 .accessibilityLabel("语音听书控制台")
 
@@ -772,13 +815,13 @@ struct DetailView: View {
                     HapticFeedbackHelper.shared.cardSnapBack()
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 28, height: 28)
-                        .background(InsightColor.surface, in: Circle())
+                        .background(InsightColor.surfaceSunken, in: Circle())
                         .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
-                .buttonStyle(PressableButtonStyle())
+                .buttonStyle(PressableButtonStyle(scale: 0.96))
                 .help("从头重新朗读")
             }
 
@@ -787,27 +830,30 @@ struct DetailView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.white.opacity(0.12))
+                            .fill(InsightColor.border)
                             .frame(height: 3)
 
                         Capsule()
-                            .fill(InsightColor.success)
+                            .fill(InsightColor.accent)
                             .frame(width: max(3, geo.size.width * CGFloat(progress)), height: 3)
                     }
                 }
                 .frame(height: 3)
+                .animation(reduceMotion ? nil : .linear(duration: 0.3), value: progress)
             }
         }
+        .animation(reduceMotion ? nil : InsightMotion.shell, value: isSpeakingThis || isPausedThis)
         .padding(14)
         .background(
             InsightColor.surface,
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
                 .strokeBorder(InsightColor.border, lineWidth: 1)
         )
-        .padding(.top, 18)
+        .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
+        .padding(.top, 14)
     }
 
     /// 语速档位与展示名（与 Android 端 AudioConsoleSheet 同档）

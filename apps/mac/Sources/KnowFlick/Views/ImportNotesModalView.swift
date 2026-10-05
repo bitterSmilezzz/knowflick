@@ -62,7 +62,7 @@ struct ImportNotesModalView: View {
 
     var body: some View {
         ZStack {
-            InsightColor.surfaceRaised
+            InsightColor.canvas
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -109,9 +109,15 @@ struct ImportNotesModalView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "square.and.arrow.down.fill")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(InsightColor.accent)
+            ZStack {
+                Circle()
+                    .fill(InsightColor.accentSoft)
+                    .frame(width: 38, height: 38)
+                Image(systemName: "square.and.arrow.down.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(InsightColor.accent)
+            }
+            .overlay(Circle().strokeBorder(InsightColor.accent.opacity(0.3), lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("笔记导入与智能提炼")
@@ -124,19 +130,10 @@ struct ImportNotesModalView: View {
 
             Spacer()
 
-            Button {
+            GlassIconButton(icon: "xmark", help: "关闭 (Esc)") {
                 onClose()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(InsightColor.textSecondary)
-                    .frame(width: 28, height: 28)
-                    .background(InsightColor.surface, in: Circle())
-                    .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
             }
-            .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
-            .help("关闭 (Esc)")
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
@@ -431,7 +428,7 @@ struct ImportNotesModalView: View {
                     .padding(.horizontal, 22)
                     .padding(.vertical, 8)
                     .background(selectedCardIds.isEmpty ? Color.gray.opacity(0.4) : InsightColor.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .shadow(color: selectedCardIds.isEmpty ? Color.clear : InsightColor.accent.opacity(0.3), radius: 6, y: 2)
+                    .shadow(color: selectedCardIds.isEmpty ? Color.clear : Color.black.opacity(0.12), radius: 4, y: 2)
                 }
                 .buttonStyle(PressableButtonStyle())
                 .keyboardShortcut(.return, modifiers: .command)
@@ -590,7 +587,7 @@ private struct ParsedCardRowView: View {
                         .background(InsightColor.accentSoft, in: Capsule())
                         .overlay(Capsule().strokeBorder(InsightColor.accent, lineWidth: 1))
 
-                    Text(card.headline)
+                    Text(card.displayHeadline)
                         .font(InsightFont.bodyStrong.weight(.semibold))
                         .foregroundStyle(InsightColor.textPrimary)
 
@@ -606,7 +603,7 @@ private struct ParsedCardRowView: View {
                     Spacer()
                 }
 
-                Text(card.summary)
+                Text(card.displaySummary)
                     .font(InsightFont.caption)
                     .foregroundStyle(InsightColor.textSecondary)
                     .lineLimit(2)

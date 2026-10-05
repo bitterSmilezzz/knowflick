@@ -22,6 +22,7 @@ struct QuizView: View {
     @State private var isAdvancing: Bool = false
     /// 结算面板「再测一组」的题源，提前算好，保证按钮文案题量与实际出题张数一致
     @State private var nextRoundCards: [KnowledgeCard] = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var currentCard: KnowledgeCard? {
         guard currentIndex >= 0 && currentIndex < quizCards.count else { return nil }
@@ -60,10 +61,16 @@ struct QuizView: View {
 
                 if quizCards.isEmpty {
                     emptyView
+                        .transition(.opacity)
                 } else if isCompleted {
                     summaryView
+                        .transition(.asymmetric(
+                            insertion: .offset(y: 16).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                 } else {
                     activeQuizArea
+                        .transition(.opacity)
                 }
             }
         }
@@ -124,6 +131,7 @@ struct QuizView: View {
                         Text("\(countMastered)")
                             .font(InsightFont.mono)
                             .monospacedDigit()
+                            .contentTransition(.numericText())
                             .foregroundStyle(InsightColor.textSecondary)
                     }
                     HStack(spacing: InsightSpacing.tiny) {
@@ -131,6 +139,7 @@ struct QuizView: View {
                         Text("\(countHesitant)")
                             .font(InsightFont.mono)
                             .monospacedDigit()
+                            .contentTransition(.numericText())
                             .foregroundStyle(InsightColor.textSecondary)
                     }
                     HStack(spacing: InsightSpacing.tiny) {
@@ -138,6 +147,7 @@ struct QuizView: View {
                         Text("\(countForgot)")
                             .font(InsightFont.mono)
                             .monospacedDigit()
+                            .contentTransition(.numericText())
                             .foregroundStyle(InsightColor.textSecondary)
                     }
                 }
@@ -145,6 +155,7 @@ struct QuizView: View {
                 .padding(.vertical, InsightSpacing.small)
                 .background(InsightColor.surface, in: Capsule())
                 .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
+                .animation(reduceMotion ? nil : InsightMotion.value, value: ratings)
             }
         }
         .padding(.horizontal, InsightLayout.contentPadding)
@@ -167,27 +178,27 @@ struct QuizView: View {
             Spacer(minLength: InsightSpacing.compact)
 
             // 卡片主体
-            if let card = currentCard {
-                QuizCardView(
-                    card: card,
-                    isFlipped: isFlipped,
-                    onFlip: {
-                        withAnimation(InsightMotion.page) {
-                            isFlipped.toggle()
+            ZStack {
+                if let card = currentCard {
+                    QuizCardView(
+                        card: card,
+                        isFlipped: isFlipped,
+                        onFlip: {
+                            toggleFlip()
+                        },
+                        onRate: { rating in
+                            submitRating(rating)
+                        },
+                        onOpenChat: {
+                            onOpenChat?(card)
                         }
-                    },
-                    onRate: { rating in
-                        submitRating(rating)
-                    },
-                    onOpenChat: {
-                        onOpenChat?(card)
-                    }
-                )
-                .id(card.id)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                    removal: .opacity.combined(with: .scale(scale: 1.02))
-                ))
+                    )
+                    .id(card.id)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity.combined(with: .scale(scale: 1.02))
+                    ))
+                }
             }
 
             Spacer(minLength: InsightSpacing.compact)
@@ -204,7 +215,7 @@ struct QuizView: View {
 
     private var summaryView: some View {
         ScrollView {
-            VStack(spacing: InsightSpacing.xl) {
+            VStack(spacing: InsightSpacing.large) {
                 Spacer(minLength: 10)
 
                 // 顶端奖章与标题
@@ -236,7 +247,7 @@ struct QuizView: View {
                         )
                         .rotationEffect(.degrees(-90))
                         .frame(width: 140, height: 140)
-                        .animation(.easeOut(duration: 1.0), value: animateRing)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 1.0), value: animateRing)
 
                     VStack(spacing: InsightSpacing.tiny) {
                         Text("\(retentionRate)%")
@@ -348,10 +359,10 @@ struct QuizView: View {
                     }
                 }
                 .padding(.top, 10)
-                .padding(.bottom, 30)
+                .padding(.bottom, 24)
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 32)
+            .padding(.horizontal, InsightLayout.panelPadding + 8)
         }
     }
 
@@ -459,6 +470,7 @@ struct QuizView: View {
 
     private func toggleFlip() {
         guard !isCompleted && !quizCards.isEmpty else { return }
+        AudioEffectManager.shared.playCardFlip()
         withAnimation(InsightMotion.page) {
             isFlipped.toggle()
         }
@@ -473,6 +485,14 @@ struct QuizView: View {
         ratings[card.id] = rating
         store.recordQuizResult(cardId: card.id, rating: rating)
         HapticFeedbackHelper.shared.cardSwiped()
+
+        if rating == .mastered {
+            AudioEffectManager.shared.playMasteryChime()
+        } else if rating == .forgot {
+            AudioEffectManager.shared.playPaperSlide()
+        } else {
+            AudioEffectManager.shared.playClick()
+        }
 
         advanceToNext()
     }
@@ -528,7 +548,7 @@ private struct WeakCardRowView: View {
                     .background(theme.accent.opacity(0.12), in: Capsule())
                     .overlay(Capsule().strokeBorder(theme.accent.opacity(0.3), lineWidth: 1))
 
-                Text(card.headline)
+                Text(card.displayHeadline)
                     .font(InsightFont.bodyStrong)
                     .foregroundStyle(InsightColor.textPrimary)
                     .lineLimit(isExpanded ? nil : 1)
@@ -544,6 +564,13 @@ private struct WeakCardRowView: View {
                     .foregroundStyle(InsightColor.textTertiary)
             }
             .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
             .onTapGesture {
                 withAnimation(InsightMotion.shell) {
                     isExpanded.toggle()
@@ -552,7 +579,7 @@ private struct WeakCardRowView: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: InsightSpacing.small) {
-                    Text(card.summary)
+                    Text(card.displaySummary)
                         .font(InsightFont.body)
                         .foregroundStyle(InsightColor.textSecondary)
                         .lineSpacing(4)

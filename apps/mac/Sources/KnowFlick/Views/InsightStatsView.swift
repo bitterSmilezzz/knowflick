@@ -17,6 +17,7 @@ struct InsightStatsPlaceholder: View {
     @State private var stats = StatsCalculator.compute(from: [])
     @State private var plan = LearningPlan(cards: [])
     @State private var daily35: [LearningStats.DailyCount] = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private func refreshSnapshot() {
         let now = Date()
@@ -60,6 +61,8 @@ struct InsightStatsPlaceholder: View {
                         .padding(.horizontal, InsightLayout.contentPadding)
                         .padding(.bottom, InsightSpacing.large)
                     }
+                    // 快照刷新（刷卡/换天）时柱高、分段宽与数字整体平滑过渡，不再整批裸跳
+                    .animation(reduceMotion ? nil : InsightMotion.value, value: store.cards)
                 }
             }
         }
@@ -218,6 +221,7 @@ private struct StatsSections: View {
                     .font(InsightFont.statMedium)
                     .foregroundStyle(emphasized ? InsightColor.seal : InsightColor.textPrimary)
                     .monospacedDigit()
+                    .contentTransition(.numericText())
                 Text(unit)
                     .font(InsightFont.caption)
                     .foregroundStyle(InsightColor.textSecondary)

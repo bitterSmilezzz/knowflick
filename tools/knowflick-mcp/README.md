@@ -7,7 +7,7 @@
 
 ```bash
 # Qoder CLI（配置写入 ~/.qoder/settings.json，可 /mcp reload 热加载）
-qoder mcp add knowflick -- node /Users/fangshoufanji/workspace/ai-test/KnowFlick/tools/knowflick-mcp/server.mjs
+qoder mcp add knowflick -- node /Users/fangshoufanji/workspace/02-AI开发/ai-test/KnowFlick/tools/knowflick-mcp/server.mjs
 ```
 
 Claude Desktop / Cursor 写进各自的 MCP 配置即可，形状相同：

@@ -64,7 +64,7 @@ struct ExportCardsModalView: View {
 
     var body: some View {
         ZStack {
-            InsightColor.surfaceRaised
+            InsightColor.canvas
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -120,9 +120,15 @@ struct ExportCardsModalView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "square.and.arrow.up.fill")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(InsightColor.accent)
+            ZStack {
+                Circle()
+                    .fill(InsightColor.accentSoft)
+                    .frame(width: 38, height: 38)
+                Image(systemName: "square.and.arrow.up.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(InsightColor.accent)
+            }
+            .overlay(Circle().strokeBorder(InsightColor.accent.opacity(0.3), lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("卡片批量导出中心")
@@ -135,19 +141,10 @@ struct ExportCardsModalView: View {
 
             Spacer()
 
-            Button {
+            GlassIconButton(icon: "xmark", help: "关闭 (Esc)") {
                 onClose()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(InsightColor.textSecondary)
-                    .frame(width: 28, height: 28)
-                    .background(InsightColor.surface, in: Circle())
-                    .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
             }
-            .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
-            .help("关闭 (Esc)")
             .disabled(isExporting)
         }
         .padding(.horizontal, 22)
@@ -448,7 +445,7 @@ struct ExportCardsModalView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 8)
                 .background(exportCards.isEmpty ? Color.gray.opacity(0.4) : InsightColor.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .shadow(color: exportCards.isEmpty ? Color.clear : InsightColor.accent.opacity(0.3), radius: 6, y: 2)
+                .shadow(color: exportCards.isEmpty ? Color.clear : Color.black.opacity(0.12), radius: 4, y: 2)
             }
             .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.return, modifiers: .command)

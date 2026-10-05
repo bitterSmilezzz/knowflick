@@ -11,7 +11,7 @@ import re
 import sys
 import pathlib
 
-VIEWS = pathlib.Path("/Users/fangshoufanji/workspace/ai-test/KnowFlick/apps/mac/Sources/KnowFlick/Views")
+VIEWS = pathlib.Path("/Users/fangshoufanji/workspace/02-AI开发/ai-test/KnowFlick/apps/mac/Sources/KnowFlick/Views")
 
 # 已迁移到 Insight 体系的新文件，跳过
 SKIP = {

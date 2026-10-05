@@ -375,13 +375,13 @@ struct InsightFavoritesPlaceholder: View {
                     .help("取消收藏")
                 }
 
-                Text(card.headline)
+                Text(card.displayHeadline)
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
 
-                Text(card.summary)
+                Text(card.displaySummary)
                     .font(InsightFont.caption)
                     .foregroundStyle(InsightColor.textSecondary)
                     .lineLimit(3)
@@ -450,7 +450,7 @@ struct InsightFavoritesPlaceholder: View {
     private func removeFromFavorites(_ card: KnowledgeCard) {
         withAnimation(InsightMotion.pill) {
             store.toggleFavorite(card)
-            toast.show("已将《\(card.headline)》移出收藏阁")
+            toast.show("已将《\(card.displayHeadline)》移出收藏阁")
         }
     }
 

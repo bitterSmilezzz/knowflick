@@ -24,7 +24,7 @@ struct WebClipModalView: View {
 
     var body: some View {
         ZStack {
-            InsightColor.surfaceRaised
+            InsightColor.canvas
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -86,9 +86,15 @@ struct WebClipModalView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image(systemName: "link")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(InsightColor.accent)
+            ZStack {
+                Circle()
+                    .fill(InsightColor.accentSoft)
+                    .frame(width: 38, height: 38)
+                Image(systemName: "link")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(InsightColor.accent)
+            }
+            .overlay(Circle().strokeBorder(InsightColor.accent.opacity(0.3), lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("网页剪藏")
@@ -101,17 +107,10 @@ struct WebClipModalView: View {
 
             Spacer()
 
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(InsightColor.textSecondary)
-                    .frame(width: 28, height: 28)
-                    .background(InsightColor.surface, in: Circle())
-                    .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
+            GlassIconButton(icon: "xmark", help: "关闭 (Esc)") {
+                onClose()
             }
-            .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
-            .help("关闭 (Esc)")
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
@@ -222,13 +221,13 @@ struct WebClipModalView: View {
                             .foregroundStyle(InsightColor.accent)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(selectedCardIDs.contains(card.id) ? "取消选择 \(card.headline)" : "选择 \(card.headline)")
+                    .accessibilityLabel(selectedCardIDs.contains(card.id) ? "取消选择 \(card.displayHeadline)" : "选择 \(card.displayHeadline)")
 
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(card.headline)
+                        Text(card.displayHeadline)
                             .font(InsightFont.bodyStrong.weight(.semibold))
                             .foregroundStyle(InsightColor.textPrimary)
-                        Text(card.summary)
+                        Text(card.displaySummary)
                             .font(InsightFont.captionSmall)
                             .foregroundStyle(InsightColor.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)

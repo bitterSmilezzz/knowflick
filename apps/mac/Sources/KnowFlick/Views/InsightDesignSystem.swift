@@ -154,15 +154,29 @@ public enum InsightColor {
     public static let cardTextSecondary = Color.white.opacity(0.85)
     public static let cardTextTertiary = Color.white.opacity(0.58)
     public static let cardTextMuted = Color.white.opacity(0.40)
+
+    // MARK: - 精致轻微光感与材质
+    /// 精密微描边渐变（极简顶边微反光；0.14→0.04 白，实为描边语言而非光效）
+    public static var doubleBezelStroke: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: Color.white.opacity(0.14), location: 0.0),
+                .init(color: Color.white.opacity(0.04), location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
 }
 
 // MARK: - 字体
 
 public enum InsightFont {
-    // 界面主字：SF Pro，不用宋体——Cutline/Filen 都是无衬线工具型界面
-    public static let largeTitle = Font.system(size: 26, weight: .bold)
-    public static let title = Font.system(size: 20, weight: .bold)
-    public static let headline = Font.system(size: 15, weight: .semibold)
+    // 界面主字：SF Pro，带精致 tracking 调优
+    public static let heroTitle = Font.system(size: 28, weight: .bold)
+    public static let largeTitle = Font.system(size: 24, weight: .bold)
+    public static let title = Font.system(size: 19, weight: .semibold)
+    public static let headline = Font.system(size: 14.5, weight: .semibold)
     public static let body = Font.system(size: 13, weight: .regular)
     public static let bodyStrong = Font.system(size: 13, weight: .semibold)
     public static let callout = Font.system(size: 12, weight: .medium)
@@ -171,33 +185,42 @@ public enum InsightFont {
     public static let mono = Font.system(size: 11, weight: .semibold, design: .monospaced)
     public static let monoSmall = Font.system(size: 10, weight: .semibold, design: .monospaced)
 
-    /// 统计块大数字：Cutline 的「84.2 GB」「48」「16」都是粗体大号
-    public static let statLarge = Font.system(size: 30, weight: .bold)
-    public static let statMedium = Font.system(size: 20, weight: .bold)
+    /// 统计块大数字
+    public static let statLarge = Font.system(size: 28, weight: .bold)
+    public static let statMedium = Font.system(size: 19, weight: .bold)
 
-    /// 阅读面衬线（宋体基因）：详情页正文标题、海报、听书条已在使用——
-    /// 工具界面保持无衬线（Cutline），阅读面用衬线，这是本应用「纸与墨」的分界约定。
+    /// 阅读面衬线（宋体基因）：详情页正文标题、海报、听书条
     public static func display(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
         .system(size: size, weight: weight, design: .serif)
     }
 
-    /// 分区标签：大写 + 小 + semiBold（Cutline 的 MY WORKSPACE / Pinned）
+    /// 高定引文衬线
+    public static let quote = Font.system(size: 15, weight: .medium, design: .serif)
+
+    /// 分区标签：大写 + 小 + semiBold
     public static func sectionLabel(_ tracking: CGFloat = 0.8) -> Font {
-        .system(size: 10.5, weight: .bold)
+        .system(size: 10.5, weight: .semibold)
     }
+
+    /// 微型全大写 Eyebrow 标签
+    public static let eyebrow = Font.system(size: 10, weight: .bold)
 }
 
 // MARK: - 圆角
 
 public enum InsightRadius {
-    /// 侧栏/大容器外圆角（Cutline 侧栏 20pt）
-    public static let sidebar: CGFloat = 12
-    /// 卡片圆角（Cutline 项目卡约 14pt）
+    /// 侧栏/大容器外圆角
+    public static let sidebar: CGFloat = 10
+    /// 双层机身外圆角
+    public static let cardOuter: CGFloat = 12
+    /// 双层机身内圆角
+    public static let cardInner: CGFloat = 10
+    /// 卡片圆角
     public static let card: CGFloat = 10
     /// 卡片内嵌小块
-    public static let inset: CGFloat = 10
+    public static let inset: CGFloat = 8
     /// 控件（按钮/输入框）
-    public static let control: CGFloat = 8
+    public static let control: CGFloat = 6
     /// 药丸
     public static let pill: CGFloat = 999
 }
@@ -205,17 +228,28 @@ public enum InsightRadius {
 // MARK: - 布局常量
 
 public enum InsightLayout {
-    /// 侧栏展开宽度（Cutline 约 240pt）
-    public static let sidebarExpanded: CGFloat = 232
-    /// 侧栏折叠宽度（Cutline 折叠态约 72pt）
-    public static let sidebarCollapsed: CGFloat = 72
-    /// 主内容区水平内边距
-    public static let contentPadding: CGFloat = 24
+    /// 侧栏展开宽度（紧凑精致，类似 Linear / Raycast）
+    public static let sidebarExpanded: CGFloat = 216
+    /// 侧栏折叠宽度
+    public static let sidebarCollapsed: CGFloat = 64
+    /// 主内容区水平内边距（收紧过度留白，信息饱满）
+    public static let contentPadding: CGFloat = 16
+    /// 模态面板水平边距（⌘F 搜索 / 设置 / 同步等 sheet 的统一留白）
+    public static let panelPadding: CGFloat = 16
+    /// 阅读面（详情页）水平边距：正文比工具页宽一档呼吸，但不再各自为政
+    public static let readingPadding: CGFloat = 24
     /// 卡片网格最小列宽
-    public static let gridMinColumn: CGFloat = 240
+    public static let gridMinColumn: CGFloat = 224
     /// 主窗口默认尺寸
     public static let defaultWindow = (width: CGFloat(1180), height: CGFloat(800))
 }
+
+// MARK: - 留白节奏（四级密度规范）
+//
+// 留白不是越多越优雅，而是「同一语义同一间距」。全应用只允许四级垂直节奏：
+//   控件内 8（compact） → 卡片内条目 12（default） → 区块内 18（sectionGap） → 页面区块间 18
+// 页面水平边距一律 InsightLayout.contentPadding（阅读面 readingPadding），
+// 模态一律 panelPadding。新增布局时从这里取值，不要再手写 14/20/22/24/28/30/32。
 
 // MARK: - 间距
 
@@ -225,9 +259,10 @@ public enum InsightSpacing {
     public static let small: CGFloat = 6
     public static let compact: CGFloat = 8
     public static let `default`: CGFloat = 12
-    public static let medium: CGFloat = 16
-    public static let large: CGFloat = 20
-    public static let xl: CGFloat = 28
+    public static let medium: CGFloat = 14
+    public static let large: CGFloat = 18
+    public static let xl: CGFloat = 22
+    public static let xxl: CGFloat = 28
 }
 
 // MARK: - 动效
@@ -249,4 +284,20 @@ public enum InsightMotion {
     public static let stagger: Double = 0.04
     /// 页面切换
     public static let page = Animation.spring(response: 0.42, dampingFraction: 0.86)
+
+    // Awwwards 级高级物理动力学
+    /// 流体有机弹性（拖拽释放、卡片就位）
+    public static let fluidSpring = Animation.interpolatingSpring(stiffness: 260, damping: 22)
+    /// 电影感平滑过度（大场景切换、沉浸展开）
+    public static let cinematic = Animation.spring(response: 0.46, dampingFraction: 0.74)
+    /// 瞬态微触觉回弹（按压、悬停高光）
+    public static let tactile = Animation.spring(response: 0.22, dampingFraction: 0.82)
+    /// 独立飞离与爆发轨迹（刷卡飞出）
+    public static let flyout = Animation.spring(response: 0.38, dampingFraction: 0.68)
+    /// 活泼微弹跳（徽章点亮、收藏触发）
+    public static let pop = Animation.interpolatingSpring(stiffness: 340, damping: 18)
+    /// 磁吸阻尼复位（卡片未达阈值释放回弹）
+    public static let magneticSnap = Animation.interpolatingSpring(stiffness: 300, damping: 20)
+    /// 惯性甩出物理弹性
+    public static let inertialFlick = Animation.spring(response: 0.32, dampingFraction: 0.65)
 }
