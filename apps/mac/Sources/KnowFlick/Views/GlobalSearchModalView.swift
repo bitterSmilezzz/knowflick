@@ -23,6 +23,7 @@ struct GlobalSearchModalView: View {
     @State private var searchGeneration = 0
     @State private var isSearching = false
     @State private var searchDebounceTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// 共享 AppStore 的搜索引擎实例：拼音缓存（PhoneticCache，容量 2048）随之复用，
     /// 此前每次开窗新建实例，首轮搜索要为库内标题/分类/摘要重算全部拼音。
@@ -94,12 +95,12 @@ struct GlobalSearchModalView: View {
         }
         .frame(minWidth: 700, idealWidth: 720, minHeight: 520, idealHeight: 550)
         .background(InsightColor.surfaceRaised)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(InsightColor.border, lineWidth: 1.2)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(InsightColor.border, lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.35), radius: 28, y: 12)
+        .shadow(color: Color.black.opacity(0.24), radius: 24, y: 10)
         .onAppear {
             isSearchFocused = true
             scheduleSearch()
@@ -182,7 +183,7 @@ struct GlobalSearchModalView: View {
                         .font(.system(size: 14))
                         .foregroundStyle(InsightColor.textTertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableButtonStyle(scale: 0.85, playAudio: false))
                 .accessibilityLabel("清除搜索")
             }
 
@@ -196,12 +197,12 @@ struct GlobalSearchModalView: View {
                     .padding(6)
                     .background(InsightColor.surface, in: Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle(scale: 0.88, playAudio: false))
             .keyboardShortcut(.escape, modifiers: [])
             .accessibilityLabel("关闭搜索")
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, InsightLayout.panelPadding)
+        .padding(.vertical, 14)
     }
 
     // MARK: - 多维过滤筛选条
@@ -211,35 +212,14 @@ struct GlobalSearchModalView: View {
             HStack(spacing: 8) {
                 // 来源范围分段切换
                 ForEach(SearchSourceFilter.allCases) { filter in
-                    let isSelected = selectedSource == filter
-                    Button {
+                    InsightFilterChip(
+                        title: filter.rawValue,
+                        icon: filter == .favorites ? "heart.fill" : nil,
+                        isSelected: selectedSource == filter
+                    ) {
                         selectedSource = filter
                         selectedIndex = 0
-                    } label: {
-                        HStack(spacing: 4) {
-                            if filter == .favorites {
-                                Image(systemName: "heart.fill")
-                                    .font(.system(size: 10))
-                            }
-                            Text(filter.rawValue)
-                                .font(InsightFont.callout)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(
-                            isSelected ? InsightColor.accent.opacity(0.22) : InsightColor.surface,
-                            in: Capsule()
-                        )
-                        .overlay(
-                            Capsule().strokeBorder(
-                                isSelected ? InsightColor.accent.opacity(0.8) : InsightColor.border,
-                                lineWidth: 1
-                            )
-                        )
-                        .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textSecondary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 }
 
                 Rectangle()
@@ -250,34 +230,18 @@ struct GlobalSearchModalView: View {
                 // 学科分类筛选
                 let counts = categoryCounts
                 ForEach(allCategories, id: \.self) { cat in
-                    let isSelected = selectedCategory == cat
-                    let count = counts[cat] ?? 0
-                    Button {
+                    InsightFilterChip(
+                        title: cat,
+                        count: "(\(counts[cat] ?? 0))",
+                        isSelected: selectedCategory == cat
+                    ) {
                         selectedCategory = selectedCategory == cat && cat != "全部" ? "全部" : cat
                         selectedIndex = 0
-                    } label: {
-                        Text("\(cat) (\(count))")
-                            .font(InsightFont.callout)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(
-                                isSelected ? InsightColor.textPrimary.opacity(0.18) : InsightColor.surface,
-                                in: Capsule()
-                            )
-                            .overlay(
-                                Capsule().strokeBorder(
-                                    isSelected ? InsightColor.textPrimary.opacity(0.6) : InsightColor.border,
-                                    lineWidth: 1
-                                )
-                            )
-                            .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textTertiary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 12)
+            .padding(.horizontal, InsightLayout.panelPadding)
+            .padding(.bottom, 10)
         }
     }
 
@@ -298,14 +262,16 @@ struct GlobalSearchModalView: View {
                             } label: {
                                 searchResultRow(item: item, index: index)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(InsightListButtonStyle())
                             .id(index)
-                            .accessibilityLabel("\(item.card.headline)，\(item.card.category)，\(item.matchedField.rawValue)命中")
+                            .accessibilityLabel("\(item.card.displayHeadline)，\(item.card.category)，\(item.matchedField.rawValue)命中")
                             .accessibilityHint("打开卡片详情")
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
+                    // 防抖回填的结果集替换：新结果淡入就位，旧行不再瞬换
+                    .animation(reduceMotion ? nil : EditorialSpring.state, value: results.map(\.card.id))
                 }
             }
             .onChange(of: selectedIndex) { _, newIndex in
@@ -347,7 +313,7 @@ struct GlobalSearchModalView: View {
             // 标题与摘要片段
             VStack(alignment: .leading, spacing: 4) {
                 HighlightedText(
-                    text: item.card.headline,
+                    text: item.card.displayHeadline,
                     query: query,
                     font: .system(size: 14, weight: .semibold, design: .serif),
                     textColor: InsightColor.textPrimary,
@@ -394,7 +360,7 @@ struct GlobalSearchModalView: View {
                             .padding(.vertical, 3.5)
                             .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle(scale: 0.94, playAudio: false))
                     .help("置于卡堆顶部 ⌘⏎")
 
                     Button {
@@ -405,7 +371,7 @@ struct GlobalSearchModalView: View {
                             .padding(4.5)
                             .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle(scale: 0.90, playAudio: false))
                     .help("向卡片追问 ⌘J")
                     .accessibilityLabel("向卡片追问")
                 }
@@ -414,14 +380,16 @@ struct GlobalSearchModalView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(
+        .background {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(isSelected ? InsightColor.accent.opacity(0.14) : Color.clear)
-        )
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? InsightColor.accent.opacity(0.55) : Color.clear, lineWidth: 1)
+                .strokeBorder(isSelected ? InsightColor.accent.opacity(0.4) : Color.clear, lineWidth: 1)
         )
+        // 键盘导航的选中底色平滑跟随，不再逐行硬跳
+        .animation(reduceMotion ? nil : InsightMotion.tactile, value: isSelected)
         .contentShape(Rectangle())
     }
 
@@ -458,7 +426,7 @@ struct GlobalSearchModalView: View {
                                 .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                                 .foregroundStyle(InsightColor.textSecondary)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle(scale: 0.96, playAudio: false))
                     }
                 }
                 .padding(.top, 4)
@@ -489,7 +457,7 @@ struct GlobalSearchModalView: View {
                         .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.7), lineWidth: 1))
                         .foregroundStyle(InsightColor.textPrimary)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle(scale: 0.97))
                     .padding(.top, 6)
                 }
             }
@@ -514,13 +482,13 @@ struct GlobalSearchModalView: View {
                     }
                     Spacer()
                     Button("清空") {
-                        withAnimation {
+                        withAnimation(EditorialSpring.state) {
                             store.clearSearchHistory()
                         }
                     }
                     .font(InsightFont.captionSmall)
                     .foregroundStyle(InsightColor.textTertiary)
-                    .buttonStyle(.plain)
+                    .buttonStyle(InsightTextLinkStyle())
                     .help("清空搜索历史")
                 }
                 .padding(.horizontal, 4)
@@ -536,10 +504,10 @@ struct GlobalSearchModalView: View {
                                         .font(InsightFont.callout)
                                         .foregroundStyle(InsightColor.textPrimary)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(InsightTextLinkStyle())
 
                                 Button {
-                                    withAnimation {
+                                    withAnimation(EditorialSpring.state) {
                                         store.removeSearchHistory(historyItem)
                                     }
                                 } label: {
@@ -547,7 +515,7 @@ struct GlobalSearchModalView: View {
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundStyle(InsightColor.textTertiary)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(PressableButtonStyle(scale: 0.80, playAudio: false))
                                 .accessibilityLabel("删除搜索历史：\(historyItem)")
                             }
                             .padding(.horizontal, 10)
@@ -582,8 +550,8 @@ struct GlobalSearchModalView: View {
                 footerShortcutTip(key: "Esc", desc: "关闭")
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 11)
+        .padding(.horizontal, InsightLayout.panelPadding)
+        .padding(.vertical, 10)
         .background(InsightColor.surface.opacity(0.5))
     }
 

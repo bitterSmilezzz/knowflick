@@ -5,6 +5,7 @@ import Testing
 /// Wave C2 重试策略统一的测试：`RetryPolicy` 的判定/退避只有一份事实来源，
 /// 两条流式路径（生成 / 追问）按同一类型的两个预设实例化，行为逐条等价——
 /// 这里既钉策略本身，也在传输层复核「重试几次、何时放弃」。
+@Suite(.serialized)
 struct RetryPolicyTests {
 
     // MARK: - 策略值本身

@@ -6,6 +6,7 @@ import Testing
 /// ① 全库重排只发生一次——卡片加载时的派生就是唯一一次，settings 迁移赋值（只补密钥）
 ///    不得把刚派生好的卡堆再白排一遍；
 /// ② 自动补卡 24h 节流——卡片不足 + AI 已配置时不再每次启动都自动生成、固定消耗用户 API 额度。
+@Suite(.serialized)
 @MainActor
 struct AppStoreBootstrapTests {
 

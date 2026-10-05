@@ -33,7 +33,10 @@ struct InsightMainView: View {
     @State private var toast = ToastCenter()
     // 与 LearningWorkspaceView 共用同一 AppStorage 键，侧栏折叠状态全局一致
     @AppStorage("learning.sidebarExpanded") private var sidebarExpanded = true
+    @AppStorage("swipe.companionDockVisible") private var showCompanionDock = true
+    @AppStorage("learning.dailyGoal") private var dailyGoal = 5
     @State private var destination: InsightDestination = .today
+    @State private var toolReturnDestination: InsightDestination = .today
 
     /// 三个知识来源（预置库 / AI 生成）全关时队列恒为空，空状态需给出可行动引导
     private var allSourcesDisabled: Bool {
@@ -49,6 +52,16 @@ struct InsightMainView: View {
             onOpenSheet: { route($0) }
         ) {
             destinationContent
+                // 目的地切换转场：此前是整块硬切，每次点侧栏都发生。
+                // 进场轻微上浮 + 淡入，退场干净淡出——不对内容做大幅度搬运，保持「简洁精炼」。
+                .transition(destinationTransition)
+                .animation(reduceMotion ? Animation.easeInOut(duration: 0.16) : InsightMotion.page,
+                           value: destination)
+        }
+        .onChange(of: destination) { previous, next in
+            if InsightDestination.tools.contains(next), !InsightDestination.tools.contains(previous) {
+                toolReturnDestination = previous
+            }
         }
         .focusedSceneValue(\.macActions, MacActions(
             canOpen: activeSheet == nil,
@@ -107,6 +120,50 @@ struct InsightMainView: View {
                 store.lastError = nil
             }
         }
+        .background(
+            Group {
+                // ⌘1-4 快速切换主导航视图 (今日 / 刷卡 / 复习 / 知识库)
+                Button("") { destination = .today }
+                    .keyboardShortcut("1", modifiers: .command)
+                    .frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
+
+                Button("") { destination = .swipe }
+                    .keyboardShortcut("2", modifiers: .command)
+                    .frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
+
+                Button("") { destination = .review }
+                    .keyboardShortcut("3", modifiers: .command)
+                    .frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
+
+                Button("") { destination = .library }
+                    .keyboardShortcut("4", modifiers: .command)
+                    .frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
+
+                // ⌘D / F 快速切换顶卡收藏
+                Button("") { toggleTopCardFavorite() }
+                    .keyboardShortcut("d", modifiers: .command)
+                    .frame(width: 0, height: 0)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+
+                Button("") { toggleTopCardFavorite() }
+                    .keyboardShortcut("f", modifiers: [])
+                    .frame(width: 0, height: 0)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+
+                // Space 空格键 播放/暂停顶卡语音
+                Button("") {
+                    if activeSheet == nil {
+                        store.toggleSpeechForTopCard()
+                    }
+                }
+                .keyboardShortcut(.space, modifiers: [])
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+            }
+        )
         .overlay(alignment: .top) {
             InsightToast(center: toast, edge: .top)
                 .padding(.top, 14)
@@ -122,12 +179,23 @@ struct InsightMainView: View {
         case .favorites: navigate(to: .favorites)
         case .stats: navigate(to: .stats)
         case .history: navigate(to: .history)
+        case .graph: navigate(to: .graph)
+        case .speechConsole: navigate(to: .console)
+        case .quiz(category: nil): navigate(to: .quiz)
         default: activeSheet = sheet
         }
     }
 
     private func navigate(to target: InsightDestination) {
         destination = target
+    }
+
+    /// 目的地切换的转场与动画档（reduce-motion 退化为快速淡入淡出）
+    private var destinationTransition: AnyTransition {
+        reduceMotion ? .opacity : .asymmetric(
+            insertion: .offset(y: 14).combined(with: .opacity),
+            removal: .opacity
+        )
     }
 
     // MARK: - 内容区
@@ -141,7 +209,7 @@ struct InsightMainView: View {
             LearningMapView(store: store) {
                 destination = .swipe
             }
-        case .today, .review, .library:
+        case .today, .review, .library, .favorites, .history:
             LearningWorkspaceView(
                 store: store,
                 open: { route($0) },
@@ -149,24 +217,20 @@ struct InsightMainView: View {
                 destination: destination,
                 navigate: { destination = $0 }
             )
-        case .favorites:
-            InsightFavoritesPlaceholder(store: store, onOpenSheet: { route($0) })
-        case .history:
-            InsightHistoryPlaceholder(store: store, onOpenSheet: { route($0) })
         case .stats:
             InsightStatsPlaceholder(store: store)
         case .graph:
             KnowledgeGraphView(
                 store: store,
                 onSelectCard: { activeSheet = .detail($0) },
-                onClose: { destination = .swipe }
+                onClose: { destination = toolReturnDestination }
             )
         case .quiz:
             QuizView(store: store, onOpenChat: { activeSheet = .chat($0) }) {
-                destination = .review
+                destination = toolReturnDestination
             }
         case .console:
-            SpeechConsoleView(store: store) { destination = .swipe }
+            SpeechConsoleView(store: store) { destination = toolReturnDestination }
         }
     }
 
@@ -333,24 +397,30 @@ struct InsightMainView: View {
                     .padding(.top, InsightSpacing.small)
             }
 
-            // 卡片堆叠区
-            ZStack {
-                if let top = store.topCard {
-                    cardStack(top: top)
-                } else if swipingCard == nil {
-                    emptyState
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                }
+            GeometryReader { proxy in
+                // 900 起即挂伴侣坞：默认 1180 窗口（内容区 ~948）刚好放得下
+                // 卡片 600 + 坞 290，两侧不再留出大片空洞
+                let canShowDock = proxy.size.width >= 900 && showCompanionDock
+                HStack(alignment: .center, spacing: canShowDock ? InsightSpacing.large : 0) {
+                    Spacer(minLength: 0)
 
-                // 独立悬浮飞出层：划出中的卡片在此独立飞离屏幕并淡出，与底层卡堆完全解耦
-                if let flyingCard = swipingCard {
-                    flyingCardView(flyingCard)
+                    swipeCardArea
+                        .frame(maxWidth: min(600, proxy.size.width - (canShowDock ? 330 : 36)), maxHeight: 660)
+                        .padding(.horizontal, InsightSpacing.compact)
+                        .padding(.vertical, InsightSpacing.tiny)
+
+                    if canShowDock {
+                        swipeCompanionDock
+                            .frame(width: 290)
+                            .padding(.trailing, InsightSpacing.large)
+                            .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    } else {
+                        Spacer(minLength: 0)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(InsightMotion.shell, value: canShowDock)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 56)
-            .padding(.vertical, InsightSpacing.medium)
-            .gesture(topCardGesture)
 
             if store.speechService.isAmbientMode {
                 ambientBar
@@ -359,19 +429,188 @@ struct InsightMainView: View {
             }
 
             actionBar
-                .padding(.bottom, InsightSpacing.large)
+                .padding(.bottom, 14)
                 .zIndex(100)
+        }
+        // 磨耳朵条与合成提示条的插入/移除此前不在动画上下文内（顶栏按钮直接切换状态），
+        // 过渡声明了但等于没有——在这里统一补上
+        .animation(reduceMotion ? nil : InsightMotion.shell, value: store.speechService.isAmbientMode)
+        .animation(reduceMotion ? nil : InsightMotion.shell, value: store.speechService.isPreparing)
+    }
+
+    // MARK: - 核心卡片堆叠交互区
+
+    private var swipeCardArea: some View {
+        ZStack {
+            if let top = store.topCard {
+                cardStack(top: top)
+            } else if swipingCard == nil {
+                emptyState
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+
+            // 独立悬浮飞出层：划出中的卡片在此独立飞离屏幕并淡出，与底层卡堆完全解耦
+            if let flyingCard = swipingCard {
+                flyingCardView(flyingCard)
+            }
+        }
+        .gesture(topCardGesture)
+    }
+
+    // MARK: - 宽屏刷卡伴侣侧栏 (Companion Dock: 消除大屏幕空洞)
+
+    private var swipeCompanionDock: some View {
+        VStack(alignment: .leading, spacing: InsightSpacing.medium) {
+            // 1. 今日学习脉搏微仪表
+            let plan = LearningPlan(cards: store.cards)
+            HStack(spacing: InsightSpacing.default) {
+                ZStack {
+                    Circle().stroke(InsightColor.accentSoft, lineWidth: 3.5)
+                    Circle().trim(from: 0, to: min(1, Double(plan.completedToday) / Double(max(1, dailyGoal))))
+                        .stroke(
+                            LinearGradient(
+                                colors: [InsightColor.accent, InsightColor.seal],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                    Text("\(Int(min(1, Double(plan.completedToday) / Double(max(1, dailyGoal))) * 100))%")
+                        .font(InsightFont.monoSmall)
+                        .foregroundStyle(InsightColor.textPrimary)
+                }
+                .frame(width: 36, height: 36)
+                .animation(reduceMotion ? nil : InsightMotion.value, value: plan.completedToday)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(plan.completedToday >= dailyGoal ? "今日目标已达成 ✨" : "今日学习目标")
+                        .font(InsightFont.caption)
+                        .foregroundStyle(InsightColor.textSecondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("\(plan.completedToday)")
+                            .font(InsightFont.statMedium)
+                            .monospacedDigit()
+                        Text("/ \(dailyGoal) 张")
+                            .font(InsightFont.caption)
+                            .foregroundStyle(InsightColor.textTertiary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(InsightSpacing.default)
+            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
+                    .strokeBorder(InsightColor.doubleBezelStroke, lineWidth: 1)
+            )
+
+            // 2. 待刷队列随动雷达
+            VStack(alignment: .leading, spacing: InsightSpacing.compact) {
+                HStack {
+                    InsightSectionLabel(text: "待刷队列", trailing: "\(store.deck.count) 张待读")
+                    Spacer()
+                }
+
+                let upcomingCards = Array(store.deck.dropFirst().prefix(3))
+                if upcomingCards.isEmpty {
+                    Text("队列即将见底，完成本次刷卡或换一批。")
+                        .font(InsightFont.captionSmall)
+                        .foregroundStyle(InsightColor.textMuted)
+                        .padding(InsightSpacing.default)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous).strokeBorder(InsightColor.doubleBezelStroke, lineWidth: 1))
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(upcomingCards) { card in
+                            Button {
+                                activeSheet = .detail(card)
+                            } label: {
+                                HStack(spacing: InsightSpacing.compact) {
+                                    let theme = CategoryTheme.theme(for: card)
+                                    Image(systemName: theme.iconName)
+                                        .font(.system(size: 9.5, weight: .bold))
+                                        .foregroundStyle(theme.accent)
+                                        .frame(width: 22, height: 22)
+                                        .background(theme.accent.opacity(0.12), in: Circle())
+
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(card.displayHeadline)
+                                            .font(InsightFont.caption)
+                                            .foregroundStyle(InsightColor.textPrimary)
+                                            .lineLimit(1)
+                                        Text(card.category)
+                                            .font(InsightFont.captionSmall)
+                                            .foregroundStyle(InsightColor.textTertiary)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 8, weight: .semibold))
+                                        .foregroundStyle(InsightColor.textMuted)
+                                }
+                                .padding(.horizontal, InsightSpacing.default)
+                                .padding(.vertical, 8)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            if card.id != upcomingCards.last?.id {
+                                Divider().padding(.leading, 32).overlay(InsightColor.divider)
+                            }
+                        }
+                    }
+                    .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous).strokeBorder(InsightColor.doubleBezelStroke, lineWidth: 1))
+                }
+            }
+
+            // 3. 极速键盘操作指南
+            VStack(alignment: .leading, spacing: InsightSpacing.compact) {
+                InsightSectionLabel(text: "高频快捷键", trailing: "macOS")
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                    shortcutTile(key: "Space", desc: "朗读卡片")
+                    shortcutTile(key: "← / →", desc: "跳过 / 喜欢")
+                    shortcutTile(key: "⏎", desc: "查看详情")
+                    shortcutTile(key: "⌘D / F", desc: "快速收藏")
+                    shortcutTile(key: "⌘Z", desc: "撤销操作")
+                    shortcutTile(key: "⌘J", desc: "AI 伴学")
+                }
+                .padding(InsightSpacing.default)
+                .background(InsightColor.surfaceSunken, in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous).strokeBorder(InsightColor.doubleBezelStroke, lineWidth: 1))
+            }
+        }
+    }
+
+    private func shortcutTile(key: String, desc: String) -> some View {
+        HStack(spacing: 4) {
+            Text(key)
+                .font(InsightFont.monoSmall)
+                .foregroundStyle(InsightColor.accent)
+                .padding(.horizontal, 4.5)
+                .padding(.vertical, 2)
+                .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 3))
+                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(InsightColor.border, lineWidth: 0.8))
+            Text(desc)
+                .font(InsightFont.captionSmall)
+                .foregroundStyle(InsightColor.textTertiary)
+                .lineLimit(1)
         }
     }
 
     // MARK: 顶栏（Cutline 的视图标题 + 右侧操作）
 
     private var swipeTopBar: some View {
-        HStack(alignment: .center, spacing: InsightSpacing.medium) {
-            VStack(alignment: .leading, spacing: InsightSpacing.hair) {
-                Text("刷卡")
-                    .font(InsightFont.title)
-                    .foregroundStyle(InsightColor.textPrimary)
+        HStack(alignment: .center, spacing: InsightSpacing.compact) {
+            Text("刷卡")
+                .font(InsightFont.title)
+                .foregroundStyle(InsightColor.textPrimary)
+
+            if !subtitleText.isEmpty {
+                Text("·")
+                    .font(InsightFont.callout)
+                    .foregroundStyle(InsightColor.textMuted)
+
                 Text(subtitleText)
                     .font(InsightFont.callout)
                     .foregroundStyle(InsightColor.textTertiary)
@@ -387,19 +626,19 @@ struct InsightMainView: View {
                     } label: {
                         HStack(spacing: InsightSpacing.small) {
                             Image(systemName: "map.fill")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 10, weight: .semibold))
                             Text(store.studyScope.describe())
                                 .font(InsightFont.caption)
                             Text("还剩 \(StudyMap.remaining(store.cards, scope: store.studyScope)) 张")
                                 .font(InsightFont.captionSmall)
                                 .foregroundStyle(InsightColor.textTertiary)
                             Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 8.5, weight: .bold))
                                 .foregroundStyle(InsightColor.textTertiary)
                         }
                         .foregroundStyle(InsightColor.accent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4.5)
                         .background(InsightColor.accentSoft, in: Capsule())
                         .overlay(Capsule().strokeBorder(InsightColor.accent.opacity(0.3), lineWidth: 1))
                     }
@@ -409,41 +648,29 @@ struct InsightMainView: View {
                 }
 
                 if store.isGenerating {
-                    HStack(spacing: InsightSpacing.small) {
+                    HStack(spacing: 6) {
                         ProgressView().controlSize(.small).tint(InsightColor.warning)
-                        // 等待反馈带「已经等了多久」（ui-research 共识 9/22），起始时间由
-                        // AppStore.generationStartedAt 记录。隐藏 sizer 装最长状态文案、可见层铺在
-                        // 其宽度上：秒数每秒 +1 时胶囊宽度不再逐秒变化（共识 29：换文案时
-                        // 容器的宽度要脱离文案，定宽而不是改短文案）
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             let elapsed = max(0, Int(context.date.timeIntervalSince(store.generationStartedAt ?? context.date)))
-                            Text("正在收集新知识 · 888s")
-                                .font(InsightFont.caption)
-                                .monospacedDigit()
-                                .opacity(0)
-                                .overlay(alignment: .leading) {
-                                    Text(elapsed > 0 ? "正在收集新知识 · \(elapsed)s" : "正在收集新知识…")
-                                        .font(InsightFont.caption)
-                                        .monospacedDigit()
-                                        .foregroundStyle(InsightColor.textSecondary)
-                                        .contentTransition(.numericText())
-                                        .animation(InsightMotion.value, value: elapsed)
-                                }
+                            HStack(spacing: 3) {
+                                Text("AI 探索中")
+                                    .font(InsightFont.caption.weight(.medium))
+                                    .foregroundStyle(InsightColor.textPrimary)
+                                Text(elapsed > 0 ? "\(elapsed)s" : "…")
+                                    .font(InsightFont.monoSmall)
+                                    .monospacedDigit()
+                                    .foregroundStyle(InsightColor.warning)
+                                    .contentTransition(.numericText())
+                                    .animation(InsightMotion.value, value: elapsed)
+                            }
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4.5)
                     .background(InsightColor.warningSoft, in: Capsule())
-                    .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.3), lineWidth: 1))
+                    .overlay(Capsule().strokeBorder(InsightColor.warning.opacity(0.38), lineWidth: 1))
                     .transition(.opacity)
                 }
-
-                InsightIconButton(
-                    icon: "magnifyingglass", help: "全局智能搜索与全文检索 ⌘F"
-                ) {
-                    activeSheet = .search
-                }
-                .keyboardShortcut("f", modifiers: .command)
 
                 InsightIconButton(
                     icon: store.speechService.isAmbientMode ? "headphones.circle.fill" : "headphones",
@@ -457,54 +684,28 @@ struct InsightMainView: View {
                 .disabled(store.topCard == nil)
 
                 InsightIconButton(
-                    icon: store.settings.appearance.icon,
-                    help: "外观：\(store.settings.appearance.title)（点击切换）"
+                    icon: "sidebar.right",
+                    activeTint: InsightColor.accent,
+                    isActive: showCompanionDock,
+                    help: showCompanionDock ? "隐藏刷卡伴侣侧栏" : "显示刷卡伴侣侧栏"
                 ) {
-                    let all = AppearanceMode.allCases
-                    let currentIndex = all.firstIndex(of: store.settings.appearance) ?? 0
-                    let nextMode = all[(currentIndex + 1) % all.count]
                     withAnimation(InsightMotion.shell) {
-                        // 高频开关走轻量通道：内存即时生效，落盘异步节流，不阻塞主线程
-                        store.applySettingsChange { $0.appearance = nextMode }
+                        showCompanionDock.toggle()
                     }
-                    HapticFeedbackHelper.shared.cardSnapBack()
                 }
 
                 Menu {
-                    Section("探索与学习") {
-                        Button("学习地图", systemImage: "map") { destination = .map }
-                        Button("全局搜索", systemImage: "magnifyingglass") { activeSheet = .search }
-                            .keyboardShortcut("f", modifiers: .command)
-                        Button("知识测验", systemImage: "graduationcap") { activeSheet = .quiz(category: nil) }
-                        Button("知识星图", systemImage: "point.3.connected.trianglepath.dotted") { activeSheet = .graph }
-                        Button(store.speechService.isAmbientMode ? "停止连续朗读" : "连续朗读", systemImage: "headphones") {
-                            store.toggleAmbientSpeechMode()
-                        }
-                        .keyboardShortcut("p", modifiers: [.command, .shift])
-                        .disabled(store.topCard == nil)
-                        Button("语音听书控制台…", systemImage: "slider.horizontal.3") { activeSheet = .speechConsole }
-                            .keyboardShortcut("p", modifiers: [.command, .option])
-                        Button("知识收藏阁", systemImage: "bookmark") { navigate(to: .favorites) }
-                        Button("学习统计", systemImage: "chart.bar") { navigate(to: .stats) }
-                        Button("历史记录", systemImage: "clock") { navigate(to: .history) }
+                    Button("选择学习范围", systemImage: "map") { destination = .map }
+                    Button("换一批卡片", systemImage: "arrow.clockwise") {
+                        Task { await store.refreshDeck() }
                     }
-                    Section("卡库管理") {
-                        Button("换一批新知识", systemImage: "arrow.clockwise") {
-                            Task { await store.refreshDeck() }
-                        }
-                        .disabled(store.isGenerating)
-                        Button("重新探索全部卡片", systemImage: "arrow.counterclockwise") {
-                            withAnimation(InsightMotion.shell) {
-                                store.clearHistory()
-                            }
-                        }
-                        Button("局域网极速同步…", systemImage: "arrow.triangle.2.circlepath") { activeSheet = .sync }
-                        Button("偏好设置", systemImage: "gearshape") { activeSheet = .settings }
-                        Button("快捷键帮助", systemImage: "questionmark.circle") { activeSheet = .help }
+                    .disabled(store.isGenerating)
+                    Button("重新浏览已读卡片", systemImage: "arrow.counterclockwise") {
+                        withAnimation(InsightMotion.shell) { store.clearHistory() }
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(InsightColor.textSecondary)
                         .frame(width: 30, height: 30)
                         .background(InsightColor.surfaceSunken, in: Circle())
@@ -512,27 +713,23 @@ struct InsightMainView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
-                .accessibilityLabel("展开功能菜单")
+                .accessibilityLabel("刷卡选项")
             }
         }
         .foregroundStyle(InsightColor.textPrimary)
         .padding(.horizontal, InsightLayout.contentPadding)
-        .padding(.top, InsightSpacing.large)
-        .padding(.bottom, InsightSpacing.compact)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
     }
 
     private var subtitleText: String {
         if store.studyScope.isActive {
-            var parts = [store.studyScope.describe()]
-            parts.append("还剩 \(StudyMap.remaining(store.cards, scope: store.studyScope)) 张")
-            return parts.joined(separator: " · ")
+            return "\(store.studyScope.describe()) · 还剩 \(StudyMap.remaining(store.cards, scope: store.studyScope)) 张"
         }
-        var parts: [String] = []
-        parts.append("今天也想学点新东西")
         if store.deck.count > 0 {
-            parts.append("\(store.deck.count) 张待刷")
+            return "\(store.deck.count) 张待刷"
         }
-        return parts.joined(separator: " · ")
+        return ""
     }
 
     // MARK: 卡片堆叠（保留 3 张层叠与拖动动力学参数）
@@ -543,8 +740,10 @@ struct InsightMainView: View {
 
     @ViewBuilder
     private func cardStack(top: KnowledgeCard) -> some View {
-        ForEach(Array(visibleStack.enumerated()), id: \.element.id) { index, card in
-            stackedCard(card: card, index: index, top: top)
+        ZStack {
+            ForEach(Array(visibleStack.enumerated()), id: \.element.id) { index, card in
+                stackedCard(card: card, index: index, top: top)
+            }
         }
     }
 
@@ -555,7 +754,9 @@ struct InsightMainView: View {
             card: card,
             showAIMark: store.settings.showAIMark,
             isTop: isTop,
-            speechService: store.speechService
+            speechService: store.speechService,
+            isFavorited: store.isFavorite(card),
+            onToggleFavorite: isTop ? { toggleTopCardFavorite(card) } : nil
         )
         .scaleEffect(scaleFor(index: index))
         .offset(y: offsetYFor(index: index))
@@ -573,7 +774,21 @@ struct InsightMainView: View {
                         activeSheet = .detail(top)
                     }
                 }
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        toggleTopCardFavorite(top)
+                    }
+                )
                 .contextMenu {
+                    Button {
+                        toggleTopCardFavorite(top)
+                    } label: {
+                        Label(
+                            store.isFavorite(top) ? "从知识收藏阁移除" : "加入知识收藏阁 ⌘D",
+                            systemImage: store.isFavorite(top) ? "bookmark.slash" : "bookmark"
+                        )
+                    }
+                    Divider()
                     Button {
                         activeSheet = .sharePoster(top)
                     } label: {
@@ -638,40 +853,67 @@ struct InsightMainView: View {
 
     @ViewBuilder
     private func flyingCardView(_ card: KnowledgeCard) -> some View {
-        let degrees = Double(swipingOffset.width / 18)
-        let clampedDegrees = min(max(degrees, -20), 20)
+        let degrees = Double(swipingOffset.width / 16)
+        let clampedDegrees = min(max(degrees, -24), 24)
 
         InsightCardView(
             card: card,
             showAIMark: store.settings.showAIMark,
             isTop: true,
-            speechService: store.speechService
+            speechService: store.speechService,
+            isFavorited: store.isFavorite(card),
+            onToggleFavorite: nil
         )
         .offset(swipingOffset)
-            .rotationEffect(.degrees(clampedDegrees))
-            .overlay(flyingSwipeBadge)
-            // 正常路径按飞行距离渐隐；reduce-motion 路径由 performSwipe 直接驱动原地淡出
-            .opacity(reduceMotion ? flyingCardOpacity : max(0.0, 1.0 - (Double(abs(swipingOffset.width)) - 180.0) / 450.0))
-            .zIndex(999)
-            .allowsHitTesting(false)
-            .transition(.identity)
+        .rotation3DEffect(.degrees(clampedDegrees * 0.75), axis: (x: 0, y: 1, z: 0))
+        .rotationEffect(.degrees(clampedDegrees))
+        .overlay(flyingSwipeBadge)
+        .scaleEffect(1.0 - min(0.12, abs(swipingOffset.width) / 2400.0))
+        // 正常路径按飞行距离渐隐；reduce-motion 路径由 performSwipe 直接驱动原地淡出
+        .opacity(reduceMotion ? flyingCardOpacity : max(0.0, 1.0 - (Double(abs(swipingOffset.width)) - 140.0) / 420.0))
+        .shadow(color: Color.black.opacity(0.45), radius: 28, y: 14)
+        .zIndex(999)
+        .allowsHitTesting(false)
+        .transition(.identity)
     }
 
-    // MARK: - 手势驱动
+    // MARK: - 手势驱动与物理惯性动力学
 
     private var topCardGesture: some Gesture {
-        DragGesture(minimumDistance: 6)
+        DragGesture(minimumDistance: 4)
             .onChanged { value in
                 guard store.topCard != nil, swipingCard == nil else { return }
-                dragOffset = value.translation
-                let isRight = value.translation.width > 24
-                let isLeft = value.translation.width < -24
+
+                let rawTx = value.translation.width
+                let rawTy = value.translation.height
+
+                // 非线性物理阻尼：85pt 以内 1:1 跟手，超过 85pt 产生张力渐进阻尼
+                let threshold: CGFloat = 85
+                let physicalX: CGFloat
+                if abs(rawTx) <= threshold {
+                    physicalX = rawTx
+                } else {
+                    let excess = abs(rawTx) - threshold
+                    let dampedExcess = excess / (1.0 + excess * 0.0032) * 0.62
+                    physicalX = (rawTx > 0 ? 1 : -1) * (threshold + dampedExcess)
+                }
+                // 垂直分量引入磁吸托盘阻尼
+                let physicalY = rawTy * 0.52
+                dragOffset = CGSize(width: physicalX, height: physicalY)
+
+                let isRight = rawTx > 20
+                let isLeft = rawTx < -20
                 swipeDirection = isRight ? .right : (isLeft ? .left : nil)
 
-                let transAbs = abs(value.translation.width)
+                let transAbs = abs(rawTx)
                 if transAbs >= 85 {
+                    if !HapticFeedbackHelper.shared.hasCrossedThreshold {
+                        AudioEffectManager.shared.playRatchetTick()
+                    }
                     HapticFeedbackHelper.shared.cardThresholdReached()
-                } else if transAbs >= 24 {
+                } else if transAbs >= 44 {
+                    HapticFeedbackHelper.shared.tensionNotch(step: 1)
+                } else if transAbs >= 18 {
                     HapticFeedbackHelper.shared.dragInitiated()
                     HapticFeedbackHelper.shared.resetThreshold()
                 } else {
@@ -682,9 +924,9 @@ struct InsightMainView: View {
                 guard swipingCard == nil else { return }
                 let threshold: CGFloat = 85
                 let predictedEnd = value.predictedEndTranslation.width
-                // 结合位移与加速度释放
-                let shouldSwipeRight = value.translation.width > threshold || (value.translation.width > 30 && predictedEnd > 200)
-                let shouldSwipeLeft = value.translation.width < -threshold || (value.translation.width < -30 && predictedEnd < -200)
+                // 结合位移与加速度释放（支持极速惯性甩卡）
+                let shouldSwipeRight = value.translation.width > threshold || (value.translation.width > 24 && predictedEnd > 180)
+                let shouldSwipeLeft = value.translation.width < -threshold || (value.translation.width < -24 && predictedEnd < -180)
 
                 if shouldSwipeRight {
                     performSwipe(.right)
@@ -692,7 +934,8 @@ struct InsightMainView: View {
                     performSwipe(.left)
                 } else {
                     HapticFeedbackHelper.shared.cardSnapBack()
-                    withAnimation(InsightMotion.shell) {
+                    AudioEffectManager.shared.playMagneticSnap()
+                    withAnimation(InsightMotion.magneticSnap) {
                         dragOffset = .zero
                         swipeDirection = nil
                     }
@@ -700,10 +943,26 @@ struct InsightMainView: View {
             }
     }
 
+    private func toggleTopCardFavorite(_ targetCard: KnowledgeCard? = nil) {
+        guard let card = targetCard ?? store.topCard, swipingCard == nil else { return }
+        let willFavorite = !store.isFavorite(card)
+        store.toggleFavorite(card)
+        if willFavorite {
+            AudioEffectManager.shared.playCelestialStar()
+            HapticFeedbackHelper.shared.favoriteHeartbeat()
+            toast.show("已加入收藏阁 ⭐️", style: .success, duration: .seconds(2))
+        } else {
+            AudioEffectManager.shared.playMagneticSnap()
+            HapticFeedbackHelper.shared.cardSnapBack()
+            toast.show("已从收藏阁移除", style: .neutral, duration: .seconds(2))
+        }
+    }
+
     private func performSwipe(_ direction: SwipeDirection) {
         guard let card = store.topCard else { return }
         guard swipingCard == nil else { return }
         HapticFeedbackHelper.shared.cardSwiped()
+        AudioEffectManager.shared.playSwoosh()
         if direction == .right {
             AudioEffectManager.shared.playMasteryChime()
         } else {
@@ -769,13 +1028,16 @@ struct InsightMainView: View {
 
     private func scaleFor(index: Int) -> CGFloat {
         let baseScale = 1.0 - CGFloat(index) * 0.045
+        let progress = min(1.0, abs(dragOffset.width) / 320)
         if index == 0 {
-            let progress = min(1.0, abs(dragOffset.width) / 500)
-            return 1.0 - progress * 0.025
+            let topProgress = min(1.0, abs(dragOffset.width) / 500)
+            return 1.0 - topProgress * 0.025
         } else if index == 1 {
             // 顶卡拖动时，第二张卡平滑向前浮起放大
-            let progress = min(1.0, abs(dragOffset.width) / 320)
             return baseScale + progress * 0.045
+        } else if index == 2 {
+            // 第三张卡产生次级向前共振浮起
+            return baseScale + progress * 0.02
         } else {
             return baseScale
         }
@@ -783,12 +1045,15 @@ struct InsightMainView: View {
 
     private func offsetYFor(index: Int) -> CGFloat {
         let baseOffset = CGFloat(index) * 18   // 典雅层叠错位
+        let progress = min(1.0, abs(dragOffset.width) / 320)
         if index == 0 {
             return -abs(dragOffset.width) * 0.035
         } else if index == 1 {
             // 顶卡拖动时，第二张卡平滑向上抬升归位
-            let progress = min(1.0, abs(dragOffset.width) / 320)
             return baseOffset - progress * 18
+        } else if index == 2 {
+            // 第三张卡次级平滑抬升
+            return baseOffset - progress * 8
         } else {
             return baseOffset
         }
@@ -843,64 +1108,75 @@ struct InsightMainView: View {
 
     private func badge(_ text: String, color: Color, icon: String) -> some View {
         Label(text, systemImage: icon)
-            .font(.system(size: 18, weight: .bold))
-            .tracking(1.2)
+            .font(.system(size: 16, weight: .bold))
+            .tracking(1.1)
             .padding(.horizontal, 18)
             .padding(.vertical, 10)
-            .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: InsightRadius.pill, style: .continuous))
+            .background(Color.black.opacity(0.70), in: RoundedRectangle(cornerRadius: InsightRadius.pill, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: InsightRadius.pill, style: .continuous)
-                    .strokeBorder(color, lineWidth: 2.2)
+                    .strokeBorder(color.opacity(0.45), lineWidth: 1.5)
             )
             .foregroundStyle(color)
-            .shadow(color: color.opacity(0.35), radius: 10, y: 3)
+            .shadow(color: color.opacity(0.22), radius: 9, y: 3)
+            .scaleEffect(min(1.12, 0.92 + Double(abs(dragOffset.width)) / 320.0))
+            .animation(InsightMotion.tactile, value: dragOffset)
     }
 
-    // MARK: - 底栏（Cutline 的 footer 卡）
+    // MARK: - 底栏（现代极简工具风悬浮控制 HUD）
 
     private var actionBar: some View {
-        HStack(spacing: InsightSpacing.medium) {
+        HStack {
             Spacer(minLength: 0)
 
-            actionButton("arrow.uturn.backward", size: 40, tint: InsightColor.textSecondary, help: "撤销上一张 ⌘Z") {
-                withAnimation(InsightMotion.shell) { store.undoLastSwipe() }
-            }
-            .keyboardShortcut("z", modifiers: .command)
-            .disabled(store.history.isEmpty || swipingCard != nil || activeSheet != nil)
-
-            // 底栏胶囊的内部分层线（ui-research 共识 14：胶囊是微型信息容器，
-            // 用 1px 分隔线区分「历史操作 | 刷卡三连 | AI 生成」三层）
-            capsuleDivider
-
-            actionButton("xmark", size: 54, tint: InsightColor.danger, help: "不喜欢 ←") {
-                performSwipe(.left)
-            }
-            .keyboardShortcut(.leftArrow, modifiers: [])
-            .disabled(store.topCard == nil || swipingCard != nil)
-
-            actionButton("arrow.up.left.and.arrow.down.right", size: 44, tint: InsightColor.textPrimary, help: "查看详情 ⏎") {
-                if let card = store.topCard { activeSheet = .detail(card) }
-            }
-            .keyboardShortcut(.return, modifiers: [])
-            .disabled(store.topCard == nil || swipingCard != nil)
-
-            actionButton("heart.fill", size: 54, tint: InsightColor.success, help: "感兴趣 →") {
-                performSwipe(.right)
-            }
-            .keyboardShortcut(.rightArrow, modifiers: [])
-            .disabled(store.topCard == nil || swipingCard != nil)
-
-            capsuleDivider
-
-            actionButton("dice", size: 40, tint: InsightColor.warning, help: !store.settings.isAIConfigured ? "配置 AI 后可生成新卡" : "AI 生成 3 张新卡 ⌘N") {
-                if !store.settings.isAIConfigured {
-                    activeSheet = .settings
-                } else {
-                    Task { await store.generateNewCards(count: 3) }
+            HStack(spacing: 8) {
+                actionButton("arrow.uturn.backward", size: 32, tint: InsightColor.textSecondary, help: "撤销上一张 ⌘Z") {
+                    withAnimation(InsightMotion.shell) { store.undoLastSwipe() }
                 }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(store.history.isEmpty || swipingCard != nil || activeSheet != nil)
+
+                capsuleDivider
+
+                actionButton("xmark", size: 36, tint: InsightColor.textPrimary, hoverTint: InsightColor.danger, help: "不喜欢 ←") {
+                    performSwipe(.left)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                .disabled(store.topCard == nil || swipingCard != nil)
+
+                actionButton("arrow.up.left.and.arrow.down.right", size: 36, tint: InsightColor.textPrimary, hoverTint: InsightColor.textPrimary, help: "查看详情 ⏎") {
+                    if let card = store.topCard { activeSheet = .detail(card) }
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(store.topCard == nil || swipingCard != nil)
+
+                actionButton("heart.fill", size: 36, tint: InsightColor.textPrimary, hoverTint: InsightColor.success, help: "感兴趣 →") {
+                    performSwipe(.right)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+                .disabled(store.topCard == nil || swipingCard != nil)
+
+                capsuleDivider
+
+                actionButton("dice", size: 32, tint: InsightColor.textSecondary, help: !store.settings.isAIConfigured ? "配置 AI 后可生成新卡" : "AI 生成 3 张新卡 ⌘N") {
+                    if !store.settings.isAIConfigured {
+                        activeSheet = .settings
+                    } else {
+                        Task { await store.generateNewCards(count: 3) }
+                    }
+                }
+                .keyboardShortcut("n", modifiers: .command)
+                .disabled(store.isGenerating)
             }
-            .keyboardShortcut("n", modifiers: .command)
-            .disabled(store.isGenerating)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(InsightColor.surface.opacity(0.96))
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(InsightColor.border, lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.12), radius: 14, y: 4)
 
             Button("") {
                 if let top = store.topCard {
@@ -914,30 +1190,16 @@ struct InsightMainView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, InsightSpacing.large)
-        .padding(.vertical, InsightSpacing.compact)
-        .background(InsightColor.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
         .padding(.horizontal, InsightLayout.contentPadding)
     }
 
-    private func actionButton(_ icon: String, size: CGFloat, tint: Color, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: size * 0.36, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: size, height: size)
-                .background(InsightColor.surfaceSunken, in: Circle())
-                .overlay(Circle().strokeBorder(tint.opacity(0.5), lineWidth: 1.3))
-        }
-        .buttonStyle(PressableButtonStyle())
-        .help(help)
-        .accessibilityLabel(help)
+    private func actionButton(_ icon: String, size: CGFloat, tint: Color, hoverTint: Color? = nil, help: String, action: @escaping () -> Void) -> some View {
+        ActionButtonItem(icon: icon, size: size, tint: tint, hoverTint: hoverTint ?? tint, help: help, action: action)
     }
 
-    /// 底栏胶囊的内部分层线（ui-research 共识 14：一胶囊多层信息）
+    /// 底栏胶囊的内部分层线
     private var capsuleDivider: some View {
-        Capsule().fill(InsightColor.border).frame(width: 1, height: 26)
+        Capsule().fill(InsightColor.border).frame(width: 1, height: 16)
     }
 
     // MARK: - 磨耳朵播放条
@@ -1025,3 +1287,41 @@ struct InsightMainView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+private struct ActionButtonItem: View {
+    let icon: String
+    let size: CGFloat
+    let tint: Color
+    var hoverTint: Color? = nil
+    let help: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: size * 0.40, weight: .medium))
+                .foregroundStyle(isHovered ? (hoverTint ?? tint) : tint)
+                .frame(width: size, height: size)
+                .background {
+                    if isHovered {
+                        Circle().fill(InsightColor.surfaceSunken)
+                    }
+                }
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            isHovered ? InsightColor.borderStrong : Color.clear,
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.95))
+        .onHover { isHovered = $0 }
+        .help(help)
+        .accessibilityLabel(help)
+    }
+}
+
