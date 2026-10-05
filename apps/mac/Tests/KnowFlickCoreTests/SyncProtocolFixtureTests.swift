@@ -340,7 +340,7 @@ struct SyncProtocolFixtureTests {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = AppStore(storage: Storage(baseDir: directory))
         defer { try? FileManager.default.removeItem(at: directory) }
-        store.isLoadingSeed = false
+        store.isLibraryLoading = false
 
         var subject = KnowledgeCard(
             category: "冷知识", headline: "原标题", summary: "原摘要", details: "原正文",
@@ -370,7 +370,7 @@ struct SyncProtocolFixtureTests {
         let storage = Storage(baseDir: directory)
         let store = AppStore(storage: storage)
         defer { store.flushPersistence(); try? FileManager.default.removeItem(at: directory) }
-        store.isLoadingSeed = false
+        store.isLibraryLoading = false
 
         let card = KnowledgeCard(
             category: "冷知识", headline: "将被对端删除的卡", summary: "摘要", details: "正文",

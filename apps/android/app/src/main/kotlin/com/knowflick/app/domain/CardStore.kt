@@ -6,8 +6,6 @@ package com.knowflick.app.domain
  * 收藏（isFavorite）与喜好（swiped）解耦，卡堆输出统一经防重排布。
  */
 class CardStore(
-    /** 预置卡（来自 assets 的种子库）；由调用方在启动时注入 */
-    var seedCards: List<KnowledgeCard> = emptyList(),
     /** 底图 key 解析器：排布与渲染必须共用同一 key 空间 */
     private val keyFor: (KnowledgeCard) -> String = CardThemeResolver::forCard,
 ) {
@@ -54,8 +52,7 @@ class CardStore(
      */
     var studyScope: StudyScope = StudyScope.None
 
-    /** 来源开关：只开其一则只看该来源；全关则队列为空（含导入卡片，口径与 macOS 一致） */
-    var enableSeed: Boolean = true
+    /** 来源开关（预置库退役后只剩 AI 一档）：关闭时只屏蔽 AI 生成卡，剪藏/导入与历史卡照常进堆 */
     var enableAI: Boolean = true
 
     // ---------- 派生状态 ----------
@@ -93,13 +90,7 @@ class CardStore(
         CardThemeCache.prune(cards.map { it.id })
 
         val unseen = cards.filter { it.seenAt == null }
-        val sourceFiltered = if (enableSeed && enableAI) unseen else unseen.filter { card ->
-            when (card.source) {
-                CardSource.SEED -> enableSeed
-                CardSource.AI -> enableAI
-                CardSource.IMPORTED -> false
-            }
-        }
+        val sourceFiltered = if (enableAI) unseen else unseen.filter { it.source != CardSource.AI }
         val scoped = if (studyScope.isActive) {
             studyScope.filter(sourceFiltered)
         } else if (preferredCategories.isEmpty()) {

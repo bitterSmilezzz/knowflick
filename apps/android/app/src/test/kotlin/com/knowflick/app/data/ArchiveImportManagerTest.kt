@@ -65,7 +65,7 @@ class ArchiveImportManagerTest {
         assertTrue(preview.settingsJson!!.contains("test_url"))
 
         // 3. 测试 MERGE 恢复策略
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val restoreResult = ArchiveImportManager.applyRestore(store, preview, RestoreStrategy.MERGE)
         assertEquals(2, restoreResult.added)
         assertEquals(2, store.cards.size)
@@ -103,7 +103,7 @@ class ArchiveImportManagerTest {
         assertEquals(2, preview.parsedCards.size)
 
         // 3. 应用恢复
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val res = ArchiveImportManager.applyRestore(store, preview, RestoreStrategy.MERGE)
         assertEquals(2, res.added)
         assertEquals(2, store.cards.size)

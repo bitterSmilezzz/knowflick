@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.glance.appwidget.updateAll
 import com.knowflick.app.data.CardSaveResult
 import com.knowflick.app.data.CardStorage
-import com.knowflick.app.data.SeedLoader
 import com.knowflick.app.domain.KnowledgeCard
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -20,20 +19,11 @@ object WidgetCardRepository {
     private const val PREFS_NAME = "widget_daily_card_prefs"
     private const val KEY_CURRENT_CARD_ID = "current_card_id"
 
-    /** 获取当前可用卡片列表（优先卡库存储，空库时自动加载预置种子） */
+    /** 获取当前可用卡片列表（卡库为空时就是空列表，不再回落到任何内置内容） */
     fun getAvailableCards(context: Context): List<KnowledgeCard> {
         // 与应用侧共用同一目录级共享实例：读写与 App 持久化队列在同一把锁上串行化
         val storage = CardStorage.shared(File(context.filesDir, "store"))
-        val loaded = storage.loadCards()
-        if (loaded.isNotEmpty()) {
-            return loaded
-        }
-        val seed = SeedLoader(context).load()
-        if (seed.isNotEmpty()) {
-            storage.saveCards(seed)
-            return seed
-        }
-        return emptyList()
+        return storage.loadCards()
     }
 
     /** 获取微件当前展示的卡片 */

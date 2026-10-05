@@ -73,7 +73,6 @@ public struct AISettings: Codable, Equatable, Sendable {
     public var apiKey: String
     public var autoGenerate: Bool      // 卡片不足时自动生成
     public var categoryFilter: String  // 偏好分类（空 = 全部）
-    public var enableSeed: Bool        // 信息来源：预置精选库
     public var enableAI: Bool          // 信息来源：AI 生成内容
     public var aiSources: String       // AI 引用站点偏好（逗号分隔）
     public var showAIMark: Bool        // 显示 AI 内容标记
@@ -96,7 +95,6 @@ public struct AISettings: Codable, Equatable, Sendable {
         apiKey: String,
         autoGenerate: Bool,
         categoryFilter: String,
-        enableSeed: Bool = true,
         enableAI: Bool = true,
         aiSources: String = "维基百科, 国家地理, NASA",
         showAIMark: Bool = true,
@@ -114,7 +112,6 @@ public struct AISettings: Codable, Equatable, Sendable {
         self.apiKey = apiKey
         self.autoGenerate = autoGenerate
         self.categoryFilter = categoryFilter
-        self.enableSeed = enableSeed
         self.enableAI = enableAI
         self.aiSources = aiSources
         self.showAIMark = showAIMark
@@ -204,7 +201,6 @@ public struct AISettings: Codable, Equatable, Sendable {
         try c.encode(model, forKey: .model)
         try c.encode(autoGenerate, forKey: .autoGenerate)
         try c.encode(categoryFilter, forKey: .categoryFilter)
-        try c.encode(enableSeed, forKey: .enableSeed)
         try c.encode(enableAI, forKey: .enableAI)
         try c.encode(aiSources, forKey: .aiSources)
         try c.encode(showAIMark, forKey: .showAIMark)
@@ -222,7 +218,7 @@ public struct AISettings: Codable, Equatable, Sendable {
     // 旧版 settings.json 无新字段——解码时给默认值，避免旧用户设置被整体重置
     private enum CodingKeys: String, CodingKey {
         case baseURL, model, apiKey, autoGenerate, categoryFilter, speech
-        case enableSeed, enableAI, aiSources, showAIMark, appearance, paperTheme, customCategories
+        case enableAI, aiSources, showAIMark, appearance, paperTheme, customCategories
         case speechRate, speechPitch, speechVoiceIdentifier, ambientGapSeconds, autoSpeakOnDetailOpen
         case lastAutoTopUpAt
     }
@@ -235,7 +231,6 @@ public struct AISettings: Codable, Equatable, Sendable {
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         autoGenerate = try c.decodeIfPresent(Bool.self, forKey: .autoGenerate) ?? true
         categoryFilter = try c.decodeIfPresent(String.self, forKey: .categoryFilter) ?? ""
-        enableSeed = try c.decodeIfPresent(Bool.self, forKey: .enableSeed) ?? true
         enableAI = try c.decodeIfPresent(Bool.self, forKey: .enableAI) ?? true
         aiSources = try c.decodeIfPresent(String.self, forKey: .aiSources) ?? "维基百科, 国家地理, NASA"
         showAIMark = try c.decodeIfPresent(Bool.self, forKey: .showAIMark) ?? true
