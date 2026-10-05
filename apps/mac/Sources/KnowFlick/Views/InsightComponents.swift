@@ -113,7 +113,7 @@ struct InsightSectionLabel: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: InsightSpacing.small) {
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(InsightFont.sectionLabel(1.2))
                 .tracking(1.2)
                 .foregroundStyle(InsightColor.textTertiary)
@@ -175,7 +175,7 @@ struct InsightPill: View {
                 Image(systemName: icon)
                     .font(.system(size: 8.5, weight: .bold))
             }
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(InsightFont.sectionLabel(0.6))
                 .tracking(0.6)
                 .textCase(.uppercase)
@@ -235,7 +235,7 @@ private struct InsightSegmentedItem: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: InsightSpacing.small) {
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(InsightFont.bodyStrong)
                     .foregroundStyle(isOn ? InsightColor.textPrimary : (hovering ? InsightColor.textSecondary : InsightColor.textTertiary))
                 if let count {
@@ -289,7 +289,7 @@ struct InsightFilterChip: View {
                     Image(systemName: icon)
                         .font(.system(size: 10))
                 }
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(InsightFont.callout)
                 if let count {
                     Text(count)
@@ -452,7 +452,7 @@ struct InsightButton: View {
                         .offset(x: hovering && style == .primary ? 1 : 0)
                         .animation(InsightMotion.tactile, value: hovering)
                 }
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(InsightFont.bodyStrong)
             }
             .padding(.horizontal, style == .plain ? 10 : 15)
@@ -547,7 +547,7 @@ struct InsightSidebarRow: View {
                     .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textTertiary)
                 if isExpanded {
                     Group {
-                        Text(title)
+                        Text(LocalizedStringKey(title))
                             .font(InsightFont.body)
                             .lineLimit(1)
                         Spacer(minLength: 0)

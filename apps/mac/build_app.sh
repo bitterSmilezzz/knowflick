@@ -107,6 +107,13 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 	<string>public.app-category.education</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon.icns</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh-Hans</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+		<string>en</string>
+	</array>
 </dict>
 </plist>
 PLIST
@@ -115,9 +122,18 @@ cp "$BINARY_SRC" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 cp "$PROJECT_DIR/Resources/AppIcon.png" "$RESOURCES_DIR/AppIcon.png"
 
-# ---------- 3. 复制应用图标与资源 bundle ----------
+# ---------- 3. 复制应用图标、本地化词典与资源 bundle ----------
+echo "==> [3/3] 复制应用图标、本地化词典与资源"
+
+# 本地化词典（i18n Wave）：en.lproj/Localizable.strings 直接落主 bundle 的
+# Contents/Resources——SwiftUI Text 字面量按主包查表，中文原句即 key，
+# 中文侧零查表零文件；系统语言为英文时自动取 en 译名。
+if [[ -d "$PROJECT_DIR/Resources/Localization" ]]; then
+    cp -R "$PROJECT_DIR/Resources/Localization/" "$RESOURCES_DIR/"
+    echo "    已复制本地化词典 ($(ls "$PROJECT_DIR/Resources/Localization" | tr '\n' ' '))"
+fi
+
 if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
-    echo "==> [3/3] 复制应用图标与资源"
     cp "$PROJECT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
     echo "    已复制 AppIcon.icns"
 fi

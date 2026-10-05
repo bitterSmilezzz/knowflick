@@ -372,7 +372,7 @@ struct LearningWorkspaceView: View {
     private var upcomingDeckQueue: some View {
         VStack(alignment: .leading, spacing: InsightSpacing.compact) {
             HStack {
-                InsightSectionLabel(text: "待刷队列", trailing: "\(store.deck.count) 张待探索")
+                InsightSectionLabel(text: "待刷队列", trailing: String(localized: "\(store.deck.count) 张待探索"))
                 Spacer()
                 Button {
                     explore()
@@ -472,7 +472,7 @@ struct LearningWorkspaceView: View {
 
     private var activityTrailCard: some View {
         VStack(alignment: .leading, spacing: InsightSpacing.compact) {
-            InsightSectionLabel(text: "学习足迹", trailing: "\(store.history.count) 累计")
+            InsightSectionLabel(text: "学习足迹", trailing: String(localized: "\(store.history.count) 累计"))
 
             let recentCards = Array(store.history.prefix(3))
             if recentCards.isEmpty {
@@ -644,8 +644,8 @@ struct LearningWorkspaceView: View {
                     .foregroundStyle(InsightColor.textSecondary)
                     .frame(width: 18).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(InsightFont.bodyStrong).foregroundStyle(InsightColor.textPrimary)
-                    Text(detail).font(InsightFont.captionSmall).foregroundStyle(InsightColor.textSecondary)
+                    Text(LocalizedStringKey(title)).font(InsightFont.bodyStrong).foregroundStyle(InsightColor.textPrimary)
+                    Text(LocalizedStringKey(detail)).font(InsightFont.captionSmall).foregroundStyle(InsightColor.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -861,7 +861,7 @@ struct LearningWorkspaceView: View {
             // 巩固期知识队列 (阶段复习池) - 彻底消灭复习页面的空旷感
             if !inProgressReviewCards.isEmpty {
                 VStack(alignment: .leading, spacing: InsightSpacing.compact) {
-                    InsightSectionLabel(text: "巩固期知识队列", trailing: "\(inProgressReviewCards.count) 张正在巩固")
+                    InsightSectionLabel(text: "巩固期知识队列", trailing: String(localized: "\(inProgressReviewCards.count) 张正在巩固"))
                     LazyVStack(spacing: 0) {
                         ForEach(Array(inProgressReviewCards.prefix(6))) { card in
                             cardRow(card, review: false)
@@ -881,7 +881,7 @@ struct LearningWorkspaceView: View {
         VStack(alignment: .leading, spacing: InsightSpacing.large) {
             let upcoming = plan.upcomingCards(limit: plan.cards.count).filter { $0.date > plan.now }
             VStack(alignment: .leading, spacing: InsightSpacing.compact) {
-                InsightSectionLabel(text: "接下来的安排", trailing: "\(upcoming.count) 项")
+                InsightSectionLabel(text: "接下来的安排", trailing: String(localized: "\(upcoming.count) 项"))
                 if upcoming.isEmpty {
                     Text("暂无未来 7 天到期安排")
                         .font(InsightFont.caption)
@@ -1220,11 +1220,11 @@ struct LearningWorkspaceView: View {
 
     private func sectionHeading(_ title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: InsightSpacing.hair) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(InsightFont.title)
                 .accessibilityAddTraits(.isHeader)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(subtitle)
+            Text(LocalizedStringKey(subtitle))
                 .font(InsightFont.callout)
                 .foregroundStyle(InsightColor.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
