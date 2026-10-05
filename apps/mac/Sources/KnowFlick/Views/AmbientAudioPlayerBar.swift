@@ -101,7 +101,7 @@ struct AmbientAudioPlayerBar: View {
                 }
                 .buttonStyle(PressableButtonStyle(scale: 0.94))
                 .disabled(currentCard == nil)
-                .help(isPlaying ? "暂停朗读 (⌘P)" : "继续朗读 (⌘P)")
+                .help(Text(LocalizedStringKey(isPlaying ? "暂停朗读 (⌘P)" : "继续朗读 (⌘P)")))
                 .accessibilityLabel(isPlaying ? "暂停朗读" : "继续朗读")
 
                 // 下一张
@@ -121,7 +121,7 @@ struct AmbientAudioPlayerBar: View {
                         .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle())
-                .help("切换朗读语速 (当前 \(speedText))")
+                .help(String(localized: "切换朗读语速 (当前 \(speedText))"))
                 .accessibilityLabel("切换朗读语速")
                 .accessibilityValue(speedText)
 
@@ -228,7 +228,7 @@ private struct BarIconButton: View {
         }
         .buttonStyle(PressableButtonStyle(scale: 0.92, playAudio: false))
         .onHover { hovering = $0 }
-        .help(help)
+        .help(Text(LocalizedStringKey(help)))
         .accessibilityLabel(help)
     }
 }

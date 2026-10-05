@@ -112,9 +112,17 @@ struct QuizView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(InsightColor.accent)
 
-                Text(plannedCards != nil ? "到期复习" : category.map { "\($0) · 专项测验" } ?? "沉浸式知识测验")
-                    .font(InsightFont.title)
-                    .foregroundStyle(InsightColor.textPrimary)
+                Group {
+                    if plannedCards != nil {
+                        Text("到期复习")
+                    } else if let category {
+                        Text("\(category) · 专项测验")
+                    } else {
+                        Text("沉浸式知识测验")
+                    }
+                }
+                .font(InsightFont.title)
+                .foregroundStyle(InsightColor.textPrimary)
 
                 if !quizCards.isEmpty && !isCompleted {
                     InsightPill(text: "\(currentIndex + 1) / \(quizCards.count)", tone: .accent)
@@ -585,7 +593,7 @@ private struct WeakCardRowView: View {
                         .lineSpacing(4)
                         .padding(.top, InsightSpacing.compact)
 
-                    Text("解析：" + card.details)
+                    Text("解析：\(card.details)")
                         .font(InsightFont.body)
                         .foregroundStyle(InsightColor.textTertiary)
                         .lineSpacing(4)
