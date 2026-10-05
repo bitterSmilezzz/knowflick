@@ -841,9 +841,80 @@ struct SettingsView: View {
                 }
                 .buttonStyle(PressableButtonStyle())
             }
+
+            Divider().overlay(InsightColor.divider)
+
+            // 诊断观测（Wave D1）：MetricKit 系统诊断只落本机，导出 = 用户主动在访达中取文件
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "stethoscope")
+                        .foregroundStyle(InsightColor.textSecondary)
+                    Text("诊断观测")
+                        .font(InsightFont.bodyStrong)
+                        .foregroundStyle(InsightColor.textPrimary)
+                    Spacer()
+                    Text(diagnosticsSummaryText)
+                        .font(InsightFont.captionSmall)
+                        .monospacedDigit()
+                        .foregroundStyle(InsightColor.textMuted)
+                }
+
+                Text("系统在本机记录崩溃与性能诊断（MetricKit），不会自动上传。反馈问题时可主动把诊断文件提供给我们。")
+                    .font(InsightFont.captionSmall)
+                    .foregroundStyle(InsightColor.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 12) {
+                    Button {
+                        // 导出 = 用户主动在访达中取文件（目录与卡片库同区），应用侧零网络出口
+                        let directory = diagnosticsStore.directory
+                        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                        NSWorkspace.shared.activateFileViewerSelecting([directory])
+                    } label: {
+                        Label("在访达中显示", systemImage: "folder")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+
+                    Button(role: .destructive) {
+                        try? diagnosticsStore.clear()
+                        refreshDiagnosticsSummary()
+                    } label: {
+                        Label("清空诊断", systemImage: "trash")
+                    }
+                    .buttonStyle(PressableButtonStyle())
+
+                    Spacer()
+                }
+                .font(InsightFont.callout)
+                .controlSize(.small)
+            }
         }
         .padding(18)
         .editorialGlassCard()
+        .onAppear(perform: refreshDiagnosticsSummary)
+    }
+
+    // MARK: 诊断观测（本地 MetricKit 诊断的清点与导出入口）
+
+    @State private var diagnosticsSummary: DiagnosticsStore.Summary?
+
+    private var diagnosticsStore: DiagnosticsStore { DiagnosticsStore() }
+
+    private var diagnosticsSummaryText: String {
+        guard let summary = diagnosticsSummary else { return "" }
+        guard summary.fileCount > 0 else { return "暂无记录" }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        let size = formatter.string(fromByteCount: summary.totalBytes)
+        if let last = summary.lastModified {
+            return "\(summary.fileCount) 个文件 · \(size) · 最近 \(last.formatted(.dateTime.month().day()))"
+        }
+        return "\(summary.fileCount) 个文件 · \(size)"
+    }
+
+    private func refreshDiagnosticsSummary() {
+        diagnosticsSummary = diagnosticsStore.summary()
     }
 
     // MARK: - 卡片 4：知识库状态与安全说明
