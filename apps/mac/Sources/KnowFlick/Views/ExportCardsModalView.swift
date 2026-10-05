@@ -231,7 +231,7 @@ struct ExportCardsModalView: View {
             }
         }
         .padding(16)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     private func scopeTitle(_ scope: ExportScope) -> String {
@@ -286,7 +286,7 @@ struct ExportCardsModalView: View {
             }
         }
         .padding(16)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     private func formatCard(format: CardExportFormat, icon: String, title: String, desc: String) -> some View {
@@ -391,7 +391,7 @@ struct ExportCardsModalView: View {
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(InsightColor.border, lineWidth: 1))
         }
         .padding(16)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     // MARK: - Bottom Action Bar

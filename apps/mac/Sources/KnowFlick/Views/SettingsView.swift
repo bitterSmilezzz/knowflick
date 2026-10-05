@@ -333,15 +333,20 @@ struct SettingsView: View {
             }
         }
         .padding(18)
-        .editorialGlassCard()
+        .insightPanelCard()
     }
 
     /// 语言覆盖的直接写盘 Binding：语言是应用级偏好，不走「保存配置」缓冲
     /// （SettingsEditBuffer 只管 AI/语音设置），改动即时落 UserDefaults。
+    ///
+    /// 状态用专用键 `settings.appLanguageOverride` 记录，**不能**读 AppleLanguages——
+    /// 系统会在该键里放带地区的语言列表（如 zh-Hans-CN），与三个选项标签对不上，
+    /// 选择器会显示空白（2026-10-05 实屏发现）。
     private var languageBinding: Binding<String> {
         Binding(
-            get: { UserDefaults.standard.stringArray(forKey: "AppleLanguages")?.first ?? "system" },
+            get: { UserDefaults.standard.string(forKey: "settings.appLanguageOverride") ?? "system" },
             set: { choice in
+                UserDefaults.standard.set(choice, forKey: "settings.appLanguageOverride")
                 if choice == "system" {
                     UserDefaults.standard.removeObject(forKey: "AppleLanguages")
                 } else {
@@ -517,7 +522,7 @@ struct SettingsView: View {
             }
         }
         .padding(18)
-        .editorialGlassCard(cornerRadius: InsightRadius.inset)
+        .insightPanelCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 卡片 2：分类体系管理
@@ -636,7 +641,7 @@ struct SettingsView: View {
             }
         }
         .padding(18)
-        .editorialGlassCard(cornerRadius: InsightRadius.inset)
+        .insightPanelCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 卡片 3：信息来源与偏好
@@ -676,7 +681,7 @@ struct SettingsView: View {
             }
         }
         .padding(18)
-        .editorialGlassCard(cornerRadius: InsightRadius.inset)
+        .insightPanelCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 卡片：智能语音与磨耳朵 (Smart TTS)
@@ -824,7 +829,7 @@ struct SettingsView: View {
         .animation(EditorialSpring.state, value: store.speechService.state == .idle)
         .animation(EditorialSpring.state, value: store.speechService.lastError)
         .padding(18)
-        .editorialGlassCard(cornerRadius: InsightRadius.inset)
+        .insightPanelCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 卡片 3.5：数据管理与迁移 (导入与导出)
@@ -930,7 +935,7 @@ struct SettingsView: View {
             }
         }
         .padding(18)
-        .editorialGlassCard()
+        .insightPanelCard()
         .onAppear(perform: refreshDiagnosticsSummary)
     }
 
@@ -1025,7 +1030,7 @@ struct SettingsView: View {
             }
         }
         .padding(16)
-        .editorialGlassCard(cornerRadius: InsightRadius.inset)
+        .insightPanelCard(cornerRadius: InsightRadius.inset)
     }
 
     // MARK: - 底栏操作

@@ -231,7 +231,7 @@ struct HistoryView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .editorialGlassCard(cornerRadius: InsightRadius.control)
+            .insightPanelCard(cornerRadius: InsightRadius.control)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.99))
         .contextMenu {
