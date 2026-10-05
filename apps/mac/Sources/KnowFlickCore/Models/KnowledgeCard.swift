@@ -107,6 +107,40 @@ public struct KnowledgeCard: Codable, Identifiable, Hashable, Sendable {
         self.prereq = prereq
     }
 
+    /// 展示标题：防御性滤除 Markdown 分割线 (如 ---) 与空标题
+    public var displayHeadline: String {
+        let trimmed = headline.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "-*# \t\n\r"))
+        if !cleaned.isEmpty {
+            return trimmed
+        }
+        let summaryTrimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedSummary = summaryTrimmed.trimmingCharacters(in: CharacterSet(charactersIn: "-*# \t\n\r"))
+        if !cleanedSummary.isEmpty {
+            return summaryTrimmed
+        }
+        let detailsLines = details.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.trimmingCharacters(in: CharacterSet(charactersIn: "-*# \t\n\r")).isEmpty }
+        if let firstLine = detailsLines.first {
+            return firstLine
+        }
+        return category.isEmpty ? "知识笔记" : category
+    }
+
+    /// 展示摘要：防御性跳过分割线与重复标题
+    public var displaySummary: String {
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "-*# \t\n\r"))
+        if !cleaned.isEmpty && trimmed != headline {
+            return trimmed
+        }
+        let detailsLines = details.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.trimmingCharacters(in: CharacterSet(charactersIn: "-*# \t\n\r")).isEmpty && $0 != displayHeadline }
+        return detailsLines.first ?? ""
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, category, headline, summary, details, links, source
         case createdAt, editedAt, seenAt, swiped, isFavorite, favoritedAt, reviewCount, masteryLevel, lastReviewedAt

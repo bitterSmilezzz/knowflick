@@ -57,15 +57,22 @@ public struct CardPosterExportSheet: View {
 
     private var headerBar: some View {
         HStack(spacing: 16) {
-            HStack(spacing: 10) {
-                Image(systemName: "square.and.arrow.up.on.square.fill")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(InsightColor.accent)
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(InsightColor.accentSoft)
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "square.and.arrow.up.on.square.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(InsightColor.accent)
+                }
+                .overlay(Circle().strokeBorder(InsightColor.accent.opacity(0.3), lineWidth: 1))
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text("导出分享海报")
                         .font(InsightFont.title)
                         .foregroundStyle(InsightColor.textPrimary)
-                    Text("生成出版物级排版长图或文艺相纸，可直接复制粘贴到社交平台")
+                    Text("生成出版物级排版长图、文艺相纸或瑞士国际主义海报")
                         .font(InsightFont.captionSmall)
                         .foregroundStyle(InsightColor.textSecondary)
                 }
@@ -81,21 +88,13 @@ public struct CardPosterExportSheet: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 210)
+            .frame(width: 290)
 
             // 关闭按钮
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(InsightColor.textSecondary)
-                    .frame(width: 30, height: 30)
-                    .background(InsightColor.surface, in: Circle())
-                    .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
+            GlassIconButton(icon: "xmark", help: "关闭 (Esc)") {
+                onClose()
             }
-            .buttonStyle(PressableButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
-            .help("关闭 (Esc)")
-            .accessibilityLabel("关闭")
         }
     }
 
@@ -103,34 +102,45 @@ public struct CardPosterExportSheet: View {
 
     private var previewArea: some View {
         GeometryReader { geo in
-            let availableWidth = geo.size.width - 40
-            let availableHeight = geo.size.height - 40
+            let availableWidth = geo.size.width - 48
+            let availableHeight = geo.size.height - 48
             let posterSize = selectedStyle.canvasSize
             let scaleX = availableWidth / posterSize.width
             let scaleY = availableHeight / posterSize.height
             let fitScale = min(min(scaleX, scaleY), 0.72)
 
             ZStack {
-                // 背景微点网格
-                Color.clear
+                // 背景微弱光场与晶莹质感
+                RadialGradient(
+                    colors: [
+                        InsightColor.accent.opacity(0.12),
+                        Color.clear
+                    ],
+                    center: .center,
+                    startRadius: 80,
+                    endRadius: 400
+                )
+                .allowsHitTesting(false)
 
                 CardPosterRendererView(card: card, style: selectedStyle)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(InsightColor.border, lineWidth: 1)
+                            .strokeBorder(InsightColor.doubleBezelStroke, lineWidth: 1.2)
                     )
                     // 复合柔光立体阴影
                     .shadow(
-                        color: InsightColor.dynamic(
-                            light: NSColor.black.withAlphaComponent(0.16),
-                            dark: NSColor.black.withAlphaComponent(0.65)
-                        ),
-                        radius: 28,
-                        y: 14
+                        color: Color.black.opacity(0.55),
+                        radius: 36,
+                        y: 18
+                    )
+                    .shadow(
+                        color: InsightColor.accent.opacity(0.15),
+                        radius: 48,
+                        y: 20
                     )
                     .scaleEffect(fitScale)
-                    .animation(InsightMotion.shell, value: selectedStyle)
+                    .animation(InsightMotion.cinematic, value: selectedStyle)
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }

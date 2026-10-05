@@ -4,6 +4,7 @@ import Testing
 
 /// P1-2：星图构图的**内部**优化（倒排索引算交集 + 内容签名结果缓存）。
 /// 公开 API 与边集语义不变——这里用「与逐对 `evaluateRelation` 的朴素实现完全等价」来证明。
+@Suite(.serialized)
 struct KnowledgeGraphOptimizationTests {
     // MARK: - 与朴素实现等价（优化的正确性证据）
 

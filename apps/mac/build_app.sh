@@ -184,5 +184,5 @@ fi
 echo "    启动自检通过"
 rm -f "$SMOKE_LOG"
 
-touch "$APP_DIR"
+touch "$APP_DIR" 2>/dev/null || true
 echo "完成: $APP_DIR"
