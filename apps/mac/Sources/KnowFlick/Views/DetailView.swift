@@ -261,7 +261,7 @@ struct DetailView: View {
                                 }
                             }
                             }
-                            Text("⏎ / Esc 关闭详情 · ⌘S 导出海报" + (onUndo != nil ? " · ⌘Z 撤销上一张" : ""))
+                            Text(LocalizedStringKey("⏎ / Esc 关闭详情 · ⌘S 导出海报" + (onUndo != nil ? " · ⌘Z 撤销上一张" : "")))
                                 .font(InsightFont.captionSmall)
                                 .foregroundStyle(InsightColor.textMuted)
                         }
@@ -361,7 +361,7 @@ struct DetailView: View {
         }
         .buttonStyle(PressableButtonStyle(scale: 0.96))
         .keyboardShortcut("j", modifiers: .command)
-        .help("向 AI 深入探讨此卡片知识 ⌘J")
+        .help(Text(LocalizedStringKey("向 AI 深入探讨此卡片知识 ⌘J")))
     }
 
     private var aiCompanionBanner: some View {
@@ -446,7 +446,7 @@ struct DetailView: View {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(InsightColor.textSecondary)
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(InsightFont.caption.weight(.medium))
                     .foregroundStyle(InsightColor.textPrimary)
             }
@@ -460,7 +460,7 @@ struct DetailView: View {
             )
         }
         .buttonStyle(PressableButtonStyle(scale: 0.97))
-        .help("一键追问：\(prompt)")
+        .help(String(localized: "一键追问：\(prompt)"))
     }
 
     private var favoriteButton: some View {
@@ -489,7 +489,7 @@ struct DetailView: View {
         .buttonStyle(PressableButtonStyle(scale: 0.96))
         .animation(InsightMotion.tactile, value: isFavorited)
         .keyboardShortcut("d", modifiers: .command)
-        .help(isFavorited ? "取消收藏 ⌘D" : "加入知识收藏阁 ⌘D")
+        .help(Text(LocalizedStringKey(isFavorited ? "取消收藏 ⌘D" : "加入知识收藏阁 ⌘D")))
     }
 
     private var shareButton: some View {
@@ -507,7 +507,7 @@ struct DetailView: View {
         }
         .buttonStyle(PressableButtonStyle(scale: 0.96))
         .keyboardShortcut("s", modifiers: .command)
-        .help("导出画报长图/拍立得分享海报 ⌘S")
+        .help(Text(LocalizedStringKey("导出画报长图/拍立得分享海报 ⌘S")))
     }
 
     private var closeButton: some View {
@@ -626,7 +626,7 @@ struct DetailView: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: item.kind.icon)
                                             .font(.system(size: 10, weight: .bold))
-                                        Text(item.kind.title)
+                                        Text(LocalizedStringKey(item.kind.title))
                                             .font(.system(size: 10.5, weight: .bold))
                                     }
                                     .foregroundStyle(relationColor(for: item.kind))
@@ -773,8 +773,10 @@ struct DetailView: View {
                 // 语速切换
                 Menu {
                     ForEach(Self.speedTiers, id: \.rate) { tier in
-                        Button(tier.label) {
+                        Button {
                             store.applySettingsChange { $0.speechRate = tier.rate }
+                        } label: {
+                            Text(LocalizedStringKey(tier.label))
                         }
                     }
                 } label: {
@@ -806,7 +808,7 @@ struct DetailView: View {
                         .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle(scale: 0.96))
-                .help("语音听书控制台：进度定位、语速音调与睡眠定时")
+                .help(Text(LocalizedStringKey("语音听书控制台：进度定位、语速音调与睡眠定时")))
                 .accessibilityLabel("语音听书控制台")
 
                 // 重新朗读
@@ -822,7 +824,7 @@ struct DetailView: View {
                         .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
                 }
                 .buttonStyle(PressableButtonStyle(scale: 0.96))
-                .help("从头重新朗读")
+                .help(Text(LocalizedStringKey("从头重新朗读")))
             }
 
             // 朗读进度条
