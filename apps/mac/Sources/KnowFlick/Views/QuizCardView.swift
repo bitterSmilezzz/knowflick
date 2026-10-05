@@ -10,7 +10,7 @@ struct QuizCardView: View {
     let onRate: (AppStore.QuizRating) -> Void
     var onOpenChat: (() -> Void)? = nil
 
-    @State private var isHoveringFront = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hoveredRating: AppStore.QuizRating? = nil
 
     private var theme: CategoryTheme {
@@ -22,8 +22,11 @@ struct QuizCardView: View {
             // 正面：题目与主动回忆倒逼思考
             ScrollView { frontView }
                 .opacity(isFlipped ? 0 : 1)
+                // 透明度在翻转前半段先淡出：旋转越过 90° 之前正面已隐，
+                // 背面镜像字不会在翻转中段露出来
+                .animation(reduceMotion ? nil : .easeIn(duration: 0.2), value: isFlipped)
                 .rotation3DEffect(
-                    .degrees(isFlipped ? 180 : 0),
+                    .degrees(reduceMotion ? 0 : (isFlipped ? 180 : 0)),
                     axis: (x: 0, y: 1, z: 0),
                     perspective: 0.55
                 )
@@ -32,14 +35,16 @@ struct QuizCardView: View {
             // 背面：答案解析与记忆评级反馈
             backView
                 .opacity(isFlipped ? 1 : 0)
+                // 透明度在翻转后半段再淡入：与正面错时，接缝落在 90° 侧棱上
+                .animation(reduceMotion ? nil : .easeIn(duration: 0.2).delay(0.2), value: isFlipped)
                 .rotation3DEffect(
-                    .degrees(isFlipped ? 0 : -180),
+                    .degrees(reduceMotion ? 0 : (isFlipped ? 0 : -180)),
                     axis: (x: 0, y: 1, z: 0),
                     perspective: 0.55
                 )
                 .allowsHitTesting(isFlipped)
         }
-        .frame(width: 520, height: 490)
+        .frame(width: 560, height: 500)
     }
 
     // MARK: - 正面视图（问题与思考）
@@ -87,18 +92,12 @@ struct QuizCardView: View {
                 .padding(.bottom, InsightSpacing.small)
 
             // 问题大标题
-            Text(card.headline)
+            Text(card.displayHeadline)
                 .font(InsightFont.largeTitle)
                 .foregroundStyle(InsightColor.textPrimary)
                 .lineSpacing(6)
                 .fixedSize(horizontal: false, vertical: true)
-
-            Rectangle()
-                .fill(theme.accent)
-                .frame(width: 42, height: 3.5)
-                .cornerRadius(1.75)
-                .padding(.top, InsightSpacing.medium)
-                .padding(.bottom, InsightSpacing.medium)
+                .padding(.top, InsightSpacing.tiny)
 
             // 深度回忆指引
             VStack(alignment: .leading, spacing: InsightSpacing.small) {
@@ -137,22 +136,23 @@ struct QuizCardView: View {
                 }
                 .foregroundStyle(Color.white)
                 .padding(.horizontal, 18)
-                .padding(.vertical, 13)
-                .background(
-                    InsightColor.accent,
-                    in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
+                .padding(.vertical, 12)
+                .background(InsightColor.accent, in: RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
                 )
             }
-            .buttonStyle(PressableButtonStyle())
+            .buttonStyle(PressableButtonStyle(scale: 0.98))
         }
         .padding(InsightSpacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
+        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
                 .strokeBorder(InsightColor.border, lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.12), radius: 12, y: 4)
     }
 
     // MARK: - 背面视图（答案与评级）
@@ -197,7 +197,7 @@ struct QuizCardView: View {
             }
 
             // 题目微缩标题
-            Text(card.headline)
+            Text(card.displayHeadline)
                 .font(InsightFont.headline)
                 .foregroundStyle(InsightColor.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -210,7 +210,7 @@ struct QuizCardView: View {
                     .font(InsightFont.monoSmall)
                     .tracking(1.0)
                     .foregroundStyle(InsightColor.accent)
-                Text(card.summary)
+                Text(card.displaySummary)
                     .font(InsightFont.body)
                     .foregroundStyle(InsightColor.textPrimary)
                     .lineSpacing(5)
@@ -286,12 +286,12 @@ struct QuizCardView: View {
         }
         .padding(InsightSpacing.large)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
+        .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: InsightRadius.card, style: .continuous)
                 .strokeBorder(InsightColor.border, lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.12), radius: 12, y: 4)
     }
 
     // MARK: - 辅助组件
@@ -349,15 +349,10 @@ struct QuizCardView: View {
             .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: InsightRadius.inset, style: .continuous)
-                    .strokeBorder(tint.opacity(0.32), lineWidth: 1)
+                    .strokeBorder(tint.opacity(0.24), lineWidth: 1)
             )
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.98))
         .help("\(rating.title) (\(shortcut))")
-    }
-
-    /// 卡片底：Cutline 的 surfaceRaised 浮卡（去旧自绘动态色 + 径向渐变 + 噪点）
-    private var cardBackground: Color {
-        InsightColor.surfaceRaised
     }
 }

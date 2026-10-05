@@ -54,11 +54,12 @@ struct SettingsView: View {
                 header
                 if let message = saveErrorMessage {
                     saveErrorBanner(message)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
                 Divider().overlay(InsightColor.divider)
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 18) {
                         InsightSectionLabel(text: "外观")
                         appearanceCard
                         InsightSectionLabel(text: "AI 服务")
@@ -74,13 +75,15 @@ struct SettingsView: View {
                         InsightSectionLabel(text: "关于")
                         aboutCard
                     }
-                    .padding(22)
+                    .padding(18)
                 }
 
                 Divider().overlay(InsightColor.divider)
                 bottomBar
             }
         }
+        // 保存错误横幅的插入/移除动画上下文（此前直接推挤整页）
+        .animation(EditorialSpring.state, value: saveErrorMessage)
         .frame(minWidth: 620, idealWidth: 680, minHeight: 520, idealHeight: 700)
         .onAppear {
             buffer = SettingsEditBuffer(from: store.settings)
@@ -99,6 +102,7 @@ struct SettingsView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
+        .animation(EditorialSpring.content, value: showExportModal)
         .overlay {
             if showImportModal {
                 ImportNotesModalView(store: store) {
@@ -107,6 +111,7 @@ struct SettingsView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
+        .animation(EditorialSpring.content, value: showImportModal)
     }
 
     private var header: some View {
@@ -235,7 +240,7 @@ struct SettingsView: View {
                                 : InsightColor.textSecondary
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle(scale: 0.97, playAudio: false))
                 }
             }
 
@@ -298,7 +303,7 @@ struct SettingsView: View {
                                     )
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle(scale: 0.97, playAudio: false))
                     }
                 }
             }
@@ -536,13 +541,15 @@ struct SettingsView: View {
                                 .font(.system(size: 11))
                                 .foregroundStyle(InsightColor.danger.opacity(0.75))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle(scale: 0.85, playAudio: false))
                         .help("删除该分类")
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
+                .animation(EditorialSpring.state, value: buffer.customCategories)
 
                 // 添加分类
                 VStack(alignment: .leading, spacing: 6) {
@@ -670,9 +677,10 @@ struct SettingsView: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(abs(buffer.speechRate - Float(rate)) < 0.05 ? InsightColor.success.opacity(0.3) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressableButtonStyle(scale: 0.92, playAudio: false))
                         }
                     }
+                    .animation(InsightMotion.tactile, value: buffer.speechRate)
                 }
             }
 
@@ -692,9 +700,10 @@ struct SettingsView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
                             .background(abs(buffer.speechPitch - Float(value)) < 0.05 ? InsightColor.accent.opacity(0.28) : InsightColor.surface, in: RoundedRectangle(cornerRadius: 4))
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressableButtonStyle(scale: 0.92, playAudio: false))
                         }
                     }
+                    .animation(InsightMotion.tactile, value: buffer.speechPitch)
                 }
             }
 
@@ -711,9 +720,10 @@ struct SettingsView: View {
                         .padding(.vertical, 5)
                         .background(abs(buffer.ambientGapSeconds - sec) < 0.1 ? InsightColor.accent.opacity(0.25) : InsightColor.surface, in: Capsule())
                         .overlay(Capsule().strokeBorder(abs(buffer.ambientGapSeconds - sec) < 0.1 ? InsightColor.accent.opacity(0.6) : InsightColor.border, lineWidth: 1))
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle(scale: 0.92, playAudio: false))
                     }
                 }
+                .animation(InsightMotion.tactile, value: buffer.ambientGapSeconds)
             }
 
             // 声音选择
@@ -755,19 +765,25 @@ struct SettingsView: View {
             if store.speechService.isPreparing {
                 ProgressView("正在生成语音…")
                     .font(InsightFont.caption)
+                    .transition(.opacity)
             }
             if store.speechService.state != .idle {
                 // 文案承诺「停止播放」：必须同时停常规朗读与磨耳朵连续播报（stopSpeech 内部两者都停），
                 // 此前只调 stopAmbientMode，详情页朗读中点此按钮无任何反应。
                 Button("停止播放") { store.stopSpeech() }
+                    .transition(.opacity)
             }
             if let error = store.speechService.lastError {
                 Text(error)
                     .font(InsightFont.caption)
                     .foregroundStyle(InsightColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
             }
         }
+        .animation(EditorialSpring.state, value: store.speechService.isPreparing)
+        .animation(EditorialSpring.state, value: store.speechService.state == .idle)
+        .animation(EditorialSpring.state, value: store.speechService.lastError)
         .padding(18)
         .editorialGlassCard(cornerRadius: InsightRadius.inset)
     }
@@ -854,6 +870,7 @@ struct SettingsView: View {
                 Button("重新探索全部卡片") {
                     store.clearHistory()
                 }
+                .buttonStyle(PressableButtonStyle(scale: 0.97))
                 .font(InsightFont.callout)
                 .foregroundStyle(InsightColor.textSecondary)
                 .padding(.horizontal, 10)
@@ -957,6 +974,8 @@ struct SettingsView: View {
         }
         .font(InsightFont.caption)
         .lineLimit(2)
+        .animation(EditorialSpring.state, value: isTesting)
+        .animation(EditorialSpring.state, value: testResult)
     }
 
     private func fieldRow<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {

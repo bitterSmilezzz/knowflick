@@ -1,28 +1,86 @@
 import SwiftUI
 
-// MARK: - 深色卡片容器
+// MARK: - 深色卡片容器（Awwwards 级双层微质感）
 //
-// Cutline/Filen 的基础构件：圆角深色块 + 1pt 微描边 + 可选中变亮描边。
-// 替代旧 `editorialGlassCard`（纯色半透明 + 描边，浅色下发虚）。
+// 融合 Doppelrand 双层嵌套架构与镜面高光 (Specular Light Catch)：
+//   · 顶部微光渐变层，增强立体景深
+//   · 1pt 精密描边：顶部迎光高亮，底部自然暗下
+//   · 极度细腻的漫反射浮雕阴影
 
 struct InsightCard<Content: View>: View {
     var cornerRadius: CGFloat = InsightRadius.card
     var padding: CGFloat = InsightLayout.contentPadding
     var isSelected: Bool = false
+    var isInteractive: Bool = false
     @ViewBuilder var content: Content
+
+    @State private var isHovered = false
 
     var body: some View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(InsightColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
-                        isSelected ? InsightColor.borderStrong : InsightColor.border,
+                        isSelected ? AnyShapeStyle(InsightColor.accent) : (isHovered ? AnyShapeStyle(InsightColor.borderStrong) : AnyShapeStyle(InsightColor.border)),
                         lineWidth: 1
                     )
             )
+            .shadow(
+                color: Color.black.opacity(isHovered ? 0.08 : 0.03),
+                radius: isHovered ? 6 : 2,
+                y: isHovered ? 2 : 1
+            )
+            .onHover { hovering in
+                if isInteractive {
+                    withAnimation(InsightMotion.tactile) {
+                        isHovered = hovering
+                    }
+                }
+            }
+    }
+}
+
+/// 实体硬件容器（极简统一单层卡片）
+struct InsightDoubleBezelCard<Content: View>: View {
+    var outerRadius: CGFloat = InsightRadius.cardOuter
+    var innerRadius: CGFloat = InsightRadius.cardInner
+    var outerPadding: CGFloat = 0
+    var contentPadding: CGFloat = InsightLayout.contentPadding
+    var isSelected: Bool = false
+    var isInteractive: Bool = false
+    @ViewBuilder var content: Content
+
+    @State private var isHovered = false
+
+    var body: some View {
+        content
+            .padding(contentPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(InsightColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: outerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? AnyShapeStyle(InsightColor.accent) : (isHovered ? AnyShapeStyle(InsightColor.borderStrong) : AnyShapeStyle(InsightColor.border)),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(
+                color: Color.black.opacity(isHovered ? 0.08 : 0.03),
+                radius: isHovered ? 6 : 2,
+                y: isHovered ? 2 : 1
+            )
+            .onHover { hovering in
+                if isInteractive {
+                    withAnimation(InsightMotion.tactile) {
+                        isHovered = hovering
+                    }
+                }
+            }
     }
 }
 
@@ -34,11 +92,12 @@ struct InsightRawCard<Content: View>: View {
 
     var body: some View {
         content
-            .background(InsightColor.surface, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(InsightColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
-                        isSelected ? InsightColor.borderStrong : InsightColor.border,
+                        isSelected ? AnyShapeStyle(InsightColor.accent) : AnyShapeStyle(InsightColor.border),
                         lineWidth: 1
                     )
             )
@@ -55,7 +114,8 @@ struct InsightSectionLabel: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: InsightSpacing.small) {
             Text(text)
-                .font(InsightFont.sectionLabel())
+                .font(InsightFont.sectionLabel(1.2))
+                .tracking(1.2)
                 .foregroundStyle(InsightColor.textTertiary)
             Spacer(minLength: 0)
             if let trailing {
@@ -71,7 +131,7 @@ struct InsightSectionLabel: View {
 // MARK: - 药丸徽章（语义色）
 
 /// Cutline 的 `6 IN REVIEW` / `RENDERING` / `PUBLISHED` 形态。
-/// 颜色即语义：实心浅底 + 同色系前景 + 同色系描边。
+/// 颜色即语义：实心浅底 + 同色系前景 + 同色系描边 + 呼吸微光点。
 struct InsightPill: View {
     enum Tone {
         case accent, success, warning, danger, neutral, violet
@@ -101,22 +161,29 @@ struct InsightPill: View {
     let text: String
     var tone: Tone = .neutral
     var icon: String? = nil
+    var showIndicator: Bool = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
+            if showIndicator {
+                Circle()
+                    .fill(tone.foreground)
+                    .frame(width: 5, height: 5)
+                    .shadow(color: tone.foreground.opacity(0.7), radius: 3)
+            }
             if let icon {
                 Image(systemName: icon)
                     .font(.system(size: 8.5, weight: .bold))
             }
             Text(text)
-                .font(InsightFont.sectionLabel(0.5))
-                .tracking(0.5)
+                .font(InsightFont.sectionLabel(0.6))
+                .tracking(0.6)
                 .textCase(.uppercase)
                 .lineLimit(1)
         }
         .foregroundStyle(tone.foreground)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3.5)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
         .background(tone.background, in: Capsule())
         .overlay(Capsule().strokeBorder(tone.foreground.opacity(0.28), lineWidth: 1))
     }
@@ -132,43 +199,125 @@ struct InsightSegmented: View {
     var counts: [String: Int]? = nil
 
     @Namespace private var pill
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(items, id: \.self) { item in
-                let isOn = item == selection
-                Button {
+                InsightSegmentedItem(
+                    title: item,
+                    count: counts?[item],
+                    isOn: item == selection,
+                    ns: pill
+                ) {
                     selection = item
-                } label: {
-                    HStack(spacing: InsightSpacing.small) {
-                        Text(item)
-                            .font(InsightFont.bodyStrong)
-                            .foregroundStyle(isOn ? InsightColor.textPrimary : InsightColor.textTertiary)
-                        if let counts, let n = counts[item] {
-                            Text("\(n)")
-                                .font(InsightFont.monoSmall)
-                                .monospacedDigit()
-                                .foregroundStyle(isOn ? InsightColor.textSecondary : InsightColor.textMuted)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background {
-                        if isOn {
-                            Capsule()
-                                .fill(InsightColor.surfaceRaised)
-                                .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
-                                .matchedGeometryEffect(id: "pill", in: pill)
-                        }
-                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isOn ? [.isSelected] : [])
             }
         }
         .padding(3)
         .background(InsightColor.surfaceSunken, in: Capsule())
         .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
+        // 滑块吸边动画契约内置在组件里：matchedGeometryEffect 的宿主必须自带
+        // 动画上下文，否则换一个调用方就退化成硬跳（此前仅 HistoryView 包了）
+        .animation(reduceMotion ? nil : InsightMotion.pill, value: selection)
+    }
+}
+
+private struct InsightSegmentedItem: View {
+    let title: String
+    var count: Int?
+    let isOn: Bool
+    let ns: Namespace.ID
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: InsightSpacing.small) {
+                Text(title)
+                    .font(InsightFont.bodyStrong)
+                    .foregroundStyle(isOn ? InsightColor.textPrimary : (hovering ? InsightColor.textSecondary : InsightColor.textTertiary))
+                if let count {
+                    Text("\(count)")
+                        .font(InsightFont.monoSmall)
+                        .monospacedDigit()
+                        .foregroundStyle(isOn ? InsightColor.textSecondary : InsightColor.textMuted)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background {
+                ZStack {
+                    if isOn {
+                        Capsule()
+                            .fill(InsightColor.surfaceRaised)
+                            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
+                            .matchedGeometryEffect(id: "pill", in: ns)
+                    } else if hovering {
+                        Capsule().fill(InsightColor.neutralSoft.opacity(0.6))
+                    }
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
+    }
+}
+
+// MARK: - 筛选 chip（⌘F 搜索面板等过滤条的统一形态）
+//
+// 选中 = accentSoft 实心底 + accent 描边；悬停 = 中性微底。一次只表达「选中/未选中」
+// 一个维度，替代此前来源行与分类行各自手写、选中态还长得不一样的两套样式。
+
+struct InsightFilterChip: View {
+    let title: String
+    var icon: String? = nil
+    var count: String? = nil
+    let isSelected: Bool
+    var action: () -> Void
+
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 10))
+                }
+                Text(title)
+                    .font(InsightFont.callout)
+                if let count {
+                    Text(count)
+                        .font(InsightFont.monoSmall)
+                        .monospacedDigit()
+                        .opacity(0.7)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                isSelected ? InsightColor.accentSoft : (hovering ? InsightColor.neutralSoft : InsightColor.surface),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    isSelected ? InsightColor.accent.opacity(0.55) : (hovering ? InsightColor.borderStrong : InsightColor.border),
+                    lineWidth: 1
+                )
+            )
+            .foregroundStyle(isSelected ? InsightColor.textPrimary : (hovering ? InsightColor.textSecondary : InsightColor.textTertiary))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.96, playAudio: false))
+        .onHover { hovering = $0 }
+        .animation(reduceMotion ? nil : InsightMotion.tactile, value: hovering)
+        .animation(reduceMotion ? nil : InsightMotion.tactile, value: isSelected)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 
@@ -240,10 +389,10 @@ struct InsightProgressBar: View {
 
 // MARK: - 图标按钮
 
-/// Cutline 顶栏图标钮：无底色圆钮，hover 时浮现底色。
+/// 极简图标钮：微质感圆钮，hover 时平滑浮现底色。
 struct InsightIconButton: View {
     let icon: String
-    var size: CGFloat = 15
+    var size: CGFloat = 14
     var frame: CGFloat = 30
     var tint: Color = InsightColor.textSecondary
     var activeTint: Color? = nil
@@ -257,14 +406,23 @@ struct InsightIconButton: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(isActive && activeTint != nil ? activeTint! : tint)
+                .foregroundStyle(isActive && activeTint != nil ? activeTint! : (hovering ? InsightColor.textPrimary : tint))
                 .frame(width: frame, height: frame)
                 .background(
-                    (isActive && activeTint != nil ? activeTint!.opacity(0.16) : (hovering ? InsightColor.neutralSoft : .clear)),
-                    in: Circle()
+                    ZStack {
+                        if isActive && activeTint != nil {
+                            Circle().fill(activeTint!.opacity(0.14))
+                            Circle().strokeBorder(activeTint!.opacity(0.3), lineWidth: 1)
+                        } else if hovering {
+                            Circle().fill(InsightColor.surfaceRaised)
+                            Circle().strokeBorder(InsightColor.border, lineWidth: 1)
+                        }
+                    }
                 )
+                .animation(InsightMotion.tactile, value: hovering)
         }
-        .buttonStyle(.plain)
+        // 图标小钮补按压反馈（静默：机械开关音留给主按钮，避免高频小钮过吵）
+        .buttonStyle(PressableButtonStyle(scale: 0.90, playAudio: false))
         .onHover { hovering = $0 }
         .help(help)
         .accessibilityLabel(help.isEmpty ? icon : help)
@@ -289,19 +447,27 @@ struct InsightButton: View {
         Button(action: action) {
             HStack(spacing: InsightSpacing.small) {
                 if let icon {
-                    Image(systemName: icon).font(.system(size: 11.5, weight: .semibold))
+                    Image(systemName: icon)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .offset(x: hovering && style == .primary ? 1 : 0)
+                        .animation(InsightMotion.tactile, value: hovering)
                 }
                 Text(title)
                     .font(InsightFont.bodyStrong)
             }
-            .padding(.horizontal, style == .plain ? 10 : 14)
-            .padding(.vertical, 7)
+            .padding(.horizontal, style == .plain ? 10 : 15)
+            .padding(.vertical, 8)
             .foregroundStyle(foreground)
             .modifier(InsightButtonBackground(style: style, tint: tint, hovering: hovering))
+            .shadow(
+                color: Color.black.opacity(style == .primary && isEnabled ? (hovering ? 0.16 : 0.08) : 0),
+                radius: hovering ? 6 : 3,
+                y: hovering ? 2 : 1
+            )
+            .animation(InsightMotion.tactile, value: hovering)
             .opacity(isEnabled ? 1 : 0.4)
         }
-        // 高频按钮仅保留轻微按压反馈，hover 不改变几何。
-        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .buttonStyle(PressableButtonStyle(scale: 0.96))
         .disabled(!isEnabled)
         .onHover { hovering = $0 }
     }
@@ -376,9 +542,9 @@ struct InsightSidebarRow: View {
         Button(action: action) {
             HStack(spacing: InsightSpacing.compact) {
                 Image(systemName: icon)
-                    .font(.system(size: 13.5, weight: .medium))
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
                     .frame(width: 20)
-                    .foregroundStyle(isSelected ? InsightColor.accent : InsightColor.textTertiary)
+                    .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textTertiary)
                 if isExpanded {
                     Group {
                         Text(title)
@@ -399,7 +565,7 @@ struct InsightSidebarRow: View {
             }
             .foregroundStyle(isSelected ? InsightColor.textPrimary : (hovering ? InsightColor.textSecondary : InsightColor.textTertiary))
             .padding(.horizontal, isExpanded ? 10 : 0)
-            .padding(.vertical, 7)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: isExpanded ? .leading : .center)
             .background(
                 isSelected ? InsightColor.surfaceRaised : (hovering ? InsightColor.neutralSoft : .clear),
@@ -407,20 +573,15 @@ struct InsightSidebarRow: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: InsightRadius.control, style: .continuous)
-                    .strokeBorder(isSelected ? InsightColor.border : .clear, lineWidth: 1)
+                    .strokeBorder(isSelected ? AnyShapeStyle(InsightColor.borderStrong) : AnyShapeStyle(Color.clear), lineWidth: 1)
             )
-            .overlay(alignment: .leading) {
-                if isSelected {
-                    Capsule()
-                        .fill(InsightColor.accent)
-                        .frame(width: 3, height: 18)
-                        .padding(.leading, 2)
-                }
-            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        // 悬停底色与选中块都有过渡：侧栏是点击最密集的区域，硬跳最显廉价
+        .animation(reduceMotion ? nil : InsightMotion.tactile, value: hovering)
+        .animation(reduceMotion ? nil : InsightMotion.tactile, value: isSelected)
         .help(isExpanded ? hoverDescription : "")
         .sidebarHoverTip(hoverDescription, enabled: !isExpanded)
         .accessibilityLabel(title)
@@ -452,6 +613,46 @@ struct InsightListButtonStyle: ButtonStyle {
                 )
                 .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
                 .onHover { hovering = $0 }
+                .onHover { hovering in
+                    if hovering {
+                        NSCursor.pointingHand.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
         }
     }
 }
+
+/// 行内文字链接样式（「进入刷卡模式 ⌘2」「清除搜索」这类入口）：
+/// 悬停加亮 + 指针光标 + 按压微缩。不画底色，几何完全稳定。
+struct InsightTextLinkStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        Row(configuration: configuration, isEnabled: isEnabled)
+    }
+
+    private struct Row: View {
+        let configuration: ButtonStyleConfiguration
+        let isEnabled: Bool
+        @State private var hovering = false
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .opacity(isEnabled ? (configuration.isPressed ? 0.55 : (hovering ? 1.0 : 0.78)) : 0.45)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .onHover { hovering = $0 }
+                .onHover { hovering in
+                    if hovering {
+                        NSCursor.pointingHand.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
+                .animation(reduceMotion ? nil : InsightMotion.tactile, value: hovering)
+        }
+    }
+}
+

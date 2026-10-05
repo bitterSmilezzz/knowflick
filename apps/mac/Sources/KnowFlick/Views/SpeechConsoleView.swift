@@ -26,7 +26,7 @@ struct SpeechConsoleView: View {
 
     var body: some View {
         ZStack {
-            InsightColor.surfaceRaised
+            InsightColor.canvas
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -50,10 +50,17 @@ struct SpeechConsoleView: View {
     // MARK: - 顶栏
 
     private var headerBar: some View {
-        HStack {
-            Image(systemName: "headphones")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(InsightColor.accent)
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(InsightColor.accentSoft)
+                    .frame(width: 36, height: 36)
+                Image(systemName: "headphones")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(InsightColor.accent)
+            }
+            .overlay(Circle().strokeBorder(InsightColor.accent.opacity(0.3), lineWidth: 1))
+
             Text("语音听书控制台")
                 .font(InsightFont.title)
                 .foregroundStyle(InsightColor.textPrimary)
@@ -61,6 +68,8 @@ struct SpeechConsoleView: View {
             if let seconds = sleepSeconds {
                 // 睡眠定时状态药丸（状态即语义：面板主色 accent）
                 InsightPill(text: "睡眠 \(clock(seconds: seconds))", tone: .accent, icon: "moon.zzz.fill")
+                    .transition(.opacity)
+                    .animation(EditorialSpring.state, value: sleepSeconds == nil)
             }
             GlassIconButton(icon: "xmark", help: "关闭 (Esc)") {
                 onClose()
@@ -103,13 +112,13 @@ struct SpeechConsoleView: View {
                     }
                 }
 
-                Text(card.headline)
+                Text(card.displayHeadline)
                     .font(InsightFont.headline)
                     .foregroundStyle(InsightColor.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if !card.summary.isEmpty {
-                    Text(card.summary)
+                if !card.displaySummary.isEmpty {
+                    Text(card.displaySummary)
                         .font(InsightFont.callout)
                         .foregroundStyle(InsightColor.textMuted)
                         .lineLimit(2)
@@ -127,6 +136,7 @@ struct SpeechConsoleView: View {
         .padding(InsightSpacing.large)
         .background(InsightColor.surface, in: sectionShape)
         .overlay(sectionShape.strokeBorder(InsightColor.border, lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.12), radius: 10, y: 3)
     }
 
     private var statusText: String {
@@ -307,6 +317,7 @@ struct SpeechConsoleView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(InsightColor.surface, in: sectionShape)
         .overlay(sectionShape.strokeBorder(InsightColor.border, lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.12), radius: 10, y: 3)
     }
 
     private func tuningRow(
@@ -392,22 +403,26 @@ private struct ConsoleIconButton: View {
     let help: String
     let action: () -> Void
 
+    @State private var hovering = false
+
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: size * 0.4, weight: .semibold))
-                .foregroundStyle(InsightColor.textSecondary)
+                .foregroundStyle(hovering ? InsightColor.textPrimary : InsightColor.textSecondary)
                 .frame(width: size, height: size)
-                .background(InsightColor.surface, in: Circle())
-                .overlay(Circle().strokeBorder(InsightColor.border, lineWidth: 1))
+                .background(hovering ? InsightColor.surfaceRaised : InsightColor.surface, in: Circle())
+                .overlay(Circle().strokeBorder(hovering ? InsightColor.borderStrong : InsightColor.border, lineWidth: 1))
+                .animation(InsightMotion.tactile, value: hovering)
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.92, playAudio: false))
+        .onHover { hovering = $0 }
         .help(help)
         .accessibilityLabel(help)
     }
 }
 
-/// 中央播放 / 暂停大按键（主操作：accent 白字实底，去投影）
+/// 中央播放 / 暂停大按键（主操作：accent 白字实底 + 呼吸光晕）
 private struct ConsolePlayButton: View {
     let isPlaying: Bool
     let action: () -> Void
@@ -415,12 +430,15 @@ private struct ConsolePlayButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: 19, weight: .bold))
+                .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(Color.white)
-                .frame(width: 58, height: 58)
+                .frame(width: 56, height: 56)
                 .background(InsightColor.accent, in: Circle())
+                .overlay(Circle().strokeBorder(InsightColor.borderStrong, lineWidth: 1))
+                .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
+                .animation(InsightMotion.tactile, value: isPlaying)
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.94))
         .help(isPlaying ? "暂停朗读 (⌘P)" : "继续朗读 (⌘P)")
         .accessibilityLabel(isPlaying ? "暂停朗读" : "继续朗读")
     }
@@ -432,28 +450,38 @@ private struct ConsolePillRow: View {
     let selected: Double
     let pick: (Double) -> Void
 
+    @State private var hovered: Double? = nil
+
     var body: some View {
         HStack(spacing: InsightSpacing.hair) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = abs(option.value - selected) < 0.06
+                let isHovered = abs(option.value - (hovered ?? -99)) < 0.06
                 Button {
                     pick(option.value)
                 } label: {
                     Text(option.label)
                         .font(InsightFont.bodyStrong)
-                        .foregroundStyle(isSelected ? InsightColor.textPrimary : InsightColor.textTertiary)
+                        .foregroundStyle(isSelected ? InsightColor.textPrimary : (isHovered ? InsightColor.textSecondary : InsightColor.textTertiary))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, InsightSpacing.small)
                         .background {
-                            if isSelected {
-                                Capsule()
-                                    .fill(InsightColor.surfaceRaised)
-                                    .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
+                            ZStack {
+                                if isSelected {
+                                    Capsule()
+                                        .fill(InsightColor.surfaceRaised)
+                                        .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
+                                } else if isHovered {
+                                    Capsule().fill(InsightColor.neutralSoft.opacity(0.6))
+                                }
                             }
                         }
                         .contentShape(Capsule())
                 }
-                .buttonStyle(PressableButtonStyle())
+                .buttonStyle(PressableButtonStyle(playAudio: false))
+                .onHover { hovering in
+                    hovered = hovering ? option.value : nil
+                }
                 .accessibilityLabel(option.label)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
@@ -461,5 +489,8 @@ private struct ConsolePillRow: View {
         .padding(3)
         .background(InsightColor.surfaceSunken, in: Capsule())
         .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
+        // 选中胶囊的吸边与悬停底色都有过渡
+        .animation(InsightMotion.tactile, value: selected)
+        .animation(InsightMotion.tactile, value: hovered)
     }
 }

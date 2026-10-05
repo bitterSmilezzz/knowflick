@@ -70,29 +70,55 @@ struct InsightToast: View {
     var edge: Edge = .bottom
 
     var body: some View {
-        if let message = center.message {
-            HStack(spacing: 8) {
+        Group {
+            if let message = center.message {
+                HStack(spacing: 9) {
                 Image(systemName: center.style.icon)
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(center.style.tint)
                 Text(message)
                     .lineLimit(2)
+                    .font(InsightFont.bodyStrong)
                 Button {
                     center.dismiss()
                 } label: {
                     Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(InsightColor.textSecondary)
+                        .padding(4)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("关闭提示")
             }
-            .font(.callout)
             .foregroundStyle(InsightColor.textPrimary)
-            .padding(.horizontal, InsightSpacing.medium)
-            .padding(.vertical, 10)
-            .background(InsightColor.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(InsightColor.border, lineWidth: 1))
-            .editorialControlShadow()
+            .padding(.horizontal, InsightSpacing.large)
+            .padding(.vertical, 11)
+            .background {
+                ZStack {
+                    InsightColor.surfaceRaised.opacity(0.92)
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.12), location: 0),
+                            .init(color: Color.clear, location: 0.5)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+            }
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(InsightColor.doubleBezelStroke, lineWidth: 1.2)
+            )
+            .shadow(color: center.style.tint.opacity(0.24), radius: 24, y: 10)
+            .shadow(color: Color.black.opacity(0.42), radius: 14, y: 5)
             .transition(toastTransition)
+            }
         }
+        // 动画上下文自持：进出场不再依赖宿主包 withAnimation（此前 7 个宿主各自兜底、
+        // 参数还不一致，主界面的 Toast 更是直接硬蹦）
+        .animation(EditorialSpring.content, value: center.message)
     }
 
     /// 从 `edge` 外侧滑入 + 淡入，配合 0.96 → 1.0 的轻微回弹收缩。
