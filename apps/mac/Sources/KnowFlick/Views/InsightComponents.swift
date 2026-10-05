@@ -424,7 +424,7 @@ struct InsightIconButton: View {
         // 图标小钮补按压反馈（静默：机械开关音留给主按钮，避免高频小钮过吵）
         .buttonStyle(PressableButtonStyle(scale: 0.90, playAudio: false))
         .onHover { hovering = $0 }
-        .help(help)
+        .help(Text(LocalizedStringKey(help)))
         .accessibilityLabel(help.isEmpty ? icon : help)
     }
 }

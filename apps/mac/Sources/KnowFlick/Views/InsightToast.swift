@@ -76,7 +76,7 @@ struct InsightToast: View {
                 Image(systemName: center.style.icon)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(center.style.tint)
-                Text(message)
+                Text(LocalizedStringKey(message))
                     .lineLimit(2)
                     .font(InsightFont.bodyStrong)
                 Button {
