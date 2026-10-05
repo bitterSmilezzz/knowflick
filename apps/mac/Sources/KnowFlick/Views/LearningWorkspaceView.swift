@@ -839,9 +839,7 @@ struct LearningWorkspaceView: View {
             } else {
                 // 今日到期已完成提示卡
                 HStack(spacing: InsightSpacing.default) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(InsightColor.success)
+                    InsightInkEmptyArt(size: 46)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("今日到期复习已全部完成 ✨")
                             .font(InsightFont.bodyStrong)
@@ -1064,13 +1062,33 @@ struct LearningWorkspaceView: View {
             }
 
             if results.isEmpty {
-                InsightEmptyState(
-                    icon: "magnifyingglass",
-                    title: "没有匹配的知识",
-                    message: "试试其他关键词，或重置主题与学习状态筛选。",
-                    actionTitle: "重置筛选",
-                    action: { query = ""; category = "全部主题"; filter = .all; show(.library) }
-                )
+                if collection == .saved && store.favorites.isEmpty {
+                    InsightEmptyState(
+                        icon: "heart",
+                        inkArt: true,
+                        title: "还没有收藏",
+                        message: "刷卡时右滑，或按 → 键把感兴趣的卡片收进这里。",
+                        actionTitle: "去刷卡",
+                        action: { explore() }
+                    )
+                } else if collection == .history && store.history.isEmpty {
+                    InsightEmptyState(
+                        icon: "clock",
+                        inkArt: true,
+                        title: "还没有刷过卡片",
+                        message: "浏览过的卡片会按时间出现在这里。",
+                        actionTitle: "去刷卡",
+                        action: { explore() }
+                    )
+                } else {
+                    InsightEmptyState(
+                        icon: "magnifyingglass",
+                        title: "没有匹配的知识",
+                        message: "试试其他关键词，或重置主题与学习状态筛选。",
+                        actionTitle: "重置筛选",
+                        action: { query = ""; category = "全部主题"; filter = .all; show(.library) }
+                    )
+                }
             } else if isGridLayout {
                 // 自适应多列卡片网格：完全消灭宽屏下的横向大面积留白
                 LazyVGrid(

@@ -398,13 +398,11 @@ struct GlobalSearchModalView: View {
     private var emptySearchResultsView: some View {
         VStack(spacing: 16) {
             Spacer(minLength: 24)
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 38))
-                .foregroundStyle(InsightColor.textTertiary)
+            InsightInkEmptyArt(size: 88)
 
             if query.isEmpty {
                 Text("输入任意关键词探索知识库")
-                    .font(InsightFont.headline)
+                    .font(InsightFont.display(18))
                     .foregroundStyle(InsightColor.textPrimary)
                 Text("支持中文拼音首字母（如 xzl 搜租赁）、学科领域、作者文献或正文细节")
                     .font(InsightFont.caption)
@@ -432,7 +430,7 @@ struct GlobalSearchModalView: View {
                 .padding(.top, 4)
             } else {
                 Text("未找到与「\(query)」相关的卡片")
-                    .font(InsightFont.headline)
+                    .font(InsightFont.display(18))
                     .foregroundStyle(InsightColor.textPrimary)
                 Text("尝试精简搜索词，或切换来源与分类范围")
                     .font(InsightFont.caption)
