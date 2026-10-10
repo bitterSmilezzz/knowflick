@@ -77,6 +77,16 @@ unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" |
 - 合并前先 rebase 到最新 `main`，保持历史线性（与仓库现有习惯一致）。
 - 跨端改动（如本规范引入的目录调整）单独开分支，不要混进某端的功能分支。
 
+### 多机协作（macOS / Windows 双机）
+
+本仓库在 macOS 与 Windows 两台机器上由 agent 并行开发。**同步中枢只有 GitHub，永不同步工作目录**——两个 agent 同时写同一份 `.git` 会损坏索引，构建产物（mac `.build`、android `build/`）也不跨机复制。
+
+- **一个分支同一时刻只在一台机器签出。** 接活前 `git fetch` 确认起点；开工先推到 origin，对端看到即视为「已被占」。
+- **改动的端在能验证它的机器上做**（mac UI 层↔Xcode、Windows 端↔Windows SDK、Android↔JDK 17 + SDK）；本地跑不了的验证由 CI 兜底，不得跳过 CI 结论核对。
+- **行尾统一 LF**，由根目录 `.gitattributes` 管辖；Windows 上 `core.autocrlf` 应设 `false`（或 `input`），不得设 `true`。
+- 跨会话结论必须落到仓库文件（`docs/` / `CONTEXT.md` / 代码注释），只留在本机 `.scratch/` 的结论对端看不到。
+- 双机工作流与项目级 agent 约定的完整说明见根目录 [AGENTS.md](../AGENTS.md)；新机器环境搭建见 [WINDOWS_ONBOARDING.md](WINDOWS_ONBOARDING.md)。
+
 ## 提交与发布
 
 ### 提交信息
@@ -154,18 +164,18 @@ tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是�
 
 | 端 | 依赖 | 本机状态 |
 | --- | --- | --- |
-| android | JDK 17、Android SDK（Platform 35 + Build Tools 35.0.0） | ✅ 可用 |
-| mac | **完整 Xcode**（SwiftUI 宏需要 Xcode 的工具链插件） | ⚠️ 本机只有 CommandLineTools，`Sources/KnowFlick/**` 无法编译，`KnowFlickCore` 可构建 |
+| android | JDK 17、Android SDK（Platform 35 + Build Tools 35.0.0） | ✅ 可用（Homebrew openjdk@17 + `~/Library/Android/sdk`） |
+| mac | **完整 Xcode**（SwiftUI 宏需要 Xcode 的工具链插件） | ✅ 可用（2026-10 起 `/Applications/Xcode.app` 已装，Swift 6.4；UI 层可本机编译验证） |
 
-#### 只有 CommandLineTools 时如何验证 mac 端
+#### 无完整 Xcode 时的降级验证（备用口径）
 
 ```sh
-./tools/test.sh --core-only    # 175 项 KnowFlickCoreTests，无需完整 Xcode
+./tools/test.sh --core-only    # 只跑 KnowFlickCoreTests，无需完整 Xcode
 ./tools/test.sh                # 全量测试，需要完整 Xcode
 ```
 
 `--core-only` 只构建测试目标再 `--skip-build` 运行，绕开执行文件对 SwiftUI 宏的依赖。
-UI 层（`Sources/KnowFlick/**`）的编译验证仍需完整 Xcode，本地无法覆盖——这部分交给
-[macOS workflow](.github/workflows/macos.yml)，它跑在自带 Xcode 的 `macos-15` runner 上。
+UI 层（`Sources/KnowFlick/**`）的编译验证在已装完整 Xcode 的机器上本机进行，否则交给
+[macOS workflow](.github/workflows/macos.yml)（`macos-15` runner 自带 Xcode）。
 
 mac 端 UI 层编译失败的报错形如 `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`——这是缺完整 Xcode，不是代码问题。需要本地构建完整 `.app` 时先安装 Xcode 并 `sudo xcode-select -s /Applications/Xcode.app`。
