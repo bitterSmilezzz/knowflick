@@ -164,18 +164,18 @@ tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是�
 
 | 端 | 依赖 | 本机状态 |
 | --- | --- | --- |
-| android | JDK 17、Android SDK（Platform 35 + Build Tools 35.0.0） | ✅ 可用 |
-| mac | **完整 Xcode**（SwiftUI 宏需要 Xcode 的工具链插件） | ⚠️ 本机只有 CommandLineTools，`Sources/KnowFlick/**` 无法编译，`KnowFlickCore` 可构建 |
+| android | JDK 17、Android SDK（Platform 35 + Build Tools 35.0.0） | ✅ 可用（Homebrew openjdk@17 + `~/Library/Android/sdk`） |
+| mac | **完整 Xcode**（SwiftUI 宏需要 Xcode 的工具链插件） | ✅ 可用（2026-10 起 `/Applications/Xcode.app` 已装，Swift 6.4；UI 层可本机编译验证） |
 
-#### 只有 CommandLineTools 时如何验证 mac 端
+#### 无完整 Xcode 时的降级验证（备用口径）
 
 ```sh
-./tools/test.sh --core-only    # 175 项 KnowFlickCoreTests，无需完整 Xcode
+./tools/test.sh --core-only    # 只跑 KnowFlickCoreTests，无需完整 Xcode
 ./tools/test.sh                # 全量测试，需要完整 Xcode
 ```
 
 `--core-only` 只构建测试目标再 `--skip-build` 运行，绕开执行文件对 SwiftUI 宏的依赖。
-UI 层（`Sources/KnowFlick/**`）的编译验证仍需完整 Xcode，本地无法覆盖——这部分交给
-[macOS workflow](.github/workflows/macos.yml)，它跑在自带 Xcode 的 `macos-15` runner 上。
+UI 层（`Sources/KnowFlick/**`）的编译验证在已装完整 Xcode 的机器上本机进行，否则交给
+[macOS workflow](.github/workflows/macos.yml)（`macos-15` runner 自带 Xcode）。
 
 mac 端 UI 层编译失败的报错形如 `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`——这是缺完整 Xcode，不是代码问题。需要本地构建完整 `.app` 时先安装 Xcode 并 `sudo xcode-select -s /Applications/Xcode.app`。
