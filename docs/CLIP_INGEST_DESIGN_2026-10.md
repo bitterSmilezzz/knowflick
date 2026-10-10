@@ -86,7 +86,7 @@ Fact { key, value, origin: api | page | manual, asOf(取数日期), verification
 | 端 | 位置 | 处理 |
 |---|---|---|
 | mac | `apps/mac/Sources/KnowFlickCore/Models/KnowledgeCard.swift` + 新增 `Entry.swift` | 读写双方 |
-| Android | `apps/android/app/src/main/kotlin/com/knowflick/app/domain/Card.kt`（冻结）+ `Entry.kt`（只解不写） | 新字段解出 nil 即忽略 |
+| Android | `apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/Card.kt`（冻结，2026-10-10 随 KMP 探针迁入 `:domain` 模块）+ `Entry.kt`（只解不写） | 新字段解出 nil 即忽略 |
 | MCP | `tools/knowflick-mcp/lib.mjs`（现 313-352 行的校验） | `kf_ingest` 的入参校验，非法值拒收 |
 
 契约夹具放 `shared/assets/`（与 `taxonomy_map.json` 同批风格），双端各加一条 parity 测试逐字段比对，
