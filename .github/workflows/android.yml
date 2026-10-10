@@ -100,7 +100,9 @@ jobs:
       - name: 单元测试与 Lint
         run: |
           cd apps/android
-          ./gradlew --console=plain :app:testDebugUnitTest :app:lintDebug
+          # :domain 是 2026-10-10 起的 KMP 领域层模块（androidTarget + jvm），领域层测试套件
+          # 已整体迁入其 jvmTest。必须显式点名，否则 :app 的测试总数会掉 171 项而无任何提示。
+          ./gradlew --console=plain :app:testDebugUnitTest :domain:jvmTest :app:lintDebug
 
       - name: 汇总测试结果
         if: always()
@@ -109,7 +111,9 @@ jobs:
           python3 - <<'PY'
           import glob, sys, xml.etree.ElementTree as ET
           total = failed = skipped = 0
-          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+          # 两个测试任务的结果目录都要收：领域层迁入 :domain 后，只扫 app 会漏报。
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml') + \
+                      glob.glob('domain/build/test-results/jvmTest/*.xml'):
               root = ET.parse(path).getroot()
               total += int(root.get('tests', 0))
               failed += int(root.get('failures', 0)) + int(root.get('errors', 0))
