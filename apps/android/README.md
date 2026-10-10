@@ -15,10 +15,25 @@ sdk.dir=/absolute/path/to/Android/sdk
 在 `apps/android` 目录运行：
 
 ```sh
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+./gradlew :app:testDebugUnitTest :domain:jvmTest :app:lintDebug :app:assembleDebug
 # 先启动安卓模拟器或连接允许 USB 调试的测试手机
 ./gradlew :app:connectedDebugAndroidTest
 ```
+
+`:domain:jvmTest` 必须显式点名：领域层测试（171 项）已迁到 `:domain`，只跑 `:app:testDebugUnitTest`
+不会带上它们，也不会报错。
+
+### :domain 模块（KMP 领域层）
+
+`domain/` 是 2026-10 抽出的 Kotlin Multiplatform 模块（`androidTarget` + `jvm`），承载与 Android
+框架无关的领域逻辑：卡片模型、卡库状态机、学科与学习范围、统计、搜索、图谱、间隔重复、网页剪藏抽取
+（19 文件 4149 行，包名仍是 `com.knowflick.app.domain`）。`:app` 经 `project(":domain")` 消费。
+
+- 源集约定：平台无关代码放 `commonMain`；**含 `java.time` / `java.util` 的文件放 `jvmAndAndroidMain`**
+  （手建中间源集），不要放 `commonMain`。
+- **`./gradlew :domain:jvmTest` 不需要 Android SDK**，只需 JDK 17——桌面/无法装 SDK 的机器也能开发与回归
+  这份逻辑，这正是它存在的理由（Windows 端路线探针，结论见
+  [docs/windows-route/KMP_PROBE_RESULT.md](../../docs/windows-route/KMP_PROBE_RESULT.md)）。
 
 设备测试安装的是 Debug 签名包，建议使用独立测试 AVD；已安装 Release 的设备无法直接覆盖安装 Debug。
 

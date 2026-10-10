@@ -24,7 +24,9 @@ import taxonomy
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SWIFT_REGISTRY = REPO_ROOT / "apps/mac/Sources/KnowFlickCore/Models/SubjectRegistry.swift"
-KOTLIN_REGISTRY = REPO_ROOT / "apps/android/app/src/main/kotlin/com/knowflick/app/domain/SubjectRegistry.kt"
+# 2026-10-10 KMP 探针迁移：Kotlin 学科表从 app 模块移入 :domain（KMP）模块，
+# 包名不变（com.knowflick.app.domain），仅物理路径变化——本脚本按路径抓文件，需同步更新。
+KOTLIN_REGISTRY = REPO_ROOT / "apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/SubjectRegistry.kt"
 
 
 def check_regilities(data: dict) -> list[str]:

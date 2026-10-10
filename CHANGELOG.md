@@ -14,6 +14,11 @@
 - macOS：卡堆为空的界面文案区分两种空态——「还没有第一批知识」给出剪藏/导入入口，「今天的知识刷完了」才给重新探索；设置页移除「启用预置精选知识库」开关。
 - 工具链与 CI：`sync_shared_assets.sh` 不再搬运种子卡并改为校验底图数量；`build_app.sh` 与两条 workflow 的产物校验从「种子卡数量/SHA」改为底图数量一致性；`tools/check_taxonomy.py` 的内容校验改为「给定路径存在才跑」。
 - 文档：`README.md` 与 `CONTEXT.md` 中关于预置库、来源开关、存储回退与增量合并的口径同步更新。
+- 跨平台（Windows 路线探针）：**Android 领域层迁入 KMP 模块 `:domain`**（`androidTarget` + `jvm` 双 target）——卡片模型、卡库状态机、学科与学习范围、统计、搜索、图谱、间隔重复、剪藏抽取共 19 文件 4149 行整体迁入，包名 `com.knowflick.app.domain` 不变，装配层 import 零改动；今后桌面端走同一个 `jvm` target 复用这份逻辑。结论见 [KMP 探针结果](docs/windows-route/KMP_PROBE_RESULT.md)。
+- 跨平台（实测结论）：含 `java.time` / `java.util` 的文件落在手建的 `jvmAndAndroidMain` 中间源集——放进 `commonMain` 在双 JVM target 下虽能编译通过，但那是元数据编译被跳过的副作用，加非 JVM target 即失效，仓库因此把可移植边界画在源集上。
+- 工具链与 CI：`tools/build_android.sh` 与 `android.yml` **显式点名 `:domain:jvmTest`**（领域层 171 项测试迁出 `:app` 后，不点名会静默少跑）；workflow 的测试汇总同时扫 `app/…/testDebugUnitTest/*.xml` 与 `domain/…/jvmTest/*.xml`；`tools/check_taxonomy.py` 的 Kotlin 学科表路径随迁。
+- 构建（双机网络）：Gradle wrapper 改走华为云镜像并补官方 `distributionSha256Sum`（镜像损坏即校验失败），超时 10s→60s、重试 3 次；本地默认启用阿里云仓库，检测到 CI 环境变量时只用官方源。
+- 验证口径：**领域层测试不再需要 Android SDK**——只需 JDK 17 即可 `./gradlew :domain:jvmTest`（171 项）；Android 装配层（`:app`）仍需要 SDK。
 
 ## [v0.2.0] - 2026-10-02
 
