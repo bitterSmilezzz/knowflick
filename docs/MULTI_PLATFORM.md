@@ -77,6 +77,16 @@ unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" |
 - 合并前先 rebase 到最新 `main`，保持历史线性（与仓库现有习惯一致）。
 - 跨端改动（如本规范引入的目录调整）单独开分支，不要混进某端的功能分支。
 
+### 多机协作（macOS / Windows 双机）
+
+本仓库在 macOS 与 Windows 两台机器上由 agent 并行开发。**同步中枢只有 GitHub，永不同步工作目录**——两个 agent 同时写同一份 `.git` 会损坏索引，构建产物（mac `.build`、android `build/`）也不跨机复制。
+
+- **一个分支同一时刻只在一台机器签出。** 接活前 `git fetch` 确认起点；开工先推到 origin，对端看到即视为「已被占」。
+- **改动的端在能验证它的机器上做**（mac UI 层↔Xcode、Windows 端↔Windows SDK、Android↔JDK 17 + SDK）；本地跑不了的验证由 CI 兜底，不得跳过 CI 结论核对。
+- **行尾统一 LF**，由根目录 `.gitattributes` 管辖；Windows 上 `core.autocrlf` 应设 `false`（或 `input`），不得设 `true`。
+- 跨会话结论必须落到仓库文件（`docs/` / `CONTEXT.md` / 代码注释），只留在本机 `.scratch/` 的结论对端看不到。
+- 双机工作流与项目级 agent 约定的完整说明见根目录 [AGENTS.md](../AGENTS.md)；新机器环境搭建见 [WINDOWS_ONBOARDING.md](WINDOWS_ONBOARDING.md)。
+
 ## 提交与发布
 
 ### 提交信息

@@ -31,11 +31,18 @@ fi
 APK=app/build/outputs/apk/release/app-release.apk
 "$SDK/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
 "$SDK/build-tools/35.0.0/zipalign" -c -P 16 4 "$APK"
-VERSION="$(python3 -c 'import json; print(json.load(open("app/build/outputs/apk/release/output-metadata.json"))["elements"][0]["versionName"])')"
+# python3（macOS/Linux）与 python（Windows Git Bash / 部分发行版）都可能不存在对方那个。
+PYTHON="$(command -v python3 || command -v python)"
+VERSION="$("$PYTHON" -c 'import json; print(json.load(open("app/build/outputs/apk/release/output-metadata.json"))["elements"][0]["versionName"])')"
 OUT="$ROOT/dist/android"
 mkdir -p "$OUT"
 cp "$APK" "$OUT/KnowFlick-$VERSION.apk"
 cp app/build/outputs/mapping/release/mapping.txt "$OUT/KnowFlick-$VERSION-mapping.txt"
 cd "$OUT"
-shasum -a 256 "KnowFlick-$VERSION.apk" > "KnowFlick-$VERSION.apk.sha256"
+# shasum 是 macOS 自带；sha256sum 是 Linux/Windows Git Bash 的等价物。
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum "KnowFlick-$VERSION.apk" > "KnowFlick-$VERSION.apk.sha256"
+else
+  shasum -a 256 "KnowFlick-$VERSION.apk" > "KnowFlick-$VERSION.apk.sha256"
+fi
 echo "APK: $OUT/KnowFlick-$VERSION.apk"

@@ -1,0 +1,43 @@
+# 行尾与文本规范——多机协作（macOS / Windows）的防漂移基线。
+#
+# 背景：本仓库在 macOS 与 Windows 两台机器上由 agent 并行开发。没有本文件时，
+# Windows 的 `core.autocrlf=true` 默认会在 checkout 时把 LF 换成 CRLF，导致：
+#   1. 每次 `git status` 出现整文件「修改」的假 diff；
+#   2. Swift/Kotlin/Gradle 脚本里 CRLF 混入（shell 脚本 CRLF 直接执行失败）。
+# 统一规则：仓库内一律 LF，Windows 侧由 Git 在 checkout 时按本文件处理。
+
+# 默认：文本文件一律入库 LF，checkout 时不转换（各平台编辑器均支持 LF）。
+* text=auto eol=lf
+
+# Windows 批处理必须保持 CRLF——cmd.exe 对 LF 结尾的 .bat 兼容性差。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 脚本显式 LF（shebang 行不能带 \r）。
+*.sh text eol=lf
+gradlew text eol=lf
+
+# 二进制——禁止任何行尾转换与 diff。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.icns binary
+*.ico binary
+*.zip binary
+*.apk binary
+*.jks binary
+*.keystore binary
+
+# 文本但无需逐行 diff 的生成/锁定物。
+*.lock text eol=lf
+
+# 语言归属（diff 语法高亮 + 统计准确）。
+*.swift diff=swift
+*.kt diff=kotlin
+*.kts diff=kotlin
+
+# GitHub 语言统计：把本地化与文档算作文档而非代码。
+*.md linguist-documentation
+docs/** linguist-documentation
