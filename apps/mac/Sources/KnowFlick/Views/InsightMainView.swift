@@ -38,9 +38,10 @@ struct InsightMainView: View {
     @State private var destination: InsightDestination = .today
     @State private var toolReturnDestination: InsightDestination = .today
 
-    /// 三个知识来源（预置库 / AI 生成）全关时队列恒为空，空状态需给出可行动引导
-    private var allSourcesDisabled: Bool {
-        !store.settings.enableSeed && !store.settings.enableAI
+    /// 卡库为空与「都刷完了」是两种不同的空态：前者要引导用户去采集第一批知识，
+    /// 后者才该给「重新探索」。预置库退役后，空库是正常起点而不是异常状态。
+    private var libraryIsEmpty: Bool {
+        store.cards.isEmpty
     }
 
     var body: some View {
@@ -1236,8 +1237,8 @@ struct InsightMainView: View {
     // MARK: - 空状态
 
     private var emptyStateSubtitle: String {
-        if allSourcesDisabled {
-            return "当前已关闭全部知识来源（预置精选库与 AI 生成），开启后即可继续刷卡片"
+        if libraryIsEmpty {
+            return "库还是空的。剪藏一个网页、导入一篇笔记，或让 AI 生成几张，就有了第一批知识。"
         }
         return !store.settings.isAIConfigured
             ? "去设置里配置 AI 服务，就能持续生成新知识"
@@ -1247,7 +1248,7 @@ struct InsightMainView: View {
     private var emptyState: some View {
         VStack(spacing: InsightSpacing.large) {
             InsightInkEmptyArt(size: 104, sealDot: true)
-            Text("今天的知识刷完了")
+            Text(libraryIsEmpty ? "还没有第一批知识" : "今天的知识刷完了")
                 .font(InsightFont.display(22))
                 .foregroundStyle(InsightColor.textPrimary)
             Text(emptyStateSubtitle)
@@ -1258,15 +1259,17 @@ struct InsightMainView: View {
                 .frame(maxWidth: 380)
 
             HStack(spacing: InsightSpacing.compact) {
-                InsightButton(title: "搜索知识库", icon: "magnifyingglass", style: .secondary) {
-                    activeSheet = .search
-                }
-                if allSourcesDisabled {
-                    // 来源全关时队列恒为空，clearHistory 无效，改为直接打开偏好设置
-                    InsightButton(title: "打开偏好设置", icon: "gearshape", style: .secondary) {
-                        activeSheet = .settings
+                if libraryIsEmpty {
+                    InsightButton(title: "从网页剪藏", icon: "link", style: .primary) {
+                        activeSheet = .webClip
+                    }
+                    InsightButton(title: "导入笔记", icon: "square.and.arrow.down", style: .secondary) {
+                        activeSheet = .importNotes
                     }
                 } else {
+                    InsightButton(title: "搜索知识库", icon: "magnifyingglass", style: .secondary) {
+                        activeSheet = .search
+                    }
                     InsightButton(title: "重新探索全部卡片", icon: "arrow.counterclockwise", style: .secondary) {
                         withAnimation(InsightMotion.shell) { store.clearHistory() }
                     }
@@ -1274,7 +1277,7 @@ struct InsightMainView: View {
                 if store.settings.isAIConfigured && store.settings.enableAI {
                     InsightButton(
                         title: "生成新知识", icon: "cpu",
-                        style: .primary, tint: InsightColor.warning,
+                        style: .secondary, tint: InsightColor.warning,
                         isEnabled: !store.isGenerating
                     ) {
                         Task { await store.generateNewCards(count: 5) }

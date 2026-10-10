@@ -64,7 +64,7 @@ class SyncProtocolFixtureTest {
         val tombstone = Tombstone("f1", 1_727_900_001_000L)
 
         // 规则 2：本地墓碑 deletedAt ≥ 卡片时间戳 → 拒收（不复活）
-        val resisting = CardStore(seedCards = emptyList())
+        val resisting = CardStore()
         resisting.loadTombstones(listOf(tombstone))
         val resisted = resisting.restoreSyncPayload(listOf(oldCard), emptyList())
         assertTrue(resisting.cards.isEmpty(), "createdAt=1727900000000 遇墓碑 1727900001000 → 拒收")
@@ -73,7 +73,7 @@ class SyncProtocolFixtureTest {
         assertEquals(listOf(tombstone), resisting.tombstones, "抵抗后墓碑保留")
 
         // 规则 2 复活分支：卡片时间戳 > deletedAt → 复活合并
-        val reviving = CardStore(seedCards = emptyList())
+        val reviving = CardStore()
         reviving.loadTombstones(listOf(tombstone))
         val revived = reviving.restoreSyncPayload(listOf(newCard), emptyList())
         assertEquals(listOf(newCard), reviving.cards, "createdAt=1727900002000 → 复活合并")
@@ -81,14 +81,14 @@ class SyncProtocolFixtureTest {
         assertEquals(emptyList(), reviving.tombstones, "复活后清除同 id 墓碑")
 
         // 规则 1 对偶：收到墓碑时本地旧卡被删、新卡保留
-        val deleting = CardStore(seedCards = emptyList())
+        val deleting = CardStore()
         deleting.replaceAll(listOf(oldCard))
         val deleted = deleting.restoreSyncPayload(emptyList(), listOf(tombstone))
         assertTrue(deleting.cards.isEmpty())
         assertEquals(1, deleted.deleted)
         assertEquals(listOf(tombstone), deleting.tombstones)
 
-        val keeping = CardStore(seedCards = emptyList())
+        val keeping = CardStore()
         keeping.replaceAll(listOf(newCard))
         val kept = keeping.restoreSyncPayload(emptyList(), listOf(tombstone))
         assertEquals(listOf(newCard), keeping.cards, "卡片比对端墓碑更新 → 保留")
@@ -99,7 +99,7 @@ class SyncProtocolFixtureTest {
     /** §4.5：本地不存在的 id 收到墓碑也照记（防已删卡经第三方副本回流后再次灌入） */
     @Test
     fun tombstoneForUnknownIdIsStillRecorded() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val tombstone = Tombstone("dead", 1_727_900_001_000L)
 
         val result = store.restoreSyncPayload(emptyList(), listOf(tombstone))
@@ -141,8 +141,8 @@ class SyncProtocolFixtureTest {
         val tombX = Tombstone("x", 1_727_900_001_000L)
 
         // 场景 1：先 A→B（A 推卡片），后 B→A（B 推墓碑+卡片）
-        val a1 = CardStore(seedCards = emptyList()).also { it.replaceAll(listOf(cardX)) }
-        val b1 = CardStore(seedCards = emptyList()).also {
+        val a1 = CardStore().also { it.replaceAll(listOf(cardX)) }
+        val b1 = CardStore().also {
             it.replaceAll(listOf(cardY))
             it.loadTombstones(listOf(tombX))
         }
@@ -150,8 +150,8 @@ class SyncProtocolFixtureTest {
         a1.restoreSyncPayload(b1.cards, b1.tombstones)   // B→A：x 被删、y 合入、墓碑记入
 
         // 场景 2（对称）：先 B→A，后 A→B
-        val a2 = CardStore(seedCards = emptyList()).also { it.replaceAll(listOf(cardX)) }
-        val b2 = CardStore(seedCards = emptyList()).also {
+        val a2 = CardStore().also { it.replaceAll(listOf(cardX)) }
+        val b2 = CardStore().also {
             it.replaceAll(listOf(cardY))
             it.loadTombstones(listOf(tombX))
         }
@@ -176,8 +176,8 @@ class SyncProtocolFixtureTest {
     @Test
     fun tombstoneExchangeSecondRoundIsNoOp() {
         val cardY = fixtureCard(id = "y", headline = "B 独有的卡", createdAt = 1_727_900_002_000L)
-        val a = CardStore(seedCards = emptyList())
-        val b = CardStore(seedCards = emptyList()).also {
+        val a = CardStore()
+        val b = CardStore().also {
             it.replaceAll(listOf(cardY))
             it.loadTombstones(listOf(Tombstone("x", 1_727_900_001_000L)))
         }

@@ -129,26 +129,19 @@ jobs:
         run: |
           set -euo pipefail
           APK=apps/android/app/build/outputs/apk/debug/app-debug.apk
-          # 期望值从共享资产源头现算，不写死 42/214：底图或种子卡一增删，mac 与 android
-          # 两条 workflow 会同时变红，而失败信息看起来像「产物坏了」，会误导排查方向。
+          # 期望值从共享资产源头现算，不写死 42：底图一增删，mac 与 android 两条 workflow
+          # 会同时变红，而失败信息看起来像「产物坏了」，会误导排查方向。
           EXPECT_IMAGES=$(ls shared/assets/bg/*.webp 2>/dev/null | wc -l | tr -d ' ' || true)
-          EXPECT_SEEDS=$(python3 -c "import json;print(len(json.load(open('shared/assets/seed_cards.json'))))" 2>/dev/null || echo 0)
-          SRC_SEED_SHA=$(shasum -a 256 shared/assets/seed_cards.json | cut -d' ' -f1)
           test "$EXPECT_IMAGES" -gt 0 || { echo "::error::shared/assets 下没有底图"; exit 1; }
-          test "$EXPECT_SEEDS" -gt 0 || { echo "::error::shared/assets/seed_cards.json 为空"; exit 1; }
 
           # 共享资源应来自仓库根 shared/assets（android 侧由 assets.srcDirs 指向）。
           # release 包走 R8 与资源压缩，资源有被误删的可能，因此两个包都要验。
           check_apk() {
-            local apk="$1" label="$2" seeds images sha
+            local apk="$1" label="$2" images
             test -f "$apk" || { echo "::error::缺少 ${label}：$apk"; exit 1; }
-            seeds=$(unzip -l "$apk" | grep -c 'assets/seed_cards.json' || true)
             images=$(unzip -l "$apk" | grep -c 'assets/bg/.*\.webp' || true)
-            echo "${label}：种子卡 $seeds 份；底图 $images 张（源头底图 $EXPECT_IMAGES 张、种子卡 $EXPECT_SEEDS 张）"
-            test "$seeds" -eq 1 || { echo "::error::${label} 内应有且仅有 1 份种子卡，实际 $seeds"; exit 1; }
+            echo "${label}：底图 $images 张（源头 $EXPECT_IMAGES 张）"
             test "$images" -eq "$EXPECT_IMAGES" || { echo "::error::${label} 内底图 $images 张，与 shared/assets 的 $EXPECT_IMAGES 张不一致"; exit 1; }
-            sha=$(unzip -p "$apk" assets/seed_cards.json | shasum -a 256 | cut -d' ' -f1)
-            test "$sha" = "$SRC_SEED_SHA" || { echo "::error::${label} 内种子卡与 shared/assets 源文件不一致"; exit 1; }
           }
           check_apk "$APK" "debug APK"
           RELEASE_APK=$(ls apps/android/app/build/outputs/apk/release/app-release*.apk 2>/dev/null | head -1 || true)

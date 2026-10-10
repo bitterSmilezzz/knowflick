@@ -18,7 +18,7 @@ if [[ ! -f "$MAC_DIR/Package.swift" ]]; then
     exit 1
 fi
 cd "$MAC_DIR"
-# 共享资源（种子卡 / 底图）需先落到 mac 端资源目录，否则 swift test 会因种子卡缺失而失败
+# 共享资源（分类底图）需先落到 mac 端资源目录，否则 swift test 会因资源缺失而失败
 "$ROOT_DIR/tools/sync_shared_assets.sh"
 TASK_BUILD_ROOT="${TMPDIR:-/tmp}/knowflick-swift"
 mkdir -p "$TASK_BUILD_ROOT"

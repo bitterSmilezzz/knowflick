@@ -7,7 +7,7 @@ import Observation
 /// `AppStore` 保留同名转发属性与方法，视图与测试零改动。两个跨域接口：
 /// - 设置：所有权在 facade（`settings.didSet` 驱动语音同步等副作用），经 `settingsDidChange`
 ///   单漏斗同步进 `lastKnownSettings` 供派生使用——所有设置写入都会触发该 didSet，快照不会漂移；
-/// - 加载守卫：`isLoadingSeed` 是卡片库自己的状态（「快照是否可信」必须与 `cards.isEmpty`
+/// - 加载守卫：`isLibraryLoading` 是卡片库自己的状态（「快照是否可信」必须与 `cards.isEmpty`
 ///   动态结合判断，测试在加载期写入卡片也必须照常落盘），facade 转发读写。
 @MainActor
 @Observable
@@ -27,8 +27,8 @@ public final class CardLibraryStore {
             recomputeDeckAndHistory()
         }
     }
-    /// 首启是否还在加载预置库。守卫语义见 `cardSnapshotIsUntrusted`。
-    public var isLoadingSeed = true
+    /// 启动加载是否还没完成（守卫语义见 `cardSnapshotIsUntrusted`）。
+    public var isLibraryLoading = true
 
     public private(set) var deck: [KnowledgeCard] = []
     public private(set) var history: [KnowledgeCard] = []
@@ -66,19 +66,18 @@ public final class CardLibraryStore {
     /// 派生好的全库再白排一遍。派生输入未变时仅刷新快照：之后任何 cards 变更触发的
     /// 重排自然会带上最新设置，语义不变。
     func settingsDidChange(_ settings: AISettings) {
-        let derivationInputsChanged = lastKnownSettings.enableSeed != settings.enableSeed
-            || lastKnownSettings.enableAI != settings.enableAI
+        let derivationInputsChanged = lastKnownSettings.enableAI != settings.enableAI
             || lastKnownSettings.preferredCategories != settings.preferredCategories
         lastKnownSettings = settings
         guard derivationInputsChanged else { return }
         recomputeDeckAndHistory()
     }
 
-    /// 卡片快照此刻是否可信：加载未完成（`isLoadingSeed`）且没有任何卡片时，
+    /// 卡片快照此刻是否可信：加载未完成（`isLibraryLoading`）且没有任何卡片时，
     /// 落盘等于把「空库」写成用户数据（实测「启动未完成即退出」会让 cards.json 变成 `[]`，
-    /// 下次启动被判损坏并重播种）。判据取「仍在加载中 **且** 没有任何卡片」：
+    /// 下次启动被判损坏）。判据取「仍在加载中 **且** 没有任何卡片」：
     /// 加载中却有卡片 = 调用方已经明确放进来的内容，照常落盘；两者同时成立才不可信。
-    var cardSnapshotIsUntrusted: Bool { isLoadingSeed && cards.isEmpty }
+    var cardSnapshotIsUntrusted: Bool { isLibraryLoading && cards.isEmpty }
 
     // MARK: - 派生
 
@@ -104,7 +103,6 @@ public final class CardLibraryStore {
         let prepared = DeckDeriver.prepare(
             cards: cards,
             currentDeck: deck,
-            enableSeed: lastKnownSettings.enableSeed,
             enableAI: lastKnownSettings.enableAI,
             preferredCategories: lastKnownSettings.preferredCategories,
             studyScope: studyScope,

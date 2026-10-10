@@ -16,7 +16,7 @@
 
 ---
 
-KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 macOS 14）。从今日目标开始阅读，完成后进入复习安排；在知识库搜索、分类、编辑和导出自己的卡片。沉浸刷卡、AI 追问与知识星图仍可从工作台进入。内置知识可离线使用，也可配置兼容的 AI 服务生成新卡。
+KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 macOS 14）。从今日目标开始阅读，完成后进入复习安排；在知识库搜索、分类、编辑和导出自己的卡片。沉浸刷卡、AI 追问与知识星图仍可从工作台进入。卡片全部来自你自己的积累——网页剪藏、笔记导入，或配置兼容的 AI 服务生成新卡。
 
 工作台的具体操作、复习规则与数据口径见 [学习工作台说明](docs/LEARNING_WORKSPACE.md)。
 
@@ -44,11 +44,11 @@ Android 端是同仓库内的独立原生应用（Kotlin + Jetpack Compose），
 - **详情 + 链接**：按 `⏎` 展开水墨晕染大图与详情、查看卡片化来源链接；详情页内可连续刷卡（点操作自动切下一张，`←`/`→` 直接切换）
 - **历史记录**：自动保存浏览历史，图文画报流卡片呈现，随时回看（支持按感兴趣/不喜欢筛选）
 - **撤销**：`⌘Z` 撤销上一张卡片
-- **分类自定义**：设置页可增删改分类（名称 + 内容方向描述，支持分类专属色微标预览），内置「冷知识」分类收纳预置知识库；AI 生成按每个分类的内容方向产出对应领域卡片
+- **分类自定义**：设置页可增删改分类（名称 + 内容方向描述，支持分类专属色微标预览），内置「冷知识」分类作为未归类内容的兜底；AI 生成按每个分类的内容方向产出对应领域卡片
 - **主流 AI 服务商一键预设**：内置 DeepSeek、硅基流动 (SiliconFlow)、Kimi (月之暗面)、智谱 GLM、OpenAI、本地私有 Ollama，自动补全 Base URL 与热门模型，只需填入 Key 即可使用（Ollama 免填 Key），同时支持「自定义」模式连接任意兼容端点
 - **AI 智能生成**：卡片不足或想开拓新领域时自动补充新卡；流式生成、够数即停，自动做分类规范化与近重复去重
-- **知识库增量合并与重置**：应用更新时自动同步新增的种子知识卡片，老用户无缝获取扩充内容；设置页实时显示卡库探索进度，支持一键重置卡堆重新体验
-- **来源配置**：设置页可分别开关「预置精选库」与「AI 生成内容」两种信息来源，并配置 AI 引用站点偏好（生成内容与检索链接都优先这些站点）
+- **卡库进度与重置**：设置页实时显示卡库探索进度，支持一键重置卡堆重新体验（预置库退役后，App 不再随版本灌注内置卡片）
+- **来源配置**：设置页可开关「AI 生成内容」这一信息来源（关闭后只刷你自己剪藏/导入的卡片），并配置 AI 引用站点偏好（生成内容与检索链接都优先这些站点）
 - **AI 内容标记**：AI 生成的卡片在正面显示橙色徽章、详情页显示核实提示条，可一键关闭
 - **偏好过滤**：设置里多选偏好分类，刷卡队列优先偏好分类，刷完自动回退其他分类
 - **学习统计**：杂志专栏风呈现——已刷/感兴趣率/连续天数 + 分类双轨条形图 + 近 7 天渐变趋势柱状图
@@ -210,9 +210,7 @@ cd apps/mac
 | 追问聊天会话 | `~/Library/Application Support/KnowFlick/chat_sessions.json` |
 | AI 密钥 | macOS 钥匙串（Keychain） |
 
-内置种子知识库（214 张）随 app 打包在资源 bundle 中（`Contents/Resources/KnowFlick_KnowFlickCore.bundle/seed_cards.json`）：
-- **冷知识（160 张）**：通识（物理/生物/天文/数学/化学/历史/心理/脑科学/语言/科技/生活/地理）+ 技术向（AI/算法/数据结构/架构/Rust/Python/编程）+ 备考向（中级会计/学习方法），全部并入内置「冷知识」分类
-- **AI（10 张）/ AI 开发（10 张）/ AI Agent（9 张）/ 中级会计（12 张）/ 投资理财（13 张）**：领域初始卡，覆盖机器学习原理、提示工程与 RAG、Agent 架构、会计实务、理财基础
+**知识内容全部由你自己积累**：网页剪藏（URL → 抽正文 → AI 提炼成卡片）、笔记导入、AI 按分类生成。应用不再内置任何卡片库——空库是正常起点，任何启动路径都不会往库里灌内容。
 
 卡片背景图来自 [Unsplash](https://unsplash.com)（Unsplash License，可免费商用），已做压暗与底部渐变处理以保证文字可读性；自定义分类自动复用内置视觉资源（按分类名稳定映射）。
 
@@ -240,7 +238,7 @@ KnowFlick/
 │   │   └── Tests/               # Swift Testing 用例
 │   └── android/             # Android 端（Gradle + Compose）
 ├── shared/assets/           # 跨端共享资产（唯一事实来源）
-│   ├── seed_cards.json      # 种子卡数据
+│   ├── taxonomy_map.json    # 学科契约（三处事实来源之一）
 │   └── bg/*.webp            # 分类底图
 ├── tools/                   # 跨端脚本：test.sh / build_android.sh / sync_shared_assets.sh / lint_shell_vars.sh / test_import_lessons.py / import_lessons.py / build_icon / verify_icon
 ├── docs/                    # 多端协作规范、各端发布记录与评审报告
@@ -258,5 +256,5 @@ KnowFlick/
 
 - 纯 SwiftPM 工程，无 Xcode 工程文件；`swift build -c release` 即可编译
 - 双 target 结构：`KnowFlickCore`（模型/服务/存储/统计，可测试）+ `KnowFlick`（App 入口与视图）+ `KnowFlickCoreTests`
-- 共享资源（seed_cards.json + 分类底图）经 `tools/sync_shared_assets.sh` 从 `shared/assets` 同步进资源目录，两端共用同一份文件；背景图由 `CoreResources.bundle` 定位、经 ImageIO 降采样解码后缓存
+- 共享资源（分类底图）经 `tools/sync_shared_assets.sh` 从 `shared/assets` 同步进资源目录，两端共用同一份文件；背景图由 `CoreResources.bundle` 定位、经 ImageIO 降采样解码后缓存
 - 目标平台：macOS 14.0+（Apple Silicon / Intel 均可）

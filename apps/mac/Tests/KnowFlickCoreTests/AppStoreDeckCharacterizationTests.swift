@@ -297,7 +297,7 @@ struct AppStoreDeckCharacterizationTests {
             } onChange: {
                 probe.record("settings")
             }
-            store.settings.enableSeed = !store.settings.enableSeed
+            store.settings.enableAI = !store.settings.enableAI
             #expect(probe.contains("settings"))
 
             withObservationTracking {
@@ -328,7 +328,7 @@ struct AppStoreDeckCharacterizationTests {
 
         // 「store.cards =」这种直接赋值；`==` 比较不算，`store.cards.contains` 这类读取也不算
         let forbidden = try NSRegularExpression(
-            pattern: #"store\.(cards|settings|deck|history|favorites|topCard|isGenerating|isLoadingSeed)\s*=(?!=)"#
+            pattern: #"store\.(cards|settings|deck|history|favorites|topCard|isGenerating|isLibraryLoading)\s*=(?!=)"#
         )
         var offenders: [String] = []
         let enumerator = FileManager.default.enumerator(at: viewsRoot, includingPropertiesForKeys: nil)

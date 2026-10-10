@@ -48,7 +48,8 @@ public struct Storage: Sendable {
     }
 
     /// 最近一次 `loadCards()` 是否拿到了**可用**的卡片库：非空恢复，或一个合法的空数组。
-    /// `false` 只代表「主文件与备份都不可用」（首次启动 / 真损坏），此时才允许用预置库重新播种。
+    /// `false` 只代表「主文件与备份都不可用」（首次启动 / 真损坏被隔离）。
+    /// 预置库退役后启动路径不再据此分叉（任何结果都如实保持空库），这里保留为加载诊断。
     var libraryWasUsable: Bool { state.libraryUsable }
 
     /// 线程安全状态盒（Storage 为值类型，用引用盒跨副本共享）

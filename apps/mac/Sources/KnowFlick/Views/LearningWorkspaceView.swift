@@ -534,6 +534,7 @@ struct LearningWorkspaceView: View {
 
     private var quickToolbelt: some View {
         VStack(spacing: InsightSpacing.tiny) {
+            pathway(title: "网页剪藏", detail: "粘地址 → 抽正文 → 提炼成卡片", icon: "link") { open(.webClip) }
             pathway(title: "知识星图", detail: "在关联网络中漫游探索", icon: "point.3.connected.trianglepath.dotted") { open(.graph) }
             pathway(title: "连续听书", detail: "磨耳朵后台语音轮播", icon: "headphones") { open(.speechConsole) }
             pathway(title: "导入笔记", detail: "Markdown 笔记导入知识库", icon: "square.and.arrow.down") { open(.importNotes) }
@@ -618,6 +619,16 @@ struct LearningWorkspaceView: View {
                     }
                     .padding(.top, 2)
                 }
+                .padding(InsightSpacing.large)
+            } else if store.cards.isEmpty {
+                // 预置库退役后，空库是新用户的正常起点：这里说的不是「读完了」，而是「还没有第一批知识」
+                InsightEmptyState(
+                    icon: "link",
+                    title: "还没有第一批知识",
+                    message: "剪藏一个网页、导入一篇笔记，或让 AI 生成几张，就有了第一批知识。",
+                    actionTitle: "从网页剪藏",
+                    action: { open(.webClip) }
+                )
                 .padding(InsightSpacing.large)
             } else {
                 InsightEmptyState(

@@ -17,7 +17,7 @@ KnowFlick/
 │   └── <windows|extension>/ # 待创建
 ├── shared/                  # 跨端共享内容（单一事实来源）
 │   └── assets/
-│       ├── seed_cards.json  # 214 张种子卡
+│       ├── taxonomy_map.json # 学科契约
 │       └── bg/*.webp        # 42 张分类底图
 ├── tools/                   # 跨端脚本（构建、图标校验、内容导入）
 ├── docs/                    # 跨端文档与各端发布记录
@@ -31,14 +31,17 @@ KnowFlick/
 
 ## 共享资产
 
-`shared/assets/` 是种子卡与底图的**唯一事实来源**。两端当前通过不同机制引用同一份文件：
+`shared/assets/` 是底图与学科契约的**唯一事实来源**。两端当前通过不同机制引用同一份文件：
 
 | 端 | 引用方式 | 说明 |
 | --- | --- | --- |
 | mac | `tools/sync_shared_assets.sh` 把 `shared/assets` 同步进 `apps/mac/Sources/KnowFlickCore/Resources/` | 该目录不入 Git（仅留 `.gitkeep`）。不用符号链接：跨 target 的软链在 SwiftPM 下不可靠 |
 | android | `app/build.gradle.kts` 的 `sourceSets["main"].assets.srcDirs("../../../shared/assets")` | Gradle 直接读取该目录 |
 
-**不要**在 `apps/*/` 下留副本——迁移前 mac 与 android 各存一份 42 张底图（6.35 MB ×2）和 seed_cards.json，靠人工同步保持一致，一旦漂移会导致两端内容不一致且难以察觉。
+**不要**在 `apps/*/` 下留副本——迁移前 mac 与 android 各存一份 42 张底图（6.35 MB ×2）和内容库，靠人工同步保持一致，一旦漂移会导致两端内容不一致且难以察觉。
+
+> 2026-10 更新：预置内容库（`seed_cards.json` 214 张）已从仓库移除，知识内容改由用户剪藏/导入产出，
+> 不再是跨端共享资产；`shared/assets/` 现在只剩底图与 `taxonomy_map.json` 学科契约。
 
 改动共享资产后必须同时验证两端：
 
@@ -49,7 +52,7 @@ ls .build/out/Products/Debug/KnowFlick_KnowFlickCore.bundle/Contents/Resources/ 
 
 # android：确认资源进了 APK
 cd apps/android && ./gradlew :app:assembleDebug
-unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/seed_cards.json"
+unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" | head
 ```
 
 底图统一用 **WebP**（mac 端自 macOS 11 起原生支持解码，两条加载路径 `NSImage(contentsOf:)` 与 ImageIO 缩略图均已验证）。同画质下体积约为 JPEG 的三分之一。

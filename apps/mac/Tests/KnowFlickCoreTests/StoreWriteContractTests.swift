@@ -104,7 +104,7 @@ struct StoreWriteContractTests {
         #expect(FileManager.default.fileExists(atPath: viewsRoot.path), "源码护栏未生效：视图目录不存在于 \(viewsRoot.path)")
 
         let forbidden = try NSRegularExpression(
-            pattern: #"store\.(cards|settings|deck|history|favorites|topCard|isGenerating|isLoadingSeed)\s*=(?!=)"#
+            pattern: #"store\.(cards|settings|deck|history|favorites|topCard|isGenerating|isLibraryLoading)\s*=(?!=)"#
         )
         var offenders: [String] = []
         let enumerator = FileManager.default.enumerator(at: viewsRoot, includingPropertiesForKeys: nil)

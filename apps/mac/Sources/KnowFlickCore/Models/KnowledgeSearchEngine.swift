@@ -3,7 +3,7 @@ import Foundation
 /// 搜索来源范围过滤
 public enum SearchSourceFilter: String, CaseIterable, Identifiable, Sendable {
     case all = "全部来源"
-    case seed = "预置精选"
+    case imported = "剪藏导入"
     case ai = "AI 生成"
     case favorites = "仅已收藏"
 
@@ -125,8 +125,8 @@ public final class KnowledgeSearchEngine: @unchecked Sendable {
             switch source {
             case .all:
                 return true
-            case .seed:
-                return card.source == .seed
+            case .imported:
+                return card.source == .imported
             case .ai:
                 return card.source == .ai
             case .favorites:

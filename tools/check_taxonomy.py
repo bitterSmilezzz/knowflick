@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""学科契约的 CI 守门：契约文件自洽、种子卡合法、双端内嵌表与契约逐条一致。
+"""学科契约的 CI 守门：契约文件自洽、双端内嵌表与契约逐条一致、内容库（若存在）合法。
 
 用法：
     python3 tools/check_taxonomy.py                     # 校验默认路径
     python3 tools/check_taxonomy.py --strict-map        # 额外要求每个学科都有卡（内容覆盖度告警）
+    python3 tools/check_taxonomy.py --seed <path>       # 指定内容库 JSON（不存在则跳过内容校验）
 
 退出码非 0 表示发现问题，CI 直接红。双端 Swift/Kotlin 的等价测试只保证「各自 == 契约」，
-这里补上「契约自身合法」和「种子内容合法」——否则非法内容要等 App 运行时才暴露。
+这里补上「契约自身合法」和「内容合法」——否则非法内容要等 App 运行时才暴露。
+预置库退役后仓库内不再自带内容库，内容校验改为「给定路径存在才校验」。
 """
 
 from __future__ import annotations
@@ -88,7 +90,8 @@ def check_seed(seed_path: Path, data: dict, strict_map: bool) -> tuple[list[str]
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--map", default=str(taxonomy.DEFAULT_MAP), help="taxonomy_map.json 路径")
-    ap.add_argument("--seed", default=str(REPO_ROOT / "shared/assets/seed_cards.json"), help="种子卡路径")
+    ap.add_argument("--seed", default=str(REPO_ROOT / "shared/assets/seed_cards.json"),
+                    help="内容库 JSON 路径（不存在则跳过内容校验）")
     ap.add_argument("--strict-map", action="store_true", help="要求每个学科都至少有一张卡")
     args = ap.parse_args()
 
@@ -96,12 +99,15 @@ def main() -> int:
     issues = check_regilities(data)
     if not issues:
         issues += check_embedded_tables(data)
-    seed_issues, distribution = check_seed(Path(args.seed), data, args.strict_map)
-    issues += seed_issues
-
-    print("学科内容分布:", json.dumps(distribution, ensure_ascii=False))
-    ungraded = distribution.get("未分级", 0)
-    print(f"未分级卡片: {ungraded}（历史内容允许未分级，分级由导入管道逐步补齐）")
+    seed_path = Path(args.seed)
+    if seed_path.is_file():
+        seed_issues, distribution = check_seed(seed_path, data, args.strict_map)
+        issues += seed_issues
+        print("学科内容分布:", json.dumps(distribution, ensure_ascii=False))
+        ungraded = distribution.get("未分级", 0)
+        print(f"未分级卡片: {ungraded}（历史内容允许未分级，分级由导入管道逐步补齐）")
+    else:
+        print(f"内容校验跳过：{seed_path} 不存在（预置库退役后仓库不再自带内容库）")
 
     if issues:
         print(f"\n发现 {len(issues)} 个问题：", file=sys.stderr)
@@ -110,7 +116,7 @@ def main() -> int:
         if len(issues) > 40:
             print(f"  …另有 {len(issues) - 40} 条", file=sys.stderr)
         return 1
-    print("学科契约校验通过：契约自洽、双端内嵌表一致、种子卡合法。")
+    print("学科契约校验通过：契约自洽、双端内嵌表一致" + ("、内容库合法。" if seed_path.is_file() else "。"))
     return 0
 
 
