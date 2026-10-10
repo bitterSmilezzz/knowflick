@@ -42,15 +42,22 @@ class WidgetCardRepositoryTest {
     private fun makeCard(id: String, headline: String) =
         KnowledgeCard.create("学习", headline, "摘要", "正文", source = CardSource.IMPORTED).copy(id = id)
 
+    /** 微件数据不再有内置回落：用例要卡就得自己摆好卡库 */
+    private fun givenLibrary(vararg names: String) {
+        CardStorage.shared(storeDir).saveCards(names.map { makeCard(it, it) })
+    }
+
     @Test
-    fun getAvailableCardsLoadsFromSeedWhenEmpty() {
-        val cards = WidgetCardRepository.getAvailableCards(app)
-        assertTrue(cards.isNotEmpty(), "空库时应从种子资产中加载卡片")
-        assertEquals(214, cards.size)
+    fun getAvailableCardsIsEmptyWhenLibraryIsEmpty() {
+        assertTrue(
+            WidgetCardRepository.getAvailableCards(app).isEmpty(),
+            "空库时微件不得再回落到任何内置内容",
+        )
     }
 
     @Test
     fun getCurrentCardReturnsFirstCardInitially() {
+        givenLibrary("w-1", "w-2")
         val card = WidgetCardRepository.getCurrentCard(app)
         assertNotNull(card)
         assertTrue(card.headline.isNotBlank())
@@ -58,6 +65,7 @@ class WidgetCardRepositoryTest {
 
     @Test
     fun nextCardCyclesThroughAvailableCards() {
+        givenLibrary("w-1", "w-2", "w-3")
         val card1 = WidgetCardRepository.getCurrentCard(app)
         assertNotNull(card1)
 
@@ -71,6 +79,7 @@ class WidgetCardRepositoryTest {
 
     @Test
     fun previousCardStepsBackCorrectly() {
+        givenLibrary("w-1", "w-2", "w-3")
         val initial = WidgetCardRepository.getCurrentCard(app)
         assertNotNull(initial)
 
@@ -85,6 +94,7 @@ class WidgetCardRepositoryTest {
 
     @Test
     fun toggleFavoritePersistsToStorage() {
+        givenLibrary("w-fav")
         val card = WidgetCardRepository.getCurrentCard(app)
         assertNotNull(card)
         val initialFavorite = card.isFavorite
@@ -108,7 +118,7 @@ class WidgetCardRepositoryTest {
             WidgetSyncBus.favoriteChanges.collect { received += it }
         }
 
-        // 预置已知卡库，避免走种子加载路径
+        // 预置已知卡库（微件不再回落到任何内置内容）
         val card = makeCard("bus-1", "总线卡")
         CardStorage.shared(storeDir).saveCards(listOf(card))
         WidgetCardRepository.setCurrentCardId(app, "bus-1")

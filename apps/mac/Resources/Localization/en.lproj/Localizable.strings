@@ -201,13 +201,18 @@
 "AI 生成 3 张新卡 ⌘N" = "Generate 3 cards ⌘N";
 "配置 AI 后可生成新卡" = "Configure AI to generate cards";
 "今天的知识刷完了" = "All caught up";
-"当前已关闭全部知识来源（预置精选库与 AI 生成），开启后即可继续刷卡片" = "All sources are off. Turn on curated or AI to keep swiping.";
+"还没有第一批知识" = "No knowledge yet";
+"库还是空的。剪藏一个网页、导入一篇笔记，或让 AI 生成几张，就有了第一批知识。" = "Your library is empty. Clip a page, import a note, or generate a few cards to get started.";
 "去设置里配置 AI 服务，就能持续生成新知识" = "Configure AI in Settings to keep the queue full";
 "已看完全部卡片。换一批新知识，或重新探索全部卡片。" = "You've seen everything. Fetch new cards or start over.";
 "搜索知识库" = "Search library";
 "打开偏好设置" = "Open Settings";
 "重新探索全部卡片" = "Start over";
 "生成新知识" = "Generate new";
+"从网页剪藏" = "Clip a Web Page";
+"网页剪藏" = "Web Clip";
+"粘地址 → 抽正文 → 提炼成卡片" = "Paste a URL → extract → turn into cards";
+"剪藏导入" = "Clipped / Imported";
 "重试保存" = "Retry save";
 "已加入收藏阁 ⭐️" = "Saved ⭐️";
 "已从收藏阁移除" = "Removed from Saved";
@@ -610,7 +615,6 @@
 "分类「%@」已存在" = "Category “%@” already exists";
 "来源" = "Sources";
 "内容来源与呈现" = "Content sources & rendering";
-"启用预置精选知识库" = "Curated knowledge base";
 "启用 AI 智能生成卡片" = "AI-generated cards";
 "权威来源偏好" = "Preferred sources";
 "维基百科, 国家地理, NASA" = "Wikipedia, National Geographic, NASA";

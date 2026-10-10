@@ -1,6 +1,6 @@
 import Foundation
 
-/// 卡堆派生：把「卡片池 + 来源开关 + 偏好分类 + 当前卡堆 + 上次划卡」算成新的卡堆/历史/收藏。
+/// 卡堆派生：把「卡片池 + AI 来源开关 + 偏好分类 + 当前卡堆 + 上次划卡」算成新的卡堆/历史/收藏。
 ///
 /// 为什么抽成纯函数（拆分方案 B Step 2）：这套四分支状态机原先埋在 `AppStore.recomputeDeckAndHistory` 里，
 /// 只能通过构造整个 store 间接测试（四条分支里原本只有 2 条有断言）。纯函数化之后可以穷举输入，
@@ -47,7 +47,8 @@ enum DeckDeriver {
     /// - Parameters:
     ///   - cards: 卡片池（领域真源）
     ///   - currentDeck: 当前卡堆：日常刷卡要 100% 保序，新卡只追加到尾部，都不能靠重算
-    ///   - enableSeed / enableAI: 来源开关（全关则队列为空，含导入卡片，口径见 CONTEXT.md）
+    ///   - enableAI: 来源开关（预置库退役后只剩这一个）：关闭时不看 AI 生成卡，
+    ///     剪藏/导入与历史来源照常进堆——旧「全关则队列为空（含导入卡片）」的口径随之作废
     ///   - preferredCategories: 偏好分类（`CategoryRegistry.resolve` 解析后的结果，空 = 全部）
     ///   - studyScope: 学习范围（学习地图下发）。生效时**接管分类维度**——preferredCategories 让位，
     ///     与 Android `CardStore` 同一语义；顺序模式跳过防重打散，保证按 orderKey 一级一级推进
@@ -56,7 +57,6 @@ enum DeckDeriver {
     static func derive(
         cards: [KnowledgeCard],
         currentDeck: [KnowledgeCard],
-        enableSeed: Bool,
         enableAI: Bool,
         preferredCategories: [String],
         studyScope: StudyScope = .none,
@@ -67,7 +67,6 @@ enum DeckDeriver {
             prepare(
                 cards: cards,
                 currentDeck: currentDeck,
-                enableSeed: enableSeed,
                 enableAI: enableAI,
                 preferredCategories: preferredCategories,
                 studyScope: studyScope,
@@ -82,7 +81,6 @@ enum DeckDeriver {
     static func prepare(
         cards: [KnowledgeCard],
         currentDeck: [KnowledgeCard],
-        enableSeed: Bool,
         enableAI: Bool,
         preferredCategories: [String],
         studyScope: StudyScope = .none,
@@ -96,15 +94,11 @@ enum DeckDeriver {
         CardThemeResolver.pruneKeyCache(keeping: Set(cards.map(\.id)))
 
         var unseen = cards.filter { $0.seenAt == nil }
-        // 来源开关：只开其一则只看该来源；全关则队列为空（含外部导入卡片，口径见 CONTEXT.md）
-        if !enableSeed || !enableAI {
-            unseen = unseen.filter {
-                switch $0.source {
-                case .seed: return enableSeed
-                case .ai: return enableAI
-                case .imported: return false
-                }
-            }
+        // 来源开关：预置库退役后只剩 AI 一档。关闭 AI 只屏蔽 AI 生成卡，
+        // 剪藏/导入与历史卡（含旧 seed 来源）照常进堆——不再存在「全关即空」这种把用户
+        // 自己存的东西也藏起来的口径。
+        if !enableAI {
+            unseen = unseen.filter { $0.source != .ai }
         }
         let filtered: [KnowledgeCard]
         if studyScope.isActive {

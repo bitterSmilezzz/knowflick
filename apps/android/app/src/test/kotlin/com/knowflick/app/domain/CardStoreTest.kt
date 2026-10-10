@@ -12,31 +12,30 @@ class CardStoreTest {
     private fun card(headline: String, category: String = "物理") =
         KnowledgeCard.create(category, headline, "摘要", "正文", source = CardSource.SEED)
 
+    /** AI 来源开关只作用于 AI 生成卡；其他来源（剪藏/导入/历史卡）不受影响（口径与 macOS 一致） */
     @Test
-    fun sourceSwitchesRespectAllFourCombinations() {
-        val store = CardStore(seedCards = emptyList())
-        val seed = card("种子")
+    fun aiSourceSwitchFiltersOnlyAICards() {
+        val store = CardStore()
+        val legacy = card("旧卡")
         val ai = KnowledgeCard.create("AI", "人工智能卡", "摘要", "正文", source = CardSource.AI)
         val imported = KnowledgeCard.create("学习方法", "导入卡", "摘要", "正文", source = CardSource.IMPORTED)
-        store.replaceAll(listOf(seed, ai, imported))
+        store.replaceAll(listOf(legacy, ai, imported))
 
-        for (seedEnabled in listOf(true, false)) {
-            for (aiEnabled in listOf(true, false)) {
-                store.enableSeed = seedEnabled
-                store.enableAI = aiEnabled
-                store.recompute()
-                val visible = store.deck.map { it.id }.toSet()
-                assertEquals(seedEnabled, seed.id in visible, "seed=$seedEnabled ai=$aiEnabled")
-                assertEquals(aiEnabled, ai.id in visible, "seed=$seedEnabled ai=$aiEnabled")
-                // 口径与 macOS 一致：任一开关关闭时导入卡不出现（两者全开才可见）
-                assertEquals(seedEnabled && aiEnabled, imported.id in visible, "imported seed=$seedEnabled ai=$aiEnabled")
-            }
+        for (aiEnabled in listOf(true, false)) {
+            store.enableAI = aiEnabled
+            store.recompute()
+            val visible = store.deck.map { it.id }.toSet()
+            assertEquals(aiEnabled, ai.id in visible, "ai=$aiEnabled")
+            // 预置库退役前，导入卡在任一开关关闭时会被一起藏掉；把用户自己存的东西
+            // 藏起来不是来源开关该有的语义，因此这条断言反过来：导入卡必须始终可见
+            assertTrue(imported.id in visible, "imported ai=$aiEnabled")
+            assertTrue(legacy.id in visible, "legacy ai=$aiEnabled")
         }
     }
 
     @Test
     fun preferredCategoriesFallBackWhenExhausted() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val physics = card("物理卡", category = "物理")
         val chemistry = card("化学卡", category = "化学")
         store.replaceAll(listOf(physics, chemistry))
@@ -56,7 +55,7 @@ class CardStoreTest {
 
     @Test
     fun swipeRightDrivesFavoriteAndLeftRemovesIt() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val subject = card("收藏解耦")
         store.replaceAll(listOf(subject, card("其他")))
 
@@ -74,7 +73,7 @@ class CardStoreTest {
 
     @Test
     fun toggleFavoriteDoesNotTouchSwipeOrSeenAt() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val unread = card("未读收藏")
         store.replaceAll(listOf(unread, card("其他")))
 
@@ -92,7 +91,7 @@ class CardStoreTest {
 
     @Test
     fun swipeOnSeenCardPreservesSeenAt() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val seen = card("已读卡").copy(seenAt = 1_000L, swiped = SwipeDirection.RIGHT)
         store.replaceAll(listOf(seen, card("其他")))
 
@@ -105,7 +104,7 @@ class CardStoreTest {
 
     @Test
     fun deckKeepsOrderButRefreshesCardValues() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val a = card("甲")
         val b = card("乙")
         store.replaceAll(listOf(a, b))
@@ -119,7 +118,7 @@ class CardStoreTest {
 
     @Test
     fun clearHistoryResetsProgressButKeepsFavorites() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val favorited = card("收藏保留").copy(seenAt = 1_000L, swiped = SwipeDirection.RIGHT, isFavorite = true, favoritedAt = 1_100L)
         store.replaceAll(listOf(favorited, card("未读")))
 
@@ -133,7 +132,7 @@ class CardStoreTest {
 
     @Test
     fun addCardsDeduplicatesByNormalizedHeadline() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         store.replaceAll(listOf(card("沉没成本不是成本")))
         val added = store.addCards(
             listOf(
@@ -147,7 +146,7 @@ class CardStoreTest {
 
     @Test
     fun recordQuizResultCountsEverySubmission() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val subject = card("复习卡")
         store.replaceAll(listOf(subject))
 
@@ -164,7 +163,7 @@ class CardStoreTest {
 
     @Test
     fun restoreArchiveMergesByHeadlineAndPreservesProgress() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val localSeed = card("跨设备恢复")
         store.replaceAll(listOf(localSeed))
         val archived = localSeed.copy(
@@ -196,7 +195,7 @@ class CardStoreTest {
 
     @Test
     fun restoreArchiveKeepsLocalStudyStateWhenArchiveOmitsIt() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val local = card("本机已收藏已浏览").copy(
             seenAt = 1_700_000_000_000L,
             swiped = SwipeDirection.RIGHT,
@@ -232,7 +231,7 @@ class CardStoreTest {
 
     @Test
     fun restoreArchiveKeepsNewCardIdentityAndRejectsBlankHeadline() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         store.replaceAll(listOf(card("已有卡")))
         val archived = KnowledgeCard.create("AI", "归档新卡", "摘要", "正文", source = CardSource.AI)
             .copy(id = "ARCHIVE-STABLE-ID")
@@ -250,7 +249,7 @@ class CardStoreTest {
 
     @Test
     fun undoAvailabilityTracksSwipeAndReset() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         store.replaceAll(listOf(card("甲"), card("乙")))
         assertFalse(store.canUndoLastSwipe, "未刷卡时不可撤销")
 
@@ -267,7 +266,7 @@ class CardStoreTest {
 
     @Test
     fun undoReturnsCardToDeckTopAndRemovesItFromHistory() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val subject = card("撤销回顶")
         store.replaceAll(listOf(subject, card("其他")))
         val topId = store.topCard!!.id
@@ -288,7 +287,7 @@ class CardStoreTest {
 
     @Test
     fun undoKeepsFavoriteBecauseFavoriteIsDecoupledFromPreference() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val subject = card("撤销不清收藏")
         store.replaceAll(listOf(subject, card("其他")))
         val topId = store.topCard!!.id
@@ -313,7 +312,7 @@ class CardStoreTest {
 
     @Test
     fun undoAfterLeftSwipeKeepsFavoriteAddedByEarlierRightSwipe() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         store.replaceAll(listOf(card("甲"), card("乙")))
         val topId = store.topCard!!.id
 
@@ -333,7 +332,7 @@ class CardStoreTest {
 
     @Test
     fun undoRestoresPreviousSeenAtForCardTaggedFromHistory() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val seen = card("历史页打标签").copy(seenAt = 1_000L, swiped = SwipeDirection.RIGHT)
         store.replaceAll(listOf(seen, card("其他")))
 
@@ -355,7 +354,7 @@ class CardStoreTest {
     @Test
     fun restoreSyncPayloadDeletesLocalCardOlderThanTombstone() {
         // 规则 1：卡片时间戳 ≤ deletedAt → 删除 + 记墓碑（deletedAt 取较大者）
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val old = cardWithId("x-1", "旧卡", createdAt = 1_000L)
         store.replaceAll(listOf(old))
 
@@ -369,7 +368,7 @@ class CardStoreTest {
     @Test
     fun restoreSyncPayloadDeletesByEditedAtWhenPresent() {
         // §4.3：卡片时间戳取 editedAt 优先，否则 createdAt
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val edited = cardWithId("x-2", "编辑过", createdAt = 1_000L, editedAt = 3_000L)
         store.replaceAll(listOf(edited))
 
@@ -387,7 +386,7 @@ class CardStoreTest {
     @Test
     fun restoreSyncPayloadKeepsCardNewerThanTombstone() {
         // 规则 1 反向：对端删除后本端又有新编辑/重建 → 保留卡片、忽略墓碑、不记表
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val rebuilt = cardWithId("x-3", "重建卡", createdAt = 5_000L)
         store.replaceAll(listOf(rebuilt))
 
@@ -401,7 +400,7 @@ class CardStoreTest {
     @Test
     fun restoreSyncPayloadRejectsCardResistedByLocalTombstone() {
         // 规则 2：本地墓碑 deletedAt ≥ 卡片时间戳 → 拒收（不复活）
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         store.loadTombstones(listOf(Tombstone("x-4", 2_000L)))
 
         val result = store.restoreSyncPayload(listOf(cardWithId("x-4", "对端旧卡", createdAt = 1_000L)), emptyList())
@@ -415,7 +414,7 @@ class CardStoreTest {
     @Test
     fun restoreSyncPayloadRevivesCardNewerThanLocalTombstone() {
         // 规则 2 复活分支：deletedAt < 卡片时间戳 → 正常合并并清除本地墓碑
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         store.loadTombstones(listOf(Tombstone("x-5", 2_000L)))
 
         val revived = cardWithId("x-5", "复活卡", createdAt = 3_000L)
@@ -429,7 +428,7 @@ class CardStoreTest {
     @Test
     fun restoreSyncPayloadTombstoneThenNewerCardInSamePayloadConverges() {
         // 同一载荷既带墓碑又带同 id 更新卡：先按规则 1 删旧卡，再按规则 2 以新卡复活
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         store.replaceAll(listOf(cardWithId("x-6", "旧版本", createdAt = 1_000L)))
 
         val result = store.restoreSyncPayload(
@@ -498,7 +497,7 @@ class CardStoreTest {
 
     @Test
     fun replaceCardUpdatesSingleCardInPlace() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         val original = card("原卡")
         store.replaceAll(listOf(original, card("其他")))
 
@@ -510,7 +509,7 @@ class CardStoreTest {
 
     @Test
     fun replaceCardReturnsFalseForUnknownId() {
-        val store = CardStore(seedCards = emptyList())
+        val store = CardStore()
         store.replaceAll(listOf(card("原卡")))
 
         assertTrue(!store.replaceCard(card("陌生人").copy(id = "ghost-id")))

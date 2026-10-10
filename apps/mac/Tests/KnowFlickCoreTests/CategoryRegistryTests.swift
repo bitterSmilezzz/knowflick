@@ -82,13 +82,12 @@ final class AISettingsSourcesTests {
     // MARK: - 旧版 settings.json 兼容（无新字段）
 
     @Test func testDecodeLegacySettingsWithoutNewFields() throws {
-        // 旧版 settings.json 没有 enableSeed/enableAI/aiSources/showAIMark/customCategories
+        // 旧版 settings.json 没有 enableAI/aiSources/showAIMark/customCategories
         let legacyJSON = """
         {"baseURL":"https://api.deepseek.com","model":"deepseek-chat","apiKey":"","autoGenerate":true,"categoryFilter":"物理"}
         """
         let settings = try JSONDecoder().decode(AISettings.self, from: Data(legacyJSON.utf8))
         #expect(settings.baseURL == "https://api.deepseek.com")
-        #expect(settings.enableSeed)
         #expect(settings.enableAI)
         #expect(!(settings.aiSources.isEmpty))
         #expect(settings.showAIMark)
@@ -97,7 +96,6 @@ final class AISettingsSourcesTests {
 
     @Test func testDecodeFullSettingsRoundTrip() throws {
         var settings = AISettings.default
-        settings.enableSeed = false
         settings.aiSources = "NASA"
         settings.showAIMark = false
         settings.customCategories = [CategoryConfig(name: "前端开发", description: "HTML/CSS/JS")]

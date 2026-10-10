@@ -84,7 +84,7 @@ struct CoordinatorForwardingTests {
             store.closeChat()
             try? FileManager.default.removeItem(at: directory)
         }
-        store.isLoadingSeed = false
+        store.isLibraryLoading = false
 
         // 设置文件位置被目录占位 → 写入失败 → 告警
         try FileManager.default.createDirectory(
@@ -165,7 +165,7 @@ struct CoordinatorForwardingTests {
         let storage = Storage(baseDir: directory)
         let store = AppStore(storage: storage)
         defer { store.closeChat(); try? FileManager.default.removeItem(at: directory) }
-        store.isLoadingSeed = false
+        store.isLibraryLoading = false
 
         let card = KnowledgeCard(category: "冷知识", headline: "退出前的最后一张卡", summary: "摘要", details: "正文", source: .imported)
         store.cards = [card]

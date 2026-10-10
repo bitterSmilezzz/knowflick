@@ -9,6 +9,8 @@ import Testing
 /// ② 同一条守卫又是「启动未完成即退出」场景下唯一的救命绳（真正的卡片只在备份里）。
 /// 修法必须两处联动：落盘侧不再写不可信的卡片快照，载入侧把「能解码的空数组」当合法状态，
 /// 同时保留「空主文件 + 非空备份 → 从备份挽救」这条既有挽救路径。
+///
+/// 预置库退役（2026-10）后，「空」是产品认可的正常状态：任何一条启动路径都不会再往库里灌内容。
 @MainActor
 struct EmptyLibraryRecoveryTests {
     private func card(_ name: String) -> KnowledgeCard {
@@ -89,12 +91,12 @@ struct EmptyLibraryRecoveryTests {
             #expect(store.cards.isEmpty, "合法空库不得被预置库覆盖")
             #expect(store.deck.isEmpty)
             #expect(store.history.isEmpty)
-            #expect(!store.isLoadingSeed)
+            #expect(!store.isLibraryLoading)
         }
     }
 
-    /// 首次启动（无任何卡片文件）仍然照旧灌入预置库——修法不能误伤新用户。
-    @Test func bootstrapSeedsWhenNoLibraryExists() async throws {
+    /// 首次启动（没有任何卡片文件）：库是空的，**不得**出现任何自动灌入的内容。
+    @Test func bootstrapWithNoLibraryStartsEmpty() async throws {
         try await withDirectoryAsync { directory in
             let storage = Storage(baseDir: directory)
             let store = makeStore(storage: storage)
@@ -102,9 +104,9 @@ struct EmptyLibraryRecoveryTests {
 
             await store.bootstrap()
 
-            #expect(!store.cards.isEmpty, "首次启动应灌入预置库")
-            #expect(store.cards.allSatisfy { $0.source == .seed })
-            #expect(!store.deck.isEmpty)
+            #expect(store.cards.isEmpty, "预置库退役后首次启动不应灌入任何内容")
+            #expect(store.deck.isEmpty)
+            #expect(!store.isLibraryLoading)
         }
     }
 
@@ -120,9 +122,9 @@ struct EmptyLibraryRecoveryTests {
         let mainURL = directory.appendingPathComponent("cards.json")
         let before = try Data(contentsOf: mainURL)
 
-        // 模拟启动后立刻退出：store 仍是默认态（isLoadingSeed == true，cards == []）
+        // 模拟启动后立刻退出：store 仍是默认态（isLibraryLoading == true，cards == []）
         let store = AppStore(storage: storage)
-        #expect(store.isLoadingSeed)
+        #expect(store.isLibraryLoading)
         store.shutdown()
 
         #expect(try Data(contentsOf: mainURL) == before, "未完成 bootstrap 的 flush 不得改写卡片文件")
@@ -166,7 +168,7 @@ struct EmptyLibraryRecoveryTests {
             defer { store.closeChat(); store.flushPersistence() }
             await store.bootstrap()
             #expect(store.cards.contains { $0.id == existing.id }, "用户的卡片必须从备份回到卡片池")
-            #expect(store.isLoadingSeed == false)
+            #expect(store.isLibraryLoading == false)
         }
     }
 

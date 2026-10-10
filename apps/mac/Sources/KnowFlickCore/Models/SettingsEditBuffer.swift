@@ -17,7 +17,6 @@ public struct SettingsEditBuffer: Equatable, Sendable {
     public var autoGenerate: Bool
     /// 偏好分类（多选集合；拷出来源为 `AISettings.preferredCategories`，拷回经 `setPreferredCategories`）
     public var selectedCategories: Set<String>
-    public var enableSeed: Bool
     public var enableAI: Bool
     public var aiSources: String
     public var showAIMark: Bool
@@ -38,7 +37,6 @@ public struct SettingsEditBuffer: Equatable, Sendable {
         apiKey = settings.apiKey
         autoGenerate = settings.autoGenerate
         selectedCategories = Set(settings.preferredCategories)
-        enableSeed = settings.enableSeed
         enableAI = settings.enableAI
         aiSources = settings.aiSources
         showAIMark = settings.showAIMark
@@ -64,7 +62,6 @@ public struct SettingsEditBuffer: Equatable, Sendable {
         updated.customCategories = customCategories
         let validNames = Set([CategoryRegistry.builtinCategory] + customCategories.map(\.name))
         updated.setPreferredCategories(Array(selectedCategories.intersection(validNames)))
-        updated.enableSeed = enableSeed
         updated.enableAI = enableAI
         updated.aiSources = aiSources.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.showAIMark = showAIMark

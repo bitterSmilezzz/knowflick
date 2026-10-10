@@ -16,7 +16,6 @@ struct SettingsEditBufferTests {
         settings.apiKey = "sk-test-key"
         settings.autoGenerate = false
         settings.setPreferredCategories(["AI", "投资理财"])
-        settings.enableSeed = false
         settings.enableAI = false
         settings.aiSources = "zhihu.com, wikipedia.org"
         settings.showAIMark = false
@@ -42,7 +41,6 @@ struct SettingsEditBufferTests {
         #expect(applied.apiKey == source.apiKey)
         #expect(applied.autoGenerate == source.autoGenerate)
         #expect(applied.preferredCategories == source.preferredCategories)
-        #expect(applied.enableSeed == source.enableSeed)
         #expect(applied.enableAI == source.enableAI)
         #expect(applied.aiSources == source.aiSources)
         #expect(applied.showAIMark == source.showAIMark)
@@ -103,7 +101,7 @@ struct SettingsEditBufferTests {
         // buffer 覆盖的字段（categoryFilter 经 selectedCategories 映射，故在此清单内）
         let mapped: Set<String> = [
             "baseURL", "model", "apiKey", "autoGenerate", "categoryFilter",
-            "enableSeed", "enableAI", "aiSources", "showAIMark", "appearance",
+            "enableAI", "aiSources", "showAIMark", "appearance",
             "paperTheme", "customCategories", "speechRate", "speechPitch",
             "speechVoiceIdentifier", "ambientGapSeconds", "speech", "autoSpeakOnDetailOpen",
         ]

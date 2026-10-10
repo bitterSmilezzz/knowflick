@@ -12,7 +12,6 @@ data class AiSettings(
     val baseURL: String = "https://api.deepseek.com",
     val model: String = "deepseek-chat",
     val autoGenerate: Boolean = true,
-    val enableSeed: Boolean = true,
     val enableAI: Boolean = true,
     val showAIMark: Boolean = true,
     val preferredCategories: List<String> = emptyList(),

@@ -223,7 +223,7 @@ fun SearchSheet(
                     val isSelected = selectedSource == source
                     val label = when (source) {
                         SearchSourceFilter.ALL -> "全部来源"
-                        SearchSourceFilter.SEED -> "预置精选"
+                        SearchSourceFilter.IMPORTED -> "剪藏导入"
                         SearchSourceFilter.AI -> "AI 生成"
                         SearchSourceFilter.FAVORITES -> "仅收藏 ♥"
                         SearchSourceFilter.SEEN -> "学习足迹"

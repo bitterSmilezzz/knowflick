@@ -110,28 +110,17 @@ jobs:
             find "$APP" -maxdepth 3 -name "*.bundle" | head
             exit 1
           fi
-          SEED="$(find "$BUNDLE" -name seed_cards.json -type f | head -1)"
-          if [[ -z "$SEED" ]]; then
-            echo "缺少种子卡，bundle 内容："
-            find "$BUNDLE" -maxdepth 3 | head -20
-            exit 1
-          fi
-          RES_DIR="$(dirname "$SEED")"
-          COUNT=$(python3 -c "import json;print(len(json.load(open('$SEED'))))")
-          IMAGES=$(find "$RES_DIR" -maxdepth 1 -name '*.webp' | wc -l | tr -d ' ')
-          # 期望值从共享资产源头现算，不写死数量：底图或种子卡一增删，mac 与 android
-          # 两条 workflow 会同时变红，而失败信息看起来像「产物坏了」，会误导排查方向。
-          EXPECT_COUNT=$(python3 -c "import json;print(len(json.load(open('shared/assets/seed_cards.json'))))" 2>/dev/null || echo 0)
+          IMAGES=$(find "$BUNDLE" -name '*.webp' | wc -l | tr -d ' ')
+          # 期望值从共享资产源头现算，不写死数量：底图一增删，mac 与 android 两条 workflow
+          # 会同时变红，而失败信息看起来像「产物坏了」，会误导排查方向。
           EXPECT_IMAGES=$(ls shared/assets/bg/*.webp 2>/dev/null | wc -l | tr -d ' ' || true)
-          echo "种子卡 $COUNT 张（源头 $EXPECT_COUNT 张）；底图 $IMAGES 张（源头 $EXPECT_IMAGES 张）"
-          test "$EXPECT_COUNT" -gt 0 || { echo "::error::shared/assets/seed_cards.json 为空"; exit 1; }
+          echo "底图 $IMAGES 张（源头 $EXPECT_IMAGES 张）"
           test "$EXPECT_IMAGES" -gt 0 || { echo "::error::shared/assets 下没有底图"; exit 1; }
-          test "$COUNT" -eq "$EXPECT_COUNT" || { echo "::error::种子卡 $COUNT 张，与 shared/assets 的 $EXPECT_COUNT 张不一致"; exit 1; }
-          test "$IMAGES" -eq "$EXPECT_IMAGES" || { echo "::error::底图 $IMAGES 张，与 shared/assets 的 $EXPECT_IMAGES 张不一致"; exit 1; }
+          test "$IMAGES" -eq "$EXPECT_IMAGES" || { echo "::error::bundle 内底图 $IMAGES 张，与 shared/assets 的 $EXPECT_IMAGES 张不一致"; exit 1; }
 
           # 启动自检：直接跑二进制，出现 "could not load resource bundle" 即判失败。
           # 只匹配这一条致命错误，避免把无 GUI 会话下的正常退出误判为失败。
-          # 该错误出在启动最早的资源加载路径（AppStore.loadSeedCards），因此「进程存活
+          # 该错误出在启动最早的资源加载路径（CoreResources bundle 解析），因此「进程存活
           # 数秒且日志里没有这条串」已经足够；这里用轮询而不是固定 sleep 5——致命串一旦
           # 出现（或进程自行退出）就立刻结束等待，不必每次白等满。
           echo "==> 启动自检"
