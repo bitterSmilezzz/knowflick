@@ -36,3 +36,6 @@ dependencyResolutionManagement {
 rootProject.name = "KnowFlick"
 include(":app")
 include(":baselineprofile")
+// :domain —— androidx-free 领域层的 KMP 模块（androidTarget + jvm）。
+// 目的与结论见 docs/windows-route/KMP_PROBE_RESULT.md；app 通过 project(":domain") 消费。
+include(":domain")
