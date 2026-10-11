@@ -25,6 +25,8 @@
 - Android（工具链）：**Kotlin 2.0.21 → 2.1.21**——为桌面端铺路（CMP ≥1.8 的最低要求是 Kotlin ≥2.1.0），AGP 8.9.2 与 Compose BOM 2025.06.00 不动。全量验证：159 项 app 单测 + 171 项领域层测试全绿，Lint 无 error，R8 release 构建与 apksigner/zipalign 校验通过，仪器测试 APK 编译通过；Kotlin 2.0.21 时代那条「AGP 高于 KGP 已知上限」告警随之消失。运行时行为无变化（纯编译器版本升级）。见 [CMP 工具链对齐实验](docs/windows-route/CMP_TOOLCHAIN_ALIGNMENT.md)。
 - 跨平台（新模块 `:desktop`）：**桌面宿主骨架**上线——Kotlin JVM + Compose Multiplatform 1.8.2，经 `implementation(project(":domain"))` 复用同一份领域逻辑（不是引 jar），离线组合渲染测试进 CI。`./gradlew :desktop:test` 与 `:desktop:run` **只需 JDK 17，不需要 Android SDK**（实测）。尚未实现：真实界面、卡库持久化、打包分发。骨架定位与「何时提升为 `apps/desktop/` 独立端」的取舍见 [模块说明](apps/android/desktop/README.md)。
 - Android（库契约）：`:domain` 的 kotlinx-serialization 依赖由 `implementation` 改为 `api`——`KnowledgeCard.serializer()` / `Json.encodeToString` 属于公开 API，消费者（`:app`、`:desktop`）不该各写一遍同一行依赖。
+- 架构（首个 ADR）：[ADR-0001 桌面三端与 Android 共用一份 Kotlin / Compose 代码](docs/adr/0001-desktop-tri-platform-shared-kotlin.md)——确定 **Windows / macOS / Linux + Android 四端共用一份实现**（`:domain` 逻辑 + `:shared-ui` 界面，各端只是薄宿主），并如实登记两条代价：mac 会出现 Swift 原生与 CMP 两套实现的并存期、平台专有能力需各写或用 expect/actual；Swift mac 端最终处置列为待决。
+- 跨平台（新模块 `:shared-ui`）：**共享界面层起步**——`apps/android/shared-ui`（KMP + CMP 1.8.2，androidTarget + jvm）。首个迁移是把 app 模块的 `ui/Theme.kt`（4 套纸质主题 + `EditorialColor` 令牌，150 行）整体搬入，**24 个引用文件 import 零改动**（包名保持 `com.knowflick.app.ui`）；另加首个真正跨端的组件 `KnowledgeCardTeaser`。`:app` 与 `:desktop` 现在共用同一份主题与组件，桌面骨架已改用产品主题渲染共享卡片。验证：`:shared-ui:jvmTest` 2 项（令牌 + 无头渲染）+ `:desktop:test` 2 项 + app 159 项 + 领域层 171 项 = **334 项全绿**，Lint、R8 release 与签名校验通过。
 
 ## [v0.2.0] - 2026-10-02
 

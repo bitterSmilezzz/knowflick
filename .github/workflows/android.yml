@@ -100,9 +100,9 @@ jobs:
       - name: 单元测试与 Lint
         run: |
           cd apps/android
-          # :domain（KMP 领域层）与 :desktop（CMP 桌面骨架）都必须显式点名——它们不在
-          # :app 的依赖图里，漏点名不会有任何提示，只是测试总数静默减少。
-          TASKS=":app:testDebugUnitTest :domain:jvmTest :desktop:test :app:lintDebug"
+          # :domain（KMP 领域层）、:shared-ui（跨端共享界面）与 :desktop（CMP 桌面宿主）都必须
+          # 显式点名——它们不在 :app 的依赖图里，漏点名不会有任何提示，只是测试总数静默减少。
+          TASKS=":app:testDebugUnitTest :domain:jvmTest :shared-ui:jvmTest :desktop:test :app:lintDebug"
           # :desktop 的 Compose 测试走离屏渲染（测试内已设 java.awt.headless=true）；
           # Linux runner 没有 X11，若镜像带 xvfb 就用它兜底，避免渲染路径偶发依赖显示服务。
           if command -v xvfb-run >/dev/null 2>&1; then
@@ -118,9 +118,10 @@ jobs:
           python3 - <<'PY'
           import glob, sys, xml.etree.ElementTree as ET
           total = failed = skipped = 0
-          # 三个测试任务的结果目录都要收：模块拆出去之后，只扫 app 会漏报。
+          # 四个测试任务的结果目录都要收：模块拆出去之后，只扫 app 会漏报。
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml') + \
                       glob.glob('domain/build/test-results/jvmTest/*.xml') + \
+                      glob.glob('shared-ui/build/test-results/jvmTest/*.xml') + \
                       glob.glob('desktop/build/test-results/test/*.xml'):
               root = ET.parse(path).getroot()
               total += int(root.get('tests', 0))

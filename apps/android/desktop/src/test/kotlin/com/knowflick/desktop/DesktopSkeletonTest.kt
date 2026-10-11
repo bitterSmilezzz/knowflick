@@ -3,6 +3,8 @@ package com.knowflick.desktop
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import com.knowflick.app.ui.KnowFlickTheme
+import com.knowflick.app.ui.PaperTheme
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -19,11 +21,14 @@ class DesktopSkeletonTest {
     /**
      * 离屏组合：证明 Compose Multiplatform 运行时在本构建里**真的能渲染**，
      * 而不只是「编译得过」。headless 由 build.gradle.kts 的测试系统属性保证。
+     * 这里连**共享界面层**一起验：主题与卡片组件都来自 :shared-ui。
      */
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun rendersHeadlessWithoutWindow() = runComposeUiTest {
-        setContent { SkeletonScreen() }
+    fun rendersSharedUiHeadlessWithoutWindow() = runComposeUiTest {
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { SkeletonScreen() } }
         onNodeWithText("KnowFlick 桌面（骨架）").assertExists()
+        // 共享组件渲染出的领域内容（卡片标题来自 :domain 的示例卡）
+        onNodeWithText("桌面宿主已接上共享领域层").assertExists()
     }
 }

@@ -4,6 +4,9 @@
 > 本文件回答下一层问题——**桌面 UI 宿主（Compose Multiplatform）该用哪套版本，以及它和现有
 > Android 构建怎么共处**。工作量与 UI 抽取范围见 [CMP-FEASIBILITY.md](CMP-FEASIBILITY.md)，
 > 路线取舍见 [DECISION_MEMO.md](DECISION_MEMO.md)。
+>
+> 目标定义与最终决策（Win/mac/Linux 三端 + Android 四端共用一份代码）见
+> [ADR-0001](../adr/0001-desktop-tri-platform-shared-kotlin.md)。
 
 ## 结论摘要
 
