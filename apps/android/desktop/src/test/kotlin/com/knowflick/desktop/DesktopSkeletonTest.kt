@@ -5,11 +5,14 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
+import com.knowflick.app.ui.DesktopBackgroundImageCache
 import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.PaperTheme
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopSkeletonTest {
@@ -79,6 +82,22 @@ class DesktopSkeletonTest {
         val reparsed = com.knowflick.app.data.CardFileIO.decodeListSalvaging(json)
         assertEquals(cards.size, reparsed.size)
         assertEquals(cards.map { it.id }, reparsed.map { it.id })
+    }
+
+    /**
+     * 底图接缝在桌面侧真的能解码：资源来自仓库根 `shared/assets`（经 `resources.srcDir` 打进 jar），
+     * 由 `:shared-ui` 的 jvm actual 用 Skia 读——这是卡片视觉（刷卡页/详情页/海报）的前提。
+     */
+    @Test
+    fun resolvesBackgroundImageFromBundledSharedAssets() {
+        val image = DesktopBackgroundImageCache.image("ai")
+
+        assertNotNull(image, "应从 classpath 的 bg/ai.webp 解出底图")
+        assertTrue(image.width > 0 && image.height > 0)
+        // 第二次走缓存
+        assertNotNull(DesktopBackgroundImageCache.cached("ai"))
+        // 不存在的 key 返回 null 而不是抛
+        assertNull(DesktopBackgroundImageCache.image("definitely-not-a-key"))
     }
 
     /** 端到端：共享存储 → 共享状态机 → **共享整屏**，离屏渲染。 */
