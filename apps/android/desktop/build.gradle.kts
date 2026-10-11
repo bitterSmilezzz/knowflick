@@ -21,6 +21,8 @@ kotlin { jvmToolchain(17) }
 
 dependencies {
     implementation(project(":domain"))
+    // 共享界面层：桌面端用的主题与组件与 Android 端是同一份（:shared-ui）
+    implementation(project(":shared-ui"))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
 

@@ -15,8 +15,9 @@ KnowFlick/
 │   │   └── build_app.sh
 │   ├── android/             # Android 端（Gradle + Compose）
 │   │   ├── app/             # 应用与装配层（data / ui / speech / sync / export / widget）
-│   │   ├── domain/          # :domain —— KMP 领域层（androidTarget + jvm），与桌面端共享一份
-│   │   └── desktop/         # :desktop —— CMP 桌面宿主骨架（Kotlin JVM），复用 :domain
+│   │   ├── domain/          # :domain —— KMP 领域层（androidTarget + jvm），四端共享
+│   │   ├── shared-ui/       # :shared-ui —— CMP 共享界面层，四端共享（win/mac/linux + Android）
+│   │   └── desktop/         # :desktop —— 桌面宿主（一份产物跑 Windows / macOS / Linux）
 │   └── <windows|extension>/ # 待创建
 ├── shared/                  # 跨端共享内容（单一事实来源）
 │   └── assets/
@@ -60,28 +61,36 @@ unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" |
 
 底图统一用 **WebP**（mac 端自 macOS 11 起原生支持解码，两条加载路径 `NSImage(contentsOf:)` 与 ImageIO 缩略图均已验证）。同画质下体积约为 JPEG 的三分之一。
 
-## 共享代码（KMP 领域层 `:domain`）
+## 共享代码（`:domain` 逻辑 + `:shared-ui` 界面）
 
-`shared/` 解决的是**内容**共享；**代码**共享目前只有一处：`apps/android/domain`（Gradle 模块 `:domain`）。
+`shared/` 解决的是**内容**共享；**代码**共享解决的是「一次开发多端同步」。目标与决策见
+[ADR-0001：桌面三端与 Android 共用一份 Kotlin / Compose 代码](adr/0001-desktop-tri-platform-shared-kotlin.md)：
+**Windows / macOS / Linux 三端 + Android 四端共用一份实现**，各端只是薄宿主。
 
-| 项 | 现状（2026-10-11，探针落地后） |
-| --- | --- |
-| 内容 | 卡片模型 / 卡库状态机 / 学科与学习范围 / 统计 / 搜索 / 图谱 / 间隔重复 / 剪藏抽取——19 文件 4149 行，包名 `com.knowflick.app.domain` |
-| 技术形态 | Kotlin Multiplatform，双 target：`androidTarget` + `jvm`（JVM 17） |
-| 谁在用 | `:app`（Android 装配层）与 `:desktop`（CMP 桌面宿主骨架）都经 `implementation(project(":domain"))` 消费 |
-| 源集约定 | `commonMain` 放平台无关代码；**含 `java.time` / `java.util` 的文件放 `jvmAndAndroidMain`**（手建中间源集），不要放 `commonMain`——理由见 [KMP 探针结果](windows-route/KMP_PROBE_RESULT.md) |
-| 验证 | `cd apps/android && ./gradlew :domain:jvmTest`（171 项，**只需 JDK 17**） |
+| 模块 | 内容 | 技术形态 | 谁在用 |
+| --- | --- | --- | --- |
+| `:domain`（`apps/android/domain`） | 卡片模型 / 卡库状态机 / 学科与学习范围 / 统计 / 搜索 / 图谱 / 间隔重复 / 剪藏抽取——19 文件 4149 行，包名 `com.knowflick.app.domain` | KMP：`androidTarget` + `jvm`（JVM 17） | `:app`、`:shared-ui`、`:desktop` |
+| `:shared-ui`（`apps/android/shared-ui`） | 跨端界面与主题令牌（`Theme.kt` 已迁入：4 套纸质主题 + `EditorialColor`；首个共享组件 `KnowledgeCardTeaser`）；包名 `com.knowflick.app.ui` | KMP + CMP 1.8.2，同双 target | `:app`（Android 端生产路径）、`:desktop` |
+| `:desktop`（`apps/android/desktop`） | 桌面宿主（一份产物跑 Win/mac/Linux），目前是骨架 | Kotlin JVM + CMP 1.8.2 | 三端桌面 |
 
-**桌面宿主 `:desktop`**（`apps/android/desktop`）：Kotlin JVM + Compose Multiplatform 1.8.2 的**骨架**，
-目前只证明「同一份领域逻辑能被非 Android 宿主复用」并跑通无头渲染测试。版本线与选型矩阵见
-[CMP 工具链对齐实验](windows-route/CMP_TOOLCHAIN_ALIGNMENT.md)，模块定位与「何时提升为 `apps/desktop/`
-独立端」见 [模块说明](../apps/android/desktop/README.md)。验证：`./gradlew :desktop:test`（2 项，同样只需 JDK 17）。
+**迁移策略（本仓库的自定约定）**：搬文件时**包名保持不变**（`com.knowflick.app.*`），因此调用方
+import 一行都不用改——`:domain` 19 文件与 `Theme.kt`（24 个引用文件）都是这样零改动完成的。
+这是 12k 行 UI 能分批平移的前提。
 
-**可移植边界**：领域层今天是「纯 JVM Kotlin」，可移植到 JVM 家族宿主（Android + Windows/macOS/Linux 桌面）。
+**源集约定**：`commonMain` 只放平台无关代码；含 `java.time` / `java.util` 的文件放
+`jvmAndAndroidMain`（手建中间源集），不要放 `commonMain`——理由见 [KMP 探针结果](windows-route/KMP_PROBE_RESULT.md)。
+界面侧同理：Android 专有调用（`LocalContext` / `Toast` / `Intent` / `Bitmap` / assets 读取 / Glance）
+不能进 `commonMain`，要么抽 `expect`/`actual`，要么留在 `:app`。
+
+**可移植边界**：两个共享模块今天是「纯 JVM Kotlin」，可移植到 JVM 家族宿主（Android + 三端桌面）。
 要加非 JVM target（iOS / Web），必须先把 `java.*` 换成 `kotlinx-datetime` 等公共库（约 9 文件 25 处）。
 
-`:domain` 与 `:desktop` 的测试都要显式点名才会跑（`./tools/build_android.sh` 与 `android.yml` 已同步）；
-只跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错。
+**验证**（三个模块的测试都必须显式点名，漏点名不会报错、只是静默少跑；`./tools/build_android.sh`
+与 `android.yml` 已同步）：
+
+```sh
+cd apps/android && ./gradlew :domain:jvmTest :shared-ui:jvmTest :desktop:test   # 175 项，只需 JDK 17
+```
 
 ## 分支模型
 
