@@ -166,7 +166,8 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#desktop-v}"
           mkdir -p out
-          # jpackage 的 macOS/Windows 内部版本要求 MAJOR>0，产物文件名会是 KnowFlick-1.0.0.*；
+          # jpackage 的 macOS 包版本要求 MAJOR>0，DMG 文件名会是 KnowFlick-1.0.0.dmg；
+          # Windows/Linux 用产品版本（KnowFlick-0.1.0.msi / knowflick_0.1.0-1_amd64.deb）。
           # 对外统一用**产品版本**（tag 里的 0.1.0），命名规则对齐 mac/android 的产物习惯。
           cp desktop-dmg/*.dmg   "out/KnowFlick-$VERSION-macos.dmg"
           cp desktop-msi/*.msi   "out/KnowFlick-$VERSION-windows.msi"
