@@ -15,7 +15,8 @@ KnowFlick/
 │   │   └── build_app.sh
 │   ├── android/             # Android 端（Gradle + Compose）
 │   │   ├── app/             # 应用与装配层（data / ui / speech / sync / export / widget）
-│   │   └── domain/          # :domain —— KMP 领域层（androidTarget + jvm），与桌面端共享一份
+│   │   ├── domain/          # :domain —— KMP 领域层（androidTarget + jvm），与桌面端共享一份
+│   │   └── desktop/         # :desktop —— CMP 桌面宿主骨架（Kotlin JVM），复用 :domain
 │   └── <windows|extension>/ # 待创建
 ├── shared/                  # 跨端共享内容（单一事实来源）
 │   └── assets/
@@ -67,15 +68,20 @@ unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" |
 | --- | --- |
 | 内容 | 卡片模型 / 卡库状态机 / 学科与学习范围 / 统计 / 搜索 / 图谱 / 间隔重复 / 剪藏抽取——19 文件 4149 行，包名 `com.knowflick.app.domain` |
 | 技术形态 | Kotlin Multiplatform，双 target：`androidTarget` + `jvm`（JVM 17） |
-| 谁在用 | `:app`（Android 装配层）经 `implementation(project(":domain"))` 消费；未来桌面端走同一个 `jvm` target |
+| 谁在用 | `:app`（Android 装配层）与 `:desktop`（CMP 桌面宿主骨架）都经 `implementation(project(":domain"))` 消费 |
 | 源集约定 | `commonMain` 放平台无关代码；**含 `java.time` / `java.util` 的文件放 `jvmAndAndroidMain`**（手建中间源集），不要放 `commonMain`——理由见 [KMP 探针结果](windows-route/KMP_PROBE_RESULT.md) |
 | 验证 | `cd apps/android && ./gradlew :domain:jvmTest`（171 项，**只需 JDK 17**） |
+
+**桌面宿主 `:desktop`**（`apps/android/desktop`）：Kotlin JVM + Compose Multiplatform 1.8.2 的**骨架**，
+目前只证明「同一份领域逻辑能被非 Android 宿主复用」并跑通无头渲染测试。版本线与选型矩阵见
+[CMP 工具链对齐实验](windows-route/CMP_TOOLCHAIN_ALIGNMENT.md)，模块定位与「何时提升为 `apps/desktop/`
+独立端」见 [模块说明](../apps/android/desktop/README.md)。验证：`./gradlew :desktop:test`（2 项，同样只需 JDK 17）。
 
 **可移植边界**：领域层今天是「纯 JVM Kotlin」，可移植到 JVM 家族宿主（Android + Windows/macOS/Linux 桌面）。
 要加非 JVM target（iOS / Web），必须先把 `java.*` 换成 `kotlinx-datetime` 等公共库（约 9 文件 25 处）。
 
-`:domain` 的测试要显式点名才会跑（`./tools/build_android.sh` 与 `android.yml` 已同步）；只跑 `:app:testDebugUnitTest`
-不会带上它们，也不会报错。
+`:domain` 与 `:desktop` 的测试都要显式点名才会跑（`./tools/build_android.sh` 与 `android.yml` 已同步）；
+只跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错。
 
 ## 分支模型
 

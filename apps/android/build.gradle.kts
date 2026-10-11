@@ -13,6 +13,11 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.1.21" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.1.21" apply false
     id("org.jetbrains.kotlin.plugin.serialization") version "2.1.21" apply false
+    // 桌面宿主（:desktop）用：纯 JVM 的 Kotlin 插件 + Compose Multiplatform 插件。
+    // CMP 1.8.2 是与 compose-bom:2025.06.00（其锁定的 androidx.compose.* = 1.8.2）逐号对齐的
+    // 版本——这正是「三方对齐」的落点，依据见 docs/windows-route/CMP_TOOLCHAIN_ALIGNMENT.md。
+    id("org.jetbrains.kotlin.jvm") version "2.1.21" apply false
+    id("org.jetbrains.compose") version "1.8.2" apply false
     // baseline profile 生成（供 :baselineprofile 模块使用）
     id("androidx.baselineprofile") version "1.4.1" apply false
 }

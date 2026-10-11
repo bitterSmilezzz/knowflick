@@ -144,12 +144,18 @@ e: Class 'probenew.NewApi' was compiled with an incompatible version of Kotlin.
 
    唯一新噪声是 `CardFollowUpChatSheet.kt` 里 `LocalClipboardManager` 的弃用告警——**升级前就在打**，
    与本轮无关（上游建议改用 `LocalClipboard`，另开一轮）。
-2. **`:desktop` 骨架进仓库**：Kotlin JVM + CMP 1.8.2 + `project(":domain")`，把本实验的
-   `Main.kt` / 冒烟测试照搬，接进 CI（注意：**新模块的测试任务没人点名就会静默不跑**，
-   `:domain:jvmTest` 的教训）。
+2. ✅ **`:desktop` 骨架进仓库（2026-10-11 完成，2026-10-11 第二波）**——落点与实验不同：
+   宿主放进**同一个构建**（`apps/android/desktop`，Gradle 路径 `:desktop`），用
+   `implementation(project(":domain"))` 项目依赖而不是引 jar，因此顺带验证了「CMP 与 AGP 同处
+   一个构建」这件事本身。测试 2 项：领域层复用 + `runComposeUiTest` 无头渲染；
+   并实测 **`:desktop:test` 在没有 Android SDK 的机器上照样通过**（移走 `local.properties` +
+   `ANDROID_HOME` 指向不存在路径 + `--rerun-tasks`）。
+   骨架定位、未实现项、以及「何时提升为 `apps/desktop/`」的判据见
+   [模块说明](../../apps/android/desktop/README.md)。
 3. **Windows 侧验证**：Windows 机器上跑 `runDistributable` 与 `packageMsi`；
    首次真机运行前不要宣称「Windows 端可用」。
 4. **UI 抽取**：按 CMP-FEASIBILITY §4.1 的 A/B/C 三档推进（A 档平移、B 档抽接口、C 档各写）。
+   这是骨架之后真正的主线工作量（22–35 人日），且需要先定「UI 要不要共享」。
 
 ## 复现
 
