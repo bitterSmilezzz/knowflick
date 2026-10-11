@@ -51,7 +51,7 @@ class ArchiveImportManagerTest {
         val uri = Uri.fromFile(tempZip)
 
         // 2. 探测归档
-        val previewResult = ArchiveImportManager.inspectArchive(context, uri)
+        val previewResult = AndroidArchiveReader.inspectArchive(context, uri)
         assertTrue(previewResult.isSuccess)
 
         val preview = previewResult.getOrThrow()
@@ -94,7 +94,7 @@ class ArchiveImportManagerTest {
         val uri = Uri.fromFile(tempJson)
 
         // 2. 探测归档
-        val previewResult = ArchiveImportManager.inspectArchive(context, uri)
+        val previewResult = AndroidArchiveReader.inspectArchive(context, uri)
         assertTrue(previewResult.isSuccess)
 
         val preview = previewResult.getOrThrow()
