@@ -180,15 +180,20 @@ mac 端历史上一直用无前缀的 `v*`（已有 40 余个 Release），保�
 ./tools/build_android.sh          # android：单测 + Lint + release + 签名校验
 ./tools/test.sh                   # mac：Swift Testing
 cd apps/mac && ./build_app.sh     # mac：打包 .app
+cd apps/android && ./gradlew :desktop:test :desktop:packageDmg   # desktop：本系统安装包
+#   ↑ jpackage 不支持交叉编译：macOS 出 dmg、Windows 出 msi、Linux 出 deb。
+#     发布用的三个包由 .github/workflows/desktop.yml 的三系统 matrix 自动产出并附到 Release。
 
 # 2. 核对版本号与 tag 一致
 grep -E 'versionCode|versionName' apps/android/app/build.gradle.kts
 # mac 侧版本号来自 apps/mac/Sources/KnowFlickCore/Support/AppVersion.swift
+# desktop 侧版本号来自 apps/android/desktop/build.gradle.kts 的 packageVersion（workflow 会校验 tag 与它一致）
 
 # 3. 提交、推送、打 tag（注解 tag，与 mac 的 v4.2.0 风格一致）
 git push origin main
 git tag -a android-v0.8.5 -m "KnowFlick Android v0.8.5（versionCode 13）"
-git push origin android-v0.8.5
+git tag -a desktop-v0.1.0 -m "KnowFlick Desktop v0.1.0（Windows/macOS/Linux）"
+git push origin android-v0.8.5 desktop-v0.1.0
 
 # 4. 发 Release（附产物）
 gh release create android-v0.8.5 --title "..." --notes-file <正文> \
@@ -197,7 +202,13 @@ gh release create android-v0.8.5 --title "..." --notes-file <正文> \
 
 tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是轻量 tag，自 `android-v0.8.5` 起统一为注解 tag（与 mac 的 `v4.2.0` 一致），以便把发布说明随 tag 保存；`git describe` 默认也只认注解 tag。
 
-**android tag 不产生云端产物。** `android.yml` 没有 tag 触发，`macos.yml` 只认 `v*`，因此推送 `android-v0.8.5` 不会触发任何 workflow：上面的签名 APK 必须由本地 `./tools/build_android.sh` 产出，Release 附件也依赖本地上传。mac 端相反——推 `v*` 会触发 macOS workflow（`.github/workflows/macos.yml`）自动构建并附到 Release，两条路径的差异见 [多端现状报告](STATUS_2026-09-14.md) 第二节。
+**哪条 tag 会自己产出云端产物**：`v*` → `macos.yml`（构建 .app 并附 Release）；`desktop-v*` →
+`desktop.yml`（三系统 matrix 各出一个安装包，统一命名后附到同一个 Release，并附 `SHA256SUMS.txt`）；
+`android-v*` 不触发任何 workflow，签名 APK 必须本地 `./tools/build_android.sh` 产出、本地上传附件。
+
+> 桌面端 tag 有两个纪律：① tag 里的版本必须等于 `apps/android/desktop/build.gradle.kts` 的
+> `packageVersion`（workflow 会硬校验，与 macos.yml 同一条）；② 与 `macos.yml` 同一取舍——`paths`
+> 过滤对 tag 推送同样生效，所以 tag 要打在**包含桌面端改动**的提交上（正常发版流程本就如此）。
 
 ## 环境要求
 
@@ -205,6 +216,7 @@ tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是�
 | --- | --- | --- |
 | android | JDK 17、Android SDK（Platform 35 + Build Tools 35.0.0） | ✅ 可用（Homebrew openjdk@17 + `~/Library/Android/sdk`） |
 | android 领域层（`:domain`，KMP） | **只需 JDK 17**——不需要 Android SDK | ✅ 可用（实测：移走 `local.properties` 且 `ANDROID_HOME` 指向不存在路径，`./gradlew :domain:jvmTest` 仍 171 项全绿；见 [KMP 探针结果](windows-route/KMP_PROBE_RESULT.md)） |
+| 共享界面（`:shared-ui`）与桌面宿主（`:desktop`） | **只需 JDK 17**——不需要 Android SDK；**打安装包要在目标系统上**（jpackage 不支持交叉编译） | ✅ 可用（`:shared-ui:jvmTest` / `:desktop:test` 本机全绿；`:desktop:packageDmg` 实测出 65 MB DMG。MSI/DEB 由 [desktop.yml](.github/workflows/desktop.yml) 的三系统 matrix 覆盖） |
 | mac | **完整 Xcode**（SwiftUI 宏需要 Xcode 的工具链插件） | ✅ 可用（2026-10 起 `/Applications/Xcode.app` 已装，Swift 6.4；UI 层可本机编译验证） |
 
 #### 无完整 Xcode 时的降级验证（备用口径）
