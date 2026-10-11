@@ -51,6 +51,10 @@ cd apps/android
 2. **JDK 厂商检查** —— Compose 只认 Temurin/Corretto/Zulu，开发机的 Homebrew openjdk@17 会被拒；
    `gradle.properties` 里为此关掉了检查，**但对外产物一律由 CI 用 Temurin 构建**，避免把开发机的
    运行时打进包里。
+3. **安装器元数据必须纯 ASCII** —— jpackage 用平台默认字符集读自己的 `@argfile`，Windows runner
+   的 cp1252 遇到中文直接抛 `Input length = 1`（MalformedInputException），MSI 构建失败（实测踩过）。
+   所以 `description` 用英文；**同理，Windows 机器上的仓库路径也避免中文**（路径同样进 argfile）。
+   中文只留在产品界面里，安装器文案等 jpackage 支持按端覆盖再补。
 
 ## 为什么暂驻 `apps/android/` 构建内
 
