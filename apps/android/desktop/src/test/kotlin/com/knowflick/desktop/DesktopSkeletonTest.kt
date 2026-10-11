@@ -71,6 +71,43 @@ class DesktopSkeletonTest {
         assertEquals(0, model.store.cards.size)
     }
 
+    /**
+     * **桌面端现在有测验能力**：编排来自 `:domain` 的 `QuizCycle`（与 Android 端同一份），
+     * 界面来自 `:shared-ui` 的 `QuizScreen`（同一份）。这条用例走完「起一轮 → 评完 → 退出」，
+     * 并确认评分真的经 SM-2 落进了卡库。
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun quizRunsOnDesktopThroughSharedCycle() = runComposeUiTest {
+        val (model, _) = tempModel("kf-desktop-quiz")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = DesktopHostState(model)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+
+        state.startQuiz()
+        assertNotNull(state.quizSession, "起一轮后应有会话")
+        // 共享 QuizScreen 的标题用的是 QuizType.label
+        onNodeWithText("知识测验").assertExists()
+
+        // 评完这一轮（每张都评「熟练掌握」）
+        var guard = 0
+        while (state.quizSession?.isFinished == false && guard++ < 20) {
+            state.rateQuiz(com.knowflick.app.domain.QuizRating.MASTERED)
+        }
+        onNodeWithText("本轮记忆测验已完成").assertExists()
+
+        // 评分经共享 QuizCycle 落到卡库：复习次数与复习时间都被写入
+        assertTrue(model.store.cards.all { it.reviewCount > 0 }, "评分应经 SM-2 记进卡库")
+        assertTrue(model.store.cards.all { it.lastReviewedAt != null })
+
+        // 退出测验回到卡库界面
+        state.exitQuiz()
+        assertNull(state.quizSession)
+        onNodeWithText("收藏 1").assertExists()
+    }
+
     /** 导出走的是与 Android 端同一份 `CardExportEngine`；且导出的镜像能原样再导入（往返）。 */
     @Test
     fun exportsThroughSharedEngine() {
