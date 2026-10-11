@@ -16,6 +16,7 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 | 安装包 | ✅ 三端各出原生包（dmg / msi / deb），由 [desktop.yml](../../../.github/workflows/desktop.yml) 的三系统 matrix 构建并附 Release |
 | 底图资源 | ✅ 仓库根 `shared/assets/bg`（42 张 webp，2.4 MB）经 `resources.srcDir` 打进 jar，`:shared-ui` 的 jvm 侧 actual 用 Skia 解码——与 Android 端同一份来源、同一布局、零副本 |
 | 导入归档 | ✅ 原生文件对话框选 `.zip` 备份包 / `.json` 镜像 → **共享** `ArchiveImportManager` 探测 → 按 MERGE 合并 → 落盘 → 界面刷新 |
+| 知识测验 | ✅ **共享** `QuizScreen` + **共享** `QuizCycle`（`:domain`）——菜单栏「学习 → 开始知识测验 / 只测今天到期」，评分经 SM-2 落库，可「再测一组」 |
 | 导出 | ✅ 收藏阁 → Markdown、整库 → JSON 镜像，选「另存为」；导出格式由**共享** `CardExportEngine` 决定 |
 | 平台动作 | ⚠️ 系统级分享用「另存为」替代（桌面无 `ACTION_SEND` 对等物）；剪贴板、Toast 未接 |
 | 详情页 | ❌ 尚未迁入共享模块（点击卡片只给提示） |
@@ -23,6 +24,18 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 
 总目标与决策见 [ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)；
 界面分档进度见 [UI_EXTRACTION](../../../docs/windows-route/UI_EXTRACTION.md)。
+
+## 状态与重组（一个容易踩的约定）
+
+卡库（`CardStore`）与测验会话（`QuizSession`）**都不是 Compose 状态**，而且评分只改动**同一个**
+`QuizSession` 实例的内部进度——实例本身不变。所以宿主的重组契约是：
+
+- 任何写入后 `version++`（`DesktopHostState` 负责）；
+- 版本驱动的屏幕外面套 `key(state.version)`（与 Android 宿主的 `key(viewModel.version)` 同一手法）——
+  `key` 既**订阅**了 version，又在变化时重建这棵子树。
+
+少了 `key` 会出现「评分后界面停在第一张卡」这类静默故障（写这波时被测试逮到过一次：
+只订阅 `quizSession` 实例是收不到失效通知的）。
 
 ## 桌面侧的平台相关代码只有两个文件
 
