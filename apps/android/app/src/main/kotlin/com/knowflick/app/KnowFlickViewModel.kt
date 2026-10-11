@@ -595,7 +595,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             isInspectingArchive = true
             generateNotice = "正在解析归档文件…"
             val result = withContext(Dispatchers.IO) {
-                com.knowflick.app.data.ArchiveImportManager.inspectArchive(getApplication(), uri)
+                com.knowflick.app.data.AndroidArchiveReader.inspectArchive(getApplication(), uri)
             }
             isInspectingArchive = false
             result.fold(
@@ -621,8 +621,11 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             val result = withContext(Dispatchers.IO) {
                 com.knowflick.app.data.ArchiveImportManager.applyRestore(model.store, preview, strategy)
             }
-            if (strategy == com.knowflick.app.data.RestoreStrategy.OVERWRITE && preview.settingsJson != null) {
-                val loadedSettings = AiSettings.fromJson(preview.settingsJson)
+            // 跨模块后 ArchivePreview 的公开属性不再允许 smart cast（Kotlin 跨模块限制），
+            // 先落局部变量——与 :domain 迁移时 CardStore 的处理同一原因。
+            val archivedSettings = preview.settingsJson
+            if (strategy == com.knowflick.app.data.RestoreStrategy.OVERWRITE && archivedSettings != null) {
+                val loadedSettings = AiSettings.fromJson(archivedSettings)
                 if (loadedSettings != null) {
                     settings = loadedSettings
                     applySettings(loadedSettings)

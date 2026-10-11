@@ -82,7 +82,7 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
 - **行尾**：仓库一律 LF（`.gitattributes` 管辖）。Windows 上 clone 后如果 `git status` 出现大范围假修改，先查 `git config core.autocrlf`——应为 `false`（或 `input`），不要设为 `true`。
 - **两个 workflow 路径过滤**：改 mac 不会触发 android CI、反之亦然。改了 `shared/**` 则两端 CI 都会跑——这是有意设计，因为契约漂移必须两端同抓。
 - **Gradle 任务要显式点名 `:domain:jvmTest` / `:shared-data:jvmTest` / `:shared-ui:jvmTest` / `:desktop:test`**：这四个模块都不在 `:app` 的依赖图里，跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错，只是静默少跑。`tools/build_android.sh`、`android.yml`、`desktop.yml` 已同步点名，改验证命令时别漏。
-- **跨模块后 `internal` 直接失效**：Kotlin 的 `internal` 按**模块**算，把类搬进共享模块后，宿主再访问原先的 `internal` 成员就编译不过（`:shared-data` 迁移时 `AppModel.storage`、`CardPersistenceQueue` 都踩了）。要么公开并说明理由，要么在共享模块内收口——别用「本来就是 internal」当借口把 API 面搅乱。
+- **跨模块会连续踩两类 Kotlin 限制**（每次搬文件都验一遍）：① **`internal` 按模块算**——类搬进共享模块后，宿主再访问原先 `internal` 的成员直接编译不过（`AppModel.storage`、`CardPersistenceQueue`）；② **跨模块的 public 属性不能 smart cast**——`preview.settingsJson != null` 之后仍要落局部变量才能用（`:domain` 的 `editedAt`、`:shared-data` 的 `settingsJson` 都踩过）。处理原则：该公开的公开并写明理由，不要用转发方法堆间接。
 - **新增 Gradle 模块必须同时更新四处**：`tools/build_android.sh`、`android.yml` 的测试步骤、workflow 里「汇总测试结果」的 glob 路径、以及 `desktop.yml` matrix 里的任务列表——只改名不加汇总，CI 绿了但覆盖率已经掉了。
 - **搬文件进共享模块时不要改包名**：`:domain`（`com.knowflick.app.domain`）、`:shared-data`（`com.knowflick.app.data`）与 `:shared-ui`（`com.knowflick.app.ui`）都保持原包名，调用方 import 零改动。这是上万行代码能分批平移的前提，别为了「模块名好看」制造上千处 import 改动。
 - **`java.*` 不要放进 `:domain` 的 `commonMain`**：当前 `androidTarget + jvm` 组合下能编译通过，但那是元数据编译被跳过的副作用，加非 JVM target 即失效；含 `java.time`/`java.util` 的文件放 `jvmAndAndroidMain`（依据见 [KMP 探针结果](docs/windows-route/KMP_PROBE_RESULT.md)）。
