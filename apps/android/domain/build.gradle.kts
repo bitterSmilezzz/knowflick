@@ -45,8 +45,11 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                // @Serializable（Tombstone）与 JSON 编解码的公共 API 面
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+                // @Serializable（Tombstone / KnowledgeCard）与 JSON 编解码属于**公开 API**：
+                // 消费者要调用 KnowledgeCard.serializer() 或 Json.encodeToString，就必须在
+                // 自己的编译类路径上看到 kotlinx-serialization。用 api 而非 implementation，
+                // 免得每个消费方各写一遍同一行依赖（:desktop 骨架就撞过这个坑）。
+                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
             }
         }
 

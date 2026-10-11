@@ -19,9 +19,9 @@ if [[ $# -gt 0 && "${1:-}" != "--connected" ]]; then
   exit 1
 fi
 # Keep emulator tests separate from memory-intensive R8 compilation.
-# :domain（KMP 领域层模块，2026-10-10 起）的 jvmTest 承载领域层全部 171 项测试，
-# 不点名就会漏跑——与 .github/workflows/android.yml 保持同一组任务。
-./gradlew :app:testDebugUnitTest :domain:jvmTest :app:lintDebug
+# :domain（KMP 领域层）与 :desktop（CMP 桌面骨架）都不在 :app 的依赖图里，不点名就会漏跑——
+# 与 .github/workflows/android.yml 保持同一组任务。
+./gradlew :app:testDebugUnitTest :domain:jvmTest :desktop:test :app:lintDebug
 if [[ "${1:-}" == "--connected" ]]; then
   ./gradlew :app:connectedDebugAndroidTest
 fi
