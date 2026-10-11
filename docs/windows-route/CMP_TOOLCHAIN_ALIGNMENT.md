@@ -123,16 +123,27 @@ e: Class 'probenew.NewApi' was compiled with an incompatible version of Kotlin.
 - 若这条走不通（见下），**独立构建路线已被本实验证明可行**：它可以做到 Android 端一行不改，
   代价是 `:domain` / 共享 UI 模块要成为跨构建契约，且桌面端与共享 UI 的 Kotlin 上限被锁在 2.1.x。
 
-**这条推荐成立的前提尚未验证**：AGP 8.9.2 与 KGP 2.1.21 在真实 Android 工程上的共存
-（实测预期是「高于已知上限」告警，非阻塞，但必须用 330 项测试 + Lint + R8 跑一遍才算数）。
-这正是下一波清单第 1 项。
+**这条推荐的前提已实测验证**（同日，见下）：`apps/android` 在 Kotlin 2.1.21 下
+**330 项测试全绿、Lint 干净、R8 release 构建与签名校验通过、仪器测试 APK 编译通过**，
+而且当前栈在 Kotlin 2.0.21 上会打的「AGP 高于 KGP 已知上限」告警**升级后消失了**。
 
 ## 下一波清单（按依赖顺序）
 
-1. **Android 端 Kotlin 2.1.21 升级试验**：改根 `build.gradle.kts` 的
-   `org.jetbrains.kotlin.android` / `plugin.compose` / `plugin.serialization` 三处版本，
-   跑 `./tools/build_android.sh` 全量（330 项测试 + Lint + R8 + 签名）。
-   预期噪声：KGP 会对 AGP 8.9.2 打印「高于已知上限」告警（当前 2.0.21 已在打），非阻塞。
+1. ✅ **Android 端 Kotlin 2.0.21 → 2.1.21 升级试验（2026-10-11 完成）**
+   ——只改根 `build.gradle.kts` 三处版本，跑 `./tools/build_android.sh` 全量：
+
+   | 验证 | 结果 |
+   | --- | --- |
+   | `:app:testDebugUnitTest` | 159 项全绿 |
+   | `:domain:jvmTest` | 171 项全绿 |
+   | `:app:lintDebug` | 无 error |
+   | `:app:assembleRelease`（R8 + 资源压缩 + baseline profile 合并） | 通过 |
+   | `apksigner` / `zipalign` 校验 | 通过 |
+   | `:app:assembleDebugAndroidTest` | 编译通过 |
+   | KGP↔AGP 兼容告警 | **消失**（2.0.21 时会打「AGP 8.9.2 高于已知上限 8.5」） |
+
+   唯一新噪声是 `CardFollowUpChatSheet.kt` 里 `LocalClipboardManager` 的弃用告警——**升级前就在打**，
+   与本轮无关（上游建议改用 `LocalClipboard`，另开一轮）。
 2. **`:desktop` 骨架进仓库**：Kotlin JVM + CMP 1.8.2 + `project(":domain")`，把本实验的
    `Main.kt` / 冒烟测试照搬，接进 CI（注意：**新模块的测试任务没人点名就会静默不跑**，
    `:domain:jvmTest` 的教训）。
@@ -150,7 +161,8 @@ cd .scratch/cmp-toolchain/<freeze|aligned|modern>
 #   testImplementation(compose.uiTest)   # 需 @file:OptIn(ExperimentalComposeLibrary::class)
 #   compose.desktop { application { mainClass = "com.knowflick.desktopprobe.MainKt" } }
 
-# :domain 产物（Kotlin 2.0.21 编译）
+# :domain 产物（实验当时由 Kotlin 2.0.21 编译；本轮 Android 升级后为 2.1.21——
+# 方向不变，现代消费者读更旧的产物始终可行）
 cd apps/android && ./gradlew :domain:jvmJar
 
 # 跑任一路线

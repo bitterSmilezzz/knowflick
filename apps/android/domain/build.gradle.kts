@@ -1,12 +1,13 @@
 // :domain —— androidx-free 领域层，Kotlin Multiplatform（androidTarget + jvm）。
 //
-// 目的（docs/windows-route/DECISION_MEMO.md）：验证「Android 与桌面（Windows 走 jvm target）
-// 共享一份领域逻辑」这条工具链路线。本模块是探针切片：先迁入依赖闭包最小的文件，
-// 用实际构建回答两个开放问题——
+// 定位：这是**产品模块**，不是探针——Android 装配层与（将来的）桌面端共用同一份领域逻辑。
+// 模块由 2026-10 的跨平台探针建立，探针回答的两个开放问题：
 //   1. 双 JVM target（android + jvm）下，含 `java.time` / `java.util` 的文件能否放进
 //      共享源集（jvmAndAndroidMain），还是必须拆 platform-specific actual；
-//   2. Kotlin 2.0.21 时代的 KMP 与 AGP 8.9.2 / Compose BOM 的兼容面。
-// 路线与工作量见 docs/windows-route/CMP-FEASIBILITY.md；全量迁移是后续波次，不是本模块现状。
+//   2. KMP 与 AGP 8.9.2 / Compose BOM 2025.06.00 的兼容面。
+// 两条实测答案与后续波次见 docs/windows-route/KMP_PROBE_RESULT.md；
+// 桌面 UI 选型见 docs/windows-route/CMP_TOOLCHAIN_ALIGNMENT.md。
+// Kotlin 版本跟随根 build.gradle.kts（2026-10-11 起为 2.1.21——CMP ≥1.8 的最低要求）。
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
     id("org.jetbrains.kotlin.plugin.serialization")
