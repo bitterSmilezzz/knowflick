@@ -45,9 +45,10 @@ cd apps/android
 
 打包时踩到的两条真实约束（都已写进注释，别当成配置错误）：
 
-1. **macOS/Windows 的包版本要求 MAJOR > 0** —— 产品版本是 `0.1.0`，但 jpackage 会直接拒绝，
-   所以 `macOS { packageVersion = "1.0.0" }` 是**打包器别名**；对外一律用产品版本（tag、Release、
-   附件名都用 `0.1.0`，发布流程里会统一改名）。
+1. **只有 macOS 的包版本要求 MAJOR > 0**（CI 实测：Windows/Linux 直接用产品版本 `0.1.0` 正常出包）——
+   macOS 会被 `0.1.0` 直接拒绝，所以 `macOS { packageVersion = "1.0.0" }` 是**打包器别名**；
+   对外一律用产品版本（tag、Release、附件名都用 `0.1.0`，发布流程里统一改名）。
+   三端产物命名因此不同：`KnowFlick-0.1.0.msi` / `knowflick_0.1.0-1_amd64.deb` / `KnowFlick-1.0.0.dmg`。
 2. **JDK 厂商检查** —— Compose 只认 Temurin/Corretto/Zulu，开发机的 Homebrew openjdk@17 会被拒；
    `gradle.properties` 里为此关掉了检查，**但对外产物一律由 CI 用 Temurin 构建**，避免把开发机的
    运行时打进包里。
