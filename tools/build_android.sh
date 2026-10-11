@@ -21,7 +21,7 @@ fi
 # Keep emulator tests separate from memory-intensive R8 compilation.
 # :domain（KMP 领域层）、:shared-ui（跨端共享界面）与 :desktop（CMP 桌面宿主）都不在 :app 的
 # 依赖图里，不点名就会漏跑——与 .github/workflows/android.yml 保持同一组任务。
-./gradlew :app:testDebugUnitTest :domain:jvmTest :shared-ui:jvmTest :desktop:test :app:lintDebug
+./gradlew :app:testDebugUnitTest :domain:jvmTest :shared-ui:jvmTest :shared-data:jvmTest :desktop:test :app:lintDebug
 if [[ "${1:-}" == "--connected" ]]; then
   ./gradlew :app:connectedDebugAndroidTest
 fi

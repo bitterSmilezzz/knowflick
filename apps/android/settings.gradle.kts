@@ -44,3 +44,5 @@ include(":domain")
 include(":desktop")
 // :shared-ui —— 跨端共享界面层（CMP）；win/mac/linux 三端 + Android 共用同一份界面代码。
 include(":shared-ui")
+// :shared-data —— 跨端共享持久化层；卡库落盘逻辑四端共用，宿主只注入数据目录。
+include(":shared-data")

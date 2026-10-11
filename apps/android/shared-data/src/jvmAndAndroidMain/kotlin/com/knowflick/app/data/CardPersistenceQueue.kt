@@ -5,8 +5,12 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 
-/** 串行、非阻塞的卡库写入队列；后提交的快照一定在旧快照之后落盘。 */
-internal class CardPersistenceQueue(
+/**
+ * 串行、非阻塞的卡库写入队列；后提交的快照一定在旧快照之后落盘。
+ *
+ * 公开而非 internal：Kotlin 的 `internal` 按模块算，迁进 `:shared-data` 后宿主用不到了。
+ */
+class CardPersistenceQueue(
     private val save: (List<KnowledgeCard>) -> CardSaveResult,
     private val onResult: (CardSaveResult) -> Unit = {},
     private val executor: ExecutorService = Executors.newSingleThreadExecutor(),
