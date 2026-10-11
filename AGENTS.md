@@ -6,9 +6,22 @@
 
 ## 仓库定位
 
-KnowFlick 是多端学习工作台。**目标架构（[ADR-0001](docs/adr/0001-desktop-tri-platform-shared-kotlin.md)）：Windows / macOS / Linux 三端 + Android 共用一份 Kotlin Multiplatform + Compose Multiplatform 代码**——`:domain`（逻辑）+ `:shared-ui`（界面）共享，各端只是薄宿主。现状：`apps/android`（`:app` Android 宿主 + `:domain` + `:shared-ui` + `:desktop` 桌面宿主）· `apps/mac`（Swift/SwiftUI，功能最完整的原生端，**其最终处置待决**，见 ADR §5）· `shared/assets`（契约与底图）。
+KnowFlick 是多端学习工作台。**目标架构（[ADR-0001](docs/adr/0001-desktop-tri-platform-shared-kotlin.md)）：Windows / macOS / Linux 三端 + Android 共用一份 Kotlin Multiplatform + Compose Multiplatform 代码**——`:domain`（逻辑）+ `:shared-ui`（界面）共享，各端只是薄宿主。现状：`apps/android`（`:app` Android 宿主 + `:domain` + `:shared-ui` + `:desktop` 桌面宿主）· `apps/mac`（Swift/SwiftUI，**第二实现，已冻结新增能力**，按第一原则收敛退役）· `shared/assets`（契约与底图）。
 
 **当前处于产品转向期**：预置知识库已退役（PR #70），知识内容改由用户剪藏/导入产生。规格见 [剪藏提炼复习设计规格](docs/CLIP_INGEST_DESIGN_2026-10.md)。**实现新功能前先读该规格，不要按 old seed 库时代的假设写代码。**
+
+## 第一原则：一套开发，多处发布
+
+**一份代码，多处产出。** 任何改进若引入**第二份实现**（同一能力在各端各写一遍）、或把本可共享的代码按端分叉，
+都要回避——除非项目所有者明确拍板接受这次例外。
+
+- **目标矩阵**：Android · Windows · macOS · Linux，共享 `:domain`（逻辑）+ `:shared-ui`（界面），各端只是薄宿主。
+- **允许各端各写的只有「平台边界」**：系统分享 / 通知、TTS 与音频通道、文件选择器、系统返回、平台资源读取……
+  且必须收在 `expect`/`actual` 或宿主适配层里，**不允许复制整块逻辑**。
+- **历史例外（只许收敛，不许扩大）**：`apps/mac` 的 Swift/SwiftUI 是第二份实现——**冻结新增能力**，
+  待共享端达到功能对等后退役；不要往它里面加「只有 mac 才有」的功能。
+- **判断口径**：动手前先问「这件事能不能只写一次？」；答不上来就别写第二遍。
+  同理，**共享模块的依赖要为四端考虑**（钉一个只有单端可用的库 = 变相分叉），见 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md) 里 Material 图标那条。
 
 ## 双机协作铁律
 
@@ -48,6 +61,7 @@ KnowFlick 是多端学习工作台。**目标架构（[ADR-0001](docs/adr/0001-d
 cd apps/mac && ./build_app.sh      # mac 打包
 ./tools/build_android.sh           # android：单测 + Lint + release + 签名校验
 cd apps/android && ./gradlew :domain:jvmTest :shared-ui:jvmTest :desktop:test   # 共享逻辑/界面 + 桌面宿主 175 项（只需 JDK 17，无需 SDK）
+cd apps/android && ./gradlew :desktop:packageDmg   # 桌面安装包（本系统；发布三端由 desktop.yml 的 matrix 出）
 ./tools/sync_shared_assets.sh      # 共享资源同步（两端测试脚本会自动调）
 python3 tools/check_taxonomy.py    # 三处学科契约一致性
 ```
@@ -68,7 +82,7 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
 - **行尾**：仓库一律 LF（`.gitattributes` 管辖）。Windows 上 clone 后如果 `git status` 出现大范围假修改，先查 `git config core.autocrlf`——应为 `false`（或 `input`），不要设为 `true`。
 - **两个 workflow 路径过滤**：改 mac 不会触发 android CI、反之亦然。改了 `shared/**` 则两端 CI 都会跑——这是有意设计，因为契约漂移必须两端同抓。
 - **Gradle 任务要显式点名 `:domain:jvmTest` / `:shared-ui:jvmTest` / `:desktop:test`**：这三个模块都不在 `:app` 的依赖图里，跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错，只是静默少跑。`tools/build_android.sh` 与 `android.yml` 已同步点名，改验证命令时别漏。
-- **新增 Gradle 模块必须同时更新三处**：`tools/build_android.sh`、`android.yml` 的测试步骤、以及 workflow 里「汇总测试结果」的 glob 路径——只改名不加汇总，CI 绿了但覆盖率已经掉了。
+- **新增 Gradle 模块必须同时更新四处**：`tools/build_android.sh`、`android.yml` 的测试步骤、workflow 里「汇总测试结果」的 glob 路径、以及 `desktop.yml` matrix 里的任务列表——只改名不加汇总，CI 绿了但覆盖率已经掉了。
 - **搬文件进共享模块时不要改包名**：`:domain`（`com.knowflick.app.domain`）与 `:shared-ui`（`com.knowflick.app.ui`）都保持原包名，调用方 import 零改动。这是 12k 行 UI 能分批平移的前提，别为了「模块名好看」制造上千处 import 改动。
 - **`java.*` 不要放进 `:domain` 的 `commonMain`**：当前 `androidTarget + jvm` 组合下能编译通过，但那是元数据编译被跳过的副作用，加非 JVM target 即失效；含 `java.time`/`java.util` 的文件放 `jvmAndAndroidMain`（依据见 [KMP 探针结果](docs/windows-route/KMP_PROBE_RESULT.md)）。
 - **界面搬进 `:shared-ui` 会遇到三类平台边界**（实测清单见 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md)）：系统返回 `BackHandler` 桌面不存在（**外移宿主**，CMP 1.8 没有公共替代）；多平台 Material 图标停更于 1.7.3；含 `java.*` 的界面文件放 `jvmAndAndroidMain`。挑文件别靠印象——`python3 tools/classify_ui_portability.py` 按依赖闭包分档。
