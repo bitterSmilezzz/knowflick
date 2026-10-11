@@ -19,6 +19,11 @@ plugins {
 
 kotlin { jvmToolchain(17) }
 
+// 底图等共享资源：把仓库根的 shared/assets 挂进本模块资源（与 Android 端
+// `assets.srcDirs("../../../shared/assets")` **同一份来源、同一个 bg/<key>.webp 布局**）。
+// 于是桌面端不必留副本，`:shared-ui` 的 jvm 侧 actual 直接 classpath 读 /bg/<key>.webp。
+sourceSets["main"].resources.srcDir(file("../../../shared/assets"))
+
 dependencies {
     implementation(project(":domain"))
     // 共享界面层：桌面端用的主题与组件与 Android 端是同一份（:shared-ui）
