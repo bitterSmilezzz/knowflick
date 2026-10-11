@@ -38,6 +38,9 @@
 - 跨平台（迁移边界，实测）：**Kotlin 的 `internal` 按模块算**——类搬进共享模块后，宿主访问原先的 `internal` 成员直接编译不过（`AppModel.storage`、`CardPersistenceQueue` 各触发一批错误）。处理：该公开的公开并写明理由，不在共享模块里用转发方法堆间接。
 - 工具：`tools/classify_ui_portability.py` 修掉第二个假信号——把 `java.io.File` 当成平台信号，导致整个 `data/` 持久化层被误判成不可搬（实际一行未改即可共享）。现在 A 档含义明确为「无需平台改造即可搬入共享模块，含 `java.*` 的落 `jvmAndAndroidMain`」；修正后 A/B/C = 21 文件 2877 行 / 5 文件 1883 行 / 33 文件 12362 行。
 - 跨平台（平台动作，第一块）：**归档导入/导出共享，桌面端第一次能真正把卡片放进来**——`ArchiveImportManager`（ZIP/JSON 探测、预览构造、合并策略）、`CardArchiveEngine`、`CardExportEngine` 一并迁入 `:shared-data`；平台边界只剩「字节从哪来」：Android 走 SAF `Uri`（新增 `AndroidArchiveReader` 承担读字节），桌面走原生文件对话框（`DesktopFileDialogs`）。桌面端现在支持：选 `.zip`/`.json` 导入（MERGE 合并 + 落盘 + 界面刷新）、收藏导出 Markdown、整库导出 JSON 镜像；导出格式与解析逻辑两端跑的是同一份引擎。验证：`:shared-data:jvmTest` 27 项 + `:desktop:test` 7 项（含「导入后界面跟着更新」这条接线用例），全量 **343 项全绿**。
+- 跨平台（平台动作，第二块）：**触觉与底图两条接缝落地，卡片视觉的前置条件打掉**——① `PlatformHaptics` + `rememberPlatformHaptics()`：Android 侧把原 `HapticFeedbackHelper`（API 29+ `VibrationEffect` 预设）整体搬进 `:shared-ui/androidMain`，**手感不变**；桌面 `jvmMain` 为 no-op。② `rememberBackgroundImage` / `PreloadBackgroundImage`：Android 保留 assets + `BitmapFactory` + `LruCache` 实现，桌面新增 classpath 资源 + Skia 解码 + 内存缓存；**图片来源仍是仓库根 `shared/assets`**（Android `assets.srcDirs`、桌面 `resources.srcDir`，同布局零副本），桌面已实测解出 `bg/ai.webp`。收益立刻可见：`ui/CardFace.kt` 从 B 档升到 A 档（分档 B 5→4、A 21/3117 行）。
+- 跨平台（模型共享）：AI 会话模型 `CardChatMessage` / `CardChatSession` 迁入 `:domain`（40 行，仅依赖 UUID 与序列化）——它是详情页那条链上的第一块。
+- 说明（未做的取舍）：`DetailScreen`(446) 的迁移**主动推迟**——它还渲染 `CardFollowUpChatSheet`(844) 与 `CardPosterExportSheet`(371)，串起来是一次 1600+ 行迁移；先把两条公共接缝做掉，后续每屏都少一道坎。
 
 ## [v0.2.0] - 2026-10-02
 

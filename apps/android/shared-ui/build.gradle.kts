@@ -64,6 +64,12 @@ kotlin {
                 implementation(kotlin("test"))
             }
         }
+        val jvmAndAndroidMain by getting {
+            dependencies {
+                // 底图接缝的 actual 实现用 Dispatchers/withContext 做 IO 线程解码（与 :app 同版本）
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+            }
+        }
         val jvmTest by getting {
             dependencies {
                 implementation(kotlin("test"))
