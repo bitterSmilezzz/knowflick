@@ -42,3 +42,5 @@ include(":domain")
 // :desktop —— 桌面宿主骨架（Kotlin JVM + Compose Multiplatform）。
 // 现状与拓扑取舍见 apps/android/desktop/README.md。
 include(":desktop")
+// :shared-ui —— 跨端共享界面层（CMP）；win/mac/linux 三端 + Android 共用同一份界面代码。
+include(":shared-ui")
