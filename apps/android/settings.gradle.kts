@@ -37,5 +37,8 @@ rootProject.name = "KnowFlick"
 include(":app")
 include(":baselineprofile")
 // :domain —— androidx-free 领域层的 KMP 模块（androidTarget + jvm）。
-// 目的与结论见 docs/windows-route/KMP_PROBE_RESULT.md；app 通过 project(":domain") 消费。
+// 目的与结论见 docs/windows-route/KMP_PROBE_RESULT.md；app 与 :desktop 都经它共享逻辑。
 include(":domain")
+// :desktop —— 桌面宿主骨架（Kotlin JVM + Compose Multiplatform）。
+// 现状与拓扑取舍见 apps/android/desktop/README.md。
+include(":desktop")
