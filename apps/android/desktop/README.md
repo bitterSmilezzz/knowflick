@@ -1,22 +1,23 @@
-# :desktop —— 桌面宿主骨架
+# :desktop —— 桌面宿主（Windows / macOS / Linux）
 
-Kotlin JVM + Compose Multiplatform 的**骨架**宿主（不是产品界面）。它与 Android 端共用
-`apps/android/domain`（`:domain`，KMP）里的同一份领域逻辑。
+Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**领域逻辑**（`:domain`）
+与同一份**界面代码**（`:shared-ui`）。
 
 ## 现状
 
 | 项 | 状态 |
 | --- | --- |
 | 共享领域层 | ✅ `implementation(project(":domain"))`，卡库状态机 / JSON 线格式 / 学科表均可用 |
-| 共享界面层 | ✅ `implementation(project(":shared-ui"))`——主题与 `KnowledgeCardTeaser` 与 Android 端是同一份代码 |
+| 共享界面层 | ✅ `implementation(project(":shared-ui"))`——**主界面直接渲染 `LibraryScreen`**，与 Android 端是同一份 Compose 代码 |
 | Compose 运行时 | ✅ CMP 1.8.2，与 Android 端 `compose-bom:2025.06.00`（`androidx.compose.*` = 1.8.2）逐号对齐 |
-| 离屏渲染测试 | ✅ `./gradlew :desktop:test`（2 项：领域层复用 + 共享界面无头渲染） |
+| 离屏渲染测试 | ✅ `./gradlew :desktop:test`（2 项：领域层复用 + 共享整屏无头渲染） |
 | 三端目标 | ✅ 一份产物跑 Windows / macOS / Linux（jvm target；实际打包各端各出） |
-| 真实界面 | ❌ 未实现——属「UI 抽取」波次，范围见 [CMP-FEASIBILITY §4.1](../../../docs/windows-route/CMP-FEASIBILITY.md) |
+| 平台动作 | ❌ 分享 / 文件选择 / 备份导出在桌面还是空实现 |
 | 卡库持久化 | ❌ 桌面侧还没有 data 层；`DomainBridge` 用示例卡验证链路 |
 | 打包分发 | ❌ 未接（`packageMsi` / `packageDmg` / `packageDeb` 需各端真机验证） |
 
-总目标与决策见 [ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)。
+总目标与决策见 [ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)；
+界面分档进度见 [UI_EXTRACTION](../../../docs/windows-route/UI_EXTRACTION.md)。
 
 跑起来看骨架窗口：
 

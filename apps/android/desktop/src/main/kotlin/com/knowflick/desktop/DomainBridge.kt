@@ -27,6 +27,9 @@ object DomainBridge {
             links = emptyList(),
             source = CardSource.AI,
             createdAt = 1_700_000_000_000L,
+            // 给收藏阁一点内容，好让共享的 LibraryScreen 在桌面渲染出真实卡片
+            isFavorite = true,
+            favoritedAt = 1_700_000_500_000L,
         ),
         KnowledgeCard(
             id = "DESKTOP-2",
@@ -37,6 +40,8 @@ object DomainBridge {
             links = emptyList(),
             source = CardSource.IMPORTED,
             createdAt = 1_700_000_100_000L,
+            // 历史足迹需要一个已浏览时间
+            seenAt = 1_700_000_600_000L,
         ),
     )
 

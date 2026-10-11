@@ -70,12 +70,16 @@ unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" |
 | 模块 | 内容 | 技术形态 | 谁在用 |
 | --- | --- | --- | --- |
 | `:domain`（`apps/android/domain`） | 卡片模型 / 卡库状态机 / 学科与学习范围 / 统计 / 搜索 / 图谱 / 间隔重复 / 剪藏抽取——19 文件 4149 行，包名 `com.knowflick.app.domain` | KMP：`androidTarget` + `jvm`（JVM 17） | `:app`、`:shared-ui`、`:desktop` |
-| `:shared-ui`（`apps/android/shared-ui`） | 跨端界面与主题令牌（`Theme.kt` 已迁入：4 套纸质主题 + `EditorialColor`；首个共享组件 `KnowledgeCardTeaser`）；包名 `com.knowflick.app.ui` | KMP + CMP 1.8.2，同双 target | `:app`（Android 端生产路径）、`:desktop` |
-| `:desktop`（`apps/android/desktop`） | 桌面宿主（一份产物跑 Win/mac/Linux），目前是骨架 | Kotlin JVM + CMP 1.8.2 | 三端桌面 |
+| `:shared-ui`（`apps/android/shared-ui`） | 跨端界面：主题令牌（4 套纸质主题 + `EditorialColor`）、`QuizScreen`(833) / `LibraryScreen`(326) 两个整屏、`LearningHeatmap`(214)、`AppIcons`(668)、`MarkdownTextRenderer`(297)、`CategoryStampColor`(27)——8 个生产文件 2578 行；包名 `com.knowflick.app.ui` / `.data` 等原样保留 | KMP + CMP 1.8.2，同双 target（含 `jvmAndAndroidMain` 中间源集） | `:app`（Android 端生产路径）、`:desktop` |
+| `:desktop`（`apps/android/desktop`） | 桌面宿主（一份产物跑 Win/mac/Linux）：**直接渲染 `:shared-ui` 的 `LibraryScreen`**，尚未接平台动作与持久化 | Kotlin JVM + CMP 1.8.2 | 三端桌面 |
+
+分档进度、迁移边界与下一批计划见 [界面共享迁移](windows-route/UI_EXTRACTION.md)（含可复现的
+`tools/classify_ui_portability.py`）。
 
 **迁移策略（本仓库的自定约定）**：搬文件时**包名保持不变**（`com.knowflick.app.*`），因此调用方
-import 一行都不用改——`:domain` 19 文件与 `Theme.kt`（24 个引用文件）都是这样零改动完成的。
-这是 12k 行 UI 能分批平移的前提。
+import 一行都不用改——`:domain` 19 文件、`Theme.kt`（24 个引用文件）、以及 A 档 6 个界面文件
+（`QuizScreen`/`LibraryScreen`/`LearningHeatmap`/`AppIcons`/`MarkdownTextRenderer`/`CategoryStampColor`）
+都是这样零改动完成的。这是 12k 行 UI 能分批平移的前提。
 
 **源集约定**：`commonMain` 只放平台无关代码；含 `java.time` / `java.util` 的文件放
 `jvmAndAndroidMain`（手建中间源集），不要放 `commonMain`——理由见 [KMP 探针结果](windows-route/KMP_PROBE_RESULT.md)。

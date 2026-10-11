@@ -71,4 +71,5 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
 - **新增 Gradle 模块必须同时更新三处**：`tools/build_android.sh`、`android.yml` 的测试步骤、以及 workflow 里「汇总测试结果」的 glob 路径——只改名不加汇总，CI 绿了但覆盖率已经掉了。
 - **搬文件进共享模块时不要改包名**：`:domain`（`com.knowflick.app.domain`）与 `:shared-ui`（`com.knowflick.app.ui`）都保持原包名，调用方 import 零改动。这是 12k 行 UI 能分批平移的前提，别为了「模块名好看」制造上千处 import 改动。
 - **`java.*` 不要放进 `:domain` 的 `commonMain`**：当前 `androidTarget + jvm` 组合下能编译通过，但那是元数据编译被跳过的副作用，加非 JVM target 即失效；含 `java.time`/`java.util` 的文件放 `jvmAndAndroidMain`（依据见 [KMP 探针结果](docs/windows-route/KMP_PROBE_RESULT.md)）。
+- **界面搬进 `:shared-ui` 会遇到三类平台边界**（实测清单见 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md)）：系统返回 `BackHandler` 桌面不存在（**外移宿主**，CMP 1.8 没有公共替代）；多平台 Material 图标停更于 1.7.3；含 `java.*` 的界面文件放 `jvmAndAndroidMain`。挑文件别靠印象——`python3 tools/classify_ui_portability.py` 按依赖闭包分档。
 - 全仓扫描类工作**严禁 head 截断后下「清零」结论**（PR #45 教训）。

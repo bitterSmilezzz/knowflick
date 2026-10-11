@@ -73,7 +73,7 @@ fun QuizScreen(
     onPromoteCardToDeck: (KnowledgeCard) -> Unit = {},
     onExit: () -> Unit,
 ) {
-    androidx.activity.compose.BackHandler { onExit() }
+    // 系统返回同上：外移到 Android 宿主的调用点（MainActivity），本组件只管 onExit 回调。
 
     val card = session.current
     var flipped by rememberSaveable(card?.id) { mutableStateOf(false) }
