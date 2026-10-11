@@ -11,7 +11,11 @@ import re
 import sys
 import pathlib
 
-VIEWS = pathlib.Path("/Users/fangshoufanji/workspace/02-AI开发/ai-test/KnowFlick/apps/mac/Sources/KnowFlick/Views")
+# 从脚本位置推仓库根，不要写死绝对路径：双机（macOS / Windows）工作目录不同，
+# 写死路径的脚本在另一台机器上必然指向不存在的目录（本行此前指向已不存在的
+# `…/ai-test/KnowFlick/…`，且在两台机器上都不可迁移）。
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+VIEWS = REPO_ROOT / "apps/mac/Sources/KnowFlick/Views"
 
 # 已迁移到 Insight 体系的新文件，跳过
 SKIP = {
