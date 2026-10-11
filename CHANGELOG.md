@@ -34,6 +34,9 @@
 - 跨平台（多处发布）：**桌面端打通三系统安装包**——`:desktop` 声明 `targetFormats(Dmg, Msi, Deb)`，新增 [.github/workflows/desktop.yml](.github/workflows/desktop.yml)：**一份配置跑三台 runner**（jpackage 不支持交叉编译，必须各系统构建），各自出包后统一命名附到同一个 Release（tag `desktop-v*`，并附 `SHA256SUMS.txt`）；tag 版本与 `packageVersion` 不符会被硬校验拦下（与 macos.yml 同一条纪律）。该 workflow **刻意不装 Android SDK**，等于在 CI 上再证一次桌面端独立于 Android 工具链。本机实测 `:desktop:packageDmg` 出 65 MB DMG。
 - 跨平台（打包约束，实测）：① **macOS 的包版本要求 MAJOR > 0**（Windows/Linux 用产品版本 `0.1.0` 正常出包，CI 实测）——用 `macOS { packageVersion = "1.0.0" }` 作打包器别名，对外一律用产品版本（附件统一改名）。② **Compose 打包的 JDK 厂商检查**只认 Temurin/Corretto/Zulu，开发机 Homebrew JDK 会被拒；`gradle.properties` 关掉检查仅为本地验证打包链路，**对外产物一律由 CI 用 Temurin 构建**。③ **安装器元数据必须纯 ASCII**：jpackage 用平台默认字符集读 `@argfile`，Windows runner 的 cp1252 遇到中文 `description` 直接抛 `Input length = 1`，MSI 构建失败——这条只有三系统 matrix 才抓得到，本地 macOS 打包完全看不到。
 - 跨平台（三系统产物落地，CI 实测）：同一份代码在 CI 上产出三个原生安装包——`KnowFlick-0.1.0.msi`(57.7 MB) / `knowflick_0.1.0-1_amd64.deb`(53.9 MB) / `KnowFlick-1.0.0.dmg`(67.8 MB)，全程**未装 Android SDK**。
+- 跨平台（新模块 `:shared-data`）：**持久化层共享，桌面端拿到真实卡库**——`apps/android/shared-data`（KMP）承载卡库 JSON 的原子写 / 备份轮转 / 损坏回退 / 持久化队列与 `AppModel`（4 文件 435 行 + 21 项随之迁来的测试）。平台边界只剩「目录从哪来」：Android 注入 `filesDir/store`（行为与磁盘结构不变），桌面注入 `~/Library/Application Support/KnowFlick/store`（mac）/ `%APPDATA%\KnowFlick\store`（Win）/ `$XDG_DATA_HOME/knowflick/store`（Linux）；目录以下四端共用同一份代码。**桌面端首次启动是空库**（预置库退役后的正常起点），界面与存储现在都是共享实现。
+- 跨平台（迁移边界，实测）：**Kotlin 的 `internal` 按模块算**——类搬进共享模块后，宿主访问原先的 `internal` 成员直接编译不过（`AppModel.storage`、`CardPersistenceQueue` 各触发一批错误）。处理：该公开的公开并写明理由，不在共享模块里用转发方法堆间接。
+- 工具：`tools/classify_ui_portability.py` 修掉第二个假信号——把 `java.io.File` 当成平台信号，导致整个 `data/` 持久化层被误判成不可搬（实际一行未改即可共享）。现在 A 档含义明确为「无需平台改造即可搬入共享模块，含 `java.*` 的落 `jvmAndAndroidMain`」；修正后 A/B/C = 22 文件 2975 行 / 6 文件 2171 行 / 33 文件 12490 行。
 
 ## [v0.2.0] - 2026-10-02
 

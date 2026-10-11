@@ -88,15 +88,16 @@
 
 | # | 波次 | 内容 | 状态 |
 | --- | --- | --- | --- |
-| 1 | 后端共享 | `:domain` 抽出 KMP 模块 | ✅ 已完成（#74） |
+| 1 | 后端共享（逻辑） | `:domain` 抽出 KMP 模块 | ✅ 已完成（#74） |
 | 2 | 工具链 | 三路线实测 + 选定对齐版本 | ✅ 已完成（#76） |
 | 3 | 工具链落地 | Kotlin 2.1.21 升级（AGP/BOM 不动） | ✅ 已完成（#77） |
 | 4 | 桌面宿主 | `:desktop` 骨架 + CI | ✅ 已完成（#78） |
 | 5 | 前端共享起步 | `:shared-ui` 模块 + 主题令牌迁移 + 首个共享组件 | ✅ 已完成（#79） |
-| 6 | 界面平移（A 档） | 纯 Compose 界面平移进 `:shared-ui`；桌面宿主直接渲染共享整屏 | 🔄 进行中：已迁 6 文件 2365 行（`QuizScreen` 833 / `AppIcons` 668 / `LibraryScreen` 326 / `MarkdownTextRenderer` 297 / `LearningHeatmap` 214 / `CategoryStampColor` 27），桌面已渲染 `LibraryScreen`；分档与下一批见 [UI_EXTRACTION](../windows-route/UI_EXTRACTION.md) |
-| 7 | 平台抽象（B 档） | 底图资源、系统返回、Toast/剪贴板、文件选择、持久化路径抽 expect/actual 或外移宿主 | 待启动（已先落地「系统返回外移宿主」这一形态） |
-| 8 | 各端打包 | Windows/mac/Linux 安装包 + 三端 CI | 待启动（需 Windows 真机验证） |
-| 9 | mac Swift 处置 | 按 §5.1 决议执行 | 待决 |
+| 6 | 界面平移（A 档） | 纯 Compose 界面平移进 `:shared-ui`；桌面宿主直接渲染共享整屏 | 🔄 进行中：已迁 6 文件 2365 行（`QuizScreen` 833 / `AppIcons` 668 / `LibraryScreen` 326 / `MarkdownTextRenderer` 297 / `LearningHeatmap` 214 / `CategoryStampColor` 27）；分档与下一批见 [UI_EXTRACTION](../windows-route/UI_EXTRACTION.md) |
+| 7 | 后端共享（持久化） | `:shared-data`：卡库落盘逻辑（原子写 / 备份轮转 / 持久化队列）四端共用，宿主只注入数据目录 | ✅ 已完成：**桌面端拿到真实卡库**（读写同一份 `cards.json` 实现）；见 [desktop/README](../../apps/android/desktop/README.md) |
+| 8 | 平台抽象（B 档） | 底图资源、系统返回、Toast/剪贴板、文件选择抽 expect/actual 或外移宿主 | 待启动（已先落地「系统返回外移宿主」这一形态）。**桌面端可用性的瓶颈就在这**：文件选择器/分享不接，桌面端没法把卡片放进来 |
+| 9 | 各端打包 | Windows/mac/Linux 安装包 + 三系统 CI + Release 通道 | ✅ 已完成（#81）：一份配置 × 三台 runner，各自出包并附同一 Release。**安装包图标未接入** |
+| 10 | mac Swift 处置 | 冻结新增能力 → 按功能清单对等后退役（§5.1） | 进行中（按第一原则收敛） |
 
 工作量参考：[CMP-FEASIBILITY §4.2](../windows-route/CMP-FEASIBILITY.md)——Windows 端首版 22–35 人日，
 三端打包与平台抽象另计。

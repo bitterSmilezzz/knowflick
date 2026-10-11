@@ -87,10 +87,10 @@ jobs:
           # Linux runner 没有 X11；测试内部已设 java.awt.headless=true，有 xvfb 就再兜一层。
           if command -v xvfb-run >/dev/null 2>&1; then
             xvfb-run -a ./gradlew --console=plain \
-              :domain:jvmTest :shared-ui:jvmTest :desktop:test :desktop:${{ matrix.task }}
+              :domain:jvmTest :shared-ui:jvmTest :shared-data:jvmTest :desktop:test :desktop:${{ matrix.task }}
           else
             ./gradlew --console=plain \
-              :domain:jvmTest :shared-ui:jvmTest :desktop:test :desktop:${{ matrix.task }}
+              :domain:jvmTest :shared-ui:jvmTest :shared-data:jvmTest :desktop:test :desktop:${{ matrix.task }}
           fi
 
       - name: 校验产物存在
