@@ -259,6 +259,12 @@ class MainActivity : ComponentActivity() {
                             if (session == null) {
                                 screen = Screen.DECK
                             } else {
+                                // 系统返回由**宿主**接线：界面已搬进 :shared-ui，那边不能引用
+                                // androidx.activity（桌面不存在该 API），只暴露 onExit 回调。
+                                androidx.activity.compose.BackHandler {
+                                    viewModel.exitQuiz()
+                                    screen = Screen.DECK
+                                }
                                 com.knowflick.app.ui.QuizScreen(
                                     session = session,
                                     onRate = { rating -> viewModel.rateQuiz(rating) },
@@ -282,6 +288,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Screen.LIBRARY -> libraryState.SaveableStateProvider("library") {
+                            // 系统返回由宿主接线（同上）
+                            androidx.activity.compose.BackHandler { screen = Screen.DECK }
                             com.knowflick.app.ui.LibraryScreen(
                                 cards = viewModel.model.store.cards,
                                 version = viewModel.version,

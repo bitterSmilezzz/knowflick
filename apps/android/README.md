@@ -27,15 +27,21 @@ sdk.dir=/absolute/path/to/Android/sdk
 
 `shared-ui/` 是 Compose Multiplatform 的共享界面层，**Windows / macOS / Linux 三端 + Android 共用
 同一份界面代码**（目标与决策见 [ADR-0001](../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)）。
-已迁入：`Theme.kt`（4 套纸质主题 + `EditorialColor` 令牌）；首个共享组件：`KnowledgeCardTeaser`。
-迁移约定：**包名保持 `com.knowflick.app.ui` 不变**，因此 app 侧 import 零改动。
+已迁入 8 个生产文件 2578 行：主题令牌（4 套纸质主题 + `EditorialColor`）、**`QuizScreen`(833) 与
+`LibraryScreen`(326) 两个整屏**、`LearningHeatmap`(214)、`AppIcons`(668)、`MarkdownTextRenderer`(297)、
+`CategoryStampColor`(27)。
+
+迁移约定：**包名保持原样**（`com.knowflick.app.*`），因此 app 侧 import 零改动。
+平台边界处理（系统返回外移宿主、多平台 Material 图标停更于 1.7.3、`java.*` 走 `jvmAndAndroidMain`）
+与分档进度见 [界面共享迁移](../../docs/windows-route/UI_EXTRACTION.md)。
 
 ### :desktop 模块（桌面宿主，跑 Windows / macOS / Linux）
 
-`desktop/` 是 Kotlin JVM + Compose Multiplatform 的**骨架**宿主，用 `project(":domain")` 与
-`project(":shared-ui")` 复用同一份逻辑与界面。`./gradlew :desktop:test`（2 项：领域层复用 + 共享界面
-无头渲染）与 `./gradlew :desktop:run` **都只需 JDK 17，不需要 Android SDK**。定位、未实现项与
-「何时提升为独立端」见 [desktop/README.md](desktop/README.md)。
+`desktop/` 是 Kotlin JVM + Compose Multiplatform 宿主，用 `project(":domain")` 与
+`project(":shared-ui")` 复用同一份逻辑与界面，**主界面直接渲染 `LibraryScreen`**。
+`./gradlew :desktop:test`（2 项：领域层复用 + 共享整屏无头渲染）与 `./gradlew :desktop:run`
+**都只需 JDK 17，不需要 Android SDK**。定位、未实现项与「何时提升为独立端」见
+[desktop/README.md](desktop/README.md)。
 
 ### :domain 模块（KMP 领域层）
 

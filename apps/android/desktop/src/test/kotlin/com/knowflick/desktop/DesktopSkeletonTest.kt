@@ -19,16 +19,16 @@ class DesktopSkeletonTest {
     }
 
     /**
-     * 离屏组合：证明 Compose Multiplatform 运行时在本构建里**真的能渲染**，
-     * 而不只是「编译得过」。headless 由 build.gradle.kts 的测试系统属性保证。
-     * 这里连**共享界面层**一起验：主题与卡片组件都来自 :shared-ui。
+     * 离屏组合：证明桌面宿主**真的能渲染共享界面**，而不只是「编译得过」。
+     * 这里渲染的是 :shared-ui 里的 LibraryScreen——与 Android 端同一份 Compose 代码；
+     * 断言用的「收藏 N / 历史 N」标签与卡片数据都来自真实组件与领域模型。
+     * headless 由 build.gradle.kts 的测试系统属性保证。
      */
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun rendersSharedUiHeadlessWithoutWindow() = runComposeUiTest {
-        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { SkeletonScreen() } }
-        onNodeWithText("KnowFlick 桌面（骨架）").assertExists()
-        // 共享组件渲染出的领域内容（卡片标题来自 :domain 的示例卡）
-        onNodeWithText("桌面宿主已接上共享领域层").assertExists()
+    fun rendersSharedLibraryScreenHeadless() = runComposeUiTest {
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost() } }
+        onNodeWithText("收藏 1").assertExists()
+        onNodeWithText("历史 1").assertExists()
     }
 }

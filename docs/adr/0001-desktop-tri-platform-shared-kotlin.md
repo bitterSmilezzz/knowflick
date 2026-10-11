@@ -89,9 +89,9 @@
 | 2 | 工具链 | 三路线实测 + 选定对齐版本 | ✅ 已完成（#76） |
 | 3 | 工具链落地 | Kotlin 2.1.21 升级（AGP/BOM 不动） | ✅ 已完成（#77） |
 | 4 | 桌面宿主 | `:desktop` 骨架 + CI | ✅ 已完成（#78） |
-| 5 | 前端共享起步 | `:shared-ui` 模块 + 主题令牌迁移 + 首个共享组件 | ✅ 本次 |
-| 6 | 界面平移（A 档） | 纯 Compose 屏幕平移进 `:shared-ui`（10 文件 5064 行可直搬） | 待启动 |
-| 7 | 平台抽象（B 档） | 底图资源、Toast/Intent、剪贴板、持久化路径等抽 expect/actual | 待启动 |
+| 5 | 前端共享起步 | `:shared-ui` 模块 + 主题令牌迁移 + 首个共享组件 | ✅ 已完成（#79） |
+| 6 | 界面平移（A 档） | 纯 Compose 界面平移进 `:shared-ui`；桌面宿主直接渲染共享整屏 | 🔄 进行中：已迁 6 文件 2365 行（`QuizScreen` 833 / `AppIcons` 668 / `LibraryScreen` 326 / `MarkdownTextRenderer` 297 / `LearningHeatmap` 214 / `CategoryStampColor` 27），桌面已渲染 `LibraryScreen`；分档与下一批见 [UI_EXTRACTION](../windows-route/UI_EXTRACTION.md) |
+| 7 | 平台抽象（B 档） | 底图资源、系统返回、Toast/剪贴板、文件选择、持久化路径抽 expect/actual 或外移宿主 | 待启动（已先落地「系统返回外移宿主」这一形态） |
 | 8 | 各端打包 | Windows/mac/Linux 安装包 + 三端 CI | 待启动（需 Windows 真机验证） |
 | 9 | mac Swift 处置 | 按 §5.1 决议执行 | 待决 |
 
