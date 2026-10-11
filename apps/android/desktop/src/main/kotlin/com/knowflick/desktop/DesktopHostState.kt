@@ -5,6 +5,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.knowflick.app.data.AppModel
+import com.knowflick.app.domain.QuizCycle
+import com.knowflick.app.domain.QuizRating
+import com.knowflick.app.domain.QuizSession
 import java.awt.Frame
 
 /**
@@ -12,7 +15,7 @@ import java.awt.Frame
  * 持有「卡库版本号」（卡库本身不是 Compose 状态，改动后靠它触发重组）与提示文案，
  * 并把平台动作收敛成可直接调用的方法。
  *
- * 这样拆的另一个好处是**可测**：导入/导出不经过原生对话框时也能在无头环境里驱动
+ * 这样拆的另一个好处是**可测**：导入/导出/测验不经过原生对话框时也能在无头环境里驱动
  * （对话框只负责取路径，见 [DesktopFileDialogs]）。
  */
 class DesktopHostState(val model: AppModel) {
@@ -24,6 +27,62 @@ class DesktopHostState(val model: AppModel) {
     /** 一次性提示文案（导入/导出结果），显示在界面底部 */
     var notice by mutableStateOf<String?>(null)
         private set
+
+    /**
+     * 测验轮次编排：**与 Android 端共用同一份** `QuizCycle`（在 `:domain`），
+     * 这里只负责把它同步成 Compose 状态、推进 version、以及落盘。
+     */
+    private val quizCycle = QuizCycle(model.store)
+
+    /** 当前测验会话（null = 没在测验，显示卡库界面） */
+    var quizSession by mutableStateOf<QuizSession?>(null)
+        private set
+
+    private fun syncQuizSession() {
+        quizSession = quizCycle.session
+    }
+
+    /** 开始测验（到期优先 → 收藏 → 历史 → 其余，单轮 10 张） */
+    fun startQuiz() {
+        quizCycle.start()
+        syncQuizSession()
+        version++
+    }
+
+    /** 只测今天到期的卡 */
+    fun startDueReview() {
+        quizCycle.startDueReview()
+        syncQuizSession()
+        version++
+    }
+
+    /** 提交评分：驱动 SM-2 并落盘（编排在共享 QuizCycle） */
+    fun rateQuiz(rating: QuizRating) {
+        if (!quizCycle.rate(rating)) return
+        syncQuizSession()
+        version++
+        model.persistNow()
+    }
+
+    /** 再测一组 */
+    fun nextQuizRound() {
+        quizCycle.nextRound()
+        syncQuizSession()
+        version++
+    }
+
+    /** 弱项重测：把上一轮没掌握的卡再过一遍 */
+    fun retestWeak(ratings: Map<String, QuizRating>) {
+        quizCycle.retestWeak(ratings)
+        syncQuizSession()
+        version++
+    }
+
+    fun exitQuiz() {
+        quizCycle.exit()
+        syncQuizSession()
+        version++
+    }
 
     /** 导入归档字节：探测 → 合并 → 落盘 → 刷新界面 */
     fun importBytes(fileName: String, bytes: ByteArray): String {

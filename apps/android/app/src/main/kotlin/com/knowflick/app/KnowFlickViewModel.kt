@@ -102,10 +102,19 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     private var apiKeySessionOverride by mutableStateOf<String?>(null)
 
-    /** 测验会话（null = 未在测验） */
+    /**
+     * 测验会话（null = 未在测验）。
+     * 轮次编排（起一轮 / 下一轮 / 弱项重测 / 评分驱动 SM-2）在共享的
+     * [com.knowflick.app.domain.QuizCycle] 里——桌面端接同一个测验界面，用的是同一份编排。
+     * 这里只把它同步成 Compose 状态供界面读取。
+     */
     var quizSession: com.knowflick.app.domain.QuizSession? by mutableStateOf(null)
         private set
-    private val quizCycleRatedIds = LinkedHashSet<String>()
+    private val quizCycle = com.knowflick.app.domain.QuizCycle(model.store)
+
+    private fun syncQuizSession() {
+        quizSession = quizCycle.session
+    }
 
     /** 卡片追问会话：状态与流式编排自 2026-09-30 起在 [ChatStateHolder]（与 macOS ChatSessionStore 同构），
      *  这里只做同名转发保持 API 不变；聊天域的新增逻辑请落在 holder，不再增长本文件。 */
@@ -861,52 +870,33 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // ---------- 知识测验 ----------
+    // 编排在共享的 QuizCycle 里（桌面端复用同一份）；这里只做「同步 Compose 状态 + 推进 version + 落盘」。
 
     /** 开始/刷新测验：到期复习优先，其后收藏与历史，单轮 10 张 */
     fun startQuiz(category: String? = null) {
-        quizCycleRatedIds.clear()
-        quizSession = com.knowflick.app.domain.QuizSession.build(
-            cards = model.store.cards,
-            today = java.time.LocalDate.now(),
-            limit = 10,
-            category = category,
-        )
+        quizCycle.start(today = java.time.LocalDate.now(), category = category)
+        syncQuizSession()
         version++
     }
 
     /** 开始纯到期复习：以到期队列为准，最多 10 张 */
     fun startDueReview() {
-        quizCycleRatedIds.clear()
-        quizSession = com.knowflick.app.domain.QuizSession.buildDueReview(
-            cards = model.store.cards,
-            today = java.time.LocalDate.now(),
-            limit = 10,
-        )
+        quizCycle.startDueReview(today = java.time.LocalDate.now())
+        syncQuizSession()
         version++
     }
 
     /** 针对性弱项重测：提取上一轮中评分不为熟练掌握（FORGOT/HESITANT）的卡片进行即时巩固 */
     fun retestWeakCards(ratings: Map<String, com.knowflick.app.domain.QuizRating>) {
-        quizCycleRatedIds.clear()
-        quizSession = com.knowflick.app.domain.QuizSession.buildWeakCards(
-            cards = model.store.cards,
-            ratings = ratings,
-        )
+        quizCycle.retestWeak(ratings)
+        syncQuizSession()
         version++
     }
 
     /** 再测一组：剔除本轮已评卡，剩余不足则回到全部（与 macOS 到期队列刷新同精神） */
     fun nextQuizRound() {
-        var pool = model.store.cards.filter { it.id !in quizCycleRatedIds }
-        if (pool.isEmpty()) {
-            quizCycleRatedIds.clear()
-            pool = model.store.cards
-        }
-        quizSession = com.knowflick.app.domain.QuizSession.build(
-            cards = pool,
-            today = java.time.LocalDate.now(),
-            limit = 10,
-        )
+        quizCycle.nextRound(today = java.time.LocalDate.now())
+        syncQuizSession()
         version++
     }
 
@@ -973,22 +963,17 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         schedulePersist()
     }
 
-    /** 提交测验评分：驱动 SM-2 间隔演进并记账，到期队列随之刷新 */
+    /** 提交测验评分：驱动 SM-2 间隔演进并记账，到期队列随之刷新（编排在共享 QuizCycle） */
     fun rateQuiz(rating: com.knowflick.app.domain.QuizRating) {
-        val session = quizSession ?: return
-        val card = session.current ?: return
-        if (!session.rate(rating)) return
-        quizCycleRatedIds += card.id
-        val spacedRating = com.knowflick.app.domain.spaced.SpacedRating.fromQuizRating(rating)
-        val result = com.knowflick.app.domain.spaced.SpacedRepetitionEngine.calculate(card, spacedRating)
-        model.store.recordReviewResult(card.id, result)
+        if (!quizCycle.rate(rating)) return
+        syncQuizSession()
         version++
         schedulePersist()
     }
 
     fun exitQuiz() {
-        quizSession = null
-        quizCycleRatedIds.clear()
+        quizCycle.exit()
+        syncQuizSession()
         version++
     }
 
