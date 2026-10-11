@@ -46,7 +46,11 @@ compose.desktop {
             // 桌面端自己的版本序列（与 mac 的 v*、android 的 android-v* 并列，不互相借用）
             packageVersion = "0.1.0"
             packageName = "KnowFlick"
-            description = "KnowFlick 学习工作台（桌面端）"
+            // 安装器元数据**必须纯 ASCII**：jpackage 用平台默认字符集读它自己的 @argfile，
+            // 在 Windows runner（cp1252）上遇到中文会直接抛 `Input length = 1`
+            //（MalformedInputException），MSI 构建失败——实测踩过，日志见 CI 的 packageMsi。
+            // 想要中文安装器文案，得等 jpackage/CMP 支持按端覆盖 description，或自己后处理 WiX。
+            description = "KnowFlick knowledge workspace (desktop)"
             vendor = "KnowFlick"
 
             // 三个系统各出原生安装包；在哪个系统构建哪个格式，见 desktop.yml 的 matrix。
