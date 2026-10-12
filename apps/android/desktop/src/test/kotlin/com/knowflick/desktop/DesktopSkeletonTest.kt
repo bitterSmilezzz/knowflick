@@ -82,6 +82,37 @@ class DesktopSkeletonTest {
     }
 
     /**
+     * **桌面端现在能全局搜索**：检索走共享 `KnowledgeSearchEngine`，历史落共享 `CardStorage`，
+     * 弹层是与 Android 同一份 `SearchSheet`。断言刻意落在「结果 + 历史」而不是像素上。
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun globalSearchFindsCardsAndPersistsHistory() = runComposeUiTest {
+        val (model, dir) = tempModel("kf-desktop-search")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = hostState(model, dir)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        state.openSearch()
+
+        state.updateSearchQuery("卡库状态机")
+        assertTrue(state.searchResults.isNotEmpty(), "共享检索引擎应命中样例卡")
+        onNodeWithText("卡库状态机与学科表可用").assertExists()
+
+        // 搜索历史经共享 CardStorage 落盘（换一个实例读回）
+        state.addSearchHistory("卡库状态机")
+        assertTrue(
+            CardStorage(dir).loadSearchHistory().contains("卡库状态机"),
+            "搜索历史应落进共享存储",
+        )
+
+        // 从搜索结果打开详情（与 Android 同一条导航语义）
+        state.openDetail(state.searchResults.first().card.id)
+        onNodeWithText("卡库状态机与学科表可用").assertExists()
+    }
+
+    /**
      * **桌面端现在有真实可用的 AI 能力**：生成走 `:domain` 的 `AiService`（与 Android 同一份，
      * 含流式解析），密钥来自桌面凭据文件，落库走共享 `CardStore`。
      * 用假服务器跑全链路，不碰真实网络。

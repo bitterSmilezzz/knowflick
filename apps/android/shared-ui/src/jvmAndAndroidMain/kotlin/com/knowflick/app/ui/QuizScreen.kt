@@ -73,7 +73,8 @@ fun QuizScreen(
     onPromoteCardToDeck: (KnowledgeCard) -> Unit = {},
     onExit: () -> Unit,
 ) {
-    // 系统返回同上：外移到 Android 宿主的调用点（MainActivity），本组件只管 onExit 回调。
+    // 系统返回：平台差异收在 PlatformBackHandler 接缝里（见 LibraryScreen 的同类说明）
+    com.knowflick.app.ui.common.PlatformBackHandler { onExit() }
 
     val card = session.current
     var flipped by rememberSaveable(card?.id) { mutableStateOf(false) }

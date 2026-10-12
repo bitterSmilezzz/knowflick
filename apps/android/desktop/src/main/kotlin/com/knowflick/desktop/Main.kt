@@ -24,6 +24,7 @@ import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.LibraryScreen
 import com.knowflick.app.ui.PaperTheme
 import com.knowflick.app.ui.QuizScreen
+import com.knowflick.app.ui.SearchSheet
 import com.knowflick.app.ui.SettingsScreen
 import com.knowflick.app.ui.StatsScreen
 import java.awt.Frame
@@ -42,6 +43,7 @@ fun main() = application {
                 Item("刷卡（主页）", onClick = { state.goHome() })
                 Item("收藏阁", onClick = { state.openLibrary() })
                 Item("学习统计", onClick = { state.openStats() })
+                Item("全局搜索…", onClick = { state.openSearch() })
                 Item("设置…", onClick = { state.openSettings() })
                 Separator()
                 Item("知识测验（10 张）", onClick = { state.startQuiz() })
@@ -123,6 +125,30 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                 )
             }
 
+            state.showingSearch -> key(state.version) {
+                // 全局搜索：与 Android 端同一份 SearchSheet；检索与历史都在共享层
+                SearchSheet(
+                    query = state.searchQuery,
+                    onQueryChange = state::updateSearchQuery,
+                    selectedCategory = state.searchCategory,
+                    onCategoryChange = state::updateSearchCategory,
+                    selectedSource = state.searchSource,
+                    onSourceChange = state::updateSearchSource,
+                    allCards = model.store.cards,
+                    searchResults = state.searchResults,
+                    searchHistory = state.searchHistory,
+                    onAddSearchHistory = state::addSearchHistory,
+                    onRemoveSearchHistory = state::removeSearchHistory,
+                    onClearSearchHistory = state::clearSearchHistory,
+                    onOpenDetail = { card -> state.openDetail(card.id) },
+                    onOpenChat = { state.showNotice("卡片追问尚未在桌面端接线") },
+                    onPromoteToDeck = state::promoteToDeckTop,
+                    onToggleFavorite = state::toggleFavorite,
+                    onResetFilters = state::resetSearchFilters,
+                    onClose = state::closeSearch,
+                )
+            }
+
             state.showingSettings -> key(state.version) {
                 // 设置页：与 Android 端同一份 SettingsScreen；设置走共享存储（同一份 settings.json 线格式），
                 // 密钥走桌面凭据文件（0600）——所以 credentialsEncrypted = false，如实提示明文存储。
@@ -198,7 +224,7 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onOpenStats = state::openStats,
                     onOpenFavorites = state::openLibrary,
                     onOpenQuiz = state::startQuiz,
-                    onOpenSearch = { state.showNotice("搜索尚未迁入共享模块") },
+                    onOpenSearch = state::openSearch,
                     onOpenSettings = state::openSettings,
                     onOpenGraph = { state.showNotice("知识图谱尚未迁入共享模块") },
                     onOpenMap = { state.showNotice("学习地图尚未迁入共享模块") },
@@ -215,8 +241,8 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
         }
 
         // 刷卡页自带 notice 区域（DeckScreen 的 notice 参数），宿主不再重复弹一条
-        val onDeck = quizSession == null && detailCard == null &&
-            !state.showingSettings && !state.showingStats && !state.showingLibrary
+        val onDeck = quizSession == null && detailCard == null && !state.showingSettings &&
+            !state.showingStats && !state.showingLibrary && !state.showingSearch
         state.notice?.takeIf { !onDeck }?.let { message ->
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp),

@@ -87,7 +87,14 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
 - **新增 Gradle 模块必须同时更新四处**：`tools/build_android.sh`、`android.yml` 的测试步骤、workflow 里「汇总测试结果」的 glob 路径、以及 `desktop.yml` matrix 里的任务列表——只改名不加汇总，CI 绿了但覆盖率已经掉了。
 - **搬文件进共享模块时不要改包名**：`:domain`（`com.knowflick.app.domain`）、`:shared-data`（`com.knowflick.app.data`）与 `:shared-ui`（`com.knowflick.app.ui`）都保持原包名，调用方 import 零改动。这是上万行代码能分批平移的前提，别为了「模块名好看」制造上千处 import 改动。
 - **`java.*` 不要放进 `:domain` 的 `commonMain`**：当前 `androidTarget + jvm` 组合下能编译通过，但那是元数据编译被跳过的副作用，加非 JVM target 即失效；含 `java.time`/`java.util` 的文件放 `jvmAndAndroidMain`（依据见 [KMP 探针结果](docs/windows-route/KMP_PROBE_RESULT.md)）。
-- **界面搬进 `:shared-ui` 会遇到三类平台边界**（实测清单见 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md)）：系统返回 `BackHandler` 桌面不存在（**外移宿主**，CMP 1.8 没有公共替代）；多平台 Material 图标停更于 1.7.3；含 `java.*` 的界面文件放 `jvmAndAndroidMain`。挑文件别靠印象——`python3 tools/classify_ui_portability.py` 按依赖闭包分档。
+- **共享屏的返回语义用接缝，不要外移给宿主**：`PlatformBackHandler(enabled) { … }`
+  （Android actual=activity 的 BackHandler，桌面 no-op）。早期把返回外移到每个宿主调用点，结果是
+  「一个屏的返回语义拆在两个文件里 + 宿主越写越厚 + 每迁一屏都要记得改宿主」；补上接缝后五处宿主包装全部删除。
+- **界面搬进 `:shared-ui` 会遇到几类平台边界**（实测清单见 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md)）：
+  系统返回用 `PlatformBackHandler` 接缝（**别外移到宿主**）；多平台 Material 图标停更于 1.7.3（钉 1.7.3）；
+  含 `java.*` 的界面文件放 `jvmAndAndroidMain`；**自己开画布用平台绘图 API 量文字的界面搬不了**
+  （实测知识图谱屏用 `android.graphics.Paint`，需改写成 `TextMeasurer`/`DrawScope` 才能共享）。
+  挑文件别靠印象——`python3 tools/classify_ui_portability.py` 按依赖闭包分档，但**最终以真编译为准**。
 - **Gradle 的输入校验先于任何 `doFirst` 执行**：想在「任务输入缺失」时给友好提示，`doFirst` 里守不住
   （实测：图标文件缺失时打包任务在动作执行前就因输入校验失败）。正确做法是**独立校验任务 + `dependsOn`**
   （见 `apps/android/desktop/build.gradle.kts` 的 `verifyAppIcons`）。

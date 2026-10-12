@@ -63,8 +63,8 @@ fun StatsScreen(
     onStartDueReview: () -> Unit = {},
     onOpenCardDetail: (String) -> Unit = {},
 ) {
-    // 系统返回外移宿主（同 LibraryScreen / QuizScreen）：桌面没有 androidx.activity，
-    // 由 Android 宿主在调用点包 BackHandler。
+    // 系统返回：平台差异收在 PlatformBackHandler 接缝里（见 LibraryScreen 的同类说明）
+    com.knowflick.app.ui.common.PlatformBackHandler { onBack() }
 
     val day = rememberLearningDay()
     val today = day.date
