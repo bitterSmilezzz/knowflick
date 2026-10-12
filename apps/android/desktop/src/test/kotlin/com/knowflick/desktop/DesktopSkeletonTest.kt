@@ -72,6 +72,29 @@ class DesktopSkeletonTest {
     }
 
     /**
+     * **桌面端现在也有学习统计**：同一份共享 `StatsScreen`（同一个 `StatsCalculator` /
+     * `LearningPlan` / 热力图组件），日期快照走 `rememberLearningDay` 的桌面实现（轮询）。
+     * 这条用例也钉住了「统计 ⇄ 卡库」的导航接线。
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun statsScreenOpensOnDesktop() = runComposeUiTest {
+        val (model, _) = tempModel("kf-desktop-stats")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = DesktopHostState(model)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        onNodeWithText("收藏 1").assertExists()
+
+        state.openStats()
+        onNodeWithText("今日已学/已复习").assertExists()
+
+        state.closeStats()
+        onNodeWithText("收藏 1").assertExists()
+    }
+
+    /**
      * **桌面端现在有测验能力**：编排来自 `:domain` 的 `QuizCycle`（与 Android 端同一份），
      * 界面来自 `:shared-ui` 的 `QuizScreen`（同一份）。这条用例走完「起一轮 → 评完 → 退出」，
      * 并确认评分真的经 SM-2 落进了卡库。

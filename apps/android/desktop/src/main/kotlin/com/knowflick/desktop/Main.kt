@@ -21,6 +21,7 @@ import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.LibraryScreen
 import com.knowflick.app.ui.PaperTheme
 import com.knowflick.app.ui.QuizScreen
+import com.knowflick.app.ui.StatsScreen
 import java.awt.Frame
 
 fun main() = application {
@@ -34,10 +35,12 @@ fun main() = application {
         // 桌面原生的入口放菜单栏（而不是另造一套界面）：测验是共享 `QuizScreen`，编排是共享 `QuizCycle`
         MenuBar {
             Menu("学习", mnemonic = 'L') {
-                Item("开始知识测验（10 张）", onClick = { state.startQuiz() })
+                Item("知识测验（10 张）", onClick = { state.startQuiz() })
                 Item("只测今天到期", onClick = { state.startDueReview() })
+                Item("学习统计", onClick = { state.openStats() })
                 Separator()
                 Item("退出测验", enabled = state.quizSession != null, onClick = { state.exitQuiz() })
+                Item("返回卡库", enabled = state.showingStats, onClick = { state.closeStats() })
             }
         }
 
@@ -74,6 +77,16 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onOpenChat = { state.showNotice("卡片追问尚未在桌面端接线") },
                     onPromoteCardToDeck = { state.showNotice("置顶到卡堆尚未在桌面端接线") },
                     onExit = state::exitQuiz,
+                )
+            }
+        } else if (state.showingStats) {
+            // 学习统计：与 Android 端同一份 StatsScreen（同一个 StatsCalculator / LearningPlan / 统计图组件）
+            key(state.version) {
+                StatsScreen(
+                    cards = model.store.cards,
+                    onBack = state::closeStats,
+                    onStartDueReview = state::startDueReviewFromStats,
+                    onOpenCardDetail = { state.showNotice("详情页尚未迁入共享模块") },
                 )
             }
         } else {
