@@ -35,6 +35,8 @@ dependencies {
     implementation(compose.material3)
 
     testImplementation(kotlin("test"))
+    // 桌面端也要能验证 AI 全链路（与 :domain 的 AI 测试同一套假服务器手法）
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation(compose.desktop.currentOs)
     // compose.uiTest 仍是实验 API，故文件头有 @file:OptIn
     testImplementation(compose.uiTest)
