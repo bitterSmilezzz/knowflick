@@ -43,6 +43,8 @@
 - 说明（未做的取舍）：`DetailScreen`(446) 的迁移**主动推迟**——它还渲染 `CardFollowUpChatSheet`(844) 与 `CardPosterExportSheet`(371)，串起来是一次 1600+ 行迁移；先把两条公共接缝做掉，后续每屏都少一道坎。
 - 跨平台（能力对齐·测验）：**测验编排抽成共享的 `QuizCycle`，桌面端因此第一次拥有真实功能而不只是浏览**——原先这套编排（起一轮 / 下一轮剔除已评卡 / 弱项重测 / 评分驱动 SM-2 并落库）只写在 Android 的 ViewModel 里；抽到 `:domain` 后，Android ViewModel 改为委托，桌面宿主直接复用同一份编排 + 同一份 `QuizScreen`，入口放在**原生菜单栏**（学习 → 开始知识测验 / 只测今天到期）。行为由 7 项新表征测试钉住（`:domain:jvmTest`），桌面侧另有一条端到端用例走完「起一轮 → 评完 → 落库 → 退出」。
 - 跨平台（实测修复）：**宿主的重组契约**——`CardStore` 与 `QuizSession` 都不是 Compose 状态，且评分只改动**同一个会话实例**的内部进度；桌面宿主最初只订阅了会话实例，于是「评分后界面停在第一张卡」——被端到端测试逮到。修法是版本驱动屏幕外面套 `key(state.version)`（与 Android `MainActivity` 的 `key(viewModel.version)` 同一手法），并写进 AGENTS 陷阱清单。
+- 跨平台（能力对齐·统计）：**第三条接缝（日期）解锁并迁入 `StatsScreen`(825)，桌面端再添一个共享整屏**——`rememberLearningDay` 的 Android 实现保持原样（`DATE_CHANGED`/`TIME_CHANGED`/`TIMEZONE_CHANGED` 广播 + 回到前台 + 午夜定时；仅把 `ContextCompat.registerReceiver` 换成手写 API 33 分支，少引一个依赖），桌面实现改为 30 秒轮询（桌面没有日期变更广播）。桌面菜单栏新增「学习 → 学习统计」，统计页里的「今日到期」可直接跳进到期复习。至此**三个共享整屏（卡库 / 测验 / 统计）在桌面端全部可用**。
+- 工具：`tools/classify_ui_portability.py` 修掉第三次漏检——**`BackHandler`**（Android 系统返回）此前不在平台信号清单里，而它常以全限定调用出现（`androidx.activity.compose.BackHandler { … }`，没有 import 也没有括号），于是 `StatsScreen` 被误判成「可直接搬」、搬进去才编译失败。教训已写进 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md)：分档只是筛子，**编译才是裁判**。修正后 A/B/C = 20 文件 2582 行 / 3 文件 777 行 / 31 文件 12593 行。
 
 ## [v0.2.0] - 2026-10-02
 

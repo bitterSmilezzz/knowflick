@@ -30,17 +30,23 @@
 
 ## 2. 分档结果
 
-当前（`:shared-ui` 已迁 6 文件、`:shared-data` 已迁 7 文件、两条平台接缝落地之后）：
+当前（`:shared-ui` 已迁 8 文件、`:shared-data` 已迁 7 文件、四条平台接缝落地之后）：
 
 | 档 | 文件数 / 行数（app 模块剩余） |
 | --- | --- |
-| **A**（可直接搬） | 21 文件 / 3117 行 |
-| **B**（被平台文件拖累） | 4 文件 / 1602 行 |
-| **C**（自身带平台信号） | 31 文件 / 12135 行 |
+| **A**（可直接搬） | 20 文件 / 2582 行 |
+| **B**（被平台文件拖累） | 3 文件 / 777 行 |
+| **C**（自身带平台信号） | 31 文件 / 12593 行 |
 
-**底图接缝一落地，`ui/CardFace.kt`(281) 立刻从 B 升到 A**——这就是「先抽平台边界，界面自然解锁」的效果：
-B 档已从 5 个降到 4 个（`StatsScreen` ← `LearningDay`；`AmbientAudioPlayerBar` ← `SpeechController`；
-`SyncClient` ← `SyncServer`；`ChatStateHolder` ← `KnowFlickViewModel`）。
+**每次抽掉一条平台边界，都会有一片文件从 B/C 升到 A**：底图接缝解锁了 `CardFace`，
+日期接缝解锁了 `StatsScreen`（825 行，本次已迁），系统返回外移解锁了 `LibraryScreen` / `QuizScreen`。
+B 档从最初的 8 个降到 3 个。
+
+> 工具本身修过三次假信号/漏检：① 函数内局部量被当成包级符号（假依赖）；
+> ② `java.io.File` 被当成平台信号（把整个 `data/` 误判成不可搬）；
+> ③ **`BackHandler` 漏检**——它常以全限定调用出现（`androidx.activity.compose.BackHandler { … }`，
+> 没有 import 也没有括号），于是 `StatsScreen` 被误判成可搬、搬进去才编译失败。
+> 教训：**分档只是筛子，编译才是裁判**；每次搬迁都要真编译两端。
 
 ## 3. 已经搬进 `:shared-ui` 的（本次，6 个生产文件 2365 行）
 
@@ -119,10 +125,11 @@ B 档已从 5 个降到 4 个（`StatsScreen` ← `LearningDay`；`AmbientAudioP
 
 ### 7.1 另外两条接缝：触觉与底图
 
-| 接缝 | 共享侧（commonMain） | Android 实际实现 | 桌面实际实现 |
+| 接缝 | 共享侧 | Android 实际实现 | 桌面实际实现 |
 | --- | --- | --- | --- |
 | 触觉反馈 | `PlatformHaptics` + `rememberPlatformHaptics()` | `androidMain`：包住原来的 `HapticFeedbackHelper`（API 29+ `VibrationEffect` 预设，**行为不变**） | `jvmMain`：`NoOpPlatformHaptics`（桌面无触觉） |
 | 分类底图 | `rememberBackgroundImage(key)` / `PreloadBackgroundImage(key)` | `androidMain`：assets + `BitmapFactory` + `LruCache`（原实现整体搬入） | `jvmMain`：classpath 资源 + Skia 解码 + 内存缓存 |
+| 「今天」快照 | `LearningDay` + `rememberLearningDay()`（`internal`，仅统计页用） | `androidMain`：`ACTION_DATE_CHANGED` / `TIME_CHANGED` / `TIMEZONE_CHANGED` 广播 + 回到前台 + 到午夜定时（原实现；`ContextCompat.registerReceiver` 换成手写 API 33 分支，少引一个依赖） | `jvmMain`：30 秒轮询（桌面没有日期变更广播；睡眠唤醒最多晚 30 秒） |
 
 底图的**图片来源仍是仓库根 `shared/assets`**：Android 经 `assets.srcDirs` 直读，桌面经
 `resources.srcDir` 打进 jar——两端同布局（`bg/<key>.webp`）、零副本。桌面侧已实测能解出
