@@ -70,6 +70,13 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
             }
         }
+        val androidMain by getting {
+            dependencies {
+                // LearningDay 的 Android actual：用 LocalLifecycleOwner 在回到前台时刷新「今天」。
+                // 版本与 :app 的 lifecycle-runtime-ktx 一致（2.10.0）。
+                implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+            }
+        }
         val jvmTest by getting {
             dependencies {
                 implementation(kotlin("test"))

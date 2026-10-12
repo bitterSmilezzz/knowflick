@@ -38,6 +38,20 @@ class DesktopHostState(val model: AppModel) {
     var quizSession by mutableStateOf<QuizSession?>(null)
         private set
 
+    /** 是否正在看学习统计（与测验互斥的第二个共享整屏） */
+    var showingStats by mutableStateOf(false)
+        private set
+
+    fun openStats() {
+        showingStats = true
+        version++
+    }
+
+    fun closeStats() {
+        showingStats = false
+        version++
+    }
+
     private fun syncQuizSession() {
         quizSession = quizCycle.session
     }
@@ -82,6 +96,12 @@ class DesktopHostState(val model: AppModel) {
         quizCycle.exit()
         syncQuizSession()
         version++
+    }
+
+    /** 从统计页发起「只测今天到期」：退出统计并进入测验 */
+    fun startDueReviewFromStats() {
+        showingStats = false
+        startDueReview()
     }
 
     /** 导入归档字节：探测 → 合并 → 落盘 → 刷新界面 */

@@ -63,7 +63,8 @@ fun StatsScreen(
     onStartDueReview: () -> Unit = {},
     onOpenCardDetail: (String) -> Unit = {},
 ) {
-    androidx.activity.compose.BackHandler { onBack() }
+    // 系统返回外移宿主（同 LibraryScreen / QuizScreen）：桌面没有 androidx.activity，
+    // 由 Android 宿主在调用点包 BackHandler。
 
     val day = rememberLearningDay()
     val today = day.date

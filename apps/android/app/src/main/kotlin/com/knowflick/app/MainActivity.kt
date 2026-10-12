@@ -217,7 +217,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                        Screen.STATS -> StatsScreen(
+                        Screen.STATS -> {
+                            // 系统返回由宿主接线（共享界面里已移除 BackHandler，桌面无此 API）
+                            androidx.activity.compose.BackHandler { screen = Screen.DECK }
+                            StatsScreen(
                             cards = viewModel.model.store.cards,
                             onBack = { screen = Screen.DECK },
                             onStartDueReview = {
@@ -229,7 +232,8 @@ class MainActivity : ComponentActivity() {
                                 detailReturnScreen = Screen.STATS
                                 screen = Screen.DETAIL
                             },
-                        )
+                            )
+                        }
                         Screen.SETTINGS -> com.knowflick.app.ui.SettingsScreen(
                             initial = viewModel.settings,
                             initialApiKey = viewModel.currentApiKey(),
