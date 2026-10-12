@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.CardStore
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.domain.RestoreStrategy
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -36,7 +36,7 @@
 | 学习地图 | `LearningMapView` 333 | ✅ `LearningMapScreen` | `StudyScope`/`StudyMap` 与范围状态都在共享层，桌面端可用 |
 | 局域网同步 | `SyncSheetView` 528 + `SyncClient/Server/Protocol` | ❌ | 见 ADR 待决 2：四端之后是否沿用同一协议需单独设计，**不要为每端各写一套同步** |
 | 网页剪藏 | `WebClipModalView` 371 + `WebClipFetcher` | ⚠️ | 引擎 `WebClipEngine` 已共享；`WebClipFetcher`（114 行）已可搬；**剪藏面板 UI 未迁** |
-| 笔记导入 | `ImportNotesModalView` 633 | ⚠️ | 归档导入共享（`ArchiveImportManager`）；**「笔记 → 卡片」流程 UI 未迁** |
+| 笔记导入 | `ImportNotesModalView` 633 | ⚠️ | 归档导入共享（`ArchiveImportManager` + **`ImportRestoreDialog` 预览对话框已共享**，桌面走同一交互）；**「笔记 → 卡片」流程 UI 未迁** |
 | 卡片导出选择 | `ExportCardsModalView` 548 | ⚠️ | 导出引擎共享（Markdown/JSON/TSV/ZIP）；**选择界面未迁** |
 | 海报导出 | `CardPosterRenderer` 561 + `CardPosterExportSheet` | 🔒（Android 槽位） | 需要光栅化；共享端以槽位注入，桌面暂缺 |
 | AI 追问聊天 | `CardFollowUpChatView` 424 + `CardChatInsightDeriver` | ⚠️ | 模型与洞见提炼已共享；`AiService.streamCardChat` 已共享；**聊天 UI 未迁**（Android 为槽位） |

@@ -1,41 +1,15 @@
 package com.knowflick.app.data
 
+import com.knowflick.app.domain.ArchivePreview
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.CardStore
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.domain.RestoreStrategy
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
-/**
- * 导入恢复策略
- */
-enum class RestoreStrategy(val title: String, val description: String) {
-    MERGE(
-        title = "增量合并恢复 (推荐)",
-        description = "保留本机已有卡片与学习历史，智能识别并合并归档中的新卡片与更新进度",
-    ),
-    OVERWRITE(
-        title = "全量覆盖重置",
-        description = "使用归档数据完全覆盖替换当前卡库，适合全新设备数据迁移",
-    ),
-}
-
-/**
- * 归档文件解析预览信息
- */
-data class ArchivePreview(
-    val filename: String,
-    val totalCards: Int,
-    val readCards: Int,
-    val favoritedCards: Int,
-    val sourcesSummary: Map<CardSource, Int>,
-    val categoriesSummary: Map<String, Int>,
-    val parsedCards: List<KnowledgeCard>,
-    val settingsJson: String? = null,
-    val isZipArchive: Boolean = false,
-)
 
 /**
  * 智能归档导入与数据恢复引擎——**与平台无关的那一半**：

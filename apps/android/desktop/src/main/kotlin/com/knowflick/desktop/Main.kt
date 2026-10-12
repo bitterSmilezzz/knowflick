@@ -20,6 +20,7 @@ import com.knowflick.app.data.CardStorage
 import com.knowflick.app.domain.RelatedCards
 import com.knowflick.app.ui.DeckScreen
 import com.knowflick.app.ui.DetailScreen
+import com.knowflick.app.ui.ImportRestoreDialog
 import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.LibraryScreen
 import com.knowflick.app.ui.map.LearningMapScreen
@@ -87,7 +88,7 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
             state.dismissNotice()
         } else {
             runCatching { DesktopArchiveActions.readArchiveBytes(file) }.fold(
-                onSuccess = { bytes -> state.importBytes(file.name, bytes) },
+                onSuccess = { bytes -> state.beginImport(file.name, bytes) },
                 onFailure = { error -> state.showNotice("导入失败：${error.message ?: "无法读取文件"}") },
             )
         }
@@ -251,6 +252,15 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     // 微件与海报导出是 Android 能力：桌面不传槽位，菜单项与面板自然不出现
                 )
             }
+        }
+
+        // 导入预览：与 Android 端同一份 ImportRestoreDialog，也是同一份交互（先预览再确认）
+        state.importPreview?.let { preview ->
+            ImportRestoreDialog(
+                preview = preview,
+                onConfirm = { strategy -> state.confirmImport(strategy) },
+                onDismiss = state::cancelImport,
+            )
         }
 
         // 刷卡页自带 notice 区域（DeckScreen 的 notice 参数），宿主不再重复弹一条
