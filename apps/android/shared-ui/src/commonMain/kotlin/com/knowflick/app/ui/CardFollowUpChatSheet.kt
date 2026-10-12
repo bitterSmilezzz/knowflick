@@ -1,7 +1,7 @@
 package com.knowflick.app.ui
 
-import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import com.knowflick.app.ui.common.PlatformBackHandler
+import com.knowflick.app.ui.common.rememberNotifier
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -56,7 +56,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -92,11 +91,11 @@ fun CardFollowUpChatSheet(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    BackHandler { onClose() }
+    PlatformBackHandler { onClose() }
 
     var showClearDialog by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf("") }
-    val context = LocalContext.current
+    val notifier = rememberNotifier()
     val clipboardManager = LocalClipboardManager.current
     val messages = session?.messages ?: emptyList()
 
@@ -159,7 +158,7 @@ fun CardFollowUpChatSheet(
                         onSpeak = onSpeakMessage,
                         onCopy = { text ->
                             clipboardManager.setText(AnnotatedString(text))
-                            Toast.makeText(context, "已复制回答", Toast.LENGTH_SHORT).show()
+                            notifier.show("已复制回答")
                         },
                         onDeriveCard = onDeriveCard,
                         onStarterClick = { prompt ->

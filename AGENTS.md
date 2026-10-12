@@ -95,6 +95,10 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
   含 `java.*` 的界面文件放 `jvmAndAndroidMain`；**自己开画布用平台绘图 API 量文字的界面搬不了**
   （实测知识图谱屏用 `android.graphics.Paint`，需改写成 `TextMeasurer`/`DrawScope` 才能共享）。
   挑文件别靠印象——`python3 tools/classify_ui_portability.py` 按依赖闭包分档，但**最终以真编译为准**。
+- **共享代码不要硬编码 `Dispatchers.Main`**（实测教训）：`:shared-data` 的 `ChatStateHolder` 原先写死
+  `withContext(Dispatchers.Main)`，Android 正常，但纯 JVM（桌面宿主/单测）里没有 Main 调度器 →
+  `Module with the Main dispatcher had failed to initialize`，症状是「回答已流出、`isStreaming` 永不结束」。
+  修法是把调度器做成**构造参数**（默认保持 `Dispatchers.Main`），由宿主注入。同类：`Dispatchers.IO`、系统时钟、默认时区。
 - **Gradle 的输入校验先于任何 `doFirst` 执行**：想在「任务输入缺失」时给友好提示，`doFirst` 里守不住
   （实测：图标文件缺失时打包任务在动作执行前就因输入校验失败）。正确做法是**独立校验任务 + `dependsOn`**
   （见 `apps/android/desktop/build.gradle.kts` 的 `verifyAppIcons`）。
