@@ -9,7 +9,11 @@ import okhttp3.Response
 import java.io.IOException
 
 /** OkHttp 异步桥接：协程取消时立即取消 socket，响应体始终在 OkHttp 工作线程消费并关闭。 */
-internal suspend fun <T> OkHttpClient.executeCancellable(
+/**
+ * **对外开放**：`:app` 的 WebClipFetcher / RemoteSpeechClient 与将来的桌面端都用它。
+ * 本模块内部工具不该是 internal——Kotlin 的 internal 按**模块**算，跨模块调用直接编译不过。
+ */
+suspend fun <T> OkHttpClient.executeCancellable(
     request: Request,
     consume: (Response) -> T,
 ): T = suspendCancellableCoroutine { continuation ->

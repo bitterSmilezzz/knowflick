@@ -82,6 +82,61 @@ class DesktopSkeletonTest {
     }
 
     /**
+     * **桌面端现在有真实可用的 AI 能力**：生成走 `:domain` 的 `AiService`（与 Android 同一份，
+     * 含流式解析），密钥来自桌面凭据文件，落库走共享 `CardStore`。
+     * 用假服务器跑全链路，不碰真实网络。
+     */
+    @Test
+    fun aiGenerationInsertsCardsThroughSharedService() {
+        val (model, dir) = tempModel("kf-desktop-ai")
+        model.bootstrap()
+        val state = hostState(model, dir)
+
+        // 默认设置已带 DeepSeek 端点 → 此时缺的是密钥（与 Android 同一口径）
+        state.generateNewCards()
+        assertEquals("请先在设置里填入 API Key", state.notice)
+        assertTrue(model.store.cards.isEmpty(), "缺密钥时不应产生任何卡片")
+
+        // 端点与模型都空 → 视为未配置
+        state.saveAiSettings(state.aiSettings.copy(baseURL = "", model = ""), "")
+        state.generateNewCards()
+        assertEquals("请先在设置里配置 AI 服务", state.notice)
+
+        val server = okhttp3.mockwebserver.MockWebServer()
+        server.start()
+        try {
+            val details = "这是分批生成的深入说明内容。".repeat(12)
+            val card = """{"category":"AI","headline":"桌面生成的卡","summary":"摘要","details":"$details","searchKeywords":[],"sources":[]}"""
+            val content = "[$card]".replace("\"", "\\\"")
+            server.enqueue(
+                okhttp3.mockwebserver.MockResponse()
+                    .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"$content\"}}]}\n\ndata: [DONE]\n\n"),
+            )
+            state.saveAiSettings(
+                state.aiSettings.copy(baseURL = server.url("/v1").toString(), model = "test-model"),
+                "sk-test-key",
+            )
+
+            state.generateNewCards(count = 1)
+
+            // 异步完成：轮询到生成结束（上限 5 秒）
+            val deadline = System.currentTimeMillis() + 5_000
+            while (state.isGenerating && System.currentTimeMillis() < deadline) Thread.sleep(20)
+
+            assertFalse(state.isGenerating, "生成应已结束")
+            assertEquals("已生成 1 张新知识 ✓", state.notice)
+            assertTrue(
+                model.store.cards.any { it.headline == "桌面生成的卡" },
+                "生成的卡片应经共享 CardStore 置顶插入",
+            )
+            // 置顶插入：新卡在卡库最前
+            assertEquals("桌面生成的卡", model.store.cards.first().headline)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    /**
      * **桌面端现在能改设置了，且设置走共享存储**：`settings.json` 的线格式与 Android 是同一份
      * （`AiSettings` 已迁 `:domain`），因此**跨端设置可互通**；主题切换立即生效。
      * 同时钉住一条安全不变式：**密钥不落进共享存储文件**，只落进 0600 的凭据文件。

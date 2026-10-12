@@ -25,11 +25,19 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * - 流式生成 + 增量对象扫描，够数即停；429/5xx 指数退避重试
  * - 近重复抑制（归一化标题 + bigram Jaccard）与 ≥80 字门槛；超 6 张自动分批
  */
-class AiService(
-    private val client: OkHttpClient = defaultClient(),
+class AiService internal constructor(
+    private val client: OkHttpClient,
     private val retryBaseDelayMs: Long = 1_000L,
     private val versionName: String = "development",
 ) {
+    /**
+     * 宿主用的公开构造器：**刻意不暴露 `OkHttpClient`**。
+     * 否则 OkHttp 就得从 `:domain` 的 implementation 提升为 api，让每个消费者都被迫把网络库
+     * 挂在类路径上（`:shared-ui`、`:shared-data` 都不需要它）；而暴露出来的公开签名也会把
+     * 实现细节钉进各端。需要自定义客户端（重试、超时）的场景在测试里用 internal 构造器。
+     */
+    constructor(versionName: String = "development") : this(defaultClient(), 1_000L, versionName)
+
     private val jsonMedia = "application/json; charset=utf-8".toMediaTypeOrNull()!!
 
     suspend fun ping(settings: AiSettings, apiKey: String) {
