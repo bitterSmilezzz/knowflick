@@ -82,6 +82,35 @@ class DesktopSkeletonTest {
     }
 
     /**
+     * **桌面端现在有学习地图**：范围存在共享 `CardStore.studyScope`（与 Android 同一处），
+     * 地图屏与 `StudyMap` 计算都是共享的；应用范围后要落进卡库并持久化。
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun learningMapOpensAndAppliesScope() = runComposeUiTest {
+        val (model, dir) = tempModel("kf-desktop-map")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = hostState(model, dir)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        state.openMap()
+        onNodeWithText("学习地图").assertExists()
+
+        // 选一条支线（按学科）→ 进入共享卡库，并立刻约束卡堆
+        val subject = model.store.cards.first().category
+        state.applyStudyScope(com.knowflick.app.domain.StudyScope(subjects = setOf(subject)))
+        assertTrue(state.studyScope.isActive, "范围应生效")
+        assertTrue(
+            model.store.deck.all { it.category == subject },
+            "卡堆应受学习范围约束（与 Android 同一份 CardStore 语义）",
+        )
+
+        // 注意：学习范围**目前不落盘**——Android 侧同样如此（`:shared-data` 没有序列化它），
+        // 属既有产品行为，不是迁移引入的回归；已在 CHANGELOG 记为待决项，未擅自改动语义。
+    }
+
+    /**
      * **桌面端现在能全局搜索**：检索走共享 `KnowledgeSearchEngine`，历史落共享 `CardStorage`，
      * 弹层是与 Android 同一份 `SearchSheet`。断言刻意落在「结果 + 历史」而不是像素上。
      */
