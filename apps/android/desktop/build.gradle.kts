@@ -50,6 +50,22 @@ compose.desktop {
     application {
         mainClass = "com.knowflick.desktop.MainKt"
 
+        // 图标产物不在时**在打包这一步就失败**，而不是静默套上 jpackage 的默认图标
+        //（后者在安装包里不容易被发现）。必须是**独立任务 + dependsOn**：
+        // 图标是打包任务的输入，输入校验先于任何 doFirst 执行，所以 doFirst 里守不住。
+        val verifyAppIcons by tasks.registering {
+            val icons = listOf("AppIcon.icns", "AppIcon.ico", "AppIcon.png")
+            doLast {
+                val missing = icons.filterNot { file("../../../shared/icons/$it").exists() }
+                require(missing.isEmpty()) {
+                    "缺少图标产物 shared/icons/${missing.joinToString()} —— 跑 python3 tools/generate_app_icons.py 生成"
+                }
+            }
+        }
+        tasks.matching {
+            it.name.startsWith("package") || it.name.startsWith("createDistributable")
+        }.configureEach { dependsOn(verifyAppIcons) }
+
         nativeDistributions {
             // 桌面端自己的版本序列（与 mac 的 v*、android 的 android-v* 并列，不互相借用）
             packageVersion = "0.1.0"
@@ -64,15 +80,27 @@ compose.desktop {
             // 三个系统各出原生安装包；在哪个系统构建哪个格式，见 desktop.yml 的 matrix。
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
 
+            // 应用图标：**美术只有一份**（apps/mac/Resources/AppIcon.iconset），
+            // 三端格式由 tools/generate_app_icons.py 派生到 shared/icons 并随仓库分发。
+            // jpackage 不交叉编译、也不认「一种格式走三端」，所以这里按端各指一份产物。
+            val sharedIcons = file("../../../shared/icons")
+
             macOS {
                 // jpackage 的 macOS bundle 版本要求 MAJOR > 0（0.1.0 会被直接拒绝），
                 // 所以 bundle 内嵌版本用 1.0.0，**产品版本仍以 packageVersion = 0.1.0 为准**
                 //（tag、Release 说明、其余两端安装包都用 0.1.0）。这是打包器限制，不是版本口径分裂。
                 packageVersion = "1.0.0"
                 dmgPackageVersion = "1.0.0"
+                iconFile.set(sharedIcons.resolve("AppIcon.icns"))
             }
 
-            // TODO(技术债)：应用图标未接入（三端各需 .icns / .ico / .png）。
+            windows {
+                iconFile.set(sharedIcons.resolve("AppIcon.ico"))
+            }
+
+            linux {
+                iconFile.set(sharedIcons.resolve("AppIcon.png"))
+            }
             // 仓库已有 apps/mac/Resources/AppIcon.iconset/ 与 Android 侧图标，接入时同样要避免三份手工维护。
         }
     }
