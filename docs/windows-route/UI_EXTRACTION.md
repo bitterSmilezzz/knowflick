@@ -36,7 +36,7 @@
 | --- | --- |
 | **A**（可直接搬） | 9 文件 / 793 行 |
 | **B**（被平台文件拖累） | 3 文件 / 777 行 |
-| **C**（自身带平台信号） | 25 文件 / 9010 行 |
+| **C**（自身带平台信号） | 24 文件 / 8171 行 |
 
 **每次抽掉一条平台边界，都会有一片文件从 B/C 升到 A**：底图接缝解锁了 `CardFace`，
 日期接缝解锁了 `StatsScreen`（825 行，本次已迁），系统返回外移解锁了 `LibraryScreen` / `QuizScreen`。
@@ -129,6 +129,7 @@ B 档从最初的 8 个降到 3 个。
 | --- | --- | --- | --- |
 | 触觉反馈 | `PlatformHaptics` + `rememberPlatformHaptics()` | `androidMain`：包住原来的 `HapticFeedbackHelper`（API 29+ `VibrationEffect` 预设，**行为不变**） | `jvmMain`：`NoOpPlatformHaptics`（桌面无触觉） |
 | 分类底图 | `rememberBackgroundImage(key)` / `PreloadBackgroundImage(key)` | `androidMain`：assets + `BitmapFactory` + `LruCache`（原实现整体搬入） | `jvmMain`：classpath 资源 + Skia 解码 + 内存缓存 |
+| 轻量提示 | `Notifier` / `LocalNotifier`（**宿主提供的 CompositionLocal**，默认静默） | 宿主用 `ProvideToastNotifier { … }` 包根内容 → 系统 Toast | 宿主把 `LocalNotifier` 指向自己的通知条（`state.showNotice`） |
 | 系统返回 | `PlatformBackHandler(enabled) { … }` | `androidMain`：转给 `androidx.activity.compose.BackHandler` | `jvmMain`：no-op（桌面没有系统返回，屏内返回按钮才是路径） |
 | 界面音效 | `PlatformSounds`（滑纸 / 翻卡 / 掌握提示 / 点击） | `androidMain`：包住原 `AudioEffectHelper`（`AudioTrack` 合成音，行为不变） | `jvmMain`：no-op（桌面暂未设计音效） |
 | 「今天」快照 | `LearningDay` + `rememberLearningDay()`（`internal`，仅统计页用） | `androidMain`：`ACTION_DATE_CHANGED` / `TIME_CHANGED` / `TIMEZONE_CHANGED` 广播 + 回到前台 + 到午夜定时（原实现；`ContextCompat.registerReceiver` 换成手写 API 33 分支，少引一个依赖） | `jvmMain`：30 秒轮询（桌面没有日期变更广播；睡眠唤醒最多晚 30 秒） |
@@ -168,7 +169,19 @@ B 档从最初的 8 个降到 3 个。
 判据：**类型属于哪一层，看它描述什么，而不是看谁最先用到它**。「归档里有什么」是领域描述，
 「怎么从字节解析出它」是持久化实现——于是前者进 `:domain`，界面与引擎都能用，分层不破。
 
-### 7.4 一类「看着能搬、其实搬不了」的界面：自己画布
+### 7.4 共享代码里**不要硬编码 `Dispatchers.Main`**
+
+迁 `ChatStateHolder`（会话流式编排）时踩到一个只有真跑起来才会露出的坑：它写死了
+`scope.launch(Dispatchers.Main)` / `withContext(Dispatchers.Main)`。这在 Android 上没问题，
+但在纯 JVM（桌面宿主、单测）里**没有 Main 调度器**，`withContext(Dispatchers.Main)` 直接抛
+`Module with the Main dispatcher had failed to initialize`——表面症状极具误导性：
+**回答内容已经流出来了，`isStreaming` 却永远不结束**（因为把标志位置 false 的那段恰好在 Main 上）。
+
+修法不是「各端各抄一份」，而是**把调度器变成构造参数**：默认值保持 `Dispatchers.Main`（Android 行为不变），
+桌面/测试注入自己的。同类问题要一起想：`Dispatchers.Main`、`Dispatchers.IO`（JVM 有，Native 没有）、
+系统时钟、默认时区——**共享代码只该依赖注入进来的执行环境**。
+
+### 7.5 一类「看着能搬、其实搬不了」的界面：自己画布
 
 `ui/graph/KnowledgeGraphScreen.kt`(833) 的分档理由是 `LocalContext`，把触觉/音效换上接缝后看起来可以整屏搬走——
 实际编译才发现它用 **`android.graphics.Paint` 做文字测量**（全限定写法，没有 import）：

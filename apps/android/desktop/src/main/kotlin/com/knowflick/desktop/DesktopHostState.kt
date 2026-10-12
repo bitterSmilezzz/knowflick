@@ -7,7 +7,11 @@ import androidx.compose.runtime.setValue
 import com.knowflick.app.ai.AiError
 import com.knowflick.app.ai.AiService
 import com.knowflick.app.ai.AiSettings
+import com.knowflick.app.ai.CardChatMessage
+import com.knowflick.app.ai.CardChatSession
 import com.knowflick.app.data.AppModel
+import com.knowflick.app.data.ChatSessionStorage
+import com.knowflick.app.data.ChatStateHolder
 import com.knowflick.app.domain.ArchivePreview
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.RestoreStrategy
@@ -39,6 +43,11 @@ class DesktopHostState(
     val model: AppModel,
     /** 凭据目录可注入：测试用临时目录，免得把开发机上的真实密钥写坏 */
     private val credentials: DesktopCredentialStore = DesktopCredentialStore(DesktopPaths.credentialsDir()),
+    /**
+     * 追问会话的存储：与卡库同目录（对应 Android 的 `filesDir/store/chat_sessions.json`）。
+     * **可注入**——否则测试会把会话写进开发机真实数据目录（凭据那次已经踩过同一个坑）。
+     */
+    private val chatStorage: ChatSessionStorage = ChatSessionStorage(DesktopPaths.storeDir()),
     /** AI 生成是异步的；默认用 Default 调度器（Compose 快照状态本身线程安全） */
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
@@ -48,6 +57,72 @@ class DesktopHostState(
      * 桌面端因此具备真正可用的 AI 能力：生成新卡、连接测试。
      */
     private val aiService = AiService(versionName = "desktop-$PRODUCT_VERSION")
+
+    /**
+     * 卡片追问的会话状态：**与 Android 端同一份 `ChatStateHolder`**（`:shared-data`），
+     * 连存储文件（`chat_sessions.json`）与流式编排都是同一份实现；桌面端只提供设置与密钥来源。
+     */
+    private val chat = ChatStateHolder(
+        storage = chatStorage,
+        aiService = aiService,
+        scope = scope,
+        settingsProvider = { aiSettings },
+        apiKeyProvider = { currentApiKey() },
+        // 桌面没有 Dispatchers.Main（那是 Android 的既有默认值）
+        stateDispatcher = Dispatchers.Default,
+    )
+
+    val activeChatCard get() = chat.activeCard
+    val chatSession: CardChatSession? get() = chat.currentSession
+    val isChatStreaming get() = chat.isStreaming
+    val chatErrorMessage get() = chat.errorMessage
+    val savedChatMessageIds get() = chat.savedMessageIds
+
+    fun openChat(card: KnowledgeCard) {
+        chat.openChat(card)
+        version++
+    }
+
+    fun closeChat() {
+        chat.closeChat()
+        version++
+    }
+
+    fun sendChatMessage(prompt: String) {
+        chat.sendChatMessage(prompt)
+        version++
+    }
+
+    fun cancelChatStreaming() {
+        chat.cancelStreaming()
+        version++
+    }
+
+    fun clearCurrentChatSession() {
+        chat.clearCurrentSession()
+        version++
+    }
+
+    fun markChatMessageSaved(messageId: String) {
+        chat.markMessageSaved(messageId)
+        version++
+    }
+
+    /** 追问记录导出为 Markdown（共享 `CardChatInsightDeriver`，与 Android 同一份格式与空会话口径） */
+    fun exportCurrentChatMarkdown(): String? {
+        val session = chat.currentSession ?: return null
+        val card = chat.activeCard ?: return null
+        if (session.messages.isEmpty()) return null
+        return com.knowflick.app.ai.CardChatInsightDeriver.exportMarkdown(session, card)
+    }
+
+    /** 把一条 AI 回复沉淀为新卡片（共享 `CardChatInsightDeriver`，与 Android 同一条路径） */
+    fun deriveCardFromChat(messageId: String, content: String, parentCard: KnowledgeCard): KnowledgeCard {
+        val newCard = com.knowflick.app.ai.CardChatInsightDeriver.deriveCard(content, parentCard)
+        chat.markMessageSaved(messageId)
+        mutate { model.store.addCards(listOf(newCard), insertAtTop = true) }
+        return newCard
+    }
 
     /**
      * AI 设置（含**主题**与音效开关——它们是这份设置的一部分，与 Android 同一份 `AiSettings` 线格式）。

@@ -20,6 +20,7 @@ import com.knowflick.app.data.CardStorage
 import com.knowflick.app.domain.RelatedCards
 import com.knowflick.app.ui.DeckScreen
 import com.knowflick.app.ui.DetailScreen
+import com.knowflick.app.ui.CardFollowUpChatSheet
 import com.knowflick.app.ui.ImportRestoreDialog
 import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.LibraryScreen
@@ -56,11 +57,17 @@ fun main() = application {
             }
         }
 
-        KnowFlickTheme(paperTheme = PaperTheme.fromName(state.aiSettings.paperTheme)) {
-            // window 是 ComposeWindow（Frame），交给原生文件对话框做 owner，保证模态行为正确
-            DesktopHost(state = state, owner = window)
-        }
-    }
+        // 共享界面的「轻量提示」走宿主通知条（Android 那边对应系统 Toast）
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.knowflick.app.ui.common.LocalNotifier provides
+                com.knowflick.app.ui.common.Notifier { message -> state.showNotice(message) },
+        ) {
+            KnowFlickTheme(paperTheme = PaperTheme.fromName(state.aiSettings.paperTheme)) {
+                // window 是 ComposeWindow（Frame），交给原生文件对话框做 owner，保证模态行为正确
+                DesktopHost(state = state, owner = window)
+            } // KnowFlickTheme
+        } // CompositionLocalProvider
+    } // Window
 }
 
 /**
@@ -124,7 +131,39 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onBack = state::closeDetail,
                     relatedCards = RelatedCards.pick(detailCard, model.store.cards),
                     onSelectRelatedCard = { related -> state.openDetail(related.id) },
-                    onOpenChat = { state.showNotice("卡片追问尚未在桌面端接线") },
+                    onOpenChat = { state.openChat(detailCard) },
+                    // 追问面板：与 Android 端同一份 CardFollowUpChatSheet，会话状态也同一份 ChatStateHolder
+                    chatSheet = { onClose ->
+                        CardFollowUpChatSheet(
+                            card = detailCard,
+                            session = state.chatSession,
+                            isStreaming = state.isChatStreaming,
+                            errorMessage = state.chatErrorMessage,
+                            savedMessageIds = state.savedChatMessageIds,
+                            onSendMessage = state::sendChatMessage,
+                            onCancelStreaming = state::cancelChatStreaming,
+                            onClearSession = state::clearCurrentChatSession,
+                            onSpeakMessage = { state.showNotice("语音朗读尚未在桌面端接线") },
+                            onDeriveCard = { messageId, content ->
+                                state.deriveCardFromChat(messageId, content, detailCard)
+                                state.showNotice("已将洞见沉淀为新卡片并置顶插入卡堆")
+                            },
+                            onExportMarkdown = {
+                                val markdown = state.exportCurrentChatMarkdown()
+                                if (markdown.isNullOrBlank()) {
+                                    state.showNotice("当前无追问内容可导出")
+                                } else {
+                                    state.saveText(
+                                        owner = owner,
+                                        title = "导出追问笔记",
+                                        defaultName = "KnowFlick 追问笔记.md",
+                                        text = markdown,
+                                    )
+                                }
+                            },
+                            onClose = onClose,
+                        )
+                    },
                 )
             }
 

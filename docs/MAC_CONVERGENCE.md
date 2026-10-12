@@ -39,19 +39,19 @@
 | 笔记导入 | `ImportNotesModalView` 633 | ⚠️ | 归档导入共享（`ArchiveImportManager` + **`ImportRestoreDialog` 预览对话框已共享**，桌面走同一交互）；**「笔记 → 卡片」流程 UI 未迁** |
 | 卡片导出选择 | `ExportCardsModalView` 548 | ⚠️ | 导出引擎共享（Markdown/JSON/TSV/ZIP）；**选择界面未迁** |
 | 海报导出 | `CardPosterRenderer` 561 + `CardPosterExportSheet` | 🔒（Android 槽位） | 需要光栅化；共享端以槽位注入，桌面暂缺 |
-| AI 追问聊天 | `CardFollowUpChatView` 424 + `CardChatInsightDeriver` | ⚠️ | 模型与洞见提炼已共享；`AiService.streamCardChat` 已共享；**聊天 UI 未迁**（Android 为槽位） |
+| AI 追问聊天 | `CardFollowUpChatView` 424 + `CardChatInsightDeriver` | ✅ `CardFollowUpChatSheet` + `ChatStateHolder` | 会话编排（`:shared-data ChatStateHolder`，含流式与 `chat_sessions.json`）、面板与洞见提炼都共享；桌面端可用 |
 | 语音朗读 | `SpeechConsoleView` 496 + `SpeechSynthesizerService` + `RemoteSpeechClient` | 🔒 | TTS/音频通道属平台边界；Android 用系统 TTS，mac 用 AVSpeech，桌面待定 |
 | 环境音 | `AmbientAudioPlayerBar` 331 | ❌（B 档） | 受 `speech/SpeechController` 拖累；与语音同属音频通道 |
 | 帮助 | `HelpView` | ❌ | 纯文案页，**最容易补的一行** |
 | 凭据存储 | `KeychainHelper` | 🔒 | 各端各写：Android Keystore / 桌面 0600 明文文件（**未接 OS 钥匙串**，单列技术债） |
 
-**统计**：22 项能力里 **10 项已对等**、6 项部分对等、4 项未对等、2 项属平台能力。
+**统计**：22 项能力里 **11 项已对等**、5 项部分对等、4 项未对等、2 项属平台能力。
 
 ## 3. 退役前置条件（exit criteria）
 
 按 ADR 的口径，**四项全满足**才谈退役；当前进度如下：
 
-1. **用户可见能力对等** —— 10/22 对等，还差图谱、同步、剪藏/笔记/导出三个面板、聊天 UI、帮助（见上表）。
+1. **用户可见能力对等** —— 11/22 对等，还差图谱、同步、剪藏/导出两个面板、「笔记 → 卡片」流程、帮助（见上表）。
 2. **数据兼容可往返** —— ✅ 已验：两端数据目录结构一致（`cards.json` + 备份轮转），桌面端导入 `.zip`/`.json` 走的是与 Android 同一份 `ArchiveImportManager`；mac 侧卡库格式与共享端同为 `cards.json`。
    仍需补：**mac → 桌面端的一次真实迁移演练**（拿 mac 端产出的库文件在桌面端打开并核对卡片数与学习进度）。
 3. **三系统发布通道可用** —— ✅ 构建与打包已验证（`desktop.yml` 三台 runner 各出安装包，产物已内嵌图标）；

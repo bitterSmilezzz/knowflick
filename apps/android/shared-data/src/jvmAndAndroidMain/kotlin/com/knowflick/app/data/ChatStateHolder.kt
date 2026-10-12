@@ -1,4 +1,4 @@
-package com.knowflick.app
+package com.knowflick.app.data
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -8,10 +8,10 @@ import com.knowflick.app.ai.AiSettings
 import com.knowflick.app.ai.CardChatMessage
 import com.knowflick.app.ai.CardChatSession
 import com.knowflick.app.ai.MessageSender
-import com.knowflick.app.data.ChatSessionStorage
 import com.knowflick.app.domain.KnowledgeCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -34,6 +34,14 @@ class ChatStateHolder(
     private val scope: CoroutineScope,
     private val settingsProvider: () -> AiSettings,
     private val apiKeyProvider: () -> String,
+    /**
+     * 状态更新用的调度器。**默认 `Dispatchers.Main`（Android 宿主的既有行为）**，
+     * 但它必须是可注入的：桌面/纯 JVM 环境（含单测）里根本没有 Main 调度器，
+     * 硬编码会让流式回调直接抛 "Module with the Main dispatcher had failed to initialize"，
+     * 表现为「回答已经流出来了、isStreaming 却永远不结束」。Compose 快照状态本身线程安全，
+     * 桌面传自己的调度器即可。
+     */
+    private val stateDispatcher: CoroutineContext = Dispatchers.Main,
 ) {
     var activeCard: KnowledgeCard? by mutableStateOf(null)
         internal set
@@ -65,7 +73,7 @@ class ChatStateHolder(
         currentSession = CardChatSession(cardId = card.id, cardHeadline = card.headline)
         scope.launch(Dispatchers.IO) {
             val loaded = storage.loadSession(card.id)
-            withContext(Dispatchers.Main) {
+            withContext(stateDispatcher) {
                 if (loadGeneration == gen && activeCard?.id == card.id) {
                     if (currentSession?.messages.isNullOrEmpty() && loaded != null) {
                         currentSession = loaded
@@ -76,6 +84,15 @@ class ChatStateHolder(
     }
 
     /** 关闭追问面板 */
+    /**
+     * 用给定会话替换当前会话（null = 无会话）。日常流转请走 [openChat] / [sendChatMessage]。
+     * 存在的理由：会话恢复（宿主从存储或另一端拿到会话时）与测试构造状态——
+     * 刻意**不**把 `currentSession` 的 setter 开放给宿主，否则「谁能改会话状态」这条边界就没了。
+     */
+    fun restoreSession(session: CardChatSession?) {
+        currentSession = session
+    }
+
     fun closeChat() {
         cancelStreaming()
         activeCard = null
@@ -112,7 +129,7 @@ class ChatStateHolder(
                     settings = settingsProvider(),
                     apiKey = key,
                     onDelta = { delta ->
-                        scope.launch(Dispatchers.Main) {
+                        scope.launch(stateDispatcher) {
                             val current = currentSession ?: return@launch
                             val index = current.messages.indexOfFirst { it.id == assistantMsgId }
                             if (index >= 0) {
@@ -125,7 +142,7 @@ class ChatStateHolder(
                         }
                     },
                 )
-                withContext(Dispatchers.Main) {
+                withContext(stateDispatcher) {
                     val current = currentSession ?: return@withContext
                     val index = current.messages.indexOfFirst { it.id == assistantMsgId }
                     if (index >= 0) {
@@ -143,7 +160,7 @@ class ChatStateHolder(
             } catch (_: CancellationException) {
                 // 协程取消正常终止，保留已产出片段
             } catch (e: Throwable) {
-                withContext(Dispatchers.Main) {
+                withContext(stateDispatcher) {
                     isStreaming = false
                     errorMessage = e.message ?: "AI 追问失败，请重试"
                     val current = currentSession ?: return@withContext
