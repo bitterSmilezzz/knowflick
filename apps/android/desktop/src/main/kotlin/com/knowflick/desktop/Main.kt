@@ -17,6 +17,8 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
+import com.knowflick.app.domain.RelatedCards
+import com.knowflick.app.ui.DetailScreen
 import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.LibraryScreen
 import com.knowflick.app.ui.PaperTheme
@@ -62,6 +64,7 @@ fun main() = application {
 fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
     val model = state.model
     val quizSession = state.quizSession
+    val detailCard = state.detailCard
 
     Box(Modifier.fillMaxSize()) {
         if (quizSession != null) {
@@ -79,6 +82,23 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onExit = state::exitQuiz,
                 )
             }
+        } else if (detailCard != null) {
+            // 详情页：与 Android 端同一份 DetailScreen。两个 Sheet（聊天/海报）传 null——
+            // 桌面暂未接（聊天要 AI 供应商配置、海报要光栅化），但**屏本体是共享的**。
+            key(state.version) {
+                DetailScreen(
+                    card = detailCard,
+                    isFavorite = detailCard.isFavorite,
+                    showAIMark = true,
+                    isSpeakingState = false,
+                    onToggleFavorite = { state.toggleFavorite(detailCard) },
+                    onToggleSpeech = { state.showNotice("语音朗读尚未在桌面端接线") },
+                    onBack = state::closeDetail,
+                    relatedCards = RelatedCards.pick(detailCard, model.store.cards),
+                    onSelectRelatedCard = { related -> state.openDetail(related.id) },
+                    onOpenChat = { state.showNotice("卡片追问尚未在桌面端接线") },
+                )
+            }
         } else if (state.showingStats) {
             // 学习统计：与 Android 端同一份 StatsScreen（同一个 StatsCalculator / LearningPlan / 统计图组件）
             key(state.version) {
@@ -86,14 +106,14 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     cards = model.store.cards,
                     onBack = state::closeStats,
                     onStartDueReview = state::startDueReviewFromStats,
-                    onOpenCardDetail = { state.showNotice("详情页尚未迁入共享模块") },
+                    onOpenCardDetail = { cardId -> state.openDetail(cardId) },
                 )
             }
         } else {
             LibraryScreen(
                 cards = model.store.cards,
                 version = state.version,
-                onOpenDetail = { state.showNotice("详情页尚未迁入共享模块") },
+                onOpenDetail = { card -> state.openDetail(card.id) },
                 onBack = { /* 桌面没有系统返回 */ },
                 onShareFavorites = { favorites ->
                     state.saveText(

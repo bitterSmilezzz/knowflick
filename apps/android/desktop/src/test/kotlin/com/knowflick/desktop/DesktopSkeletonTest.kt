@@ -72,6 +72,37 @@ class DesktopSkeletonTest {
     }
 
     /**
+     * **桌面端现在能打开详情页**：与 Android 端同一份 `DetailScreen`（背景图、正文、延伸阅读、
+     * 收藏切换都在里面），两个 Android 专属 Sheet 传 null；相关推荐走共享的 `RelatedCards`。
+     * 这条用例同时钉住「卡库 → 详情 → 返回」的导航与收藏落盘。
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun detailPageOpensFromLibraryAndTogglesFavorite() = runComposeUiTest {
+        val (model, dir) = tempModel("kf-desktop-detail")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = DesktopHostState(model)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        onNodeWithText("收藏 1").assertExists()
+
+        state.openDetail("DESKTOP-2")
+        onNodeWithText("卡库状态机与学科表可用").assertExists()
+
+        // 详情页的收藏切换：走共享 CardStore + 落盘
+        state.toggleFavorite(model.store.cards.first { it.id == "DESKTOP-2" })
+        assertTrue(
+            AppModel(CardStorage(dir)).apply { bootstrap() }
+                .store.cards.first { it.id == "DESKTOP-2" }.isFavorite,
+            "收藏状态应经共享 CardStorage 落盘",
+        )
+
+        state.closeDetail()
+        onNodeWithText("收藏 2").assertExists()
+    }
+
+    /**
      * **桌面端现在也有学习统计**：同一份共享 `StatsScreen`（同一个 `StatsCalculator` /
      * `LearningPlan` / 热力图组件），日期快照走 `rememberLearningDay` 的桌面实现（轮询）。
      * 这条用例也钉住了「统计 ⇄ 卡库」的导航接线。

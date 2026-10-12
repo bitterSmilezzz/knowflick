@@ -152,21 +152,16 @@ class MainActivity : ComponentActivity() {
                                 screen = detailReturnScreen
                             } else {
                                 val isFavorite = card.isFavorite
+                                // 相关卡片推荐：算法在共享的 :domain `RelatedCards`（桌面详情页用同一份，
+                                // 不再把打分逻辑抄在宿主里）
                                 val relatedCards = remember(card.id, viewModel.version) {
-                                    viewModel.model.store.cards
-                                        .filter { it.id != card.id }
-                                        .map { other ->
-                                            var score = 0
-                                            if (other.category == card.category) score += 5
-                                            val cardKeywords = card.headline.chunked(2).toSet()
-                                            val otherKeywords = other.headline.chunked(2).toSet()
-                                            score += (cardKeywords intersect otherKeywords).size * 2
-                                            other to score
-                                        }
-                                        .filter { it.second > 0 }
-                                        .sortedByDescending { it.second }
-                                        .take(3)
-                                        .map { it.first }
+                                    com.knowflick.app.domain.RelatedCards.pick(card, viewModel.model.store.cards)
+                                }
+                                var overlayOpen by remember { mutableStateOf(false) }
+                                // 系统返回：浮层展开时让位给浮层（Sheet 自己处理返回），与迁移前语义一致
+                                androidx.activity.compose.BackHandler(enabled = !overlayOpen) {
+                                    viewModel.closeChat()
+                                    screen = detailReturnScreen
                                 }
                                 DetailScreen(
                                     card = card,
@@ -214,6 +209,40 @@ class MainActivity : ComponentActivity() {
                                         viewModel.closeChat()
                                         detailCardId = related.id
                                     },
+                                    // 两个 Sheet 由宿主提供（共享屏只负责「什么时候显示」）
+                                    chatSheet = { onClose ->
+                                        com.knowflick.app.ui.CardFollowUpChatSheet(
+                                            card = card,
+                                            session = viewModel.currentChatSession,
+                                            isStreaming = viewModel.isChatStreaming,
+                                            errorMessage = viewModel.chatErrorMessage,
+                                            savedMessageIds = viewModel.savedChatMessageIds,
+                                            onSendMessage = { prompt -> viewModel.sendChatMessage(prompt) },
+                                            onCancelStreaming = { viewModel.cancelChatStreaming() },
+                                            onClearSession = { viewModel.clearCurrentChatSession() },
+                                            onSpeakMessage = { text -> viewModel.speech.speakText(text) },
+                                            onDeriveCard = { messageId, content ->
+                                                viewModel.deriveAndSaveCardFromChat(messageId, content, card)
+                                                Toast.makeText(this@MainActivity, "已将洞见沉淀为新卡片并置顶插入卡堆", Toast.LENGTH_SHORT).show()
+                                            },
+                                            onExportMarkdown = {
+                                                val markdown = viewModel.exportCurrentChatMarkdown()
+                                                if (!markdown.isNullOrBlank()) {
+                                                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    val clip = ClipData.newPlainText("KnowFlick 追问笔记", markdown)
+                                                    clipboard.setPrimaryClip(clip)
+                                                    Toast.makeText(this@MainActivity, "已复制追问 Markdown 笔记到剪贴板", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(this@MainActivity, "当前无追问内容可导出", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            onClose = onClose,
+                                        )
+                                    },
+                                    posterSheet = { onClose ->
+                                        com.knowflick.app.ui.CardPosterExportSheet(card = card, onClose = onClose)
+                                    },
+                                    onOverlayVisibilityChanged = { overlayOpen = it },
                                 )
                             }
                         }

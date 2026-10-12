@@ -30,13 +30,13 @@
 
 ## 2. 分档结果
 
-当前（`:shared-ui` 已迁 8 文件、`:shared-data` 已迁 7 文件、四条平台接缝落地之后）：
+当前（`:shared-ui` 已迁 10 文件、`:shared-data` 已迁 7 文件、四条平台接缝落地之后）：
 
 | 档 | 文件数 / 行数（app 模块剩余） |
 | --- | --- |
 | **A**（可直接搬） | 20 文件 / 2582 行 |
 | **B**（被平台文件拖累） | 3 文件 / 777 行 |
-| **C**（自身带平台信号） | 31 文件 / 12593 行 |
+| **C**（自身带平台信号） | 30 文件 / 12175 行 |
 
 **每次抽掉一条平台边界，都会有一片文件从 B/C 升到 A**：底图接缝解锁了 `CardFace`，
 日期接缝解锁了 `StatsScreen`（825 行，本次已迁），系统返回外移解锁了 `LibraryScreen` / `QuizScreen`。
@@ -130,6 +130,21 @@ B 档从最初的 8 个降到 3 个。
 | 触觉反馈 | `PlatformHaptics` + `rememberPlatformHaptics()` | `androidMain`：包住原来的 `HapticFeedbackHelper`（API 29+ `VibrationEffect` 预设，**行为不变**） | `jvmMain`：`NoOpPlatformHaptics`（桌面无触觉） |
 | 分类底图 | `rememberBackgroundImage(key)` / `PreloadBackgroundImage(key)` | `androidMain`：assets + `BitmapFactory` + `LruCache`（原实现整体搬入） | `jvmMain`：classpath 资源 + Skia 解码 + 内存缓存 |
 | 「今天」快照 | `LearningDay` + `rememberLearningDay()`（`internal`，仅统计页用） | `androidMain`：`ACTION_DATE_CHANGED` / `TIME_CHANGED` / `TIMEZONE_CHANGED` 广播 + 回到前台 + 到午夜定时（原实现；`ContextCompat.registerReceiver` 换成手写 API 33 分支，少引一个依赖） | `jvmMain`：30 秒轮询（桌面没有日期变更广播；睡眠唤醒最多晚 30 秒） |
+
+### 7.2 两个「不搬也能共享」的形态
+
+详情页（`DetailScreen` 446 行）迁进 `:shared-ui` 时，用了两种比「抽 expect/actual」更轻的手法：
+
+| 手法 | 用在什么上 | 做法 |
+| --- | --- | --- |
+| **公共 API 直接消解** | 打开外链、触觉反馈 | `LocalUriHandler` / `rememberPlatformHaptics()` 都是 CMP 公共面：Android 自动走 `Intent`、桌面走系统浏览器；**共享屏里一行平台代码都不需要** |
+| **宿主槽位（slot）** | 聊天 Sheet(844)、海报 Sheet(371) | 共享屏只负责「什么时候显示」，两个 Sheet 由宿主以 `chatSheet` / `posterSheet` 参数传入（`null` = 该端没这个能力）。Android 传它的两个 Sheet，桌面传 `null`——**因此迁详情页不必连带搬 1215 行** |
+
+**槽位的配套约定**：Sheet 展开时系统返回要让位给 Sheet。共享屏不再自己用 `BackHandler`（桌面没有该 API），
+改为通过 `onOverlayVisibilityChanged` 把「有没有浮层」告诉宿主，由宿主的 `BackHandler(enabled = …)` 决定。
+
+另外顺手把「延伸阅读」的推荐打分从 Android 调用点抽进 `:domain`（`RelatedCards`，5 项表征测试）——
+否则桌面详情页就得把同一套打分逻辑再写一遍。
 
 底图的**图片来源仍是仓库根 `shared/assets`**：Android 经 `assets.srcDirs` 直读，桌面经
 `resources.srcDir` 打进 jar——两端同布局（`bg/<key>.webp`）、零副本。桌面侧已实测能解出
