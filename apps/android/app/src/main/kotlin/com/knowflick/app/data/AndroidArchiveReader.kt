@@ -1,5 +1,7 @@
 package com.knowflick.app.data
 
+import com.knowflick.app.domain.ArchivePreview
+
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns

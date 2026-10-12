@@ -111,6 +111,32 @@ class DesktopSkeletonTest {
     }
 
     /**
+     * **桌面端导入改为「先预览、再确认」**：与 Android 同一份 `ImportRestoreDialog` + 同一份
+     * `ArchiveImportManager`——预览不写库，确认后才按策略恢复。
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun importShowsPreviewBeforeRestoring() = runComposeUiTest {
+        val (model, dir) = tempModel("kf-desktop-preview")
+        val state = hostState(model, dir)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+
+        // 用共享导出引擎造一份 JSON 镜像，再当作归档探测
+        val json = DesktopArchiveActions.exportJson(DomainBridge.sampleCards())
+        assertTrue(state.beginImport("mirror.json", json.toByteArray()).isSuccess)
+
+        // 预览阶段：界面出现对话框，且**卡库还没变**
+        onNodeWithText("导入与数据恢复").assertExists()
+        assertTrue(model.store.cards.isEmpty(), "预览阶段不应写入卡库")
+
+        // 确认后（默认 MERGE）才写库
+        state.confirmImport(com.knowflick.app.domain.RestoreStrategy.MERGE)
+        assertEquals(2, model.store.cards.size, "确认后应按策略恢复")
+        assertNull(state.importPreview, "确认后应关闭预览")
+    }
+
+    /**
      * **桌面端现在能全局搜索**：检索走共享 `KnowledgeSearchEngine`，历史落共享 `CardStorage`，
      * 弹层是与 Android 同一份 `SearchSheet`。断言刻意落在「结果 + 历史」而不是像素上。
      */

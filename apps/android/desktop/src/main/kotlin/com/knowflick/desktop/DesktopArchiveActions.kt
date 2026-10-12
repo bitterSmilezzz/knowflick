@@ -2,8 +2,9 @@ package com.knowflick.desktop
 
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.ArchiveImportManager
+import com.knowflick.app.domain.ArchivePreview
 import com.knowflick.app.data.CardExportEngine
-import com.knowflick.app.data.RestoreStrategy
+import com.knowflick.app.domain.RestoreStrategy
 import com.knowflick.app.domain.CardStore
 import com.knowflick.app.domain.KnowledgeCard
 import java.io.File
@@ -18,8 +19,26 @@ import java.io.File
 object DesktopArchiveActions {
 
     /**
-     * 导入归档字节：探测（ZIP / JSON）→ 按策略合并进卡库 → 落盘。
-     * 与 Android 端走的是同一份 `ArchiveImportManager` 与同一份 `CardStorage`。
+     * 第一步：探测归档（ZIP / JSON）并给出预览——**不写库**。
+     * 与 Android 同一份 `ArchiveImportManager`，也就同一份交互：先看清内容与恢复策略，再由用户确认。
+     */
+    fun inspectArchive(fileName: String, bytes: ByteArray): Result<ArchivePreview> =
+        ArchiveImportManager.inspect(fileName, bytes)
+
+    /** 第二步：按用户确认的策略恢复，并立即落盘 */
+    fun applyPreview(
+        model: AppModel,
+        preview: ArchivePreview,
+        strategy: RestoreStrategy = RestoreStrategy.MERGE,
+    ): CardStore.ArchiveRestoreResult {
+        val result = ArchiveImportManager.applyRestore(model.store, preview, strategy)
+        model.persistNow()
+        return result
+    }
+
+    /**
+     * 一步到位的导入（探测 + 按 MERGE 合并 + 落盘）。无头测试与「不需要预览」的路径用它；
+     * 交互路径走 [inspectArchive] + [applyPreview]。
      */
     fun importBytes(
         model: AppModel,
@@ -27,11 +46,7 @@ object DesktopArchiveActions {
         bytes: ByteArray,
         strategy: RestoreStrategy = RestoreStrategy.MERGE,
     ): Result<CardStore.ArchiveRestoreResult> =
-        ArchiveImportManager.inspect(fileName, bytes).map { preview ->
-            val result = ArchiveImportManager.applyRestore(model.store, preview, strategy)
-            model.persistNow()
-            result
-        }
+        inspectArchive(fileName, bytes).map { preview -> applyPreview(model, preview, strategy) }
 
     /** 收藏阁导出为 Markdown（与 Android 端同一份实现） */
     fun exportMarkdown(cards: List<KnowledgeCard>, title: String): String =
