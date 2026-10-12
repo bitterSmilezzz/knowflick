@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.knowflick.app.ai.AiError
+import com.knowflick.app.ai.AiService
 import com.knowflick.app.ai.AiSettings
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.domain.KnowledgeCard
@@ -13,6 +15,11 @@ import com.knowflick.app.domain.QuizSession
 import com.knowflick.app.speech.SpeechSettings
 import com.knowflick.app.ui.PaperTheme
 import java.awt.Frame
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * 桌面宿主的状态容器 —— 对应 Android 端 `KnowFlickViewModel` 的角色：
@@ -26,7 +33,15 @@ class DesktopHostState(
     val model: AppModel,
     /** 凭据目录可注入：测试用临时目录，免得把开发机上的真实密钥写坏 */
     private val credentials: DesktopCredentialStore = DesktopCredentialStore(DesktopPaths.credentialsDir()),
+    /** AI 生成是异步的；默认用 Default 调度器（Compose 快照状态本身线程安全） */
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
+
+    /**
+     * AI 服务：**与 Android 端同一份**实现（`:domain` 的 `ai/AiService`，OkHttp + 流式解析都在共享层）。
+     * 桌面端因此具备真正可用的 AI 能力：生成新卡、连接测试。
+     */
+    private val aiService = AiService(versionName = "desktop-$PRODUCT_VERSION")
 
     /**
      * AI 设置（含**主题**与音效开关——它们是这份设置的一部分，与 Android 同一份 `AiSettings` 线格式）。
@@ -62,6 +77,63 @@ class DesktopHostState(
     fun openSettings() {
         showingSettings = true
         version++
+    }
+
+    /** 是否正在生成（DeckScreen 据此显示进度） */
+    var isGenerating by mutableStateOf(false)
+        private set
+
+    /**
+     * 用 AI 生成新卡并置顶插入卡库。
+     * 校验与提示文案与 Android 端保持同一口径（未配置/未填 Key/网络错误各自可辨认）。
+     */
+    fun generateNewCards(count: Int = 3, topic: String? = null) {
+        if (isGenerating) return
+        val settings = aiSettings
+        if (!settings.isConfigured) {
+            notice = "请先在设置里配置 AI 服务"
+            return
+        }
+        val apiKey = currentApiKey()
+        if (apiKey.isBlank()) {
+            notice = "请先在设置里填入 API Key"
+            return
+        }
+        isGenerating = true
+        notice = null
+        scope.launch {
+            try {
+                val cards = aiService.generateCards(
+                    settings = settings,
+                    apiKey = apiKey,
+                    count = count,
+                    excludeHeadlines = model.store.cards.map { it.headline },
+                    topic = topic,
+                )
+                mutate { model.store.addCards(cards, insertAtTop = true) }
+                notice = "已生成 ${cards.size} 张新知识 ✓"
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: AiError) {
+                notice = error.message
+            } catch (error: Exception) {
+                notice = "网络错误：${error.message}"
+            } finally {
+                isGenerating = false
+            }
+        }
+    }
+
+    /** 设置页的「测试连接」：直接调共享 AiService（与 Android 同一条路径） */
+    suspend fun testAiConnection(settings: AiSettings, apiKey: String): String = try {
+        aiService.ping(settings, apiKey)
+        "连接成功 ✓"
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: AiError) {
+        "失败：${error.message}"
+    } catch (error: Exception) {
+        "网络错误：${error.message}"
     }
 
     fun closeSettings() {
@@ -288,6 +360,9 @@ class DesktopHostState(
     private companion object {
         const val API_KEY_NAME = "apiKey"
         const val SPEECH_KEY_NAME = "speechApiKey"
+
+        /** 打包版本（对应 build.gradle.kts 的 packageVersion），作为 AI 请求的 User-Agent 版本号 */
+        const val PRODUCT_VERSION = "0.1.0"
     }
 
     /** 直接给用户一句提示（例如读取文件失败） */

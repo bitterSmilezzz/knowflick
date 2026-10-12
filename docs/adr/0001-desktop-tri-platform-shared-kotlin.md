@@ -103,6 +103,7 @@
 | 13 | 能力对齐：详情页 | 公共 API 消解（`LocalUriHandler`）+ 宿主槽位（聊天/海报 Sheet 由宿主注入）+ 推荐打分抽进 `:domain` | ✅ 已完成：四个共享整屏（卡库 / 测验 / 统计 / 详情）在桌面全部可用；桌面未接的两个 Sheet 以 `null` 传入 |
 | 14 | 能力对齐：刷卡主页 | `PlatformSounds` 接缝 + `LocalWindowInfo` 替 `LocalConfiguration` + 微件/海报改槽位 → 迁入 `DeckScreen`(1051) 与 `CardFace`(281)；桌面首页改为刷卡页并加菜单导航 | ✅ 已完成：**五个整屏在桌面全部可用**；桌面不传微件/海报槽位，相关入口自然消失 |
 | 15 | 能力对齐：设置页 | `AiSettings`/`AiProviderPresets`/`SpeechSettings` 迁 `:domain`（设置线格式跨端同一份）+ `SettingsScreen`(534) 迁 `:shared-ui`；桌面新增凭据存储（0600 明文文件，**如实标注非 Keystore**） | ✅ 已完成：桌面可改主题（立即生效）/音效/AI 与语音配置，设置走共享 `settings.json`；密钥只落 0600 凭据文件 |
+| 16 | 能力对齐：AI 服务 | `AiService`（OkHttp/流式）+ `AiTextUtils`/`AiPayloadParser`/`AiObjectScanner`/`CardChatInsightDeriver` + `net/OkHttpAwait` 迁 `:domain`，连同 5 个 MockWebServer 测试 | ✅ 已完成：桌面端可 AI 生成新卡与连接测试；公开构造器与 OkHttp 解耦（不为一个依赖把网络库推给所有消费者） |
 
 工作量参考：[CMP-FEASIBILITY §4.2](../windows-route/CMP-FEASIBILITY.md)——Windows 端首版 22–35 人日，
 三端打包与平台抽象另计。
