@@ -28,6 +28,16 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 总目标与决策见 [ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)；
 界面分档进度见 [UI_EXTRACTION](../../../docs/windows-route/UI_EXTRACTION.md)。
 
+## 安装包图标
+
+三端图标由 `tools/generate_app_icons.py` 从**唯一一份美术**（`apps/mac/Resources/AppIcon.iconset`）
+派生到 `shared/icons/`（`.icns` / `.ico` / `.png`）。打包任务依赖 `verifyAppIcons`，缺失时会直接失败并给出生成命令。
+
+## 发布附件
+
+`tools/assemble_desktop_release.sh` 是 tag 发布通道的唯一实现（校验 tag 版本 → 统一命名 → 校验和 → 附 Release），
+可本地空跑；见 [MULTI_PLATFORM](../../../docs/MULTI_PLATFORM.md) §提交与发布。
+
 ## 状态与重组（一个容易踩的约定）
 
 卡库（`CardStore`）与测验会话（`QuizSession`）**都不是 Compose 状态**，而且评分只改动**同一个**

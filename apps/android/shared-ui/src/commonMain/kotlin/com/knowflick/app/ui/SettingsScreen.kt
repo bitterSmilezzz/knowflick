@@ -85,7 +85,7 @@ fun SettingsScreen(
     soundEffectsEnabled: Boolean = true,
     onToggleSoundEffects: (Boolean) -> Unit = {},
 ) {
-    androidx.activity.compose.BackHandler { onBack() }
+    // 系统返回外移宿主（同其余整屏）：桌面没有 androidx.activity，由 Android 宿主包 BackHandler。
 
     var providerId by rememberSaveable { mutableStateOf(initial.providerId) }
     var baseURL by rememberSaveable { mutableStateOf(initial.baseURL) }

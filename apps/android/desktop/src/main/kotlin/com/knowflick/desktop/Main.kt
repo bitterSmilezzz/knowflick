@@ -24,6 +24,7 @@ import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.LibraryScreen
 import com.knowflick.app.ui.PaperTheme
 import com.knowflick.app.ui.QuizScreen
+import com.knowflick.app.ui.SettingsScreen
 import com.knowflick.app.ui.StatsScreen
 import java.awt.Frame
 
@@ -41,6 +42,7 @@ fun main() = application {
                 Item("刷卡（主页）", onClick = { state.goHome() })
                 Item("收藏阁", onClick = { state.openLibrary() })
                 Item("学习统计", onClick = { state.openStats() })
+                Item("设置…", onClick = { state.openSettings() })
                 Separator()
                 Item("知识测验（10 张）", onClick = { state.startQuiz() })
                 Item("只测今天到期", onClick = { state.startDueReview() })
@@ -49,7 +51,7 @@ fun main() = application {
             }
         }
 
-        KnowFlickTheme(paperTheme = PaperTheme.SYSTEM) {
+        KnowFlickTheme(paperTheme = PaperTheme.fromName(state.aiSettings.paperTheme)) {
             // window 是 ComposeWindow（Frame），交给原生文件对话框做 owner，保证模态行为正确
             DesktopHost(state = state, owner = window)
         }
@@ -121,6 +123,35 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                 )
             }
 
+            state.showingSettings -> key(state.version) {
+                // 设置页：与 Android 端同一份 SettingsScreen；设置走共享存储（同一份 settings.json 线格式），
+                // 密钥走桌面凭据文件（0600）——所以 credentialsEncrypted = false，如实提示明文存储。
+                SettingsScreen(
+                    initial = state.aiSettings,
+                    initialApiKey = state.currentApiKey(),
+                    initialSpeech = state.speechSettings,
+                    initialSpeechKey = state.currentSpeechApiKey(),
+                    onBack = state::closeSettings,
+                    onTestConnection = { _, _ -> "桌面端暂未接线连接测试（AI 服务尚未迁入共享模块）" },
+                    onSave = state::saveAiSettings,
+                    onSaveSpeech = state::saveSpeechSettings,
+                    isSavingSettings = false,
+                    isSavingAiSettings = false,
+                    isSavingSpeechSettings = false,
+                    aiSaveNotice = state.aiSaveNotice,
+                    aiSaveSucceeded = state.aiSaveSucceeded,
+                    speechSaveNotice = state.speechSaveNotice,
+                    speechSaveSucceeded = state.speechSaveSucceeded,
+                    onClearAiSaveNotice = state::clearAiSaveNotice,
+                    onClearSpeechSaveNotice = state::clearSpeechSaveNotice,
+                    credentialsEncrypted = false,
+                    currentPaperTheme = PaperTheme.fromName(state.aiSettings.paperTheme),
+                    onSelectPaperTheme = state::selectPaperTheme,
+                    soundEffectsEnabled = state.aiSettings.soundEffectsEnabled,
+                    onToggleSoundEffects = state::setSoundEffectsEnabled,
+                )
+            }
+
             state.showingStats -> key(state.version) {
                 StatsScreen(
                     cards = model.store.cards,
@@ -168,7 +199,7 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onOpenFavorites = state::openLibrary,
                     onOpenQuiz = state::startQuiz,
                     onOpenSearch = { state.showNotice("搜索尚未迁入共享模块") },
-                    onOpenSettings = { state.showNotice("设置页尚未迁入共享模块") },
+                    onOpenSettings = state::openSettings,
                     onOpenGraph = { state.showNotice("知识图谱尚未迁入共享模块") },
                     onOpenMap = { state.showNotice("学习地图尚未迁入共享模块") },
                     onOpenSync = { state.showNotice("局域网同步尚未在桌面端接线") },
