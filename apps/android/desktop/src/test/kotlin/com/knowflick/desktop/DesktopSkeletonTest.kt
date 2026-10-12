@@ -11,7 +11,9 @@ import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.PaperTheme
 import java.nio.file.Files
 import kotlin.test.Test
+import java.nio.file.attribute.PosixFilePermission
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -22,6 +24,13 @@ class DesktopSkeletonTest {
         val dir = Files.createTempDirectory(prefix).toFile()
         return AppModel(CardStorage(dir)).apply { bootstrap() } to dir
     }
+
+    /**
+     * 宿主状态：**凭据目录必须隔离**——`DesktopHostState` 的默认值指向开发机真实数据目录，
+     * 测试若用它就会把本机密钥写坏。
+     */
+    private fun hostState(model: AppModel, dir: java.io.File): DesktopHostState =
+        DesktopHostState(model, DesktopCredentialStore(java.io.File(dir, "credentials")))
 
     /** 领域层复用：卡库状态机 / JSON 往返 / 学科聚合在桌面 JVM 上跑通。 */
     @Test
@@ -73,16 +82,59 @@ class DesktopSkeletonTest {
     }
 
     /**
+     * **桌面端现在能改设置了，且设置走共享存储**：`settings.json` 的线格式与 Android 是同一份
+     * （`AiSettings` 已迁 `:domain`），因此**跨端设置可互通**；主题切换立即生效。
+     * 同时钉住一条安全不变式：**密钥不落进共享存储文件**，只落进 0600 的凭据文件。
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun settingsUseSharedStorageAndSecretsStayInCredentialFileOnly() = runComposeUiTest {
+        val (model, dir) = tempModel("kf-desktop-settings")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = hostState(model, dir)
+
+        setContent { KnowFlickTheme(PaperTheme.fromName(state.aiSettings.paperTheme)) { DesktopHost(state) } }
+        state.openSettings()
+        onNodeWithText("AI 服务设置").assertExists()
+
+        state.saveAiSettings(state.aiSettings.copy(paperTheme = "RICE_PAPER"), "sk-desktop-secret")
+        assertTrue(state.aiSaveSucceeded, "保存应成功")
+
+        // 换一个实例从磁盘读回：设置与密钥都能复原（跨端同一份线格式）
+        val reopened = hostState(AppModel(CardStorage(dir)).apply { bootstrap() }, dir)
+        assertEquals("RICE_PAPER", reopened.aiSettings.paperTheme, "设置应经共享 CardStorage 落盘")
+        assertEquals("sk-desktop-secret", reopened.currentApiKey(), "密钥应经桌面凭据文件读回")
+
+        // 安全不变式：密钥不得出现在凭据目录之外的任何文件里
+        val leaked = dir.walkTopDown()
+            .filter { it.isFile && it.parentFile?.name != "credentials" }
+            .any { runCatching { it.readText().contains("sk-desktop-secret") }.getOrDefault(false) }
+        assertFalse(leaked, "密钥泄漏进了共享存储文件（settings.json 只能有非敏感字段）")
+
+        // 凭据文件权限 0600（Windows 无 POSIX 视图，跳过该断言）
+        val credFile = java.io.File(dir, "credentials/apiKey.credential")
+        assertTrue(credFile.exists(), "凭据文件应存在")
+        runCatching {
+            assertEquals(
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+                java.nio.file.Files.getPosixFilePermissions(credFile.toPath()),
+                "凭据文件必须仅属主可读写",
+            )
+        }
+    }
+
+    /**
      * **首页与 Android 对齐：刷卡页是主页**（不再把收藏阁当首页）。
      * 菜单栏的「刷卡（主页）/ 收藏阁 / 学习统计」是同一套导航。
      */
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun deckIsTheHomeScreen() = runComposeUiTest {
-        val (model, _) = tempModel("kf-desktop-home")
+        val (model, dir) = tempModel("kf-desktop-home")
         model.storage.saveCards(DomainBridge.sampleCards())
         model.bootstrap()
-        val state = DesktopHostState(model)
+        val state = hostState(model, dir)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
 
@@ -107,7 +159,7 @@ class DesktopSkeletonTest {
         val (model, dir) = tempModel("kf-desktop-detail")
         model.storage.saveCards(DomainBridge.sampleCards())
         model.bootstrap()
-        val state = DesktopHostState(model)
+        val state = hostState(model, dir)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
         state.openLibrary()
@@ -136,10 +188,10 @@ class DesktopSkeletonTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun statsScreenOpensOnDesktop() = runComposeUiTest {
-        val (model, _) = tempModel("kf-desktop-stats")
+        val (model, dir) = tempModel("kf-desktop-stats")
         model.storage.saveCards(DomainBridge.sampleCards())
         model.bootstrap()
-        val state = DesktopHostState(model)
+        val state = hostState(model, dir)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
         state.openLibrary()
@@ -160,10 +212,10 @@ class DesktopSkeletonTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun quizRunsOnDesktopThroughSharedCycle() = runComposeUiTest {
-        val (model, _) = tempModel("kf-desktop-quiz")
+        val (model, dir) = tempModel("kf-desktop-quiz")
         model.storage.saveCards(DomainBridge.sampleCards())
         model.bootstrap()
-        val state = DesktopHostState(model)
+        val state = hostState(model, dir)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
 
@@ -222,10 +274,10 @@ class DesktopSkeletonTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun rendersLibraryLoadedFromSharedStorage() = runComposeUiTest {
-        val (model, _) = tempModel("kf-desktop-ui-test")
+        val (model, dir) = tempModel("kf-desktop-ui-test")
         model.storage.saveCards(DomainBridge.sampleCards())
         model.bootstrap()
-        val state = DesktopHostState(model)
+        val state = hostState(model, dir)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
         // 首页是刷卡页，收藏阁要显式进入（与 Android 的导航一致）
@@ -241,8 +293,8 @@ class DesktopSkeletonTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun importedCardsAppearInLibraryScreen() = runComposeUiTest {
-        val (model, _) = tempModel("kf-desktop-ui-import")
-        val state = DesktopHostState(model)
+        val (model, dir) = tempModel("kf-desktop-ui-import")
+        val state = hostState(model, dir)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
         state.openLibrary()

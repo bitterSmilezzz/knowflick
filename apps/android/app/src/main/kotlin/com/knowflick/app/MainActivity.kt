@@ -284,7 +284,10 @@ class MainActivity : ComponentActivity() {
                             },
                             )
                         }
-                        Screen.SETTINGS -> com.knowflick.app.ui.SettingsScreen(
+                        Screen.SETTINGS -> {
+                            // 系统返回由宿主接线（共享屏里已移除 BackHandler，桌面无此 API）
+                            androidx.activity.compose.BackHandler { screen = Screen.DECK }
+                            com.knowflick.app.ui.SettingsScreen(
                             initial = viewModel.settings,
                             initialApiKey = viewModel.currentApiKey(),
                             initialSpeech = viewModel.speechSettings,
@@ -307,7 +310,8 @@ class MainActivity : ComponentActivity() {
                             onSelectPaperTheme = viewModel::setPaperTheme,
                             soundEffectsEnabled = viewModel.settings.soundEffectsEnabled,
                             onToggleSoundEffects = viewModel::setSoundEffectsEnabled,
-                        )
+                            )
+                        }
                         Screen.QUIZ -> {
                             val session = viewModel.quizSession
                             if (session == null) {

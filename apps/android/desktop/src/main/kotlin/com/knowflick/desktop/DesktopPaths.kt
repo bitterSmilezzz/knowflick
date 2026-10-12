@@ -14,6 +14,12 @@ object DesktopPaths {
     /** 卡库目录（`<数据根>/store`），与 Android 端 `filesDir/store` 同名同结构。 */
     fun storeDir(): File = File(dataRoot(), "store").apply { mkdirs() }
 
+    /**
+     * 凭据目录（`<数据根>/credentials`）：与卡库分开，避免「导出卡库」这类操作误碰密钥。
+     * 强度说明见 [DesktopCredentialStore]——这里是明文文件，不是 Android 的 Keystore。
+     */
+    fun credentialsDir(): File = File(dataRoot(), "credentials").apply { mkdirs() }
+
     private fun dataRoot(): File {
         val home = File(System.getProperty("user.home"))
         val os = System.getProperty("os.name").orEmpty().lowercase()

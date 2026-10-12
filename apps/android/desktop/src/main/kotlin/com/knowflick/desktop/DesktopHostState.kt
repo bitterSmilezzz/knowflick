@@ -4,11 +4,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.knowflick.app.ai.AiSettings
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.QuizCycle
 import com.knowflick.app.domain.QuizRating
 import com.knowflick.app.domain.QuizSession
+import com.knowflick.app.speech.SpeechSettings
+import com.knowflick.app.ui.PaperTheme
 import java.awt.Frame
 
 /**
@@ -19,7 +22,102 @@ import java.awt.Frame
  * 这样拆的另一个好处是**可测**：导入/导出/测验不经过原生对话框时也能在无头环境里驱动
  * （对话框只负责取路径，见 [DesktopFileDialogs]）。
  */
-class DesktopHostState(val model: AppModel) {
+class DesktopHostState(
+    val model: AppModel,
+    /** 凭据目录可注入：测试用临时目录，免得把开发机上的真实密钥写坏 */
+    private val credentials: DesktopCredentialStore = DesktopCredentialStore(DesktopPaths.credentialsDir()),
+) {
+
+    /**
+     * AI 设置（含**主题**与音效开关——它们是这份设置的一部分，与 Android 同一份 `AiSettings` 线格式）。
+     * 桌面端不重复实现存储：`loadSettingsJson` / `saveSettingsJson` 都是 `:shared-data` 的同一份代码。
+     */
+    var aiSettings by mutableStateOf(
+        // 构造期即从共享存储读回（调用方在此之前已完成 AppModel.bootstrap()）
+        AiSettings.fromJson(model.storage.loadSettingsJson() ?: "")
+            ?.withMissingPresetDefaults()
+            ?: AiSettings(),
+    )
+        private set
+
+    /** 语音设置：桌面暂无 TTS，但配置照样保存（跨端设置一致，不因某端缺能力就丢字段） */
+    var speechSettings by mutableStateOf(
+        SpeechSettings.fromJson(model.storage.loadSpeechJson() ?: "") ?: SpeechSettings(),
+    )
+        private set
+
+    var aiSaveNotice by mutableStateOf("")
+        private set
+    var aiSaveSucceeded by mutableStateOf(true)
+        private set
+    var speechSaveNotice by mutableStateOf("")
+        private set
+    var speechSaveSucceeded by mutableStateOf(true)
+        private set
+
+    /** 正在查看设置页 */
+    var showingSettings by mutableStateOf(false)
+        private set
+
+    fun openSettings() {
+        showingSettings = true
+        version++
+    }
+
+    fun closeSettings() {
+        showingSettings = false
+        version++
+    }
+
+    fun clearAiSaveNotice() { aiSaveNotice = "" }
+
+    fun clearSpeechSaveNotice() { speechSaveNotice = "" }
+
+    /** 保存 AI 设置：设置走共享存储，密钥走桌面凭据文件（0600） */
+    fun saveAiSettings(updated: AiSettings, apiKey: String) {
+        val jsonSaved = model.storage.saveSettingsJson(updated.toJson())
+        val trimmed = apiKey.trim()
+        val credentialSaved = if (trimmed.isEmpty()) {
+            credentials.delete(API_KEY_NAME)
+        } else {
+            credentials.save(API_KEY_NAME, trimmed)
+        }
+        aiSettings = updated
+        aiSaveSucceeded = jsonSaved && credentialSaved
+        aiSaveNotice = if (aiSaveSucceeded) "已保存 AI 设置" else "保存失败（设置或凭据未能写入）"
+        version++
+    }
+
+    fun saveSpeechSettings(updated: SpeechSettings, apiKey: String) {
+        val jsonSaved = model.storage.saveSpeechJson(updated.toJson())
+        val trimmed = apiKey.trim()
+        val credentialSaved = if (trimmed.isEmpty()) {
+            credentials.delete(SPEECH_KEY_NAME)
+        } else {
+            credentials.save(SPEECH_KEY_NAME, trimmed)
+        }
+        speechSettings = updated
+        speechSaveSucceeded = jsonSaved && credentialSaved
+        speechSaveNotice = if (speechSaveSucceeded) "已保存语音设置" else "保存失败（设置或凭据未能写入）"
+        version++
+    }
+
+    /** 切换纸质主题：立即生效（主题是设置的一部分，落到同一份 settings.json） */
+    fun selectPaperTheme(theme: PaperTheme) = persistSettings(aiSettings.copy(paperTheme = theme.name))
+
+    fun setSoundEffectsEnabled(enabled: Boolean) = persistSettings(aiSettings.copy(soundEffectsEnabled = enabled))
+
+    /** 直接改设置（不涉及密钥）时的统一落盘入口 */
+    private fun persistSettings(updated: AiSettings) {
+        model.storage.saveSettingsJson(updated.toJson())
+        aiSettings = updated
+        version++
+    }
+
+    /** 读回已保存的密钥（设置页用它回填输入框） */
+    fun currentApiKey(): String = credentials.load(API_KEY_NAME)
+
+    fun currentSpeechApiKey(): String = credentials.load(SPEECH_KEY_NAME)
 
     /** 卡库版本：每次写入后 +1，界面据此重新读取 `model.store.cards` */
     var version by mutableIntStateOf(0)
@@ -185,6 +283,11 @@ class DesktopHostState(val model: AppModel) {
 
     fun dismissNotice() {
         notice = null
+    }
+
+    private companion object {
+        const val API_KEY_NAME = "apiKey"
+        const val SPEECH_KEY_NAME = "speechApiKey"
     }
 
     /** 直接给用户一句提示（例如读取文件失败） */
