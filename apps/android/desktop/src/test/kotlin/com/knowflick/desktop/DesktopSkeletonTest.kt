@@ -1,6 +1,7 @@
 package com.knowflick.desktop
 
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import com.knowflick.app.data.AppModel
@@ -72,6 +73,30 @@ class DesktopSkeletonTest {
     }
 
     /**
+     * **首页与 Android 对齐：刷卡页是主页**（不再把收藏阁当首页）。
+     * 菜单栏的「刷卡（主页）/ 收藏阁 / 学习统计」是同一套导航。
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun deckIsTheHomeScreen() = runComposeUiTest {
+        val (model, _) = tempModel("kf-desktop-home")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = DesktopHostState(model)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+
+        // 刷卡页顶栏的「收藏阁」入口可见 → 当前就是刷卡页（卡序不确定，所以断言稳定元素）
+        onNodeWithContentDescription("收藏阁").assertExists()
+
+        state.openLibrary()
+        onNodeWithText("收藏 1").assertExists()
+
+        state.goHome()
+        onNodeWithContentDescription("收藏阁").assertExists()
+    }
+
+    /**
      * **桌面端现在能打开详情页**：与 Android 端同一份 `DetailScreen`（背景图、正文、延伸阅读、
      * 收藏切换都在里面），两个 Android 专属 Sheet 传 null；相关推荐走共享的 `RelatedCards`。
      * 这条用例同时钉住「卡库 → 详情 → 返回」的导航与收藏落盘。
@@ -85,6 +110,7 @@ class DesktopSkeletonTest {
         val state = DesktopHostState(model)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        state.openLibrary()
         onNodeWithText("收藏 1").assertExists()
 
         state.openDetail("DESKTOP-2")
@@ -116,6 +142,7 @@ class DesktopSkeletonTest {
         val state = DesktopHostState(model)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        state.openLibrary()
         onNodeWithText("收藏 1").assertExists()
 
         state.openStats()
@@ -156,10 +183,10 @@ class DesktopSkeletonTest {
         assertTrue(model.store.cards.all { it.reviewCount > 0 }, "评分应经 SM-2 记进卡库")
         assertTrue(model.store.cards.all { it.lastReviewedAt != null })
 
-        // 退出测验回到卡库界面
+        // 退出测验回到刷卡首页（deck 渲染顶卡标题）
         state.exitQuiz()
         assertNull(state.quizSession)
-        onNodeWithText("收藏 1").assertExists()
+        onNodeWithText("桌面宿主已接上共享领域层").assertExists()
     }
 
     /** 导出走的是与 Android 端同一份 `CardExportEngine`；且导出的镜像能原样再导入（往返）。 */
@@ -198,8 +225,11 @@ class DesktopSkeletonTest {
         val (model, _) = tempModel("kf-desktop-ui-test")
         model.storage.saveCards(DomainBridge.sampleCards())
         model.bootstrap()
+        val state = DesktopHostState(model)
 
-        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(DesktopHostState(model)) } }
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        // 首页是刷卡页，收藏阁要显式进入（与 Android 的导航一致）
+        state.openLibrary()
         onNodeWithText("收藏 1").assertExists()
         onNodeWithText("历史 1").assertExists()
     }
@@ -215,6 +245,7 @@ class DesktopSkeletonTest {
         val state = DesktopHostState(model)
 
         setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        state.openLibrary()
         onNodeWithText("收藏 0").assertExists()
 
         state.importBytes(

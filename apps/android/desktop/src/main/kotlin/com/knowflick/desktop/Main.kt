@@ -18,6 +18,7 @@ import androidx.compose.ui.window.application
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
 import com.knowflick.app.domain.RelatedCards
+import com.knowflick.app.ui.DeckScreen
 import com.knowflick.app.ui.DetailScreen
 import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.LibraryScreen
@@ -34,15 +35,17 @@ fun main() = application {
             DesktopHostState(AppModel(CardStorage.shared(DesktopPaths.storeDir())).apply { bootstrap() })
         }
 
-        // 桌面原生的入口放菜单栏（而不是另造一套界面）：测验是共享 `QuizScreen`，编排是共享 `QuizCycle`
+        // 桌面原生的入口放菜单栏（而不是另造一套界面）：屏幕与编排都是共享模块的
         MenuBar {
             Menu("学习", mnemonic = 'L') {
-                Item("知识测验（10 张）", onClick = { state.startQuiz() })
-                Item("只测今天到期", onClick = { state.startDueReview() })
+                Item("刷卡（主页）", onClick = { state.goHome() })
+                Item("收藏阁", onClick = { state.openLibrary() })
                 Item("学习统计", onClick = { state.openStats() })
                 Separator()
+                Item("知识测验（10 张）", onClick = { state.startQuiz() })
+                Item("只测今天到期", onClick = { state.startDueReview() })
+                Separator()
                 Item("退出测验", enabled = state.quizSession != null, onClick = { state.exitQuiz() })
-                Item("返回卡库", enabled = state.showingStats, onClick = { state.closeStats() })
             }
         }
 
@@ -54,11 +57,12 @@ fun main() = application {
 }
 
 /**
- * 桌面宿主：界面几乎全部来自共享模块——卡库是 `:shared-data`、屏幕是 `:shared-ui`、
- * 测验编排是 `:domain` 的 `QuizCycle`。自己只负责平台边界（文件对话框、菜单栏、数据目录）。
+ * 桌面宿主：**界面全部来自共享模块**——卡库是 `:shared-data`，五个整屏（刷卡 / 收藏阁 / 详情 /
+ * 测验 / 统计）与全部编排（`QuizCycle` / `RelatedCards` / `StatsCalculator`）都在 `:shared-ui` / `:domain`。
+ * 自己只负责平台边界：数据目录、原生文件对话框、菜单栏，以及桌面没有的能力（微件 / 海报导出 / 语音）。
  *
- * 当前能力：浏览卡库（收藏阁 / 历史）、导入归档、导出 Markdown/JSON、**知识测验与到期复习**。
- * 未接线：详情页与追问/海报 Sheet（未迁入共享模块）、系统级分享（桌面用「另存为」替代）。
+ * 当前能力：刷卡（含收藏、撤销之外的全部手势与音效接缝）、收藏阁、卡片详情、知识测验、学习统计、
+ * 导入归档、导出 Markdown/JSON、三系统安装包。
  */
 @Composable
 fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
@@ -66,12 +70,29 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
     val quizSession = state.quizSession
     val detailCard = state.detailCard
 
+    // 导入归档：对话框取字节 → 共享引擎解析合并（刷卡页与收藏阁共用同一入口）
+    val pickAndImport: () -> Unit = {
+        val file = DesktopFileDialogs.openFile(
+            owner = owner,
+            title = "导入知识库归档（.zip / .json）",
+            extensions = listOf(".zip", ".json"),
+        )
+        if (file == null) {
+            state.dismissNotice()
+        } else {
+            runCatching { DesktopArchiveActions.readArchiveBytes(file) }.fold(
+                onSuccess = { bytes -> state.importBytes(file.name, bytes) },
+                onFailure = { error -> state.showNotice("导入失败：${error.message ?: "无法读取文件"}") },
+            )
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
-        if (quizSession != null) {
-            // key(version)：评分只改动**同一个** QuizSession 实例的内部进度（实例不变），
-            // 所以必须靠 version 触发重组；key 同时完成「订阅 version」与「重建这棵子树」，
-            // 与 Android 宿主对版本驱动屏幕的处理同一手法（MainActivity 的 key(viewModel.version)）。
-            key(state.version) {
+        when {
+            quizSession != null -> key(state.version) {
+                // key(version)：评分只改动**同一个** QuizSession 实例的内部进度（实例不变），
+                // 所以必须靠 version 触发重组；key 同时完成「订阅 version」与「重建这棵子树」，
+                // 与 Android 宿主对版本驱动屏幕的处理同一手法（MainActivity 的 key(viewModel.version)）。
                 QuizScreen(
                     session = quizSession,
                     onRate = state::rateQuiz,
@@ -82,10 +103,10 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onExit = state::exitQuiz,
                 )
             }
-        } else if (detailCard != null) {
-            // 详情页：与 Android 端同一份 DetailScreen。两个 Sheet（聊天/海报）传 null——
-            // 桌面暂未接（聊天要 AI 供应商配置、海报要光栅化），但**屏本体是共享的**。
-            key(state.version) {
+
+            detailCard != null -> key(state.version) {
+                // 详情页：与 Android 端同一份。聊天/海报 Sheet 传 null——桌面暂未接
+                //（聊天要 AI 供应商配置、海报要光栅化），但屏本体是共享的。
                 DetailScreen(
                     card = detailCard,
                     isFavorite = detailCard.isFavorite,
@@ -99,22 +120,21 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onOpenChat = { state.showNotice("卡片追问尚未在桌面端接线") },
                 )
             }
-        } else if (state.showingStats) {
-            // 学习统计：与 Android 端同一份 StatsScreen（同一个 StatsCalculator / LearningPlan / 统计图组件）
-            key(state.version) {
+
+            state.showingStats -> key(state.version) {
                 StatsScreen(
                     cards = model.store.cards,
-                    onBack = state::closeStats,
+                    onBack = state::goHome,
                     onStartDueReview = state::startDueReviewFromStats,
                     onOpenCardDetail = { cardId -> state.openDetail(cardId) },
                 )
             }
-        } else {
-            LibraryScreen(
+
+            state.showingLibrary -> LibraryScreen(
                 cards = model.store.cards,
                 version = state.version,
                 onOpenDetail = { card -> state.openDetail(card.id) },
-                onBack = { /* 桌面没有系统返回 */ },
+                onBack = state::goHome,
                 onShareFavorites = { favorites ->
                     state.saveText(
                         owner = owner,
@@ -131,24 +151,34 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                         text = DesktopArchiveActions.exportJson(cards),
                     )
                 },
-                onPickImportFile = {
-                    val file = DesktopFileDialogs.openFile(
-                        owner = owner,
-                        title = "导入知识库归档（.zip / .json）",
-                        extensions = listOf(".zip", ".json"),
-                    )
-                    if (file == null) {
-                        state.dismissNotice()
-                    } else {
-                        runCatching { DesktopArchiveActions.readArchiveBytes(file) }.fold(
-                            onSuccess = { bytes -> state.importBytes(file.name, bytes) },
-                            onFailure = { error ->
-                                state.showNotice("导入失败：${error.message ?: "无法读取文件"}")
-                            },
-                        )
-                    }
-                },
+                onPickImportFile = pickAndImport,
             )
+
+            else -> key(state.version) {
+                // 刷卡页：Android 的主屏，桌面同为首页（产品对齐，而不是另造一套导航）
+                DeckScreen(
+                    store = model.store,
+                    deck = model.store.deck,
+                    version = state.version,
+                    showAIMark = true,
+                    onMutate = state::mutate,
+                    notice = state.notice,
+                    onOpenDetail = { card -> state.openDetail(card.id) },
+                    onOpenStats = state::openStats,
+                    onOpenFavorites = state::openLibrary,
+                    onOpenQuiz = state::startQuiz,
+                    onOpenSearch = { state.showNotice("搜索尚未迁入共享模块") },
+                    onOpenSettings = { state.showNotice("设置页尚未迁入共享模块") },
+                    onOpenGraph = { state.showNotice("知识图谱尚未迁入共享模块") },
+                    onOpenMap = { state.showNotice("学习地图尚未迁入共享模块") },
+                    onOpenSync = { state.showNotice("局域网同步尚未在桌面端接线") },
+                    onOpenClip = { state.showNotice("网页剪藏尚未在桌面端接线") },
+                    onGenerateRequest = { state.showNotice("AI 生成尚未在桌面端接线（需要供应商配置）") },
+                    onOpenBackupExport = { state.showNotice("备份导出面板尚未在桌面端接线") },
+                    onPickImportFile = pickAndImport,
+                    // 微件与海报导出是 Android 能力：桌面不传槽位，菜单项与面板自然不出现
+                )
+            }
         }
 
         state.notice?.let { message ->
