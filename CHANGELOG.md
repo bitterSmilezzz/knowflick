@@ -45,6 +45,9 @@
 - 跨平台（实测修复）：**宿主的重组契约**——`CardStore` 与 `QuizSession` 都不是 Compose 状态，且评分只改动**同一个会话实例**的内部进度；桌面宿主最初只订阅了会话实例，于是「评分后界面停在第一张卡」——被端到端测试逮到。修法是版本驱动屏幕外面套 `key(state.version)`（与 Android `MainActivity` 的 `key(viewModel.version)` 同一手法），并写进 AGENTS 陷阱清单。
 - 跨平台（能力对齐·统计）：**第三条接缝（日期）解锁并迁入 `StatsScreen`(825)，桌面端再添一个共享整屏**——`rememberLearningDay` 的 Android 实现保持原样（`DATE_CHANGED`/`TIME_CHANGED`/`TIMEZONE_CHANGED` 广播 + 回到前台 + 午夜定时；仅把 `ContextCompat.registerReceiver` 换成手写 API 33 分支，少引一个依赖），桌面实现改为 30 秒轮询（桌面没有日期变更广播）。桌面菜单栏新增「学习 → 学习统计」，统计页里的「今日到期」可直接跳进到期复习。至此**三个共享整屏（卡库 / 测验 / 统计）在桌面端全部可用**。
 - 工具：`tools/classify_ui_portability.py` 修掉第三次漏检——**`BackHandler`**（Android 系统返回）此前不在平台信号清单里，而它常以全限定调用出现（`androidx.activity.compose.BackHandler { … }`，没有 import 也没有括号），于是 `StatsScreen` 被误判成「可直接搬」、搬进去才编译失败。教训已写进 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md)：分档只是筛子，**编译才是裁判**。修正后 A/B/C = 20 文件 2582 行 / 3 文件 777 行 / 31 文件 12593 行。
+- 跨平台（能力对齐·学习地图）：**又一个整屏进共享层，桌面端可用**——`LearningMapScreen`(407) 迁入 `:shared-ui`。它此前只被 `LocalContext`（触觉/音效）与 `BackHandler` 挡住，两个接缝都已就位，所以这次几乎是平移；学习范围状态本来就在共享 `CardStore.studyScope`，桌面端接上后卡堆立刻受范围约束。
+  **顺带查实一条既有行为（未擅自改动）**：学习范围**不落盘**——`:shared-data` 从未序列化 `studyScope`，Android 侧同样如此（重启后范围丢失）。这不是迁移引入的回归，属既有产品行为，已记为待决项；桌面用例的断言因此改成真实契约（内存语义 + 卡堆过滤），不假定它会持久化。
+  验证：全量 **364 项全绿**（app 106 + 领域层 209 + `:shared-data` 27 + `:shared-ui` 6 + 桌面 16）。
 - 跨平台（返回接缝 · 全局搜索）：**`PlatformBackHandler` 接缝替掉「宿主外移」，并借此迁入最大的一个弹层**——`SearchSheet`(942) 迁入 `:shared-ui`。
   约定演进值得记一笔：此前每迁一个屏都要在宿主调用点再包一层 `BackHandler`（「外移宿主」），代价是**一个屏的返回语义被拆到两个文件里**、宿主越写越厚、且每迁新屏都要记得改宿主。补上 `PlatformBackHandler(enabled)` 接缝（Android actual = activity 的 `BackHandler`，桌面 no-op，与触觉/音效同一形态）后，五处宿主包装与上一波引入的 `onOverlayVisibilityChanged` 回调**全部删除**——详情页的「浮层展开时让位」判断也回收到屏内一行。
   桌面端随之新增全局搜索：检索走共享 `KnowledgeSearchEngine`，历史落共享 `CardStorage`，弹层是与 Android 同一份 `SearchSheet`（菜单栏「全局搜索…」+ 刷卡页搜索按钮）。
