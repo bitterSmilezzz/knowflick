@@ -45,6 +45,11 @@
 - 跨平台（实测修复）：**宿主的重组契约**——`CardStore` 与 `QuizSession` 都不是 Compose 状态，且评分只改动**同一个会话实例**的内部进度；桌面宿主最初只订阅了会话实例，于是「评分后界面停在第一张卡」——被端到端测试逮到。修法是版本驱动屏幕外面套 `key(state.version)`（与 Android `MainActivity` 的 `key(viewModel.version)` 同一手法），并写进 AGENTS 陷阱清单。
 - 跨平台（能力对齐·统计）：**第三条接缝（日期）解锁并迁入 `StatsScreen`(825)，桌面端再添一个共享整屏**——`rememberLearningDay` 的 Android 实现保持原样（`DATE_CHANGED`/`TIME_CHANGED`/`TIMEZONE_CHANGED` 广播 + 回到前台 + 午夜定时；仅把 `ContextCompat.registerReceiver` 换成手写 API 33 分支，少引一个依赖），桌面实现改为 30 秒轮询（桌面没有日期变更广播）。桌面菜单栏新增「学习 → 学习统计」，统计页里的「今日到期」可直接跳进到期复习。至此**三个共享整屏（卡库 / 测验 / 统计）在桌面端全部可用**。
 - 工具：`tools/classify_ui_portability.py` 修掉第三次漏检——**`BackHandler`**（Android 系统返回）此前不在平台信号清单里，而它常以全限定调用出现（`androidx.activity.compose.BackHandler { … }`，没有 import 也没有括号），于是 `StatsScreen` 被误判成「可直接搬」、搬进去才编译失败。教训已写进 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md)：分档只是筛子，**编译才是裁判**。修正后 A/B/C = 20 文件 2582 行 / 3 文件 777 行 / 31 文件 12593 行。
+- 跨平台（能力对齐·详情页）：**桌面端能点卡片看正文了，四个共享整屏齐活**——`DetailScreen`(446) 迁入 `:shared-ui`。做法上有两点比「抽 expect/actual」更轻：
+  - **公共 API 直接消解平台依赖**：外链改用 CMP 的 `LocalUriHandler`（Android 自动走 `Intent`、桌面走系统浏览器）、触觉改用上一波的 `PlatformHaptics`——共享屏里**一行平台代码都不需要**；
+  - **宿主槽位**：聊天 Sheet(844) 与海报 Sheet(371) 由宿主以 `chatSheet` / `posterSheet` 传入（`null` = 该端没这个能力），共享屏只管「何时显示」。因此迁详情页**没有连带搬那 1215 行**；配套把「浮层展开时系统返回让位给浮层」改成 `onOverlayVisibilityChanged` 通知宿主，由宿主的 `BackHandler(enabled = …)` 决定。
+  「延伸阅读」的推荐打分也从 Android 调用点抽进 `:domain`（`RelatedCards`，5 项表征测试）——否则桌面详情页就得重写一遍。
+  验证：全量 **359 项全绿**，桌面新增用例走完「卡库 → 详情 → 收藏落盘 → 返回」。
 
 ## [v0.2.0] - 2026-10-02
 
