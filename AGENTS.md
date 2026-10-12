@@ -88,4 +88,9 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
 - **搬文件进共享模块时不要改包名**：`:domain`（`com.knowflick.app.domain`）、`:shared-data`（`com.knowflick.app.data`）与 `:shared-ui`（`com.knowflick.app.ui`）都保持原包名，调用方 import 零改动。这是上万行代码能分批平移的前提，别为了「模块名好看」制造上千处 import 改动。
 - **`java.*` 不要放进 `:domain` 的 `commonMain`**：当前 `androidTarget + jvm` 组合下能编译通过，但那是元数据编译被跳过的副作用，加非 JVM target 即失效；含 `java.time`/`java.util` 的文件放 `jvmAndAndroidMain`（依据见 [KMP 探针结果](docs/windows-route/KMP_PROBE_RESULT.md)）。
 - **界面搬进 `:shared-ui` 会遇到三类平台边界**（实测清单见 [UI_EXTRACTION](docs/windows-route/UI_EXTRACTION.md)）：系统返回 `BackHandler` 桌面不存在（**外移宿主**，CMP 1.8 没有公共替代）；多平台 Material 图标停更于 1.7.3；含 `java.*` 的界面文件放 `jvmAndAndroidMain`。挑文件别靠印象——`python3 tools/classify_ui_portability.py` 按依赖闭包分档。
+- **Gradle 的输入校验先于任何 `doFirst` 执行**：想在「任务输入缺失」时给友好提示，`doFirst` 里守不住
+  （实测：图标文件缺失时打包任务在动作执行前就因输入校验失败）。正确做法是**独立校验任务 + `dependsOn`**
+  （见 `apps/android/desktop/build.gradle.kts` 的 `verifyAppIcons`）。
+- **`paths` 过滤对 tag 推送不生效**（GitHub 官方文档原话："Path filters are not evaluated for pushes of tags"）：
+  同一个 `push` 块里同时写 `tags:` 与 `paths:` 是安全的，tag 一定会触发。仓库旧文档曾写反过，别照旧说法去挑提交打 tag。
 - 全仓扫描类工作**严禁 head 截断后下「清零」结论**（PR #45 教训）。
