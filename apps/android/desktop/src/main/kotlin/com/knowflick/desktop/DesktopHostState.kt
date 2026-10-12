@@ -8,7 +8,9 @@ import com.knowflick.app.ai.AiError
 import com.knowflick.app.ai.AiService
 import com.knowflick.app.ai.AiSettings
 import com.knowflick.app.data.AppModel
+import com.knowflick.app.domain.ArchivePreview
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.domain.RestoreStrategy
 import com.knowflick.app.domain.QuizCycle
 import com.knowflick.app.domain.QuizRating
 import com.knowflick.app.domain.QuizSession
@@ -435,7 +437,47 @@ class DesktopHostState(
         startDueReview()
     }
 
-    /** 导入归档字节：探测 → 合并 → 落盘 → 刷新界面 */
+    /**
+     * 待确认的导入预览（null = 没有正在预览的归档）。
+     * 交互路径：选文件 → 探测 → **先给用户看预览与恢复策略** → 确认后才写库。
+     * 这与 Android 端同一交互，因为背后是同一份 `ArchiveImportManager`。
+     */
+    var importPreview by mutableStateOf<ArchivePreview?>(null)
+        private set
+
+    /** 第一步（交互路径）：探测归档并弹出预览，不写库 */
+    fun beginImport(fileName: String, bytes: ByteArray): Result<ArchivePreview> {
+        val result = DesktopArchiveActions.inspectArchive(fileName, bytes)
+        result.fold(
+            onSuccess = { importPreview = it; version++ },
+            onFailure = { error -> showNotice("导入失败：${error.message ?: "无法解析归档"}") },
+        )
+        return result
+    }
+
+    /** 第二步：按用户选定的策略恢复 */
+    fun confirmImport(strategy: RestoreStrategy): String {
+        val preview = importPreview ?: return ""
+        val message = runCatching {
+            DesktopArchiveActions.applyPreview(model, preview, strategy)
+        }.fold(
+            onSuccess = { result ->
+                "已导入：新增 ${result.added} 张，恢复 ${result.restored} 张，忽略 ${result.ignored} 张"
+            },
+            onFailure = { error -> "导入失败：${error.message ?: "未知错误"}" },
+        )
+        importPreview = null
+        notice = message
+        version++
+        return message
+    }
+
+    fun cancelImport() {
+        importPreview = null
+        version++
+    }
+
+    /** 导入归档字节：探测 → 合并 → 落盘 → 刷新界面（一步到位，用于无头路径与测试） */
     fun importBytes(fileName: String, bytes: ByteArray): String {
         val message = DesktopArchiveActions.importBytes(model, fileName, bytes).fold(
             onSuccess = { result ->

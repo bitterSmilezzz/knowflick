@@ -586,7 +586,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /** 导入归档文件探测结果预览（null = 未在预览） */
-    var importPreview by mutableStateOf<com.knowflick.app.data.ArchivePreview?>(null)
+    var importPreview by mutableStateOf<com.knowflick.app.domain.ArchivePreview?>(null)
         private set
 
     var isInspectingArchive by mutableStateOf(false)
@@ -623,8 +623,8 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
      * 应用恢复策略将归档载入卡库并持久化保存
      */
     fun applyArchiveRestore(
-        preview: com.knowflick.app.data.ArchivePreview,
-        strategy: com.knowflick.app.data.RestoreStrategy,
+        preview: com.knowflick.app.domain.ArchivePreview,
+        strategy: com.knowflick.app.domain.RestoreStrategy,
     ) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -633,7 +633,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             // 跨模块后 ArchivePreview 的公开属性不再允许 smart cast（Kotlin 跨模块限制），
             // 先落局部变量——与 :domain 迁移时 CardStore 的处理同一原因。
             val archivedSettings = preview.settingsJson
-            if (strategy == com.knowflick.app.data.RestoreStrategy.OVERWRITE && archivedSettings != null) {
+            if (strategy == com.knowflick.app.domain.RestoreStrategy.OVERWRITE && archivedSettings != null) {
                 val loadedSettings = AiSettings.fromJson(archivedSettings)
                 if (loadedSettings != null) {
                     settings = loadedSettings
@@ -642,10 +642,10 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
             generateNotice = when (strategy) {
-                com.knowflick.app.data.RestoreStrategy.MERGE -> {
+                com.knowflick.app.domain.RestoreStrategy.MERGE -> {
                     "已增量恢复：${result.accepted} 张（新增 ${result.added}，更新 ${result.restored}）✓"
                 }
-                com.knowflick.app.data.RestoreStrategy.OVERWRITE -> {
+                com.knowflick.app.domain.RestoreStrategy.OVERWRITE -> {
                     "已全量覆盖恢复：${preview.totalCards} 张卡片 ✓"
                 }
             }
