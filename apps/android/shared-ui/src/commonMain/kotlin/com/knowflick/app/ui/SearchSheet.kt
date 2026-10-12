@@ -1,6 +1,5 @@
 package com.knowflick.app.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -86,7 +85,7 @@ fun SearchSheet(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    BackHandler { onClose() }
+    com.knowflick.app.ui.common.PlatformBackHandler { onClose() }
 
     val focusRequester = remember { FocusRequester() }
     val categories = remember(allCards) {

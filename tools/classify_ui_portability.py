@@ -53,6 +53,9 @@ PLATFORM_PATTERNS = {
     # 因为它常以全限定调用出现（`androidx.activity.compose.BackHandler { … }`，没有括号没有 import）——
     # 判定用词边界，宁可误报为「带平台信号」也不要漏报后搬进去再编译失败。
     "BackHandler(系统返回)": r"\bBackHandler\b",
+    # 全限定写法（没有 import）的 Android API：实测知识图谱屏用 `android.graphics.Paint`
+    # 在 Compose Canvas 上做文字测量——只看 import 会把它判成「自身干净」。
+    "Android 全限定调用": r"\bandroid\.(graphics|widget|content|text|os|media|net|app)\.",
     "MediaPlayer/TTS": r"\bMediaPlayer\b|\bTextToSpeech\b|\bSpeechRecognizer\b",
     "Notification/Service": r"\bNotificationCompat\b|\bForegroundService\b|\bService\b",
     "Glance/widget": r"\bGlanceAppWidget\b|\bRemoteViews\b|\bGlanceModifier\b",

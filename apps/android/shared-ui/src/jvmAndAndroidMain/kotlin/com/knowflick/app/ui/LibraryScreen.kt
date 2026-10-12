@@ -74,10 +74,9 @@ fun LibraryScreen(
     onOpenSearch: () -> Unit = {},
     onOpenGraph: () -> Unit = {},
 ) {
-    // 系统返回（Android 返回键 / 手势）是**宿主**的事：本组件只暴露 onBack 回调，
-    // 由 Android 宿主在调用点包一层 BackHandler（见 MainActivity）。桌面没有系统返回。
-    // 原实现直接调 androidx.activity.compose.BackHandler，那个 API 桌面不存在——
-    // 这正是把界面搬进共享模块时必须做的一类「平台边界外移」。
+    // 系统返回：平台差异收在 PlatformBackHandler 接缝里（Android 接 BackHandler，桌面 no-op）。
+    // 组件只声明「返回意味着什么」，不再由宿主在调用点包一层——宿主因此不必知道各屏的返回语义。
+    com.knowflick.app.ui.common.PlatformBackHandler { onBack() }
 
     var tab by rememberSaveable { mutableStateOf(LibraryTab.FAVORITES) }
     var historyFilter by rememberSaveable { mutableStateOf<SwipeDirection?>(null) }

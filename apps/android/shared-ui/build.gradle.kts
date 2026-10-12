@@ -75,6 +75,8 @@ kotlin {
                 // LearningDay 的 Android actual：用 LocalLifecycleOwner 在回到前台时刷新「今天」。
                 // 版本与 :app 的 lifecycle-runtime-ktx 一致（2.10.0）。
                 implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+                // PlatformBackHandler 的 Android actual 用 BackHandler；版本与 :app 一致（1.13.0）
+                implementation("androidx.activity:activity-compose:1.13.0")
             }
         }
         val jvmTest by getting {
