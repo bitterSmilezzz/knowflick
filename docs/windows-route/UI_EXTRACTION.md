@@ -30,13 +30,13 @@
 
 ## 2. 分档结果
 
-当前（`:shared-ui` 已迁 10 文件、`:shared-data` 已迁 7 文件、四条平台接缝落地之后）：
+当前（`:shared-ui` 已迁 12 文件、`:shared-data` 已迁 7 文件、五条平台接缝落地之后）：
 
 | 档 | 文件数 / 行数（app 模块剩余） |
 | --- | --- |
-| **A**（可直接搬） | 20 文件 / 2582 行 |
+| **A**（可直接搬） | 19 文件 / 2301 行 |
 | **B**（被平台文件拖累） | 3 文件 / 777 行 |
-| **C**（自身带平台信号） | 30 文件 / 12175 行 |
+| **C**（自身带平台信号） | 28 文件 / 10909 行 |
 
 **每次抽掉一条平台边界，都会有一片文件从 B/C 升到 A**：底图接缝解锁了 `CardFace`，
 日期接缝解锁了 `StatsScreen`（825 行，本次已迁），系统返回外移解锁了 `LibraryScreen` / `QuizScreen`。
@@ -129,6 +129,7 @@ B 档从最初的 8 个降到 3 个。
 | --- | --- | --- | --- |
 | 触觉反馈 | `PlatformHaptics` + `rememberPlatformHaptics()` | `androidMain`：包住原来的 `HapticFeedbackHelper`（API 29+ `VibrationEffect` 预设，**行为不变**） | `jvmMain`：`NoOpPlatformHaptics`（桌面无触觉） |
 | 分类底图 | `rememberBackgroundImage(key)` / `PreloadBackgroundImage(key)` | `androidMain`：assets + `BitmapFactory` + `LruCache`（原实现整体搬入） | `jvmMain`：classpath 资源 + Skia 解码 + 内存缓存 |
+| 界面音效 | `PlatformSounds`（滑纸 / 翻卡 / 掌握提示 / 点击） | `androidMain`：包住原 `AudioEffectHelper`（`AudioTrack` 合成音，行为不变） | `jvmMain`：no-op（桌面暂未设计音效） |
 | 「今天」快照 | `LearningDay` + `rememberLearningDay()`（`internal`，仅统计页用） | `androidMain`：`ACTION_DATE_CHANGED` / `TIME_CHANGED` / `TIMEZONE_CHANGED` 广播 + 回到前台 + 到午夜定时（原实现；`ContextCompat.registerReceiver` 换成手写 API 33 分支，少引一个依赖） | `jvmMain`：30 秒轮询（桌面没有日期变更广播；睡眠唤醒最多晚 30 秒） |
 
 ### 7.2 两个「不搬也能共享」的形态
@@ -138,7 +139,7 @@ B 档从最初的 8 个降到 3 个。
 | 手法 | 用在什么上 | 做法 |
 | --- | --- | --- |
 | **公共 API 直接消解** | 打开外链、触觉反馈 | `LocalUriHandler` / `rememberPlatformHaptics()` 都是 CMP 公共面：Android 自动走 `Intent`、桌面走系统浏览器；**共享屏里一行平台代码都不需要** |
-| **宿主槽位（slot）** | 聊天 Sheet(844)、海报 Sheet(371) | 共享屏只负责「什么时候显示」，两个 Sheet 由宿主以 `chatSheet` / `posterSheet` 参数传入（`null` = 该端没这个能力）。Android 传它的两个 Sheet，桌面传 `null`——**因此迁详情页不必连带搬 1215 行** |
+| **宿主槽位（slot）** | 聊天 Sheet(844)、海报 Sheet(371)、桌面微件（`AppWidgetManager`） | 共享屏只负责「什么时候显示/触发」，能力由宿主以 `chatSheet` / `posterSheet` / `onAddWidget` 参数注入（`null` = 该端没这个能力；菜单项或面板自然不出现）。Android 传它的实现，桌面不传——**因此迁详情页与刷卡页都不必连带搬平台专属功能**（合计省下 1215+ 行） |
 
 **槽位的配套约定**：Sheet 展开时系统返回要让位给 Sheet。共享屏不再自己用 `BackHandler`（桌面没有该 API），
 改为通过 `onOverlayVisibilityChanged` 把「有没有浮层」告诉宿主，由宿主的 `BackHandler(enabled = …)` 决定。
