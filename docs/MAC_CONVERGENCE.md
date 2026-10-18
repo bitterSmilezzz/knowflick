@@ -35,29 +35,28 @@
 | 知识图谱 | `KnowledgeGraphView` 727 | ❌ | 引擎 `graph/*` 已在 `:domain`，但渲染用 `android.graphics.Paint` 在 Canvas 上量文字——**要迁移得先改写绘制层**（`TextMeasurer`/`DrawScope`） |
 | 学习地图 | `LearningMapView` 333 | ✅ `LearningMapScreen` | `StudyScope`/`StudyMap` 与范围状态都在共享层，桌面端可用 |
 | 局域网同步 | `SyncSheetView` 528 + `SyncClient/Server/Protocol` | ❌ | 见 ADR 待决 2：四端之后是否沿用同一协议需单独设计，**不要为每端各写一套同步** |
-| 网页剪藏 | `WebClipModalView` 371 + `WebClipFetcher` | ⚠️ | 引擎 `WebClipEngine` 已共享；`WebClipFetcher`（114 行）已可搬；**剪藏面板 UI 未迁** |
-| 笔记导入 | `ImportNotesModalView` 633 | ⚠️ | 归档导入共享（`ArchiveImportManager` + **`ImportRestoreDialog` 预览对话框已共享**，桌面走同一交互）；**「笔记 → 卡片」流程 UI 未迁** |
-| 卡片导出选择 | `ExportCardsModalView` 548 | ⚠️ | 导出引擎共享（Markdown/JSON/TSV/ZIP）；**选择界面未迁** |
+| 网页剪藏 | （Swift 已删） | ✅ `ClipSheet` | 共享面板按 mac 三步：正文预览 → 卡片多选（可重炼）→ 确认导入，置顶可关。抓取在 `:shared-data` 的 `WebClipFetcher` |
+| 笔记导入 | （Swift 已删） | ✅ `NotesImportSheet` | 规则解析 `NoteMarkdownParser` + JSON 走 `NoteImport`；AI 提炼复用 `transformNoteToCards`；先勾选再入库 |
+| 卡片导出选择 | （Swift 已删） | ✅ `BackupExportSheet` | 引擎共享。面板在 `:shared-ui`，`ArchiveExporter` 接缝：Android 保存到 Downloads 并可系统分享，桌面「另存为」、不显示分享 |
 | 海报导出 | `CardPosterRenderer` 561 + `CardPosterExportSheet` | 🔒（Android 槽位） | 需要光栅化；共享端以槽位注入，桌面暂缺 |
 | AI 追问聊天 | `CardFollowUpChatView` 424 + `CardChatInsightDeriver` | ✅ `CardFollowUpChatSheet` + `ChatStateHolder` | 会话编排（`:shared-data ChatStateHolder`，含流式与 `chat_sessions.json`）、面板与洞见提炼都共享；桌面端可用 |
 | 语音朗读 | `SpeechConsoleView` 496 + `SpeechSynthesizerService` + `RemoteSpeechClient` | 🔒 | TTS/音频通道属平台边界；Android 用系统 TTS，mac 用 AVSpeech，桌面待定 |
 | 环境音 | `AmbientAudioPlayerBar` 331 | ❌（B 档） | 受 `speech/SpeechController` 拖累；与语音同属音频通道 |
-| 帮助 | `HelpView` | ❌ | 纯文案页，**最容易补的一行** |
+| 帮助 | （Swift 已删） | ✅ `HelpSheet` | 快捷键文案按原 `HelpView` 搬入共享层 |
 | 凭据存储 | `KeychainHelper` | 🔒 | 各端各写：Android Keystore / 桌面 0600 明文文件（**未接 OS 钥匙串**，单列技术债） |
 
-**统计**：22 项能力里 **11 项已对等**、5 项部分对等、4 项未对等、2 项属平台能力。
+**统计**：22 项能力里 **12 项已对等**、4 项部分对等、4 项未对等、2 项属平台能力。删 Swift 仍只等剪藏面板、笔记导入、帮助页。
 
 ## 3. 退役前置条件（exit criteria）
 
-按 ADR 的口径，**四项全满足**才谈退役；当前进度如下：
+> **2026-10-13 收窄，同日完成。** `apps/mac` 已删除。四个界面洞都在共享层：导出选择、网页剪藏（mac 三步）、笔记导入、帮助页。
+> 图谱、局域网同步、环境音留到删除之后，不作为把 Swift 加回来的理由。
 
-1. **用户可见能力对等** —— 11/22 对等，还差图谱、同步、剪藏/导出两个面板、「笔记 → 卡片」流程、帮助（见上表）。
-2. **数据兼容可往返** —— ✅ 已验：两端数据目录结构一致（`cards.json` + 备份轮转），桌面端导入 `.zip`/`.json` 走的是与 Android 同一份 `ArchiveImportManager`；mac 侧卡库格式与共享端同为 `cards.json`。
-   仍需补：**mac → 桌面端的一次真实迁移演练**（拿 mac 端产出的库文件在桌面端打开并核对卡片数与学习进度）。
-3. **三系统发布通道可用** —— ✅ 构建与打包已验证（`desktop.yml` 三台 runner 各出安装包，产物已内嵌图标）；
-   ⚠️ 只差一次**真 tag 发布**（`desktop-v*` → Release 附件 + `SHA256SUMS.txt`）的端到端核对。
-4. **共享端在 mac 上的体验底线** —— ⚠️ 未定稿：窗口/菜单栏/快捷键、中文输入法、深色模式、Dock 行为、
-   首次启动引导。这条需要一次专门的体验评审，不能靠功能表推断。
+1. **导出选择** —— ✅
+2. **网页剪藏面板** —— ✅ mac 三步，Android 一键置顶已去掉。
+3. **笔记导入** —— ✅
+4. **帮助页** —— ✅
+5. **删除 `apps/mac`** —— ✅
 
 ## 4. 本机（macOS）能验证到什么程度
 
@@ -78,13 +77,7 @@
 - 若要做「一次开包」的发布核对：在对应系统上装完跑一遍导入 → 刷卡 → 测验 → 导出的冒烟；
 - 同步协议的跨端互通（需要两台机器在同一局域网）。
 
-## 5. 下一步（按收益排序）
+## 5. 下一步
 
-1. **补三个「逻辑已共享、只差界面」的弹层**：全局搜索、导出选择、笔记导入——引擎都在 `:domain`/`:shared-data` 了，界面一迁就能同时抬高三端；
-2. **聊天 UI 迁入共享层**（模型与服务都已共享），桌面端即可用 AI 追问；
-3. **帮助页**（纯文案，最低成本的一行对等）；
-4. **体验底线评审**（exit criteria 第 4 条），定稿后写入本文件；
-5. **mac → 桌面端迁移演练**（exit criteria 第 2 条），把演练步骤写成 `docs/MAC_TO_DESKTOP_MIGRATION.md`。
-
-> 注意第 4/5 条**不需要 Windows/Linux 机器**，本机即可完成；第 1–3 条也是本机（KMP + 无头 Compose 测试）可做。
-> 真正需要换机器的只有第 4 节的列表——这也是本文件的边界说明。
+删除门槛已完成。图谱、局域网同步、环境音是删除之后的后续，不是把 Swift 加回来的理由。
+换 Windows / Linux 机器才能做的事仍以第 4 节为准。

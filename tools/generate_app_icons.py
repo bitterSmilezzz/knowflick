@@ -3,7 +3,7 @@
 
 背景：jpackage 不交叉编译、也不认识「一种图标格式走三端」——
 macOS 要 `.icns`、Windows 要 `.ico`、Linux 要 `.png`。按第一原则，
-**美术只有一份**（`apps/mac/Resources/AppIcon.iconset/`，mac 端本来就用它），
+**美术只有一份**（`shared/icons/AppIcon.iconset/`），
 本脚本把它派生成三端打包器各自需要的格式，输出到 `shared/icons/`（随仓库分发）。
 
 用法：
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ICONSET = ROOT / "apps/mac/Resources/AppIcon.iconset"
+ICONSET = ROOT / "shared/icons/AppIcon.iconset"
 OUT_DIR = ROOT / "shared/icons"
 
 # Windows 的 .ico 要含多档尺寸，否则任务栏/资源管理器/ Alt-Tab 会各取一档而糊

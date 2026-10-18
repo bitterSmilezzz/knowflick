@@ -1,6 +1,5 @@
 package com.knowflick.app.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -44,21 +43,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.knowflick.app.data.ArchiveExportFormat
-import com.knowflick.app.data.ArchiveExportScope
-import com.knowflick.app.data.CardArchiveEngine
+import com.knowflick.app.domain.ArchiveExportFormat
+import com.knowflick.app.domain.ArchiveExportScope
 import com.knowflick.app.domain.KnowledgeCard
-import com.knowflick.app.export.ArchiveExportManager
-import kotlinx.coroutines.Dispatchers
+import com.knowflick.app.ui.common.ArchiveExportCancelled
+import com.knowflick.app.ui.common.PlatformBackHandler
+import com.knowflick.app.ui.common.rememberArchiveExporter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * 离线归档与全量备份导出浮层面板 (Backup & Export Sheet)
@@ -72,7 +69,7 @@ fun BackupExportSheet(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    val exporter = rememberArchiveExporter()
     val scope = rememberCoroutineScope()
 
     var selectedScope by remember { mutableStateOf(ArchiveExportScope.ALL) }
@@ -103,27 +100,21 @@ fun BackupExportSheet(
         isExporting = true
         scope.launch {
             try {
-                val (filename, bytes) = withContext(Dispatchers.Default) {
-                    CardArchiveEngine.generateExportData(
-                        cards = targetCards,
-                        format = selectedFormat,
-                        settingsJson = settingsJson,
-                    )
-                }
-                val result = withContext(Dispatchers.IO) {
-                    ArchiveExportManager.saveToDownloads(
-                        context = context,
-                        filename = filename,
-                        mimeType = selectedFormat.mimeType,
-                        bytes = bytes,
-                    )
-                }
+                // 生成与落地都在宿主侧（各自调共享引擎 + 各自的平台写文件），面板只管发起
+                val result = exporter.export(
+                    scope = selectedScope,
+                    format = selectedFormat,
+                    cards = targetCards,
+                    settingsJson = settingsJson,
+                )
                 result.fold(
                     onSuccess = { path ->
                         showToast("已成功保存至 $path ✓")
                     },
                     onFailure = { err ->
-                        showToast("保存失败：${err.message ?: "未知异常"}")
+                        if (err !is ArchiveExportCancelled) {
+                            showToast("保存失败：${err.message ?: "未知异常"}")
+                        }
                     },
                 )
             } catch (e: Exception) {
@@ -143,29 +134,15 @@ fun BackupExportSheet(
         isExporting = true
         scope.launch {
             try {
-                val (filename, bytes) = withContext(Dispatchers.Default) {
-                    CardArchiveEngine.generateExportData(
-                        cards = targetCards,
-                        format = selectedFormat,
-                        settingsJson = settingsJson,
-                    )
-                }
-                val result = withContext(Dispatchers.IO) {
-                    ArchiveExportManager.createShareIntent(
-                        context = context,
-                        filename = filename,
-                        mimeType = selectedFormat.mimeType,
-                        bytes = bytes,
-                        chooserTitle = "分享 ${selectedFormat.title}",
-                    )
-                }
+                val result = exporter.share(
+                    scope = selectedScope,
+                    format = selectedFormat,
+                    cards = targetCards,
+                    settingsJson = settingsJson,
+                )
                 result.fold(
-                    onSuccess = { intent ->
-                        context.startActivity(intent)
-                    },
-                    onFailure = { err ->
-                        showToast("分享唤起失败：${err.message ?: "未知异常"}")
-                    },
+                    onSuccess = { showToast("已唤起系统分享 ✓") },
+                    onFailure = { err -> showToast("分享唤起失败：${err.message ?: "未知异常"}") },
                 )
             } catch (e: Exception) {
                 showToast("导出失败：${e.message}")
@@ -175,7 +152,7 @@ fun BackupExportSheet(
         }
     }
 
-    BackHandler(onBack = onClose)
+    PlatformBackHandler(onBack = onClose)
 
     Box(
         modifier = modifier
@@ -428,19 +405,19 @@ fun BackupExportSheet(
             }
 
             // 3. 底部操作栏
+            val saveIsPrimary = !exporter.canShare
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // 保存到下载目录
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF282832))
+                        .background(if (saveIsPrimary) EditorialColor.aiAmber else Color(0xFF282832))
                         .clickable(enabled = !isExporting) { handleSaveToDownloads() },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -451,52 +428,53 @@ fun BackupExportSheet(
                         if (isExporting) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
-                                color = Color.White,
+                                color = if (saveIsPrimary) Color(0xFF1B1B1F) else Color.White,
                                 strokeWidth = 2.dp,
                             )
                         } else {
                             Icon(
                                 imageVector = AppIcons.Download,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = if (saveIsPrimary) Color(0xFF1B1B1F) else Color.White,
                                 modifier = Modifier.size(18.dp),
                             )
                         }
                         Text(
-                            text = "保存至下载目录",
-                            color = Color.White,
+                            text = exporter.saveLabel,
+                            color = if (saveIsPrimary) Color(0xFF1B1B1F) else Color.White,
                             fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = if (saveIsPrimary) FontWeight.Bold else FontWeight.Medium,
                         )
                     }
                 }
 
-                // 系统原生分享
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(EditorialColor.aiAmber)
-                        .clickable(enabled = !isExporting) { handleShareViaChooser() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                if (exporter.canShare) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(EditorialColor.aiAmber)
+                            .clickable(enabled = !isExporting) { handleShareViaChooser() },
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            tint = Color(0xFF1B1B1F),
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text(
-                            text = "系统分享",
-                            color = Color(0xFF1B1B1F),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null,
+                                tint = Color(0xFF1B1B1F),
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = "系统分享",
+                                color = Color(0xFF1B1B1F),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
             }

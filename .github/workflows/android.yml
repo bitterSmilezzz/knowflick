@@ -18,12 +18,14 @@ on:
       - main
     paths:
       - 'apps/android/**'
+      - 'apps/workbench/src/domain/clipEngine.ts'
       - 'shared/**'
       - 'tools/**'
       - '.github/workflows/android.yml'
   pull_request:
     paths:
       - 'apps/android/**'
+      - 'apps/workbench/src/domain/clipEngine.ts'
       - 'shared/**'
       - 'tools/**'
       - '.github/workflows/android.yml'
@@ -82,18 +84,23 @@ jobs:
         run: ./tools/lint_shell_vars.sh
 
       - name: 校验 MCP server
-        # 与 macos.yml 同一步：本 workflow 的路径过滤包含 tools/**，改 MCP 只会让
-        # Android job 触发构建——若这里不验，「Agent 接不上」要等下次 mac 端有改动才暴露。
+        # 本 workflow 的路径过滤包含 tools/**，改 MCP 只会让 Android job 触发构建——
+        # 若这里不验，「Agent 接不上」要等下次碰 Android 时才暴露。
         run: node --test tools/knowflick-mcp/test.mjs
 
       - name: 校验学科契约与内容
-        # 学科体系有三处事实来源：shared/assets/taxonomy_map.json、mac 与 Android 各自内嵌的
-        # SubjectRegistry。这里先做契约自洽 + 种子内容合法 + 三处一致的粗校验，
-        # 双端逐字段的等价性仍由各自的单测保证（那两层缺一不可）。
+        # 学科体系有两处事实来源：shared/assets/taxonomy_map.json（契约）与 :domain 内嵌的
+        # SubjectRegistry.kt。这里做契约自洽 + 内容合法（给了内容库才查）+ 两处一致的粗校验，
+        # 逐字段的等价性仍由各自的单测保证（那两层缺一不可）。Swift 那份随 apps/mac 删除。
         run: python3 tools/check_taxonomy.py
 
+      - name: 校验剪藏规则表跨端一致
+        # Kotlin 与 TypeScript 各有一份剪藏规则表，服务的是同一篇文章；改一端不改另一端会在这里红。
+        # 实测教训：Kotlin 侧曾有三条 token 写成大写，而比对前整行已 lowercase()，于是永不命中。
+        run: python3 tools/check_clip_parity.py
+
       - name: 校验课程导入管线
-        # 与 macos.yml 同一步：import_lessons.py 与 check_taxonomy.py 共享 tools/taxonomy.py
+        # import_lessons.py 与 check_taxonomy.py 共享 tools/taxonomy.py
         # 契约库，SUBJECT_MAP / make_card 的分类映射此前只在手动流程里跑过。
         run: python3 tools/test_import_lessons.py
 

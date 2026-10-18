@@ -12,7 +12,7 @@ import org.junit.Test
 /**
  * 剪藏网络层的**判定逻辑**（不碰网络）：内容类型闸门、超限截断、字符集直通、请求头。
  *
- * mac 端 `WebClipFetcherTests.swift` 是同一批断言，两端口径必须一致。
+ * 判定逻辑不碰网络。Swift 端的同名夹具已随 apps/mac 删除，这些断言留在共享层。
  */
 class WebClipFetcherTest {
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""学科契约的 CI 守门：契约文件自洽、双端内嵌表与契约逐条一致、内容库（若存在）合法。
+"""学科契约的 CI 守门：契约文件自洽、Kotlin 内嵌表与契约逐条一致、内容库（若存在）合法。
 
 用法：
     python3 tools/check_taxonomy.py                     # 校验默认路径
     python3 tools/check_taxonomy.py --strict-map        # 额外要求每个学科都有卡（内容覆盖度告警）
     python3 tools/check_taxonomy.py --seed <path>       # 指定内容库 JSON（不存在则跳过内容校验）
 
-退出码非 0 表示发现问题，CI 直接红。双端 Swift/Kotlin 的等价测试只保证「各自 == 契约」，
+退出码非 0 表示发现问题，CI 直接红。各端自己的等价测试只保证「本端表 == 契约」，
 这里补上「契约自身合法」和「内容合法」——否则非法内容要等 App 运行时才暴露。
 预置库退役后仓库内不再自带内容库，内容校验改为「给定路径存在才校验」。
 """
@@ -23,7 +23,7 @@ import taxonomy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-SWIFT_REGISTRY = REPO_ROOT / "apps/mac/Sources/KnowFlickCore/Models/SubjectRegistry.swift"
+# Swift 第二实现已删除。学科表只剩契约 JSON 与 :domain 的 Kotlin 表。
 # 2026-10-10 KMP 探针迁移：Kotlin 学科表从 app 模块移入 :domain（KMP）模块，
 # 包名不变（com.knowflick.app.domain），仅物理路径变化——本脚本按路径抓文件，需同步更新。
 KOTLIN_REGISTRY = REPO_ROOT / "apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/SubjectRegistry.kt"
@@ -34,9 +34,9 @@ def check_regilities(data: dict) -> list[str]:
 
 
 def check_embedded_tables(data: dict) -> list[str]:
-    """三处事实来源（契约 JSON、Swift、Kotlin）必须给出同一串学科与同一批分支。
+    """契约 JSON 与 Kotlin 表必须给出同一串学科与同一批分支。
 
-    逐学科的归属关系由两端各自的 parity 测试保证（它们会构造完整对象比对）；
+    逐学科的归属关系由各端自己的 parity 测试保证（它们会构造完整对象比对）；
     这里做的是更粗但更早的一层：总量与顺序不一致时，连编译/测试都不用等就能看到差异。
     """
     issues: list[str] = []
@@ -45,33 +45,21 @@ def check_embedded_tables(data: dict) -> list[str]:
         branch["slug"] for subject in data["subjects"] for branch in (subject.get("branches") or [])
     )
 
-    swift_text = SWIFT_REGISTRY.read_text(encoding="utf-8")
     kotlin_text = KOTLIN_REGISTRY.read_text(encoding="utf-8")
 
-    swift_subjects = re.findall(r'SubjectSpec\(slug:\s*"([^"]+)"', swift_text)
     kotlin_subjects = re.findall(r'SubjectSpec\(\s*"([^"]+)"', kotlin_text)
-    if swift_subjects != expected_subjects:
-        issues.append(f"mac 端学科表与契约不一致：{swift_subjects} != {expected_subjects}")
     if kotlin_subjects != expected_subjects:
-        issues.append(f"Android 端学科表与契约不一致：{kotlin_subjects} != {expected_subjects}")
+        issues.append(f"共享端学科表与契约不一致：{kotlin_subjects} != {expected_subjects}")
 
-    swift_branches = sorted(re.findall(r'BranchSpec\(slug:\s*"([^"]+)"', swift_text))
     kotlin_branches = sorted(re.findall(r'BranchSpec\("([^"]+)"', kotlin_text))
-    if swift_branches != expected_branches:
-        issues.append(f"mac 端分支条目与契约不一致：缺 {set(expected_branches) - set(swift_branches)}"
-                      f"，多 {set(swift_branches) - set(expected_branches)}")
     if kotlin_branches != expected_branches:
-        issues.append(f"Android 端分支条目与契约不一致：缺 {set(expected_branches) - set(kotlin_branches)}"
+        issues.append(f"共享端分支条目与契约不一致：缺 {set(expected_branches) - set(kotlin_branches)}"
                       f"，多 {set(kotlin_branches) - set(expected_branches)}")
 
-    # 历史映射表：三处的键集合必须完全相同
     expected_legacy = sorted(data["legacyCategoryMap"].keys())
-    swift_legacy = sorted(re.findall(r'"([^"]+)":\s*LegacyMapping\(subject:', swift_text))
     kotlin_legacy = sorted(re.findall(r'"([^"]+)"\s+to LegacyMapping\(', kotlin_text))
-    if swift_legacy != expected_legacy:
-        issues.append(f"mac 端历史分类映射与契约不一致：{set(expected_legacy) ^ set(swift_legacy)}")
     if kotlin_legacy != expected_legacy:
-        issues.append(f"Android 端历史分类映射与契约不一致：{set(expected_legacy) ^ set(kotlin_legacy)}")
+        issues.append(f"共享端历史分类映射与契约不一致：{set(expected_legacy) ^ set(kotlin_legacy)}")
     return issues
 
 
@@ -118,7 +106,7 @@ def main() -> int:
         if len(issues) > 40:
             print(f"  …另有 {len(issues) - 40} 条", file=sys.stderr)
         return 1
-    print("学科契约校验通过：契约自洽、双端内嵌表一致" + ("、内容库合法。" if seed_path.is_file() else "。"))
+    print("学科契约校验通过：契约自洽、Kotlin 内嵌表一致" + ("、内容库合法。" if seed_path.is_file() else "。"))
     return 0
 
 
