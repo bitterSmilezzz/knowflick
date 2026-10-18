@@ -1,0 +1,71 @@
+name: Workbench (Web + Tauri)
+
+# ADR-0002 第一套桌面：apps/workbench 的前端单测与 Rust 壳单测。
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/workbench/**'
+      - 'apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/WebClipEngine.kt'
+      - 'shared/assets/**'
+      - 'tools/verify_workbench.sh'
+      - 'tools/check_clip_parity.py'
+      - '.github/workflows/workbench.yml'
+  pull_request:
+    paths:
+      - 'apps/workbench/**'
+      - 'apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/WebClipEngine.kt'
+      - 'shared/assets/**'
+      - 'tools/verify_workbench.sh'
+      - 'tools/check_clip_parity.py'
+      - '.github/workflows/workbench.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: npm test + cargo test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/workbench
+    steps:
+      - uses: actions/checkout@v7
+
+      # cargo test 会把整个 tauri 依赖树编译一遍，而它在 Linux 上要 WebKitGTK 的 pkg-config 文件；
+      # 不装这几包，CI 会在 `glib-sys` / `webkit2gtk-sys` 的 build script 上直接红，且报错离原因很远。
+      # 与 workbench-release.yml 同一份清单。
+      - name: 安装 Linux 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: 配置 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: npm ci
+        run: npm ci
+
+      - name: verify
+        run: ./tools/verify_workbench.sh
+        working-directory: .
+
+      - name: 校验剪藏规则表跨端一致
+        # 前端这份 `clipEngine.ts` 与 Android 的 `WebClipEngine.kt` 服务同一篇文章，规则表必须同源。
+        run: python3 tools/check_clip_parity.py
+        working-directory: .

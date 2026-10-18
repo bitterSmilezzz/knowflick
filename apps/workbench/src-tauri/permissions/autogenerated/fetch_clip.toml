@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-clip"
+description = "Enables the fetch_clip command without any pre-configured scope."
+commands.allow = ["fetch_clip"]
+
+[[permission]]
+identifier = "deny-fetch-clip"
+description = "Denies the fetch_clip command without any pre-configured scope."
+commands.deny = ["fetch_clip"]

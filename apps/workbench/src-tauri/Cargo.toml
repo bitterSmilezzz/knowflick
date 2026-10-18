@@ -1,0 +1,23 @@
+[package]
+name = "knowflick-workbench"
+version = "0.1.0"
+edition = "2021"
+description = "KnowFlick desktop shell"
+
+[lib]
+name = "knowflick_workbench_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+encoding_rs = "0.8"
+open = "5"
+reqwest = { version = "0.12", default-features = false, features = ["charset", "http2", "rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tokio = { version = "1", features = ["fs"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }

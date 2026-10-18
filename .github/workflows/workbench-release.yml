@@ -1,0 +1,121 @@
+name: Workbench Release (Web + Tauri)
+
+# ADR-0002 第一套桌面（apps/workbench）的发布通道：同一份 Web + Tauri 代码在三台机器上各打一个原生安装包。
+#
+# 为什么必须是三台机器：Tauri 和 jpackage 一样**不支持交叉编译**——DMG 只能在 macOS 出、
+# MSI 只能在 Windows 出、DEB 只能在 Linux 出。这里是「一份配置 × 三台机器」，不是三套配置。
+#
+# 与冻结的 JVM 桌面（desktop.yml，tag `desktop-v*`）是**两条独立序列**：tag 前缀不同、产物名也不同
+# （`KnowFlick-Workbench-<版本>-<系统>.<扩展名>`），避免下载者拿错包。
+#
+# paths 过滤对 tag 推送**不生效**（GitHub 官方文档："Path filters are not evaluated for pushes of tags"），
+# 所以这里不写 paths——写了只会让人误以为「改文档的提交打 tag 不会触发」。
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'workbench-v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux (deb)
+            format: deb
+          - os: macos-latest
+            label: macOS (dmg)
+            format: dmg
+          - os: windows-latest
+            label: Windows (msi)
+            format: msi
+    steps:
+      - uses: actions/checkout@v7
+
+      # Linux 上 Tauri 走 WebKitGTK：Tauri v2 认 4.1，apt 源里的包名就是它。
+      - name: 安装 Linux 系统依赖
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: 配置 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 Rust 构建
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/workbench/src-tauri -> target
+
+      - name: npm ci
+        working-directory: apps/workbench
+        run: npm ci
+
+      # 与 workbench.yml 同一套门禁。发出去的安装包不能是没跑过测试的那份代码。
+      - name: 门禁（npm test + tsc + cargo test）
+        shell: bash
+        run: ./tools/verify_workbench.sh
+
+      # 显式点名只出本系统那一种格式：tauri.conf 的 targets 是 "all"，
+      # 但 Linux 上的 rpm / AppImage 各自还依赖 rpmbuild / linuxdeploy 这些 runner 不一定有的东西，
+      # 让它们决定成败属于自找不确定。三台机器各出一个确定格式。
+      - name: 打本系统安装包
+        working-directory: apps/workbench
+        run: npm run tauri build -- --bundles ${{ matrix.format }}
+
+      - name: 校验产物存在
+        shell: bash
+        run: |
+          cd apps/workbench/src-tauri/target/release/bundle/${{ matrix.format }}
+          ls -la
+          test -n "$(ls -A)" || { echo "::error::没有产出 ${{ matrix.format }} 安装包"; exit 1; }
+
+      # PR/分支上不留档（安装包 10MB 量级，三系统存档白烧配额）；tag 与手动触发时留档，便于回看与发版。
+      - name: 留档安装包
+        uses: actions/upload-artifact@v7
+        with:
+          name: workbench-${{ matrix.format }}
+          path: apps/workbench/src-tauri/target/release/bundle/${{ matrix.format }}/*
+          retention-days: 7
+
+  release:
+    name: 附到 Release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/workbench-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 取回三个安装包
+        uses: actions/download-artifact@v7
+        with:
+          pattern: workbench-*
+          merge-multiple: false
+
+      # 命名映射 / 校验和 / 版本校验 / 发布都在脚本里，workflow 不重复实现一遍。
+      # 本地空跑：tools/assemble_workbench_release.sh --tag workbench-v0.1.0 --artifacts-dir <目录>
+      - name: 组装附件并附到 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/assemble_workbench_release.sh --publish
