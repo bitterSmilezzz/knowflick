@@ -118,7 +118,8 @@ try {
   assert.deepEqual(options, ["跟随系统", "浅色", "深色"], "appearance has exactly three options");
   console.log("PASS appearance offers exactly three options");
   await browser("select", '[data-group="appearance"] select', "DARK");
-  await browser("check", '[data-group="modules"] input');
+  // 温故复习现在是 official-review-fsrs 插件，用它的稳定选择器点名，别落到插件矩阵第一行
+  await browser("check", '[data-plugin-toggle="official-review-fsrs"]');
   await browser("click", ".ws-settings-foot button[type=submit]");
   await check('document.body.innerText.includes("设置已成功保存")', "settings save is reachable and reports success");
   await check('document.querySelector(".ws").dataset.appearance === "dark"', "dark theme applies immediately");

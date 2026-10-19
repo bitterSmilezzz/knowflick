@@ -1,0 +1,230 @@
+import type { KnowledgeCard } from "./card";
+import { cardFromJson } from "./card";
+import type { RawMaterial, Artifact } from "../shell/store";
+import type { SettingsFile } from "./settings";
+import { parseSettings, encodeSettings } from "./settings";
+import { createZipArchive } from "./markdownExport";
+
+export interface BackupManifest {
+  format: "knowflick-backup";
+  schemaVersion: 1;
+  appName: string;
+  appVersion: string;
+  exportedAt: number;
+  exportedAtIso: string;
+  stats: {
+    cards: number;
+    materials: number;
+    artifacts: number;
+  };
+  checksums: Record<string, string>;
+}
+
+export interface RestoredBackup {
+  manifest: BackupManifest;
+  cards: KnowledgeCard[];
+  materials: RawMaterial[];
+  settings: SettingsFile | null;
+  artifacts: Artifact[];
+}
+
+/** 简易快速确定性哈希校验和（基于 FNV-1a） */
+function computeChecksum(content: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < content.length; i++) {
+    h ^= content.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * 将整套知识库打包生成系统级无损备份包 (.kfbackup / zip)
+ */
+export function createKfBackupArchive(
+  materials: RawMaterial[],
+  cards: KnowledgeCard[],
+  settingsFile: SettingsFile,
+  artifacts: Artifact[] = []
+): Uint8Array {
+  const now = Date.now();
+  const cardsStr = JSON.stringify(cards, null, 2);
+  const materialsStr = JSON.stringify(materials, null, 2);
+  const settingsStr = encodeSettings(settingsFile);
+  const artifactsStr = JSON.stringify(artifacts, null, 2);
+
+  const manifest: BackupManifest = {
+    format: "knowflick-backup",
+    schemaVersion: 1,
+    appName: "KnowFlick",
+    appVersion: "0.1.0",
+    exportedAt: now,
+    exportedAtIso: new Date(now).toISOString(),
+    stats: {
+      cards: cards.length,
+      materials: materials.length,
+      artifacts: artifacts.length,
+    },
+    checksums: {
+      "cards.json": computeChecksum(cardsStr),
+      "materials.json": computeChecksum(materialsStr),
+      "settings.json": computeChecksum(settingsStr),
+      "artifacts.json": computeChecksum(artifactsStr),
+    },
+  };
+
+  const manifestStr = JSON.stringify(manifest, null, 2);
+
+  return createZipArchive([
+    { path: "manifest.json", data: manifestStr },
+    { path: "cards.json", data: cardsStr },
+    { path: "materials.json", data: materialsStr },
+    { path: "settings.json", data: settingsStr },
+    { path: "artifacts.json", data: artifactsStr },
+  ]);
+}
+
+/**
+ * 纯客户端解包标准 ZIP 文件 (Store 模式)
+ */
+export function unpackZipStore(buffer: Uint8Array): Map<string, string> {
+  const result = new Map<string, string>();
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const decoder = new TextDecoder("utf-8");
+  let pos = 0;
+
+  while (pos + 30 <= buffer.length) {
+    const sig = view.getUint32(pos, true);
+    if (sig !== 0x04034b50) break; // 非 Local File Header
+
+    const compMethod = view.getUint16(pos + 8, true);
+    const compSize = view.getUint32(pos + 18, true);
+    const nameLen = view.getUint16(pos + 26, true);
+    const extraLen = view.getUint16(pos + 28, true);
+
+    const nameStart = pos + 30;
+    const filename = decoder.decode(buffer.subarray(nameStart, nameStart + nameLen));
+    const dataStart = nameStart + nameLen + extraLen;
+
+    if (compMethod === 0) {
+      // Store 模式 (无压缩)
+      const content = decoder.decode(buffer.subarray(dataStart, dataStart + compSize));
+      result.set(filename, content);
+    }
+    pos = dataStart + compSize;
+  }
+
+  return result;
+}
+
+/**
+ * 从 .kfbackup 二进制包或 JSON 文本中无损还原整套知识库
+ */
+export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
+  if (typeof input === "string") {
+    // 兼容历史单一 JSON 格式 (knowflick-workspace)
+    const json = JSON.parse(input) as {
+      materials?: unknown[];
+      cards?: unknown[];
+      settings?: unknown;
+      artifacts?: unknown[];
+    };
+    const now = Date.now();
+    const rawCards = Array.isArray(json.cards) ? json.cards : [];
+    const rawMaterials = Array.isArray(json.materials) ? json.materials : [];
+    const rawArtifacts = Array.isArray(json.artifacts) ? json.artifacts : [];
+
+    const cards = rawCards.map((c) => cardFromJson(c));
+    const materials = rawMaterials as RawMaterial[];
+    const artifacts = rawArtifacts as Artifact[];
+    const settings = json.settings ? parseSettings(JSON.stringify(json.settings)) : null;
+
+    return {
+      manifest: {
+        format: "knowflick-backup",
+        schemaVersion: 1,
+        appName: "KnowFlick",
+        appVersion: "0.1.0",
+        exportedAt: now,
+        exportedAtIso: new Date(now).toISOString(),
+        stats: {
+          cards: cards.length,
+          materials: materials.length,
+          artifacts: artifacts.length,
+        },
+        checksums: {},
+      },
+      cards,
+      materials,
+      settings,
+      artifacts,
+    };
+  }
+
+  // 二进制 .kfbackup (ZIP)
+  const files = unpackZipStore(input);
+  const manifestRaw = files.get("manifest.json");
+  if (!manifestRaw) {
+    throw new Error("备份包缺少 manifest.json 元数据文件，可能不是有效的 KnowFlick 备份包");
+  }
+
+  const manifest = JSON.parse(manifestRaw) as BackupManifest;
+  if (manifest.format !== "knowflick-backup") {
+    throw new Error(`未知备份格式: ${manifest.format}`);
+  }
+
+  // 1. 读取并校验 cards.json
+  const cardsRaw = files.get("cards.json") ?? "[]";
+  if (manifest.checksums["cards.json"]) {
+    const calc = computeChecksum(cardsRaw);
+    if (calc !== manifest.checksums["cards.json"]) {
+      console.warn("cards.json 校验和不匹配，文件可能已在外部被修改");
+    }
+  }
+  const rawCards = JSON.parse(cardsRaw) as unknown[];
+  const cards = Array.isArray(rawCards) ? rawCards.map((c) => cardFromJson(c)) : [];
+
+  // 2. 读取 materials.json
+  const materialsRaw = files.get("materials.json") ?? "[]";
+  const rawMaterials = JSON.parse(materialsRaw) as unknown[];
+  const materials = Array.isArray(rawMaterials) ? (rawMaterials as RawMaterial[]) : [];
+
+  // 3. 读取 settings.json
+  const settingsRaw = files.get("settings.json");
+  const settings = settingsRaw ? parseSettings(settingsRaw) : null;
+
+  // 4. 读取 artifacts.json
+  const artifactsRaw = files.get("artifacts.json") ?? "[]";
+  const rawArtifacts = JSON.parse(artifactsRaw) as unknown[];
+  const artifacts = Array.isArray(rawArtifacts) ? (rawArtifacts as Artifact[]) : [];
+
+  return {
+    manifest,
+    cards,
+    materials,
+    settings,
+    artifacts,
+  };
+}
+
+/** 触发浏览器下载系统级备份包 */
+export function downloadKfBackup(
+  materials: RawMaterial[],
+  cards: KnowledgeCard[],
+  settingsFile: SettingsFile,
+  artifacts: Artifact[] = []
+): void {
+  const bytes = createKfBackupArchive(materials, cards, settingsFile, artifacts);
+  // 复制到独立的 ArrayBuffer：createZipArchive 返回的缓冲区类型是 ArrayBufferLike，
+  // 在 TS 的 BlobPart 约束下不能直接当 BlobPart 用（SharedArrayBuffer 不兼容）。
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  const blob = new Blob([copy.buffer], { type: "application/zip" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const dateStr = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `knowflick-backup-${dateStr}.kfbackup`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}

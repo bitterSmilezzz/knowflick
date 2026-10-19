@@ -2,6 +2,9 @@ import { useState, useEffect, type FormEvent } from "react";
 import { normalizePaperTheme, type SettingsFile, type AiSettings } from "../../domain/settings";
 import { AI_PROVIDER_PRESETS, findPresetById } from "../../domain/aiPresets";
 import { probeConnection } from "../../domain/aiChat";
+import { OFFICIAL_PLUGINS, PERMISSION_DESCRIPTIONS } from "../../domain/pluginRegistry";
+import { pluginEnabledIn, readPluginSettings, togglePluginIn, writePluginSettings } from "../../domain/pluginSettings";
+import { generateMcpConfigSnippet } from "../../domain/mcpServer";
 import { inShell } from "../../shell/store";
 import { Icon } from "./Icon";
 import { invoke } from "@tauri-apps/api/core";
@@ -13,7 +16,8 @@ export interface WorkspaceSettingsProps {
   onSave: (file: SettingsFile, key: string, reviewEnabled: boolean) => Promise<void>;
   onBack: () => void;
   onExportMarkdown?: () => void;
-  onExportBackup?: () => void;
+  onExportKfBackup?: () => void;
+  onRestoreKfBackup?: () => void;
 }
 
 export function WorkspaceSettings({
@@ -23,11 +27,27 @@ export function WorkspaceSettings({
   onSave,
   onBack,
   onExportMarkdown,
-  onExportBackup,
+  onExportKfBackup,
+  onRestoreKfBackup,
 }: WorkspaceSettingsProps) {
   const [draftSettings, setDraftSettings] = useState<AiSettings>(file.settings);
   const [draftKey, setDraftKey] = useState(apiKey);
   const [draftReviewEnabled, setDraftReviewEnabled] = useState(reviewEnabled);
+  const [draftPlugins, setDraftPlugins] = useState(() =>
+    readPluginSettings(file.raw)
+  );
+  const [mcpCopied, setMcpCopied] = useState(false);
+  const mcpSnippet = generateMcpConfigSnippet("tools/mcp-server.mjs");
+
+  const copyMcpConfig = async () => {
+    try {
+      await navigator.clipboard.writeText(mcpSnippet);
+      setMcpCopied(true);
+      window.setTimeout(() => setMcpCopied(false), 2500);
+    } catch {
+      setMcpCopied(false);
+    }
+  };
   const [shortcutStatus, setShortcutStatus] = useState<{ shortcut: string; registered: boolean; error: string | null } | null>(null);
   useEffect(() => {
     let disposed = false;
@@ -48,6 +68,7 @@ export function WorkspaceSettings({
     setDraftSettings(file.settings);
     setDraftKey(apiKey);
     setDraftReviewEnabled(reviewEnabled);
+    setDraftPlugins(readPluginSettings(file.raw));
   }, [file, apiKey, reviewEnabled]);
 
   const handleProbe = async () => {
@@ -74,11 +95,20 @@ export function WorkspaceSettings({
     setSaveStatus("idle");
     setSaveMessage(null);
 
+    const pluginMap = {
+      ...draftPlugins,
+      "official-review-fsrs": {
+        ...(draftPlugins["official-review-fsrs"] ?? {}),
+        enabled: draftReviewEnabled,
+      },
+    };
+
     const updatedFile: SettingsFile = {
       ...file,
       settings: {
         ...draftSettings,
       },
+      raw: writePluginSettings(file.raw, pluginMap),
     };
 
     try {
@@ -285,35 +315,67 @@ export function WorkspaceSettings({
               </div>
             </section>
 
-            {/* 第三组：功能模块 */}
+            {/* 第三组：官方插件矩阵 (PLUGIN_SPECIFICATION.md §4) */}
             <section data-group="modules" className="ws-settings-card">
               <div className="ws-settings-card-head">
                 <Icon name="layers" size={15} />
                 <div>
-                  <h2>功能模块</h2>
-                  <p className="ws-hint">控制扩展功能的启用状态，保持工作台精炼</p>
+                  <h2>功能模块与官方插件</h2>
+                  <p className="ws-hint">
+                    插件按清单声明权限后按需启用；关闭的插件不加载代码、不注册监听、不占用内存
+                  </p>
                 </div>
               </div>
 
-              <div className="ws-settings-row">
-                <div className="ws-settings-label">
-                  <strong>「温故知新」间隔复习</strong>
-                  <span>根据艾宾浩斯与 FSRS 记忆曲线安排知识卡片温故测验</span>
-                </div>
-                <div className="ws-settings-control">
-                  <label className="ws-switch-label" aria-label="启用「温故知新」间隔复习">
-                    <input
-                      type="checkbox"
-                      role="switch"
-                      aria-label="启用「温故知新」间隔复习"
-                      aria-checked={draftReviewEnabled}
-                      className="ws-switch-input"
-                      checked={draftReviewEnabled}
-                      onChange={(e) => setDraftReviewEnabled(e.target.checked)}
-                    />
-                    <span className="ws-switch-slider" />
-                  </label>
-                </div>
+              <div className="ws-plugin-list">
+                {OFFICIAL_PLUGINS.map((plugin) => {
+                  const enabled =
+                    plugin.id === "official-review-fsrs"
+                      ? draftReviewEnabled
+                      : pluginEnabledIn(
+                          { ...file.raw, plugins: { ...readPluginSettings(file.raw), ...draftPlugins } },
+                          plugin.id,
+                          false
+                        );
+                  return (
+                    <div className="ws-settings-row" key={plugin.id} data-plugin={plugin.id}>
+                      <div className="ws-settings-label">
+                        <strong>{plugin.name}</strong>
+                        <span>{plugin.description}</span>
+                        <span className="ws-plugin-perms">
+                          {plugin.permissions.map((perm) => (
+                            <em key={perm} title={PERMISSION_DESCRIPTIONS[perm]}>
+                              {perm}
+                            </em>
+                          ))}
+                        </span>
+                      </div>
+                      <div className="ws-settings-control">
+                        <label className="ws-switch-label" aria-label={`启用${plugin.name}`}>
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            aria-label={`启用${plugin.name}`}
+                            aria-checked={enabled}
+                            data-plugin-toggle={plugin.id}
+                            className="ws-switch-input"
+                            checked={enabled}
+                            onChange={(e) => {
+                              if (plugin.id === "official-review-fsrs") {
+                                setDraftReviewEnabled(e.target.checked);
+                              } else {
+                                setDraftPlugins((prev) =>
+                                  togglePluginIn({ plugins: prev }, plugin.id, e.target.checked)
+                                );
+                              }
+                            }}
+                          />
+                          <span className="ws-switch-slider" />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
@@ -339,14 +401,60 @@ export function WorkspaceSettings({
                   <button
                     type="button"
                     className="ws-bordered"
-                    onClick={onExportBackup}
+                    data-action="export-kfbackup"
+                    onClick={onExportKfBackup}
                   >
-                    导出完整备份 (JSON)
+                    导出完整备份包 (.kfbackup)
+                  </button>
+                  <button
+                    type="button"
+                    className="ws-bordered"
+                    data-action="restore-kfbackup"
+                    onClick={onRestoreKfBackup}
+                  >
+                    从备份包恢复…
                   </button>
                 </div>
                 <p className="ws-hint" style={{ margin: 0 }}>
-                  导出的 Markdown 文件包含 YAML Frontmatter 元数据，按分类与收件箱分目录归档，支持 Obsidian 直接打开。
+                  Markdown 归档带 YAML Frontmatter，按分类与收件箱分目录，可直接在 Obsidian 打开；
+                  `.kfbackup` 是含清单、校验和与全部层级（素材 / 卡片 / 设置 / 认知产物）的完整备份，可无损还原。
                 </p>
+              </div>
+            </section>
+
+            {/* 第五组：MCP 外部 Agent 接入 (PLUGIN_SPECIFICATION.md §6) */}
+            <section data-group="mcp" className="ws-settings-card">
+              <div className="ws-settings-card-head">
+                <Icon name="code" size={15} />
+                <div>
+                  <h2>MCP 外部代理接入</h2>
+                  <p className="ws-hint">
+                    让 Cursor / Claude Code / DeepSeek Harness 把这个知识库当作统一外部记忆库调用
+                  </p>
+                </div>
+              </div>
+
+              <div className="ws-settings-body">
+                <div className="ws-settings-row" style={{ padding: 0 }}>
+                  <div className="ws-settings-label">
+                    <strong>Model Context Protocol (stdio)</strong>
+                    <span>
+                      暴露 search_knowledge / create_flash_card / add_material / get_weekly_briefing /
+                      get_knowledge_stats 五个工具，以及 knowflick:// 资源
+                    </span>
+                  </div>
+                  <div className="ws-settings-control">
+                    <button
+                      type="button"
+                      className="ws-bordered"
+                      data-action="copy-mcp-config"
+                      onClick={() => void copyMcpConfig()}
+                    >
+                      {mcpCopied ? "已复制配置片段" : "复制 MCP 配置"}
+                    </button>
+                  </div>
+                </div>
+                <pre className="ws-mcp-snippet" data-mcp-snippet>{mcpSnippet}</pre>
               </div>
             </section>
           </form>

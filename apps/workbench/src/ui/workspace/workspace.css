@@ -1749,6 +1749,49 @@ select {
   gap: 14px;
 }
 
+/* 官方插件矩阵：每行左侧是名称/说明/权限清单，右侧是开关 */
+.ws-plugin-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-plugin-list .ws-settings-row:last-child {
+  border-bottom: 0;
+}
+
+.ws-plugin-perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.ws-plugin-perms em {
+  font-style: normal;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--text-meta);
+  color: var(--muted);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+/* MCP 接入片段：等宽只读展示，可横向滚动不撑破面板 */
+.ws-mcp-snippet {
+  margin: 0;
+  padding: 12px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--text-meta);
+  color: var(--fg);
+  overflow-x: auto;
+  white-space: pre;
+}
+
 .ws-field-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

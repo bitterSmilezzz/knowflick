@@ -5,7 +5,7 @@ import { normalizePaperTheme, parseSettings, type SettingsFile } from "../../dom
 import { askModel } from "../../domain/aiChat";
 import { requiresKey } from "../../domain/ingest";
 import { digest } from "../../domain/clipEngine";
-import { fetchClip, inShell, type RawMaterial } from "../../shell/store";
+import { dbListArtifacts, dbSaveArtifact, fetchClip, inShell, type RawMaterial } from "../../shell/store";
 import {
   entriesFor,
   filterEntries,
@@ -16,7 +16,6 @@ import {
   type Entry,
 } from "./model";
 import {
-  downloadWorkspace,
   readWorkspace,
   storeCard,
   storeCardList,
@@ -24,6 +23,7 @@ import {
   storePreferences,
 } from "./repository";
 import { downloadMarkdownVault } from "../../domain/markdownExport";
+import { downloadKfBackup, restoreKfBackup } from "../../domain/systemBackup";
 import { highlightText, extractSnippet } from "./HighlightText";
 import { Icon, sourceLabel, useSystemAppearance } from "./Icon";
 import { EntryInspector } from "./EntryInspector";
@@ -88,6 +88,7 @@ export function Workspace() {
   const searchRef = useRef<HTMLInputElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const restoreRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDialogElement>(null);
   const revision = useRef(0);
   const systemAppearance = useSystemAppearance();
@@ -463,6 +464,52 @@ export function Workspace() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  /**
+   * 从 `.kfbackup` 完整备份包恢复。走的是「合并还原」而不是覆盖：
+   * 备份里的条目按 id 写入，本机已有同 id 的会被覆盖，其余保持不动；
+   * 设置只在备份里带了 settings.json 时替换。这样误点恢复不会清空本地库。
+   */
+  const restoreFromBackup = async (picked: FileList | null) => {
+    const chosen = picked?.[0];
+    if (!chosen) return;
+    try {
+      await act(async () => {
+        const buffer = new Uint8Array(await chosen.arrayBuffer());
+        const isZip = /\.kfbackup$/i.test(chosen.name) || (buffer[0] === 0x50 && buffer[1] === 0x4b);
+        const restored = restoreKfBackup(isZip ? buffer : new TextDecoder().decode(buffer));
+        let total = 0;
+        for (const m of restored.materials) {
+          if (!m.id || typeof m.rawText !== "string" || !m.title) continue;
+          await updateMaterial({ ...m, mediaSizeBytes: m.mediaSizeBytes || 0 });
+          total++;
+        }
+        for (const c of restored.cards) {
+          if (!c.headline || !c.details) continue;
+          await updateCard(c);
+          total++;
+        }
+        // 认知产物是 Layer 3，只在桌面端有 SQLite 表；浏览器体验模式没有这层，跳过。
+        for (const art of restored.artifacts) {
+          if (!art.id || !art.title) continue;
+          if (inShell()) await dbSaveArtifact(art, dir);
+          total++;
+        }
+        if (restored.settings) {
+          await storePreferences(restored.settings, apiKey, dir);
+          setFile(restored.settings);
+        }
+        setNotice(
+          `备份恢复完成：${restored.cards.length} 张卡片、${restored.materials.length} 份素材` +
+            `、${restored.artifacts.length} 条认知产物` +
+            (restored.settings ? "、设置已还原" : "") +
+            `（共 ${total} 条）`
+        );
+      });
+    } catch (e) {
+      setError(`备份恢复失败，本地内容未受影响：${String(e)}`);
+    }
+  };
+
   const openCard = (id: string) => {
     navigate("library");
     setSelectedId(id);
@@ -536,11 +583,25 @@ export function Workspace() {
             <button
               className="ws-icon-button"
               aria-label="导出备份"
-              title="导出备份"
+              title="导出完整备份包 (.kfbackup)"
               disabled={loading || busy}
               onClick={() => {
-                downloadWorkspace(materials, cards, file);
-                setNotice("已导出 JSON，包含素材、卡片与设置，不含 API 密钥");
+                if (!inShell()) {
+                  downloadKfBackup(materials, cards, file);
+                  setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片与设置，不含 API 密钥");
+                  return;
+                }
+                void dbListArtifacts(1000, dir)
+                  .then((arts) => {
+                    downloadKfBackup(materials, cards, file, arts);
+                    setNotice(
+                      `已导出完整备份包 (.kfbackup)：${cards.length} 张卡片、${materials.length} 份素材、${arts.length} 条认知产物，不含 API 密钥`
+                    );
+                  })
+                  .catch(() => {
+                    downloadKfBackup(materials, cards, file);
+                    setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片与设置，不含 API 密钥");
+                  });
               }}
             >
               <Icon name="download" />
@@ -912,7 +973,17 @@ export function Workspace() {
                   reviewEnabled={reviewEnabled}
                   onBack={() => navigate("inbox")}
                   onExportMarkdown={() => downloadMarkdownVault(materials, cards)}
-                  onExportBackup={() => downloadWorkspace(materials, cards, file)}
+                  onExportKfBackup={() => {
+                    // 认知产物（Layer 3）只在桌面端的 SQLite 里有；浏览器体验模式跳过。
+                    if (!inShell()) {
+                      downloadKfBackup(materials, cards, file);
+                      return;
+                    }
+                    void dbListArtifacts(1000, dir)
+                      .then((arts) => downloadKfBackup(materials, cards, file, arts))
+                      .catch(() => downloadKfBackup(materials, cards, file));
+                  }}
+                  onRestoreKfBackup={() => restoreRef.current?.click()}
                   onSave={async (next, key, enabled) => {
                     const updated = {
                       ...next,
@@ -967,9 +1038,21 @@ export function Workspace() {
         ref={importRef}
         type="file"
         multiple
-        accept=".md,.markdown,.txt,.json"
+        accept=".md,.markdown,.txt,.json,.docx,.pdf"
         onChange={(e) => {
           if (e.target.files) void importFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+
+      <input
+        hidden
+        ref={restoreRef}
+        type="file"
+        accept=".kfbackup,.zip,.json"
+        aria-label="选择完整备份包"
+        onChange={(e) => {
+          if (e.target.files) void restoreFromBackup(e.target.files);
           e.target.value = "";
         }}
       />
