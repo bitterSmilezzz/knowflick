@@ -160,20 +160,24 @@ export function EntryInspector({
             ) : null}
 
             {!isCard ? (
-              <div style={{ marginTop: 24, paddingTop: 18, borderTop: "1px solid var(--line)" }}>
-                <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 10px" }}>
-                  保留这份原始素材，再整理成可以反复使用的知识。
-                </p>
-                <div className="ws-editor-actions">
+              <div className="ws-material-box">
+                <div className="ws-material-box-info">
+                  <Icon name="layers" size={16} />
+                  <div>
+                    <strong>从素材提炼知识</strong>
+                    <p>保留原始记录，将关键结论沉淀为原子知识卡。</p>
+                  </div>
+                </div>
+                <div className="ws-material-box-actions">
                   <button className="ws-primary" disabled={busy} onClick={() => void run(onConvert)}>
-                    保存为知识卡
+                    <Icon name="card" size={14} /> 保存为知识卡
                   </button>
-                  <button disabled={busy} onClick={() => (aiReady ? void run(onAi) : onSettings())}>
-                    {aiReady ? "AI 提炼" : "配置 AI 提炼"}
+                  <button className="ws-bordered" disabled={busy} onClick={() => (aiReady ? void run(onAi) : onSettings())}>
+                    <Icon name="ask" size={14} /> {aiReady ? "AI 提炼卡片" : "配置 AI"}
                   </button>
                   {entry.url ? (
-                    <button disabled={busy} onClick={() => void run(onFetch)}>
-                      抓取网页正文
+                    <button className="ws-bordered" disabled={busy} onClick={() => void run(onFetch)}>
+                      <Icon name="note" size={14} /> 抓取正文
                     </button>
                   ) : null}
                 </div>

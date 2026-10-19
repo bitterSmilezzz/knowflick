@@ -2,9 +2,10 @@ import { useState } from "react";
 import type { KnowledgeCard } from "../domain/card";
 import { generateCognitiveBriefing, type CognitiveBriefing } from "../domain/briefing";
 import { searchCards } from "../domain/search";
-import { completeChat } from "../shell/store";
+import { completeChat, inShell } from "../shell/store";
 import type { AiSettings } from "../domain/settings";
 import { completionURL, requiresKey } from "../domain/ingest";
+import { Icon } from "./workspace/Icon";
 
 interface BriefingProps {
   cards: KnowledgeCard[];
@@ -31,62 +32,80 @@ export function BriefingView({ cards, onOpenCard }: BriefingProps) {
     }
   };
 
+  const categories = new Set(cards.map((c) => c.category).filter(Boolean));
+
   return (
-    <section className="detail">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>认知洞察简报 · {briefing.weekLabel}</h1>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button type="button" onClick={handleRegenerate}>重新生成</button>
-          <button type="button" className="primary" onClick={() => void handleCopyMarkdown()}>
-            {copied ? "已复制 Markdown" : "复制报告 Markdown"}
-          </button>
+    <div className="ws-reader-scroll">
+      <div className="ws-reader-inner" style={{ maxWidth: 760 }}>
+        <header className="ws-briefing-head">
+          <div>
+            <span className="ws-briefing-tag">每周认知复盘</span>
+            <h1>认知洞察简报 · {briefing.weekLabel}</h1>
+            <p className="ws-hint">
+              基于三层知识模型自动生成：聚类近期新增、洞察长期趋势、挑选高价值待温故卡片。
+            </p>
+          </div>
+          <div className="ws-editor-actions" style={{ flexWrap: "nowrap" }}>
+            <button type="button" className="ws-bordered" onClick={handleRegenerate}>
+              <Icon name="brief" size={14} /> 重新分析
+            </button>
+            <button type="button" className="ws-primary" onClick={() => void handleCopyMarkdown()}>
+              <Icon name="check" size={14} /> {copied ? "已复制" : "复制 Markdown"}
+            </button>
+          </div>
+        </header>
+
+        {/* KPI Metrics */}
+        <div className="ws-briefing-kpi-row">
+          <div className="ws-briefing-kpi-card">
+            <span className="kpi-label">已沉淀知识卡</span>
+            <strong className="kpi-value">{cards.length}</strong>
+            <span className="kpi-sub">当前知识库总卡片</span>
+          </div>
+          <div className="ws-briefing-kpi-card">
+            <span className="kpi-label">近期新增卡片</span>
+            <strong className="kpi-value">{briefing.newCapturedCount}</strong>
+            <span className="kpi-sub">过去 7 天沉淀记录</span>
+          </div>
+          <div className="ws-briefing-kpi-card">
+            <span className="kpi-label">覆盖分类数</span>
+            <strong className="kpi-value">{categories.size}</strong>
+            <span className="kpi-sub">活跃知识领域</span>
+          </div>
+        </div>
+
+        {/* 3 Sections */}
+        <div className="ws-briefing-sections">
+          {briefing.sections.map((sec, idx) => (
+            <section key={idx} className="ws-briefing-card">
+              <div className="ws-briefing-card-header">
+                <h2>{sec.title}</h2>
+              </div>
+              <div className="ws-briefing-card-body">
+                {sec.items.map((it, itemIdx) => (
+                  <div key={itemIdx} className="ws-briefing-item">
+                    <div className="ws-briefing-item-info">
+                      <strong>{it.title}</strong>
+                      {it.subtitle ? <p>{it.subtitle}</p> : null}
+                    </div>
+                    {it.id ? (
+                      <button
+                        type="button"
+                        className="ws-bordered"
+                        style={{ height: 26, fontSize: 12, padding: "0 8px" }}
+                        onClick={() => onOpenCard(it.id!)}
+                      >
+                        查看卡片
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       </div>
-
-      <p className="hint">
-        根据三层资产模型自动提炼：聚类近期新增素材、洞察关注趋势、根据时间衰减挑选待温故的高价值旧内容。
-      </p>
-
-      {briefing.sections.map((sec, idx) => (
-        <div key={idx} style={{ marginTop: "24px" }}>
-          <h2 style={{ fontSize: "16px", borderBottom: "1px solid var(--line)", paddingBottom: "6px" }}>
-            {sec.title}
-          </h2>
-          <ul style={{ listStyle: "none", padding: 0, marginTop: "8px" }}>
-            {sec.items.map((it, itemIdx) => (
-              <li
-                key={itemIdx}
-                style={{
-                  padding: "8px 0",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderBottom: "1px dashed var(--line)",
-                }}
-              >
-                <div>
-                  <strong>{it.title}</strong>
-                  {it.subtitle ? (
-                    <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--muted)" }}>
-                      {it.subtitle}
-                    </p>
-                  ) : null}
-                </div>
-                {it.id ? (
-                  <button
-                    type="button"
-                    style={{ fontSize: "12px", padding: "2px 8px" }}
-                    onClick={() => onOpenCard(it.id!)}
-                  >
-                    查看卡片
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </section>
+    </div>
   );
 }
 
@@ -95,34 +114,78 @@ interface BrainDrawerProps {
   settings: AiSettings;
   apiKey: string;
   onOpenCard: (cardId: string) => void;
+  onNavigateSettings?: () => void;
 }
 
-export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: BrainDrawerProps) {
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  cited?: KnowledgeCard[];
+}
+
+export function BrainAssistantDrawer({
+  cards,
+  settings,
+  apiKey,
+  onOpenCard,
+  onNavigateSettings,
+}: BrainDrawerProps) {
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [citedCards, setCitedCards] = useState<KnowledgeCard[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: "assistant",
+      content:
+        "你好！我是你的知识库助手。我会基于你收集的卡片检索事实，回答你的提问并指出引用来源。",
+    },
+  ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleAsk = async () => {
-    const q = question.trim();
+  const needsKey = requiresKey(settings.baseURL) && !apiKey.trim();
+
+  const handleAsk = async (textToAsk?: string) => {
+    const q = (textToAsk || question).trim();
     if (!q || loading) return;
 
-    if (requiresKey(settings.baseURL) && !apiKey) {
+    if (needsKey && inShell()) {
       setError("请先在设置中配置大模型 API 密钥。");
       return;
     }
 
     setLoading(true);
     setError("");
-    setAnswer("");
+    const newMessages: Message[] = [...messages, { role: "user", content: q }];
+    setMessages(newMessages);
+    setQuestion("");
 
     // 1. 本地多信号检索相关卡片作为上下文 (RAG 粗筛)
     const matched = searchCards(q, cards).slice(0, 4).map((r) => r.card);
-    setCitedCards(matched);
 
     if (matched.length === 0) {
-      setAnswer("知识库中没有找到相关内容。请缩短关键词，或先收集相关素材；本次没有向模型发送请求。");
+      setMessages([
+        ...newMessages,
+        {
+          role: "assistant",
+          content:
+            "知识库中没有检索到与此相关的卡片。请尝试更通用的关键词，或先通过剪藏/导入补充该领域的知识素材。",
+        },
+      ]);
+      setLoading(false);
+      return;
+    }
+
+    if (!inShell()) {
+      // 浏览器环境演示模式：提示并展示检索到的卡片
+      setMessages([
+        ...newMessages,
+        {
+          role: "assistant",
+          content: `检索到 ${matched.length} 张相关知识卡（在桌面客户端连接大模型可获得智能合成回答）：\n\n${matched
+            .map((c, i) => `【卡片 ${i + 1}】${c.headline}\n${c.details.slice(0, 100)}...`)
+            .join("\n\n")}`,
+          cited: matched,
+        },
+      ]);
       setLoading(false);
       return;
     }
@@ -142,7 +205,6 @@ export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: Br
 3. 语言精炼、重点突出。`;
 
     const userPrompt = `【知识库参考卡片】:\n${contextText || "暂无相关卡片"}\n\n【用户问题】: ${q}`;
-
     const endpoint = completionURL(settings.baseURL);
 
     const body = JSON.stringify({
@@ -157,7 +219,14 @@ export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: Br
     try {
       const resp = await completeChat(endpoint, apiKey, body);
       if (!resp.trim()) throw new Error("模型未返回有效内容，请检查连接后重试");
-      setAnswer(resp);
+      setMessages([
+        ...newMessages,
+        {
+          role: "assistant",
+          content: resp,
+          cited: matched,
+        },
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -165,59 +234,130 @@ export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: Br
     }
   };
 
+  const sampleQuestions = [
+    "总结我的主要知识领域",
+    "梳理最近沉淀的核心笔记",
+    "有哪些关于架构或性能的记录？",
+  ];
+
   return (
-    <section className="detail">
-      <h1>第二大脑智能问答</h1>
-      <p className="hint">
-        按关键词检索知识卡后交给模型回答，可点击引用回到原文。当前尚未接入语义检索，模型回答仍需核对来源。
-      </p>
+    <div className="ws-brain-container">
+      <div className="ws-brain-wrapper">
+        <header className="ws-brain-header">
+          <div>
+            <h1>知识问答助手</h1>
+            <p className="ws-hint">
+              以本地知识库卡片为依据，结合大模型推理回答。检索命中的卡片可直接定位回溯。
+            </p>
+          </div>
+        </header>
 
-      <div style={{ display: "flex", gap: "8px", margin: "16px 0" }}>
-        <input
-          style={{ flex: 1, padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--line)" }}
-          placeholder="问问你的第二大脑，例如：SQLite-vec 在小规模下的性能如何？"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void handleAsk();
-          }}
-        />
-        <button
-          type="button"
-          className="primary"
-          disabled={!question.trim() || loading}
-          onClick={() => void handleAsk()}
-        >
-          {loading ? "检索思考中..." : "向大脑提问"}
-        </button>
-      </div>
-
-      {error ? <p className="banner error">{error}</p> : null}
-
-      {citedCards.length > 0 ? (
-        <div style={{ marginBottom: "16px", padding: "12px", background: "var(--side)", borderRadius: "8px" }}>
-          <strong style={{ fontSize: "13px", color: "var(--muted)" }}>检索命中的上下文卡片：</strong>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "6px" }}>
-            {citedCards.map((c, i) => (
+        {needsKey ? (
+          <div className="ws-brain-key-prompt">
+            <Icon name="settings" size={16} />
+            <div style={{ flex: 1 }}>
+              <strong>尚未配置 API 密钥</strong>
+              <p>配置服务商 API Key 后即可开启由模型驱动的智能问答。</p>
+            </div>
+            {onNavigateSettings ? (
               <button
-                key={c.id}
                 type="button"
-                style={{ fontSize: "12px", padding: "3px 8px" }}
-                onClick={() => onOpenCard(c.id)}
+                className="ws-primary"
+                style={{ height: 28, fontSize: 12 }}
+                onClick={onNavigateSettings}
               >
-                [{i + 1}] {c.headline}
+                前往设置
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="ws-brain-chat-history">
+          {messages.map((m, idx) => (
+            <div key={idx} className={`ws-chat-row ${m.role}`}>
+              <div className="ws-chat-avatar">
+                {m.role === "user" ? "我" : <Icon name="ask" size={14} />}
+              </div>
+              <div className="ws-chat-content">
+                <div className="ws-chat-bubble">{m.content}</div>
+                {m.cited && m.cited.length > 0 ? (
+                  <div className="ws-chat-citations">
+                    <span className="ws-cite-title">参考卡片：</span>
+                    {m.cited.map((c, i) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="ws-cite-chip"
+                        onClick={() => onOpenCard(c.id)}
+                      >
+                        [{i + 1}] {c.headline}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+
+          {loading ? (
+            <div className="ws-chat-row assistant">
+              <div className="ws-chat-avatar">
+                <Icon name="ask" size={14} />
+              </div>
+              <div className="ws-chat-content">
+                <div className="ws-chat-bubble ws-chat-loading">
+                  <span>正在检索知识卡并思考中…</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="ws-feedback" role="alert" style={{ margin: "12px 0" }}>
+              <span>{error}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Quick prompt suggestions */}
+        {messages.length <= 2 ? (
+          <div className="ws-brain-suggestions">
+            <span className="ws-hint" style={{ fontSize: 12 }}>推荐提问：</span>
+            {sampleQuestions.map((sq) => (
+              <button
+                key={sq}
+                type="button"
+                className="ws-suggestion-chip"
+                onClick={() => void handleAsk(sq)}
+              >
+                {sq}
               </button>
             ))}
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {answer ? (
-        <div style={{ marginTop: "16px", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>
-          <h3>回答：</h3>
-          <p>{answer}</p>
+        <div className="ws-brain-input-box">
+          <input
+            type="text"
+            className="ws-brain-input"
+            placeholder="问问你的第二大脑，例如：我记录过哪些关于 SQLite 索引的要点？"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleAsk();
+            }}
+            disabled={loading}
+          />
+          <button
+            type="button"
+            className="ws-primary ws-brain-send-btn"
+            disabled={!question.trim() || loading}
+            onClick={() => void handleAsk()}
+          >
+            提问 <kbd>↵</kbd>
+          </button>
         </div>
-      ) : null}
-    </section>
+      </div>
+    </div>
   );
 }

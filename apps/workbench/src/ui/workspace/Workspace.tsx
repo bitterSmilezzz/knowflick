@@ -705,21 +705,15 @@ export function Workspace() {
           ) : (
             <article className="ws-reader" data-workspace-pane="inspector" aria-label="阅读区">
               <div className="ws-empty">
-                <div>
-                  <p>选择一条内容，开始阅读</p>
-                  <div className="ws-empty-actions">
-                    <button
-                      className="ws-primary"
-                      disabled={loading || busy}
-                      onClick={() => setCapture(true)}
-                    >
-                      <Icon name="plus" />记录
-                    </button>
-                    <button className="ws-bordered" onClick={() => importRef.current?.click()}>
-                      <Icon name="upload" />导入
-                    </button>
+                {filtered.length === 0 ? (
+                  <div className="ws-empty-calm" aria-hidden="true" />
+                ) : (
+                  <div className="ws-empty-guide">
+                    <Icon name="library" size={28} style={{ opacity: 0.35, marginBottom: 8 }} />
+                    <p style={{ fontWeight: 500, color: "var(--ink)" }}>选择一条内容，开始阅读</p>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>点击左侧条目查看正文，或使用快捷键浏览</span>
                   </div>
-                </div>
+                )}
               </div>
             </article>
           )}
@@ -747,23 +741,13 @@ export function Workspace() {
               ) : null}
               {page === "briefing" ? <Briefing cards={cards} onOpenCard={openCard} /> : null}
               {page === "brain" ? (
-                inShell() ? (
-                  <Assistant
-                    cards={cards}
-                    settings={file.settings}
-                    apiKey={apiKey}
-                    onOpenCard={openCard}
-                  />
-                ) : (
-                  <div className="ws-empty">
-                    <div>
-                      <p>请在桌面客户端配置模型连接后使用知识问答</p>
-                      <button className="ws-bordered" onClick={() => navigate("library")}>
-                        去搜索知识库
-                      </button>
-                    </div>
-                  </div>
-                )
+                <Assistant
+                  cards={cards}
+                  settings={file.settings}
+                  apiKey={apiKey}
+                  onOpenCard={openCard}
+                  onNavigateSettings={() => navigate("settings")}
+                />
               ) : null}
               {page === "review" && reviewEnabled ? (
                 <Quiz

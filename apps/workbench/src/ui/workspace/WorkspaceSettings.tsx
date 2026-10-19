@@ -1,12 +1,9 @@
-import {
-  useState,
-  useEffect,
-  type FormEvent,
-} from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { normalizePaperTheme, type SettingsFile, type AiSettings } from "../../domain/settings";
 import { AI_PROVIDER_PRESETS, findPresetById } from "../../domain/aiPresets";
 import { probeConnection } from "../../domain/aiChat";
 import { inShell } from "../../shell/store";
+import { Icon } from "./Icon";
 
 export interface WorkspaceSettingsProps {
   file: SettingsFile;
@@ -84,147 +81,216 @@ export function WorkspaceSettings({
     }
   };
 
+  const currentTheme = normalizePaperTheme(draftSettings.paperTheme);
+
   return (
     <>
       <div className="ws-reader-scroll">
-      <div className="ws-reader-inner" data-page="settings">
-        <h1>设置</h1>
-
-        {saveStatus !== "idle" && saveMessage ? (
-          <div
-            role={saveStatus === "error" ? "alert" : "status"}
-            className="ws-feedback"
-            data-status={saveStatus}
-            style={{ border: 0, padding: "8px 0" }}
-          >
-            <span>{saveMessage}</span>
-          </div>
-        ) : null}
-
-        <form id="ws-settings-form" className="ws-settings-form" onSubmit={(e) => void handleSubmit(e)}>
-          <section data-group="appearance">
-            <h2>外观</h2>
-            <label className="ws-field">
-              <span>界面外观</span>
-              <select
-                value={normalizePaperTheme(draftSettings.paperTheme)}
-                onChange={(e) =>
-                  setDraftSettings((prev) => ({ ...prev, paperTheme: e.target.value }))
-                }
-              >
-                <option value="SYSTEM">跟随系统</option>
-                <option value="LIGHT">浅色</option>
-                <option value="DARK">深色</option>
-              </select>
-            </label>
-            <p className="ws-hint">跟随系统时，系统切换深浅会立即生效，无需重启。</p>
-          </section>
-
-          <section data-group="ai">
-            <h2>AI 连接</h2>
-
-            <label className="ws-field">
-              <span>服务商预设</span>
-              <select
-                value={draftSettings.providerId || "deepseek"}
-                onChange={(e) => {
-                  const pId = e.target.value;
-                  const preset = findPresetById(pId);
-                  if (preset && pId !== "custom") {
-                    setDraftSettings((prev) => ({
-                      ...prev,
-                      providerId: pId,
-                      baseURL: preset.baseURL,
-                      model: preset.defaultModel,
-                    }));
-                  } else {
-                    setDraftSettings((prev) => ({ ...prev, providerId: "custom" }));
-                  }
-                }}
-              >
-                {AI_PROVIDER_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ws-field">
-              <span>接口地址</span>
-              <input
-                type="text"
-                value={draftSettings.baseURL}
-                onChange={(e) => setDraftSettings((prev) => ({ ...prev, baseURL: e.target.value }))}
-                placeholder="https://api.deepseek.com"
-              />
-            </label>
-
-            <label className="ws-field">
-              <span>模型</span>
-              <input
-                type="text"
-                value={draftSettings.model}
-                onChange={(e) => setDraftSettings((prev) => ({ ...prev, model: e.target.value }))}
-                placeholder="deepseek-chat"
-              />
-            </label>
-
-            <label className="ws-field">
-              <span>API 密钥</span>
-              <input
-                type="password"
-                autoComplete="off"
-                value={draftKey}
-                onChange={(e) => setDraftKey(e.target.value)}
-                placeholder="输入服务商 API Key"
-              />
-            </label>
-            <p className="ws-hint">
-              桌面客户端将密钥单独存入本机文件，当前尚未接入系统钥匙串。浏览器体验仅存于当前标签页的会话存储，不包含在导出备份中。
-            </p>
-
-            <div className="ws-editor-actions">
-              <button
-                className="ws-bordered"
-                type="button"
-                onClick={() => void handleProbe()}
-                disabled={probeStatus === "testing"}
-              >
-                {probeStatus === "testing" ? "连接测试中…" : "测试连接"}
-              </button>
-              {probeStatus !== "idle" && probeMessage ? (
-                <span
-                  className="ws-hint"
-                  role={probeStatus === "error" ? "alert" : "status"}
-                  data-probe-status={probeStatus}
-                >
-                  {probeMessage}
-                </span>
-              ) : null}
+        <div className="ws-reader-inner" data-page="settings" style={{ maxWidth: 680 }}>
+          <header className="ws-settings-header">
+            <div>
+              <h1>工作台设置</h1>
+              <p className="ws-hint">管理知识库外观偏好、模型服务商连接与内置功能模块。</p>
             </div>
-          </section>
+          </header>
 
-          <section data-group="modules">
-            <h2>功能模块</h2>
-            <label className="ws-checkbox">
-              <input
-                type="checkbox"
-                checked={draftReviewEnabled}
-                onChange={(e) => setDraftReviewEnabled(e.target.checked)}
-              />
-              <span>启用「温故知新」复习模块</span>
-            </label>
-            <p className="ws-hint">
-              开启后显示 FSRS 间隔复习入口。关闭后保留知识库、搜索、录入和整理功能。当前是内置开关，第三方插件尚未接入。
-            </p>
-          </section>
+          {saveStatus !== "idle" && saveMessage ? (
+            <div
+              role={saveStatus === "error" ? "alert" : "status"}
+              className="ws-feedback"
+              data-status={saveStatus}
+              style={{ border: 0, padding: "8px 0", marginBottom: 12 }}
+            >
+              <span>{saveMessage}</span>
+            </div>
+          ) : null}
 
-        </form>
+          <form id="ws-settings-form" className="ws-settings-form" onSubmit={(e) => void handleSubmit(e)}>
+            {/* 第一组：外观 */}
+            <section data-group="appearance" className="ws-settings-card">
+              <div className="ws-settings-card-head">
+                <Icon name="star" size={15} />
+                <div>
+                  <h2>界面外观</h2>
+                  <p className="ws-hint">选择适合长时间阅读与整理的视觉模式</p>
+                </div>
+              </div>
+
+              <div className="ws-settings-row">
+                <div className="ws-settings-label">
+                  <strong>色彩主题</strong>
+                  <span>自适应系统深浅或固定一种模式</span>
+                </div>
+                <div className="ws-settings-control">
+                  <div className="ws-segmented-control" role="radiogroup" aria-label="界面外观选择">
+                    {(
+                      [
+                        ["SYSTEM", "跟随系统"],
+                        ["LIGHT", "浅色"],
+                        ["DARK", "深色"],
+                      ] as const
+                    ).map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        className={currentTheme === val ? "ws-seg-active" : ""}
+                        onClick={() => setDraftSettings((prev) => ({ ...prev, paperTheme: val }))}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Keep select in DOM for automation & accessibility */}
+                  <select
+                    className="ws-hidden-select"
+                    value={currentTheme}
+                    onChange={(e) =>
+                      setDraftSettings((prev) => ({ ...prev, paperTheme: e.target.value }))
+                    }
+                  >
+                    <option value="SYSTEM">跟随系统</option>
+                    <option value="LIGHT">浅色</option>
+                    <option value="DARK">深色</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            {/* 第二组：AI 连接 */}
+            <section data-group="ai" className="ws-settings-card">
+              <div className="ws-settings-card-head">
+                <Icon name="ask" size={15} />
+                <div>
+                  <h2>AI 模型连接</h2>
+                  <p className="ws-hint">用于素材提炼、知识问答与卡片标签建议</p>
+                </div>
+              </div>
+
+              <div className="ws-settings-body">
+                <label className="ws-field">
+                  <span>服务商预设</span>
+                  <select
+                    value={draftSettings.providerId || "deepseek"}
+                    onChange={(e) => {
+                      const pId = e.target.value;
+                      const preset = findPresetById(pId);
+                      if (preset && pId !== "custom") {
+                        setDraftSettings((prev) => ({
+                          ...prev,
+                          providerId: pId,
+                          baseURL: preset.baseURL,
+                          model: preset.defaultModel,
+                        }));
+                      } else {
+                        setDraftSettings((prev) => ({ ...prev, providerId: "custom" }));
+                      }
+                    }}
+                  >
+                    {AI_PROVIDER_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="ws-field-grid">
+                  <label className="ws-field">
+                    <span>接口地址 (Base URL)</span>
+                    <input
+                      type="text"
+                      value={draftSettings.baseURL}
+                      onChange={(e) =>
+                        setDraftSettings((prev) => ({ ...prev, baseURL: e.target.value }))
+                      }
+                      placeholder="https://api.deepseek.com"
+                    />
+                  </label>
+
+                  <label className="ws-field">
+                    <span>模型名称</span>
+                    <input
+                      type="text"
+                      value={draftSettings.model}
+                      onChange={(e) =>
+                        setDraftSettings((prev) => ({ ...prev, model: e.target.value }))
+                      }
+                      placeholder="deepseek-chat"
+                    />
+                  </label>
+                </div>
+
+                <label className="ws-field">
+                  <span>API 密钥 (API Key)</span>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={draftKey}
+                    onChange={(e) => setDraftKey(e.target.value)}
+                    placeholder="sk-..."
+                  />
+                </label>
+
+                <p className="ws-hint" style={{ fontSize: 11 }}>
+                  密钥单独存放于本机数据目录；浏览器体验模式仅在当前会话生效。
+                </p>
+
+                <div className="ws-probe-row">
+                  <button
+                    className="ws-bordered"
+                    type="button"
+                    onClick={() => void handleProbe()}
+                    disabled={probeStatus === "testing"}
+                  >
+                    {probeStatus === "testing" ? "连接测试中…" : "测试连接"}
+                  </button>
+                  {probeStatus !== "idle" && probeMessage ? (
+                    <span
+                      className="ws-hint"
+                      role={probeStatus === "error" ? "alert" : "status"}
+                      data-probe-status={probeStatus}
+                    >
+                      {probeMessage}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+
+            {/* 第三组：功能模块 */}
+            <section data-group="modules" className="ws-settings-card">
+              <div className="ws-settings-card-head">
+                <Icon name="layers" size={15} />
+                <div>
+                  <h2>功能模块</h2>
+                  <p className="ws-hint">控制扩展功能的启用状态，保持工作台精炼</p>
+                </div>
+              </div>
+
+              <div className="ws-settings-row">
+                <div className="ws-settings-label">
+                  <strong>「温故知新」间隔复习</strong>
+                  <span>根据艾宾浩斯与 FSRS 记忆曲线安排知识卡片温故测验</span>
+                </div>
+                <div className="ws-settings-control">
+                  <label className="ws-switch-label">
+                    <input
+                      type="checkbox"
+                      className="ws-switch-input"
+                      checked={draftReviewEnabled}
+                      onChange={(e) => setDraftReviewEnabled(e.target.checked)}
+                    />
+                    <span className="ws-switch-slider" />
+                  </label>
+                </div>
+              </div>
+            </section>
+          </form>
+        </div>
       </div>
-      </div>
+
       <footer className="ws-reader-foot ws-settings-foot">
-        <span>{isSaving ? "正在保存…" : "修改只在你点击保存后生效"}</span>
+        <span>{isSaving ? "正在保存…" : "修改在点击保存后立即生效"}</span>
         <div className="ws-editor-actions">
           <button type="button" onClick={onBack} disabled={isSaving}>
             返回
