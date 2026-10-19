@@ -38,6 +38,8 @@
     "allow-db-search-cards-hybrid",
     "allow-db-list-unembedded-card-ids",
     "allow-db-save-card-embeddings-batch",
-    "allow-request-embeddings"
+    "allow-request-embeddings",
+    "allow-db-search-materials-fts",
+    "allow-db-backfill-material-fts"
   ]
 }

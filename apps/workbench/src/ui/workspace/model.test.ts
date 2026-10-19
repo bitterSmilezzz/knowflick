@@ -26,6 +26,22 @@ describe("workspace collection and capture behavior", () => {
   expect(filterEntries(entries, "", "软件", "card")).toHaveLength(1);
   expect(filterEntries(entries, "不存在")).toHaveLength(0);
  });
+ it("indexed ids rescue entries the in-memory substring match would miss", () => {
+  const m = makeMaterial({ title: "CMP 可行性", text: "共享界面采用 Compose Multiplatform", url: "" });
+  const other = makeMaterial({ title: "无关素材", text: "与检索词毫无关系", url: "" });
+  const entries = entriesFor([m, other], [], "library");
+  // 这个词不在正文里，纯内存匹配不会有结果
+  expect(filterEntries(entries, "向量索引")).toHaveLength(0);
+  // 索引（FTS5 的分词/前缀口径与 includes 并不等价）说这条素材命中，就把它带进来
+  const indexed = filterEntries(entries, "向量索引", "", "all", new Set([m.id]));
+  expect(indexed).toHaveLength(1);
+  expect(indexed[0].id).toBe(m.id);
+  // 索引兜底不该越权：标签/集合筛选仍然生效
+  expect(filterEntries(entries, "向量索引", "不存在的分类", "all", new Set([m.id]))).toHaveLength(0);
+  expect(filterEntries(entries, "向量索引", "", "card", new Set([m.id]))).toHaveLength(0);
+  // 空查询时索引集合不生效，避免把整库都放出来
+  expect(filterEntries(entries, "", "", "all", new Set([m.id, other.id]))).toHaveLength(2);
+ });
  it("rejects blank input and unsafe sources before saving", () => {
   expect(() => makeMaterial({ title: "", text: " ", url: "" })).toThrow();
   expect(() => makeMaterial({ title: "", text: "正文", url: "javascript:alert(1)" })).toThrow();

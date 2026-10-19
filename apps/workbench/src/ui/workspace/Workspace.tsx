@@ -5,7 +5,7 @@ import { normalizePaperTheme, parseSettings, type SettingsFile } from "../../dom
 import { askModel } from "../../domain/aiChat";
 import { requiresKey } from "../../domain/ingest";
 import { digest } from "../../domain/clipEngine";
-import { dbListArtifacts, dbSaveArtifact, fetchClip, inShell, type RawMaterial } from "../../shell/store";
+import { dbBackfillMaterialFts, dbListArtifacts, dbSaveArtifact, dbSearchMaterialsFts, fetchClip, inShell, type RawMaterial } from "../../shell/store";
 import {
   entriesFor,
   filterEntries,
@@ -82,6 +82,7 @@ export function Workspace() {
   const [previewSelectedIds, setPreviewSelectedIds] = useState<Set<string>>(new Set());
   const [previewSource, setPreviewSource] = useState<RawMaterial | null>(null);
   const [visibleCount, setVisibleCount] = useState(60);
+  const [indexedMaterialIds, setIndexedMaterialIds] = useState<ReadonlySet<string>>(new Set());
   const layout = usePaneLayout();
   const readerRef = useRef<HTMLElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -178,8 +179,44 @@ export function Workspace() {
     : "library";
   const isCollection = ["inbox", "library", "favorites", "archive"].includes(page);
 
+  // 老库升级后 fts_materials 可能是空的：启动时补一次索引（幂等，已同步过的不会再插）。
+  // 放在这里而不是每次检索里，避免输入延迟随库规模变化。
+  useEffect(() => {
+    if (!inShell()) return;
+    void dbBackfillMaterialFts(dir).catch((err) => {
+      console.warn("素材全文索引补齐跳过:", err);
+    });
+  }, [dir]);
+
+  // 桌面端：查询非空时去 SQLite 的 fts_materials 拿一次命中集合（持久化跨素材全文索引）。
+  // 浏览器体验模式没有这层索引，效果退化为内存子串匹配。
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!inShell() || !trimmed) {
+      setIndexedMaterialIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void dbSearchMaterialsFts(trimmed, 500, dir)
+        .then((hits) => {
+          if (!cancelled) setIndexedMaterialIds(new Set(hits.map((m) => m.id)));
+        })
+        .catch(() => {
+          if (!cancelled) setIndexedMaterialIds(new Set());
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, dir]);
+
   const entries = useMemo(() => entriesFor(materials, cards, collection), [materials, cards, collection]);
-  const filtered = useMemo(() => filterEntries(entries, query, tag, source), [entries, query, tag, source]);
+  const filtered = useMemo(
+    () => filterEntries(entries, query, tag, source, indexedMaterialIds),
+    [entries, query, tag, source, indexedMaterialIds]
+  );
 
   useEffect(() => setVisibleCount(60), [page, query, tag, source]);
 

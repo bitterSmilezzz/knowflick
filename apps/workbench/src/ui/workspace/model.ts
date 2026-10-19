@@ -9,9 +9,29 @@ export function entriesFor(materials: RawMaterial[], cards: KnowledgeCard[], col
   const cardEntries: Entry[] = cards.filter(c => collection !== "favorites" || c.isFavorite).map(c => ({ id: c.id, kind: "card", title: c.headline, text: c.details, category: c.category || "未分类", tags: c.tags || [], date: c.editedAt || c.createdAt, url: c.links[0]?.url || "", original: c }));
   return (collection === "favorites" ? cardEntries : collection === "inbox" || collection === "archive" ? materialEntries : [...materialEntries, ...cardEntries]).sort((a, b) => b.date - a.date || a.id.localeCompare(b.id));
 }
-export function filterEntries(entries: Entry[], query: string, tag = "", source = "all"): Entry[] {
+/**
+ * 过滤当前集合的条目。
+ *
+ * `indexedIds` 是可选的 SQLite FTS5 命中集合：桌面端在查询非空时会去查持久化全文索引，
+ * 命中的素材 id 传进来。这样两件事同时成立——
+ * 索引能召回内存子串匹配漏掉的条目（FTS5 的分词/前缀与 `includes` 并不等价），
+ * 而索引查询失败时传空集就退回纯内存匹配，功能不会因为索引缺位而消失。
+ */
+export function filterEntries(
+  entries: Entry[],
+  query: string,
+  tag = "",
+  source = "all",
+  indexedIds: ReadonlySet<string> = new Set()
+): Entry[] {
   const tokens = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
-  return entries.filter(e => (!tag || e.category === tag || e.tags.includes(tag)) && (source === "all" || (source === "card" ? e.kind === "card" : e.kind === "material")) && tokens.every(t => `${e.title}\n${e.text}\n${e.category}\n${e.tags.join(" ")}\n${e.url}`.toLocaleLowerCase().includes(t)));
+  const useIndex = tokens.length > 0 && indexedIds.size > 0;
+  return entries.filter(e => {
+    if (tag && !(e.category === tag || e.tags.includes(tag))) return false;
+    if (source !== "all" && !(source === "card" ? e.kind === "card" : e.kind === "material")) return false;
+    if (useIndex && e.kind === "material" && indexedIds.has(e.id)) return true;
+    return tokens.every(t => `${e.title}\n${e.text}\n${e.category}\n${e.tags.join(" ")}\n${e.url}`.toLocaleLowerCase().includes(t));
+  });
 }
 export function makeMaterial(input: { title: string; text: string; url: string }): RawMaterial {
   const text = input.text.trim();

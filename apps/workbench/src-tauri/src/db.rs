@@ -428,6 +428,14 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             tokenize = 'unicode61 remove_diacritics 2'
         );
 
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_materials USING fts5(
+            material_id UNINDEXED,
+            title,
+            raw_text,
+            source_url,
+            tokenize = 'unicode61 remove_diacritics 2'
+        );
+
         CREATE TABLE IF NOT EXISTS artifacts (
             id                  TEXT PRIMARY KEY,
             artifact_type       TEXT NOT NULL,
@@ -529,7 +537,120 @@ pub fn save_material(conn: &Connection, material: &RawMaterialDto) -> Result<()>
             updated_at,
         ],
     )?;
+
+    // 同步刷新素材全文索引（与 cards 的 fts_cards 同构）
+    conn.execute("DELETE FROM fts_materials WHERE material_id = ?1", params![material.id])?;
+    conn.execute(
+        "INSERT INTO fts_materials (material_id, title, raw_text, source_url) VALUES (?1, ?2, ?3, ?4)",
+        params![
+            material.id,
+            material.title,
+            material.raw_text,
+            material.source_url.clone().unwrap_or_default(),
+        ],
+    )?;
     Ok(())
+}
+
+/// 把尚未进入 FTS 索引的素材补齐（老库升级、或索引与主表不同步时用）。
+pub fn backfill_material_fts(conn: &Connection) -> Result<usize> {
+    let missing: Vec<(String, String, String, Option<String>)> = {
+        let mut stmt = conn.prepare(
+            "SELECT m.id, m.title, m.raw_text, m.source_url
+             FROM materials m
+             LEFT JOIN fts_materials f ON f.material_id = m.id
+             WHERE m.is_deleted = 0 AND f.material_id IS NULL",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+
+    for (id, title, raw_text, source_url) in &missing {
+        conn.execute(
+            "INSERT INTO fts_materials (material_id, title, raw_text, source_url) VALUES (?1, ?2, ?3, ?4)",
+            params![id, title, raw_text, source_url.clone().unwrap_or_default()],
+        )?;
+    }
+    Ok(missing.len())
+}
+
+/// 素材全文检索：FTS5 前缀匹配 + LIKE 兜底，返回与卡片检索同形的 Entry 数据。
+pub fn search_materials_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<RawMaterialDto>> {
+    let clean_query = query.trim();
+    if clean_query.is_empty() {
+        return list_materials(conn, false, limit);
+    }
+
+    let match_query = clean_query
+        .split_whitespace()
+        .map(|w| format!("\"{}\"*", w.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+
+    let mut cards = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT m.id, m.source_type, m.title, m.source_url, m.raw_text, m.cleaned_markdown,
+                   m.content_hash, m.media_path, m.media_size_bytes, m.metadata_json,
+                   m.inbox_status, m.created_at, m.updated_at
+            FROM fts_materials f
+            JOIN materials m ON f.material_id = m.id
+            WHERE m.is_deleted = 0 AND fts_materials MATCH ?1
+            ORDER BY bm25(fts_materials) ASC
+            LIMIT ?2
+            "#,
+        )?;
+        let rows = stmt.query_map(params![match_query, limit], map_material_row)?;
+        for r in rows {
+            cards.push(r?);
+        }
+    }
+
+    if cards.is_empty() {
+        let wildcard = format!("%{}%", clean_query);
+        let mut fallback = conn.prepare(
+            r#"
+            SELECT id, source_type, title, source_url, raw_text, cleaned_markdown,
+                   content_hash, media_path, media_size_bytes, metadata_json,
+                   inbox_status, created_at, updated_at
+            FROM materials
+            WHERE is_deleted = 0 AND (title LIKE ?1 OR raw_text LIKE ?1 OR source_url LIKE ?1)
+            ORDER BY created_at DESC
+            LIMIT ?2
+            "#,
+        )?;
+        let rows = fallback.query_map(params![wildcard, limit], map_material_row)?;
+        for r in rows {
+            cards.push(r?);
+        }
+    }
+
+    Ok(cards)
+}
+
+fn map_material_row(row: &rusqlite::Row) -> rusqlite::Result<RawMaterialDto> {
+    Ok(RawMaterialDto {
+        id: row.get(0)?,
+        source_type: row.get(1)?,
+        title: row.get(2)?,
+        source_url: row.get(3)?,
+        raw_text: row.get(4)?,
+        cleaned_markdown: row.get(5)?,
+        content_hash: row.get(6)?,
+        media_path: row.get(7)?,
+        media_size_bytes: row.get(8)?,
+        metadata_json: row.get(9)?,
+        inbox_status: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
+    })
 }
 
 pub fn list_materials(conn: &Connection, inbox_only: bool, limit: i64) -> Result<Vec<RawMaterialDto>> {
@@ -542,23 +663,7 @@ pub fn list_materials(conn: &Connection, inbox_only: bool, limit: i64) -> Result
     };
 
     let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map(params![limit], |row| {
-        Ok(RawMaterialDto {
-            id: row.get(0)?,
-            source_type: row.get(1)?,
-            title: row.get(2)?,
-            source_url: row.get(3)?,
-            raw_text: row.get(4)?,
-            cleaned_markdown: row.get(5)?,
-            content_hash: row.get(6)?,
-            media_path: row.get(7)?,
-            media_size_bytes: row.get(8)?,
-            metadata_json: row.get(9)?,
-            inbox_status: row.get(10)?,
-            created_at: row.get(11)?,
-            updated_at: row.get(12)?,
-        })
-    })?;
+    let rows = stmt.query_map(params![limit], map_material_row)?;
 
     let mut result = Vec::new();
     for r in rows {
@@ -1286,6 +1391,77 @@ mod tests {
         delete_card(&conn, "card-1").unwrap();
         let empty_cards = list_cards(&conn, 10, 0).unwrap();
         assert_eq!(empty_cards.len(), 0);
+    }
+
+    #[test]
+    fn test_material_fts_index_lifecycle() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+
+        let mut material = RawMaterialDto {
+            id: "mat-fts-1".to_string(),
+            source_type: "web".to_string(),
+            title: "CMP 跨端渲染可行性备忘".to_string(),
+            source_url: Some("https://example.com/cmp".to_string()),
+            raw_text: "结论：共享界面用 Compose Multiplatform，宿主边界留在平台侧。".to_string(),
+            cleaned_markdown: None,
+            content_hash: calculate_hash("x"),
+            media_path: None,
+            media_size_bytes: 0,
+            metadata_json: "{}".to_string(),
+            inbox_status: "inbox".to_string(),
+            created_at: 1700000000000,
+            updated_at: 1700000000000,
+        };
+        save_material(&conn, &material).unwrap();
+
+        // 中文前缀命中（FTS5 trigram + remove_diacritics 分词路径）
+        let by_title = search_materials_fts(&conn, "跨端", 10).unwrap();
+        assert_eq!(by_title.len(), 1);
+        assert_eq!(by_title[0].id, "mat-fts-1");
+
+        // 正文命中
+        let by_body = search_materials_fts(&conn, "Compose", 10).unwrap();
+        assert_eq!(by_body.len(), 1);
+
+        // 未命中返回空，不回落出无关结果
+        let miss = search_materials_fts(&conn, "完全无关的术语", 10).unwrap();
+        assert_eq!(miss.len(), 0);
+
+        // 空查询等于全量列举
+        let all = search_materials_fts(&conn, "   ", 10).unwrap();
+        assert_eq!(all.len(), 1);
+
+        // 编辑正文后重建索引：旧词不再命中，新词命中
+        material.raw_text = "改版：改用 Web 前端与 Tauri 壳承载同一套界面。".to_string();
+        material.updated_at = 1700000099000;
+        save_material(&conn, &material).unwrap();
+        assert_eq!(search_materials_fts(&conn, "Compose", 10).unwrap().len(), 0);
+        let after_edit = search_materials_fts(&conn, "Tauri", 10).unwrap();
+        assert_eq!(after_edit.len(), 1);
+        // 同一条素材不该在索引里留下重复行
+        let dupes: i64 = conn
+            .query_row("SELECT COUNT(*) FROM fts_materials WHERE material_id = 'mat-fts-1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(dupes, 1);
+
+        // 索引被清空后（模拟老库升级），backfill 能补回主表里的素材
+        conn.execute("DELETE FROM fts_materials", []).unwrap();
+        let indexed_after_clear: i64 = conn
+            .query_row("SELECT COUNT(*) FROM fts_materials", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(indexed_after_clear, 0);
+        // 注意：此时 search 仍会命中——因为 FTS 空结果会走 LIKE 兜底，而不是返回空。
+        // 兜底是「索引没建起来也别丢功能」的保险，不代表索引有效。
+        assert_eq!(search_materials_fts(&conn, "Tauri", 10).unwrap().len(), 1);
+        let synced = backfill_material_fts(&conn).unwrap();
+        assert_eq!(synced, 1);
+        let indexed_after_backfill: i64 = conn
+            .query_row("SELECT COUNT(*) FROM fts_materials", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(indexed_after_backfill, 1);
+        // 幂等：再跑一次不重复插入
+        assert_eq!(backfill_material_fts(&conn).unwrap(), 0);
     }
 
     #[test]

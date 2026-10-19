@@ -227,3 +227,11 @@ export function requestEmbeddings(
   return invoke("request_embeddings", { endpoint, apiKey, model, input });
 }
 
+export function dbSearchMaterialsFts(query: string, limit?: number, dir?: string): Promise<RawMaterial[]> {
+  return invoke("db_search_materials_fts", { dir: dir ?? null, query, limit: limit ?? 60 });
+}
+
+export function dbBackfillMaterialFts(dir?: string): Promise<number> {
+  return invoke("db_backfill_material_fts", { dir: dir ?? null });
+}
+

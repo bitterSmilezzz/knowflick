@@ -293,6 +293,25 @@ fn db_list_unembedded_card_ids(dir: Option<String>, limit: Option<i64>) -> Resul
     db::list_unembedded_card_ids(&conn, limit.unwrap_or(100)).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn db_search_materials_fts(dir: Option<String>, query: String, limit: Option<i64>) -> Result<Vec<db::RawMaterialDto>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    // 不在这里补索引：补齐是一次全表 LEFT JOIN 扫描，放在每次按键的检索里会把
+    // 输入延迟拖成库规模相关的。索引同步由 save_material 负责，老库升级走
+    // db_backfill_material_fts（应用启动时调一次）。
+    db::search_materials_fts(&conn, &query, limit.unwrap_or(60)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_backfill_material_fts(dir: Option<String>) -> Result<usize, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::backfill_material_fts(&conn).map_err(|e| e.to_string())
+}
+
 #[derive(serde::Deserialize)]
 pub struct CardEmbeddingBatchItem {
     pub card_id: String,
@@ -682,7 +701,9 @@ pub fn run() {
             db_search_cards_hybrid,
             db_list_unembedded_card_ids,
             db_save_card_embeddings_batch,
-            request_embeddings
+            request_embeddings,
+            db_search_materials_fts,
+            db_backfill_material_fts
         ])
         .build(tauri::generate_context!())
         .expect("error while running KnowFlick")

@@ -34,6 +34,8 @@ fn main() {
             "db_list_unembedded_card_ids",
             "db_save_card_embeddings_batch",
             "request_embeddings",
+            "db_search_materials_fts",
+            "db_backfill_material_fts",
         ]),
     );
     tauri_build::try_build(attributes).expect("failed to run tauri-build");
