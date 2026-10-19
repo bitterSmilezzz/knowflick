@@ -243,6 +243,9 @@ pub fn transcribe(model_path: &Path, wav_path: &Path) -> Result<TranscriptionRes
 
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
     params.set_language(Some("auto"));
+    // whisper 对中文默认倾向输出繁体；给一句简体中文的初始提示能明显纠正，
+    // 这是 whisper.cpp 社区常用的做法，比在结果上做字形转换可靠。
+    params.set_initial_prompt("以下是普通话的句子，请使用简体中文输出。");
     params.set_print_special(false);
     params.set_print_progress(false);
     params.set_print_realtime(false);
@@ -440,6 +443,16 @@ mod tests {
         );
         assert!(!result.text.trim().is_empty(), "转写结果不该为空");
         assert!(result.audio_ms > 0);
+
+        // 非 WAV 也要走通：macOS 上由系统 afconvert 转成 16k 单声道
+        if let Ok(non_wav) = std::env::var("KNOWFLICK_ASR_NON_WAV") {
+            let converted = to_wav_16k_mono(std::path::Path::new(&non_wav)).unwrap();
+            assert_ne!(converted.to_string_lossy(), non_wav, "非 WAV 应该被转换过");
+            let via_afconvert = transcribe(std::path::Path::new(&model), &converted).unwrap();
+            println!("非 WAV 转写: {:?}", via_afconvert.text);
+            assert!(!via_afconvert.text.trim().is_empty());
+            let _ = std::fs::remove_file(&converted);
+        }
     }
 
     #[test]
