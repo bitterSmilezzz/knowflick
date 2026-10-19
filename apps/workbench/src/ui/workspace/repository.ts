@@ -47,9 +47,3 @@ export async function storePreferences(file: SettingsFile, key: string, dir: str
   browserWrite({ ...browserData(), settings: encodeSettings(file) });
   sessionStorage.setItem("knowflick.workspace.key", key);
 }
-export function downloadWorkspace(materials: RawMaterial[], cards: KnowledgeCard[], file: SettingsFile) {
-  const payload = { format: "knowflick-workspace", version: 1, exportedAt: new Date().toISOString(), materials, cards, settings: JSON.parse(encodeSettings(file)) };
-  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
-  const a = document.createElement("a"); a.href = url; a.download = `knowflick-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
