@@ -30,3 +30,8 @@ shared/icons/AppIcon.iconset/
 
 # 会话临时工作区
 .scratch/
+
+# 本地库文件（运行时产物，绝不入库）
+*.db
+*.db-wal
+*.db-shm

@@ -21,6 +21,7 @@ fn main() {
             "db_list_materials",
             "db_update_material_status",
             "db_get_stats",
+            "db_replace_cards",
         ]),
     );
     tauri_build::try_build(attributes).expect("failed to run tauri-build");

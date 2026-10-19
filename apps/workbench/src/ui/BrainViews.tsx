@@ -4,6 +4,7 @@ import { generateCognitiveBriefing, type CognitiveBriefing } from "../domain/bri
 import { searchCards } from "../domain/search";
 import { completeChat } from "../shell/store";
 import type { AiSettings } from "../domain/settings";
+import { completionURL, requiresKey } from "../domain/ingest";
 
 interface BriefingProps {
   cards: KnowledgeCard[];
@@ -107,7 +108,7 @@ export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: Br
     const q = question.trim();
     if (!q || loading) return;
 
-    if (!apiKey) {
+    if (requiresKey(settings.baseURL) && !apiKey) {
       setError("请先在设置中配置大模型 API 密钥。");
       return;
     }
@@ -121,7 +122,9 @@ export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: Br
     setCitedCards(matched);
 
     if (matched.length === 0) {
-      setAnswer("在本地知识库中未找到直接相关的卡片内容，以下是基于通用知识的解答：\n\n");
+      setAnswer("知识库中没有找到相关内容。请缩短关键词，或先收集相关素材；本次没有向模型发送请求。");
+      setLoading(false);
+      return;
     }
 
     // 2. 组装 Prompt
@@ -140,9 +143,7 @@ export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: Br
 
     const userPrompt = `【知识库参考卡片】:\n${contextText || "暂无相关卡片"}\n\n【用户问题】: ${q}`;
 
-    const endpoint = settings.baseURL.endsWith("/chat/completions")
-      ? settings.baseURL
-      : `${settings.baseURL.replace(/\/+$/, "")}/chat/completions`;
+    const endpoint = completionURL(settings.baseURL);
 
     const body = JSON.stringify({
       model: settings.model || "deepseek-chat",
@@ -155,11 +156,8 @@ export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: Br
 
     try {
       const resp = await completeChat(endpoint, apiKey, body);
-      const parsed = JSON.parse(resp) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const text = parsed.choices?.[0]?.message?.content || "模型未返回有效内容";
-      setAnswer(text);
+      if (!resp.trim()) throw new Error("模型未返回有效内容，请检查连接后重试");
+      setAnswer(resp);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -171,7 +169,7 @@ export function BrainAssistantDrawer({ cards, settings, apiKey, onOpenCard }: Br
     <section className="detail">
       <h1>第二大脑智能问答</h1>
       <p className="hint">
-        基于你积累的全部原子卡片与素材，向个人知识库提问。回答严格基于你的知识储备，提供引用溯源。
+        按关键词检索知识卡后交给模型回答，可点击引用回到原文。当前尚未接入语义检索，模型回答仍需核对来源。
       </p>
 
       <div style={{ display: "flex", gap: "8px", margin: "16px 0" }}>

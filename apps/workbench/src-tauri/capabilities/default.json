@@ -25,6 +25,7 @@
     "allow-db-save-material",
     "allow-db-list-materials",
     "allow-db-update-material-status",
-    "allow-db-get-stats"
+    "allow-db-get-stats",
+    "allow-db-replace-cards"
   ]
 }

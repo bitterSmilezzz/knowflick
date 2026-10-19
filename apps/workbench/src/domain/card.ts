@@ -151,6 +151,8 @@ export function cardFromJson(value: unknown, now = Date.now()): KnowledgeCard {
     level: level !== null && level >= 1 && level <= 5 ? level : null,
     track: blankToNull(asString(obj.track)),
     orderKey: blankToNull(asString(obj.orderKey)),
+    ...(typeof obj.materialId === "string" ? { materialId: obj.materialId } : {}),
+    ...(Array.isArray(obj.tags) ? { tags: obj.tags.filter((tag): tag is string => typeof tag === "string") } : {}),
     prereq: Array.isArray(obj.prereq)
       ? obj.prereq.flatMap((item) => {
           const text = asString(item);
@@ -190,6 +192,8 @@ export function cardToJson(card: KnowledgeCard): Record<string, unknown> {
   if (card.track) obj.track = card.track;
   if (card.orderKey) obj.orderKey = card.orderKey;
   if (card.prereq.length > 0) obj.prereq = card.prereq;
+  if (card.materialId) obj.materialId = card.materialId;
+  if (card.tags?.length) obj.tags = card.tags;
   return obj;
 }
 
