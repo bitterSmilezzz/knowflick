@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { cardFromJson } from "./card";
 import { parseMarkdownNotes } from "./notes";
-import { addCards, cardsFromModelText } from "./ingest";
+import { addCards, cardsFromModelText, estimateTokenCount, smartSliceText } from "./ingest";
 
 describe("notes and ingest", () => {
+  it("estimates token count correctly for mixed text", () => {
+    const text = "这是测试文本，包含中文和 English words.";
+    const result = estimateTokenCount(text);
+    expect(result.tokens).toBeGreaterThan(5);
+    expect(result.summary).toContain("tokens");
+  });
+
+  it("slices long text along Markdown section headings", () => {
+    const long = `# 第一章\n\n${"A".repeat(2500)}\n\n# 第二章\n\n${"B".repeat(2500)}`;
+    const slices = smartSliceText(long, 3000);
+    expect(slices.length).toBe(2);
+    expect(slices[0]).toContain("第一章");
+    expect(slices[1]).toContain("第二章");
+  });
+
   it("deduplicates imports by normalized headline", () => {
     const existing = [cardFromJson({ id: "1", headline: "沉没成本不是成本", category: "经济" })];
     const incoming = [

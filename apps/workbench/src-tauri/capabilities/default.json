@@ -1,11 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "桌面窗口可以调用卡库文件命令和选择目录",
+  "description": "桌面主窗口可以调用卡库文件命令和选择目录",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "dialog:default",
+    "allow-hide-capsule",
+    "allow-toggle-capsule",
+    "allow-get-shortcut-status",
     "allow-load-store",
     "allow-save-cards",
     "allow-save-settings",
@@ -14,6 +17,7 @@
     "allow-read-api-key",
     "allow-write-api-key",
     "allow-export-archive",
+    "allow-export-cards-json",
     "allow-fetch-clip",
     "allow-read-text-file",
     "allow-complete-chat",
@@ -26,6 +30,14 @@
     "allow-db-list-materials",
     "allow-db-update-material-status",
     "allow-db-get-stats",
-    "allow-db-replace-cards"
+    "allow-db-replace-cards",
+    "allow-db-save-artifact",
+    "allow-db-list-artifacts",
+    "allow-db-save-card-embedding",
+    "allow-db-search-cards-vector",
+    "allow-db-search-cards-hybrid",
+    "allow-db-list-unembedded-card-ids",
+    "allow-db-save-card-embeddings-batch",
+    "allow-request-embeddings"
   ]
 }

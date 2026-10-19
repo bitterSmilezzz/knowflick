@@ -4,6 +4,7 @@ import { AI_PROVIDER_PRESETS, findPresetById } from "../../domain/aiPresets";
 import { probeConnection } from "../../domain/aiChat";
 import { inShell } from "../../shell/store";
 import { Icon } from "./Icon";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface WorkspaceSettingsProps {
   file: SettingsFile;
@@ -11,6 +12,8 @@ export interface WorkspaceSettingsProps {
   reviewEnabled: boolean;
   onSave: (file: SettingsFile, key: string, reviewEnabled: boolean) => Promise<void>;
   onBack: () => void;
+  onExportMarkdown?: () => void;
+  onExportBackup?: () => void;
 }
 
 export function WorkspaceSettings({
@@ -19,10 +22,20 @@ export function WorkspaceSettings({
   reviewEnabled,
   onSave,
   onBack,
+  onExportMarkdown,
+  onExportBackup,
 }: WorkspaceSettingsProps) {
   const [draftSettings, setDraftSettings] = useState<AiSettings>(file.settings);
   const [draftKey, setDraftKey] = useState(apiKey);
   const [draftReviewEnabled, setDraftReviewEnabled] = useState(reviewEnabled);
+  const [shortcutStatus, setShortcutStatus] = useState<{ shortcut: string; registered: boolean; error: string | null } | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    if (inShell()) void invoke<{ shortcut: string; registered: boolean; error: string | null }>("get_shortcut_status")
+      .then(status => { if (!disposed) setShortcutStatus(status); })
+      .catch(err => { if (!disposed) setShortcutStatus({ shortcut: "Alt+Space", registered: false, error: String(err) }); });
+    return () => { disposed = true; };
+  }, []);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
@@ -133,6 +146,8 @@ export function WorkspaceSettings({
                       <button
                         key={val}
                         type="button"
+                        role="radio"
+                        aria-checked={currentTheme === val}
                         className={currentTheme === val ? "ws-seg-active" : ""}
                         onClick={() => setDraftSettings((prev) => ({ ...prev, paperTheme: val }))}
                       >
@@ -153,6 +168,19 @@ export function WorkspaceSettings({
                     <option value="DARK">深色</option>
                   </select>
                 </div>
+              </div>
+            </section>
+
+            <section className="ws-settings-card" data-group="capture">
+              <div className="ws-settings-card-head"><Icon name="edit" size={15} /><h2>快速记录</h2></div>
+              <div className="ws-settings-body">
+                <p className="ws-hint">{inShell() ? "关闭主窗口后仍可从系统托盘呼出胶囊；选择退出会结束应用。" : "全局快捷键与托盘仅在桌面客户端可用。"}</p>
+                {shortcutStatus ? <p className="ws-hint" role={shortcutStatus.registered ? "status" : "alert"}>
+                  {shortcutStatus.registered ? `${/Mac/.test(navigator.platform) ? "Option+Space" : shortcutStatus.shortcut} 已注册` : `全局快捷键未注册：${shortcutStatus.error ?? "快捷键可能被其他应用占用"}。请从文件菜单或系统托盘打开胶囊。`}
+                </p> : null}
+                {inShell() ? <button type="button" className="ws-bordered" onClick={() => {
+                  void invoke("toggle_capsule").catch(err => { setSaveStatus("error"); setSaveMessage(String(err)); });
+                }}>打开闪念胶囊</button> : null}
               </div>
             </section>
 
@@ -231,7 +259,7 @@ export function WorkspaceSettings({
                   />
                 </label>
 
-                <p className="ws-hint" style={{ fontSize: 11 }}>
+                <p className="ws-hint">
                   密钥单独存放于本机数据目录；浏览器体验模式仅在当前会话生效。
                 </p>
 
@@ -273,9 +301,12 @@ export function WorkspaceSettings({
                   <span>根据艾宾浩斯与 FSRS 记忆曲线安排知识卡片温故测验</span>
                 </div>
                 <div className="ws-settings-control">
-                  <label className="ws-switch-label">
+                  <label className="ws-switch-label" aria-label="启用「温故知新」间隔复习">
                     <input
                       type="checkbox"
+                      role="switch"
+                      aria-label="启用「温故知新」间隔复习"
+                      aria-checked={draftReviewEnabled}
                       className="ws-switch-input"
                       checked={draftReviewEnabled}
                       onChange={(e) => setDraftReviewEnabled(e.target.checked)}
@@ -283,6 +314,39 @@ export function WorkspaceSettings({
                     <span className="ws-switch-slider" />
                   </label>
                 </div>
+              </div>
+            </section>
+
+            {/* 第四组：数据主权与开放导出 (M4) */}
+            <section data-group="data" className="ws-settings-card">
+              <div className="ws-settings-card-head">
+                <Icon name="archive" size={15} />
+                <div>
+                  <h2>数据主权与开放导出</h2>
+                  <p className="ws-hint">数据完全归你所有，支持导出为通用格式与外部工具互通</p>
+                </div>
+              </div>
+
+              <div className="ws-settings-body">
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="ws-bordered"
+                    onClick={onExportMarkdown}
+                  >
+                    导出 Markdown 知识库 (Obsidian 友好)
+                  </button>
+                  <button
+                    type="button"
+                    className="ws-bordered"
+                    onClick={onExportBackup}
+                  >
+                    导出完整备份 (JSON)
+                  </button>
+                </div>
+                <p className="ws-hint" style={{ margin: 0 }}>
+                  导出的 Markdown 文件包含 YAML Frontmatter 元数据，按分类与收件箱分目录归档，支持 Obsidian 直接打开。
+                </p>
               </div>
             </section>
           </form>

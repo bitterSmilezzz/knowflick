@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { KnowledgeCard } from "../domain/card";
 import { generateCognitiveBriefing, type CognitiveBriefing } from "../domain/briefing";
 import { searchCards } from "../domain/search";
-import { completeChat, inShell } from "../shell/store";
+import { reciprocalRankFusion } from "../domain/hybridSearch";
+import { completeChat, inShell, dbSaveArtifact, dbListArtifacts, dbSearchCardsHybrid, type Artifact } from "../shell/store";
+import { EmbeddingEngine } from "../domain/embeddingEngine";
 import type { AiSettings } from "../domain/settings";
 import { completionURL, requiresKey } from "../domain/ingest";
 import { Icon } from "./workspace/Icon";
@@ -17,6 +19,30 @@ export function BriefingView({ cards, onOpenCard }: BriefingProps) {
     generateCognitiveBriefing(cards)
   );
   const [copied, setCopied] = useState(false);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [savingArtifact, setSavingArtifact] = useState(false);
+  const [saveNotice, setSaveNotice] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const loadArtifacts = async () => {
+      try {
+        if (inShell()) {
+          const list = await dbListArtifacts(20);
+          if (active) setArtifacts(list);
+        } else {
+          const raw = localStorage.getItem("knowflick.workspace.artifacts");
+          if (raw && active) setArtifacts(JSON.parse(raw));
+        }
+      } catch (err) {
+        console.error("读取产物库失败", err);
+      }
+    };
+    void loadArtifacts();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleRegenerate = () => {
     setBriefing(generateCognitiveBriefing(cards));
@@ -29,6 +55,39 @@ export function BriefingView({ cards, onOpenCard }: BriefingProps) {
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("复制失败", err);
+    }
+  };
+
+  const handleSaveArtifact = async () => {
+    if (savingArtifact) return;
+    setSavingArtifact(true);
+    try {
+      const now = Date.now();
+      const artifact: Artifact = {
+        id: crypto.randomUUID(),
+        artifactType: "briefing",
+        title: `认知简报 · ${briefing.weekLabel}`,
+        contentMarkdown: briefing.markdown,
+        sourceCardIds: cards.slice(0, 10).map((c) => c.id),
+        dateScopeStart: now - 7 * 86400 * 1000,
+        dateScopeEnd: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      if (inShell()) {
+        await dbSaveArtifact(artifact);
+      } else {
+        const next = [artifact, ...artifacts.filter((a) => a.id !== artifact.id)];
+        localStorage.setItem("knowflick.workspace.artifacts", JSON.stringify(next));
+      }
+      setArtifacts((prev) => [artifact, ...prev.filter((a) => a.id !== artifact.id)]);
+      setSaveNotice("已存入认知产物库");
+      setTimeout(() => setSaveNotice(""), 3000);
+    } catch (err) {
+      console.error("保存产物失败", err);
+    } finally {
+      setSavingArtifact(false);
     }
   };
 
@@ -48,6 +107,14 @@ export function BriefingView({ cards, onOpenCard }: BriefingProps) {
           <div className="ws-editor-actions" style={{ flexWrap: "nowrap" }}>
             <button type="button" className="ws-bordered" onClick={handleRegenerate}>
               <Icon name="brief" size={14} /> 重新分析
+            </button>
+            <button
+              type="button"
+              className="ws-bordered"
+              disabled={savingArtifact}
+              onClick={() => void handleSaveArtifact()}
+            >
+              <Icon name="archive" size={14} /> {saveNotice || (savingArtifact ? "保存中…" : "存入产物库")}
             </button>
             <button type="button" className="ws-primary" onClick={() => void handleCopyMarkdown()}>
               <Icon name="check" size={14} /> {copied ? "已复制" : "复制 Markdown"}
@@ -141,7 +208,12 @@ export function BrainAssistantDrawer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const needsKey = requiresKey(settings.baseURL) && !apiKey.trim();
+  let needsKey = false;
+  try {
+    needsKey = requiresKey(settings.baseURL) && !apiKey.trim();
+  } catch {
+    needsKey = !apiKey.trim();
+  }
 
   const handleAsk = async (textToAsk?: string) => {
     const q = (textToAsk || question).trim();
@@ -158,8 +230,36 @@ export function BrainAssistantDrawer({
     setMessages(newMessages);
     setQuestion("");
 
-    // 1. 本地多信号检索相关卡片作为上下文 (RAG 粗筛)
-    const matched = searchCards(q, cards).slice(0, 4).map((r) => r.card);
+    // 1. 本地多信号 RRF 混合检索相关卡片作为上下文 (Reciprocal Rank Fusion)
+    let matched: KnowledgeCard[] = [];
+    if (inShell()) {
+      try {
+        const engine = new EmbeddingEngine({
+          providerId: settings.providerId,
+          baseURL: settings.baseURL,
+          apiKey,
+        });
+        const queryVec = await engine.embedText(q);
+        const hybridHits = await dbSearchCardsHybrid(q, queryVec, 6);
+        if (hybridHits.length > 0) {
+          matched = hybridHits.slice(0, 4);
+        }
+      } catch (err) {
+        console.warn("混合向量检索降级至规则检索:", err);
+      }
+    }
+
+    if (matched.length === 0) {
+      const lexicalList = searchCards(q, cards).map((r) => r.card);
+      const tokenList = cards.filter((c) => {
+        const text = `${c.category} ${(c.tags || []).join(" ")}`.toLowerCase();
+        return q.toLowerCase().split(/\s+/).some((t) => t && text.includes(t));
+      });
+      const priorityList = cards.filter((c) => c.isFavorite || (c.reviewCount && c.reviewCount > 0));
+
+      const ranked = reciprocalRankFusion([lexicalList, tokenList, priorityList], (c) => c.id, 60);
+      matched = ranked.slice(0, 4).map((r) => r.item);
+    }
 
     if (matched.length === 0) {
       setMessages([
@@ -190,33 +290,44 @@ export function BrainAssistantDrawer({
       return;
     }
 
-    // 2. 组装 Prompt
-    const contextText = matched
-      .map(
-        (c, idx) =>
-          `[卡片 ${idx + 1}] 标题: ${c.headline}\n分类: ${c.category}\n内容: ${c.details}\n`
-      )
-      .join("\n---\n");
+    try {
+      const endpoint = completionURL(settings.baseURL);
 
-    const systemPrompt = `你是一个个人知识库第二大脑问答助理。你的职责是根据用户提供的知识库参考资料回答问题。
+      // 2. 组装 Prompt
+      const contextText = matched
+        .map(
+          (c, idx) =>
+            `[卡片 ${idx + 1}] 标题: ${c.headline}\n分类: ${c.category}\n内容: ${c.details}\n`
+        )
+        .join("\n---\n");
+
+      const systemPrompt = `你是一个个人知识库第二大脑问答助理。你的职责是根据用户提供的知识库参考资料回答问题。
 要求：
 1. 优先使用参考资料中的事实进行回答。
 2. 回答中如引用了某张卡片，请明确指出【卡片 1】、【卡片 2】等来源。
 3. 语言精炼、重点突出。`;
 
-    const userPrompt = `【知识库参考卡片】:\n${contextText || "暂无相关卡片"}\n\n【用户问题】: ${q}`;
-    const endpoint = completionURL(settings.baseURL);
+      const userPrompt = `【知识库参考卡片】:\n${contextText || "暂无相关卡片"}\n\n【用户问题】: ${q}`;
 
-    const body = JSON.stringify({
-      model: settings.model || "deepseek-chat",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.5,
-    });
+      // 附带最近会话历史（最多保留最近 4 轮），支持连续追问
+      const historyTurns = messages
+        .slice(1)
+        .slice(-4)
+        .map((m) => ({
+          role: m.role,
+          content: m.content.slice(0, 1500),
+        }));
 
-    try {
+      const body = JSON.stringify({
+        model: settings.model || "deepseek-chat",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...historyTurns,
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.5,
+      });
+
       const resp = await completeChat(endpoint, apiKey, body);
       if (!resp.trim()) throw new Error("模型未返回有效内容，请检查连接后重试");
       setMessages([

@@ -5,7 +5,8 @@
  *        radii only 4px (controls) / 8px (panels), neutral cool-grey base.
  */
 :root,
-.ws {
+.ws,
+.ws-capsule-backdrop {
   color-scheme: light dark;
 
   /* Neutral cool-grey surfaces */
@@ -19,9 +20,14 @@
   --selected: #e9eef4;
   --hover: #eceff2;
 
-  /* Accent follows the platform; user can override. Fallback is a cool blue. */
-  --accent: #315e8b;
-  --accent-ink: #ffffff;
+  /* Accent follows the platform (AccentColor) with fallback cool blue. */
+  --accent: AccentColor;
+  --accent-ink: AccentColorText;
+
+  @supports not (color: AccentColor) {
+    --accent: #315e8b;
+    --accent-ink: #ffffff;
+  }
 
   /* Geometry */
   --radius-control: 4px;
@@ -44,6 +50,7 @@
 }
 
 .ws[data-appearance="dark"],
+.ws-capsule-backdrop[data-appearance="dark"],
 :root[data-appearance="dark"] {
   --bg: #1b1d1f;
   --surface: #232629;
@@ -54,8 +61,13 @@
   --muted: #a3aab3;
   --selected: #2b3136;
   --hover: #2e3338;
-  --accent: #7aa7dc;
-  --accent-ink: #15181a;
+  --accent: AccentColor;
+  --accent-ink: AccentColorText;
+
+  @supports not (color: AccentColor) {
+    --accent: #7aa7dc;
+    --accent-ink: #15181a;
+  }
 }
 
 /*

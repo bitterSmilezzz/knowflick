@@ -10,8 +10,72 @@ import {
   type SpacedAlgorithm,
   type SpacedRating,
 } from "../domain/review";
+import { reviewOverview, dueForecast } from "../domain/reviewStats";
 import type { KnowledgeCard } from "../domain/card";
 import { Icon } from "./workspace/Icon";
+
+/** 掌握度与到期负荷面板：回答「我学到什么程度了、接下来几天有多少要复习」。 */
+export function ReviewOverviewPanel({ cards }: { cards: KnowledgeCard[] }) {
+  const today = todayStamp();
+  const overview = reviewOverview(cards, today);
+  const forecast = dueForecast(cards, today, 7);
+  const peak = Math.max(1, ...forecast.map((d) => d.count));
+
+  return (
+    <section className="ws-review-overview" aria-label="复习统计">
+      <div className="ws-review-overview-kpis">
+        <div>
+          <span>今日待复习</span>
+          <strong>{overview.dueToday}</strong>
+        </div>
+        <div>
+          <span>已复习</span>
+          <strong>{overview.reviewedCards}</strong>
+        </div>
+        <div>
+          <span>尚未复习</span>
+          <strong>{overview.neverReviewed}</strong>
+        </div>
+        <div>
+          <span>平均间隔</span>
+          <strong>{overview.averageIntervalDays} 天</strong>
+        </div>
+      </div>
+
+      <div className="ws-review-mastery">
+        <h3>掌握度分布</h3>
+        <div className="ws-review-mastery-bars">
+          {overview.masteryBuckets.map((bucket) => (
+            <div key={bucket.label} className="ws-review-mastery-item">
+              <span className="ws-review-mastery-label">{bucket.label}</span>
+              <div className="ws-review-mastery-track">
+                <i
+                  style={{
+                    width: `${overview.totalCards === 0 ? 0 : (bucket.count / overview.totalCards) * 100}%`,
+                  }}
+                />
+              </div>
+              <span className="ws-review-mastery-count">{bucket.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="ws-review-forecast">
+        <h3>未来 7 天到期负荷</h3>
+        <div className="ws-review-forecast-row">
+          {forecast.map((day, index) => (
+            <div key={day.day} className="ws-review-forecast-col" title={`${day.day}：${day.count} 张`}>
+              <span className="ws-review-forecast-count">{day.count > 0 ? day.count : ""}</span>
+              <i style={{ height: `${Math.max(3, (day.count / peak) * 100)}%` }} />
+              <span className="ws-review-forecast-day">{index === 0 ? "今天" : day.day.slice(5)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function QuizView({
   cards,
@@ -38,6 +102,10 @@ export function QuizView({
 
   const rate = (rating: SpacedRating) => {
     if (session.kind !== "active") return;
+    if (!revealed) {
+      setRevealed(true);
+      return;
+    }
     const { card } = session;
     const next = cards.map((item) =>
       item.id === card.id
@@ -208,6 +276,7 @@ export function QuizView({
         <footer className="ws-review-ratings">
           <button
             type="button"
+            disabled={!revealed}
             className="ws-rating-btn rating-again"
             onClick={() => rate("again")}
           >
@@ -217,6 +286,7 @@ export function QuizView({
           </button>
           <button
             type="button"
+            disabled={!revealed}
             className="ws-rating-btn rating-hard"
             onClick={() => rate("hard")}
           >
@@ -226,6 +296,7 @@ export function QuizView({
           </button>
           <button
             type="button"
+            disabled={!revealed}
             className="ws-rating-btn rating-good"
             onClick={() => rate("good")}
           >
@@ -235,6 +306,7 @@ export function QuizView({
           </button>
           <button
             type="button"
+            disabled={!revealed}
             className="ws-rating-btn rating-easy"
             onClick={() => rate("easy")}
           >
@@ -245,7 +317,7 @@ export function QuizView({
         </footer>
 
         <div className="ws-review-kbd-hint">
-          <span>提示：按空格翻开解析，按数字键 1–4 快速评分</span>
+          <span>{revealed ? "提示：按数字键 1–4 快速评分并进入下一张" : "提示：按空格翻开解析后评分"}</span>
         </div>
       </div>
     </div>

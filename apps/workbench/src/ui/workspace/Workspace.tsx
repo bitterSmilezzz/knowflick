@@ -23,15 +23,28 @@ import {
   storeMaterial,
   storePreferences,
 } from "./repository";
+import { downloadMarkdownVault } from "../../domain/markdownExport";
+import { highlightText, extractSnippet } from "./HighlightText";
 import { Icon, sourceLabel, useSystemAppearance } from "./Icon";
 import { EntryInspector } from "./EntryInspector";
 import { CaptureDialog } from "./CaptureDialog";
 import { WorkspaceSettings } from "./WorkspaceSettings";
+import { usePaneLayout } from "./usePaneLayout";
+import {
+  identifyPlatform,
+  parseGitHubRepo,
+  parseBilibiliBvid,
+  formatGitHubPayload,
+  formatBilibiliPayload,
+} from "../../domain/sniffer";
+import { parseDocumentFile } from "../../domain/documentParser";
+import { EmbeddingEngine, syncCardEmbeddings } from "../../domain/embeddingEngine";
 import "./workspace.css";
 
 const Briefing = lazy(() => import("../BrainViews").then((m) => ({ default: m.BriefingView })));
 const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.BrainAssistantDrawer })));
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
+const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
 type Page = Collection | "settings" | "briefing" | "brain" | "review";
 
@@ -66,10 +79,12 @@ export function Workspace() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<KnowledgeCard[]>([]);
+  const [previewSelectedIds, setPreviewSelectedIds] = useState<Set<string>>(new Set());
   const [previewSource, setPreviewSource] = useState<RawMaterial | null>(null);
-  const [navOpen, setNavOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(60);
-
+  const layout = usePaneLayout();
+  const readerRef = useRef<HTMLElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
@@ -77,10 +92,9 @@ export function Workspace() {
   const revision = useRef(0);
   const systemAppearance = useSystemAppearance();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (quiet = false) => {
     const current = ++revision.current;
-    setLoading(true);
-    setError("");
+    if (!quiet) { setLoading(true); setError(""); }
     try {
       const data = await readWorkspace();
       if (current !== revision.current) return;
@@ -104,10 +118,34 @@ export function Workspace() {
   }, [load]);
 
   useEffect(() => {
+    const changed = () => { void load(true); };
+    const storageChanged = (e: StorageEvent) => { if (e.key === "knowflick.workspace.v1") changed(); };
+    window.addEventListener("knowflick:library-changed", changed);
+    window.addEventListener("storage", storageChanged);
+    return () => {
+      window.removeEventListener("knowflick:library-changed", changed);
+      window.removeEventListener("storage", storageChanged);
+    };
+  }, [load]);
+
+  useEffect(() => {
     if (preview.length && previewRef.current && !previewRef.current.open) {
       previewRef.current.showModal();
     }
   }, [preview]);
+
+  // 后台静默同步未生成向量的卡片至 SQLite 向量表 (不阻塞界面)
+  useEffect(() => {
+    if (!cards.length) return;
+    const engine = new EmbeddingEngine({
+      providerId: file.settings.providerId,
+      baseURL: file.settings.baseURL,
+      apiKey,
+    });
+    void syncCardEmbeddings(cards, engine, { dir }).catch((err) => {
+      console.warn("卡片向量同步非阻塞跳过:", err);
+    });
+  }, [cards, file.settings.providerId, file.settings.baseURL, apiKey, dir]);
 
   // Native menu events arrive as DOM CustomEvents (see src-tauri/src/lib.rs).
   useEffect(() => {
@@ -119,9 +157,11 @@ export function Workspace() {
         if (!["inbox", "library", "favorites", "archive"].includes(page)) setPage("library");
         requestAnimationFrame(() => searchRef.current?.focus());
       } else if (id === "toggle-nav") {
-        setNavOpen((open) => !open);
+        layout.toggleNav();
       } else if (id === "import") {
         importRef.current?.click();
+      } else if (id === "export") {
+        downloadMarkdownVault(materials, cards);
       } else if (id === "settings") {
         navigate("settings");
       } else if (["inbox", "library", "favorites", "archive"].includes(id)) {
@@ -130,28 +170,6 @@ export function Workspace() {
     };
     window.addEventListener("knowflick:menu", onMenu);
     return () => window.removeEventListener("knowflick:menu", onMenu);
-  }, [page, loading, busy]);
-
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.isComposing) return;
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        if (!["inbox", "library", "favorites", "archive"].includes(page)) setPage("library");
-        requestAnimationFrame(() => searchRef.current?.focus());
-      }
-      if (mod && e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        if (!loading && !busy) setCapture(true);
-      }
-      if (mod && e.shiftKey && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        setNavOpen((open) => !open);
-      }
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
   }, [page, loading, busy]);
 
   const collection: Collection = ["inbox", "library", "favorites", "archive"].includes(page)
@@ -165,6 +183,60 @@ export function Workspace() {
   useEffect(() => setVisibleCount(60), [page, query, tag, source]);
 
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0];
+
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.isComposing || e.defaultPrevented) return;
+      const mod = e.metaKey || e.ctrlKey;
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      const typing = !!target?.closest("input, textarea, select, [contenteditable=true]");
+      if (document.querySelector("dialog[open]")) return;
+      if (e.key === "Escape" && layout.navMode === "overlay") {
+        e.preventDefault(); layout.closeNavOverlay(); return;
+      }
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (!isCollection) setPage("library");
+        requestAnimationFrame(() => searchRef.current?.focus());
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        if (!loading && !busy) setCapture(true);
+        return;
+      }
+      if ((e.metaKey && e.ctrlKey && e.key.toLowerCase() === "s") ||
+          (mod && e.shiftKey && e.key.toLowerCase() === "s")) {
+        e.preventDefault(); layout.toggleNav(); return;
+      }
+      if (mod && e.key.toLowerCase() === "e" && selected && isCollection && !typing && !busy) {
+        e.preventDefault(); window.dispatchEvent(new CustomEvent("knowflick:edit-entry")); return;
+      }
+      if (typing || mod || e.altKey || !isCollection) return;
+      if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
+      const inReader = !!target?.closest('[data-workspace-pane="inspector"]');
+      if (e.key === "Enter" && selected && !inReader &&
+          (!target?.closest("button, a, [role=separator]") || target.closest(".ws-entry"))) {
+        e.preventDefault(); readerRef.current?.focus(); return;
+      }
+      if (inReader || target?.closest("[role=separator]")) return;
+      if (["ArrowDown", "ArrowUp", "j", "k"].includes(e.key) && filtered.length) {
+        e.preventDefault();
+        const current = filtered.findIndex(it => it.id === selected?.id);
+        const down = e.key === "ArrowDown" || e.key === "j";
+        const index = Math.max(0, Math.min(filtered.length - 1, (current < 0 ? 0 : current) + (down ? 1 : -1)));
+        setVisibleCount(n => Math.max(n, index + 1));
+        setSelectedId(filtered[index].id);
+        requestAnimationFrame(() => {
+          const row = workspaceRef.current?.querySelector<HTMLElement>(`.ws-entry[data-entry-id="${CSS.escape(filtered[index].id)}"]`);
+          row?.focus({ preventScroll: true });
+          row?.scrollIntoView({ block: "nearest" });
+        });
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [page, loading, busy, isCollection, filtered, selected, layout]);
   const tags = [...new Set(cards.flatMap((c) => [c.category, ...(c.tags ?? [])]).filter(Boolean))].sort();
   const reviewEnabled = file.raw.reviewPluginEnabled === true;
 
@@ -202,12 +274,13 @@ export function Workspace() {
     }
   };
   const navigate = (next: Page) => {
+    setNotice("");
     setPage(next);
     setTag("");
     setQuery("");
     setSelectedId("");
     setSource("all");
-    setNavOpen(false);
+    layout.closeNavOverlay();
   };
   const closeCapture = () => {
     setCapture(false);
@@ -259,21 +332,75 @@ export function Workspace() {
       const m = entry.original as RawMaterial;
       const result = await askModel(m.rawText, file.settings, apiKey);
       if (!result.length) throw new Error("没有生成有效卡片，素材未改动，请稍后重试");
-      setPreview(
-        result.map((c) => ({
-          ...c,
-          materialId: m.id,
-          links: m.sourceUrl
-            ? [{ title: "原始素材", url: m.sourceUrl }, ...c.links]
-            : c.links,
-        }))
-      );
+      const mapped = result.map((c) => ({
+        ...c,
+        materialId: m.id,
+        links: m.sourceUrl
+          ? [{ title: "原始素材", url: m.sourceUrl }, ...c.links]
+          : c.links,
+      }));
+      setPreview(mapped);
+      setPreviewSelectedIds(new Set(mapped.map((c) => c.id)));
       setPreviewSource(m);
     });
 
   const fetchPage = async (entry: Entry) =>
     act(async () => {
       if (!inShell()) throw new Error("浏览器无法跨站抓取。请在桌面客户端抓取，或将正文粘贴到编辑器保存");
+      const platform = identifyPlatform(entry.url);
+      if (platform === "github") {
+        const repo = parseGitHubRepo(entry.url);
+        if (repo) {
+          try {
+            const apiRes = await fetchClip(`https://api.github.com/repos/${repo.owner}/${repo.repo}`);
+            const apiJson = JSON.parse(apiRes.text);
+            let readme = "";
+            try {
+              const readmeRes = await fetchClip(`https://raw.githubusercontent.com/${repo.owner}/${repo.repo}/HEAD/README.md`);
+              readme = readmeRes.text;
+            } catch {
+              // try master
+              try {
+                const readmeRes = await fetchClip(`https://raw.githubusercontent.com/${repo.owner}/${repo.repo}/master/README.md`);
+                readme = readmeRes.text;
+              } catch { /* empty */ }
+            }
+            const sniffed = formatGitHubPayload(entry.url, apiJson, readme);
+            await updateMaterial({
+              ...(entry.original as RawMaterial),
+              title: sniffed.title,
+              rawText: sniffed.content,
+              updatedAt: Date.now(),
+            });
+            setNotice("GitHub 仓库信息与 README 已嗅探解析，可转化为知识卡");
+            return;
+          } catch {
+            // fallback to general html clip below
+          }
+        }
+      } else if (platform === "bilibili") {
+        const bvid = parseBilibiliBvid(entry.url);
+        if (bvid) {
+          try {
+            const apiRes = await fetchClip(`https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`);
+            const apiJson = JSON.parse(apiRes.text);
+            if (apiJson.data) {
+              const sniffed = formatBilibiliPayload(entry.url, apiJson.data);
+              await updateMaterial({
+                ...(entry.original as RawMaterial),
+                title: sniffed.title,
+                rawText: sniffed.content,
+                updatedAt: Date.now(),
+              });
+              setNotice("B站视频信息已成功解析并提取简介，可转化为知识卡");
+              return;
+            }
+          } catch {
+            // fallback
+          }
+        }
+      }
+
       const response = await fetchClip(entry.url);
       const page = digest(response.text, response.finalUrl);
       if (!page) throw new Error("未抽取到正文，素材已保留。可以点击编辑粘贴正文");
@@ -287,11 +414,11 @@ export function Workspace() {
         let total = 0;
         for (const f of Array.from(files)) {
           if (f.size > 32 * 1024 * 1024) throw new Error(`${f.name} 超过 32 MB`);
-          if (!/\.(md|markdown|txt|json)$/i.test(f.name)) {
-            throw new Error(`当前界面支持 Markdown、TXT、JSON；${f.name} 尚不能解析`);
+          if (!/\.(md|markdown|txt|json|docx|pdf)$/i.test(f.name)) {
+            throw new Error(`当前支持 Markdown、TXT、JSON、Word (.docx)、PDF；${f.name} 尚不能解析`);
           }
-          const text = await f.text();
           if (/\.json$/i.test(f.name)) {
+            const text = await f.text();
             const data = JSON.parse(text) as unknown;
             const root = data as { format?: string; materials?: RawMaterial[]; cards?: unknown[] };
             if (root.format === "knowflick-workspace" && Array.isArray(root.materials)) {
@@ -312,8 +439,10 @@ export function Workspace() {
               total++;
             }
           } else {
+            const buffer = await f.arrayBuffer();
+            const doc = await parseDocumentFile(f.name, buffer);
             const m = {
-              ...makeMaterial({ title: f.name.replace(/\.(md|markdown|txt)$/i, ""), text, url: "" }),
+              ...makeMaterial({ title: doc.title, text: doc.markdown, url: "" }),
               sourceType: "document",
             };
             await updateMaterial(m);
@@ -328,6 +457,12 @@ export function Workspace() {
     }
   };
 
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const openCard = (id: string) => {
     navigate("library");
     setSelectedId(id);
@@ -336,16 +471,21 @@ export function Workspace() {
 
   const theme = normalizePaperTheme(file.settings.paperTheme);
   const appearance = theme === "SYSTEM" ? systemAppearance : theme === "DARK" ? "dark" : "light";
-  const navMode = navOpen ? "expanded" : "auto";
+  const navMode = layout.navMode;
   const pageTitle = isCollection ? collectionNames[collection] : PAGE_TITLES[page];
 
   return (
     <div
       className="ws"
+      ref={workspaceRef}
       data-appearance={appearance}
       data-nav={navMode}
       data-view={isCollection ? "collection" : "page"}
       data-workspace-root=""
+      style={{
+        ["--nav-w" as string]: `${layout.widths.nav}px`,
+        ["--list-w" as string]: `${layout.widths.list}px`,
+      }}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("Files")) e.preventDefault();
       }}
@@ -370,9 +510,9 @@ export function Workspace() {
         <div className="ws-header-list">
           <button
             className="ws-icon-button"
-            aria-label={navOpen ? "收起导航栏" : "展开导航栏"}
-            aria-expanded={navOpen}
-            onClick={() => setNavOpen((open) => !open)}
+            aria-label={layout.navShown ? "收起导航栏" : "展开导航栏"}
+            aria-expanded={layout.navShown}
+            onClick={layout.toggleNav}
           >
             <Icon name="panel" />
           </button>
@@ -447,7 +587,7 @@ export function Workspace() {
                   setPage("library");
                   setTag(tag === t ? "" : t);
                   setQuery("");
-                  setNavOpen(false);
+                  layout.closeNavOverlay();
                 }}
               >
                 <Icon name="folder" size={14} />
@@ -510,13 +650,32 @@ export function Workspace() {
             {inShell() ? "本地知识库" : "浏览器体验"}
           </p>
         </div>
+        <div
+          className="ws-resizer ws-resizer-nav"
+          role="separator"
+          tabIndex={0}
+          aria-orientation="vertical"
+          aria-valuemin={160}
+          aria-valuemax={360}
+          aria-valuenow={layout.widths.nav}
+          onPointerDown={e => layout.startResize("nav", e)}
+          onDoubleClick={() => layout.resetWidth("nav")}
+          onKeyDown={e => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+              e.preventDefault(); e.stopPropagation();
+              layout.nudgeWidth("nav", e.key === "ArrowRight" ? 10 : -10);
+            }
+          }}
+          title="双击恢复默认宽度"
+          aria-label="拖拽调整侧栏宽度"
+        />
       </aside>
 
-      {navOpen ? (
+      {layout.navMode === "overlay" ? (
         <button
           className="ws-nav-backdrop"
           aria-label="关闭导航栏"
-          onClick={() => setNavOpen(false)}
+          onClick={layout.closeNavOverlay}
         />
       ) : null}
 
@@ -622,13 +781,17 @@ export function Workspace() {
                     return (
                       <button
                         key={e.id}
+                        data-entry-id={e.id}
+                        tabIndex={isSelected ? 0 : -1}
                         role="option"
                         aria-selected={isSelected}
                         className="ws-entry"
                         onClick={() => setSelectedId(e.id)}
                       >
                         <span className="ws-entry-top">
-                          <span className="ws-entry-title">{e.title}</span>
+                          <span className="ws-entry-title">
+                            {highlightText(e.title, query)}
+                          </span>
                           <time>
                             {new Date(e.date).toLocaleDateString("zh-CN", {
                               month: "2-digit",
@@ -640,7 +803,7 @@ export function Workspace() {
                           <Icon name={meta.icon} size={12} />
                           <span className="ws-entry-source">{meta.label}</span>
                           <span className="ws-entry-summary">
-                            {e.text.replace(/\s+/g, " ").trim()}
+                            {highlightText(extractSnippet(e.text, query, 80), query)}
                           </span>
                         </span>
                       </button>
@@ -663,12 +826,32 @@ export function Workspace() {
                 {cards.length} 张知识卡 · {materials.length} 份素材
               </span>
             </footer>
+            <div
+              className="ws-resizer ws-resizer-list"
+              role="separator"
+              tabIndex={0}
+              aria-orientation="vertical"
+              aria-valuemin={240}
+              aria-valuemax={480}
+              aria-valuenow={layout.widths.list}
+              onPointerDown={e => layout.startResize("list", e)}
+              onDoubleClick={() => layout.resetWidth("list")}
+              onKeyDown={e => {
+                if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                  e.preventDefault(); e.stopPropagation();
+                  layout.nudgeWidth("list", e.key === "ArrowRight" ? 10 : -10);
+                }
+              }}
+              title="双击恢复默认宽度"
+              aria-label="拖拽调整列表宽度"
+            />
           </section>
 
           {selected && !loading ? (
             <EntryInspector
               key={`${selected.kind}:${selected.id}`}
               entry={selected}
+              readerRef={readerRef}
               busy={busy}
               aiReady={aiReady}
               onSettings={() => navigate("settings")}
@@ -728,6 +911,8 @@ export function Workspace() {
                   apiKey={apiKey}
                   reviewEnabled={reviewEnabled}
                   onBack={() => navigate("inbox")}
+                  onExportMarkdown={() => downloadMarkdownVault(materials, cards)}
+                  onExportBackup={() => downloadWorkspace(materials, cards, file)}
                   onSave={async (next, key, enabled) => {
                     const updated = {
                       ...next,
@@ -750,14 +935,17 @@ export function Workspace() {
                 />
               ) : null}
               {page === "review" && reviewEnabled ? (
-                <Quiz
-                  cards={cards}
-                  algorithm="fsrs"
-                  onChange={async (next) => {
-                    await storeCardList(next, dir);
-                    setCards(next);
-                  }}
-                />
+                <>
+                  <ReviewOverviewPanel cards={cards} />
+                  <Quiz
+                    cards={cards}
+                    algorithm="fsrs"
+                    onChange={async (next) => {
+                      await storeCardList(next, dir);
+                      setCards(next);
+                    }}
+                  />
+                </>
               ) : null}
             </Suspense>
           </main>
@@ -803,48 +991,118 @@ export function Workspace() {
         <dialog
           ref={previewRef}
           className="ws-dialog"
+          style={{ maxWidth: 640 }}
           aria-label="检查 AI 提炼结果"
           onCancel={(e) => {
             if (busy) e.preventDefault();
             else setPreview([]);
           }}
         >
-          <h2>检查 AI 提炼结果</h2>
-          <p style={{ fontSize: 12, color: "var(--muted)" }}>确认后写入知识卡；原始素材会保留。</p>
-          <div style={{ maxHeight: "50vh", overflowY: "auto" }}>
-            {preview.map((c) => (
-              <article key={c.id} style={{ borderBottom: "1px solid var(--line)", padding: "10px 0" }}>
-                <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>{c.headline}</h3>
-                <p style={{ fontSize: 13, margin: 0 }}>{c.details}</p>
-              </article>
-            ))}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h2>检查 AI 提炼卡片</h2>
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>
+              已勾选 {previewSelectedIds.size} / {preview.length} 张
+            </span>
           </div>
-          <div className="ws-actions" style={{ marginTop: 12 }}>
-            <button disabled={busy} onClick={() => setPreview([])}>
-              取消
-            </button>
+          <p style={{ fontSize: 12, color: "var(--muted)", margin: "4px 0 12px" }}>
+            勾选需要保留的原子知识卡，确认后写入知识库；原始素材会完整保留。
+          </p>
+          <div style={{ maxHeight: "55vh", overflowY: "auto", display: "grid", gap: 10 }}>
+            {preview.map((c) => {
+              const isChecked = previewSelectedIds.has(c.id);
+              return (
+                <label
+                  key={c.id}
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    padding: 12,
+                    border: `1px solid ${isChecked ? "var(--accent)" : "var(--line)"}`,
+                    borderRadius: 6,
+                    background: isChecked ? "var(--sunken)" : "var(--surface)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(e) => {
+                      setPreviewSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(c.id);
+                        else next.delete(c.id);
+                        return next;
+                      });
+                    }}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                      <span className="ws-tag-chip" style={{ fontSize: "var(--text-meta)", padding: "1px 6px" }}>
+                        {c.category}
+                      </span>
+                      <strong style={{ fontSize: 14 }}>{c.headline}</strong>
+                    </div>
+                    <p style={{ fontSize: "var(--text-meta)", color: "var(--muted)", margin: "0 0 4px" }}>
+                      {c.summary}
+                    </p>
+                    <p style={{ fontSize: "var(--text-meta)", margin: 0, opacity: 0.85, whiteSpace: "pre-wrap" }}>
+                      {c.details}
+                    </p>
+                    {c.tags && c.tags.length > 0 ? (
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        {c.tags.map((t) => (
+                          <span key={t} style={{ fontSize: "var(--text-meta)", color: "var(--muted)" }}>
+                            #{t}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          <div className="ws-actions" style={{ marginTop: 14, display: "flex", justifyContent: "space-between" }}>
             <button
-              className="ws-primary"
-              disabled={busy}
+              type="button"
+              className="ws-bordered"
               onClick={() => {
-                void act(async () => {
-                  for (const c of preview) await updateCard(c);
-                  if (previewSource) {
-                    await updateMaterial({
-                      ...previewSource,
-                      inboxStatus: "processed",
-                      updatedAt: Date.now(),
-                    });
-                  }
-                  setPreview([]);
-                  navigate("library");
-                  setSource("card");
-                  setNotice("提炼结果已保存");
-                }).catch((e) => setError(String(e)));
+                if (previewSelectedIds.size === preview.length) setPreviewSelectedIds(new Set());
+                else setPreviewSelectedIds(new Set(preview.map((c) => c.id)));
               }}
             >
-              确认保存 {preview.length} 张
+              {previewSelectedIds.size === preview.length ? "取消全选" : "全选"}
             </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button disabled={busy} onClick={() => setPreview([])}>
+                取消
+              </button>
+              <button
+                className="ws-primary"
+                disabled={busy || previewSelectedIds.size === 0}
+                onClick={() => {
+                  void act(async () => {
+                    const toSave = preview.filter((c) => previewSelectedIds.has(c.id));
+                    for (const c of toSave) await updateCard(c);
+                    if (previewSource) {
+                      await updateMaterial({
+                        ...previewSource,
+                        inboxStatus: "processed",
+                        updatedAt: Date.now(),
+                      });
+                    }
+                    setPreview([]);
+                    navigate("library");
+                    setSource("card");
+                    setNotice(`已存入 ${toSave.length} 张原子知识卡`);
+                  }).catch((e) => setError(String(e)));
+                }}
+              >
+                确认保存 ({previewSelectedIds.size} 张)
+              </button>
+            </div>
           </div>
         </dialog>
       ) : null}

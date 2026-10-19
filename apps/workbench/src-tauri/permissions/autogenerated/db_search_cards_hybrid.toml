@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-search-cards-hybrid"
+description = "Enables the db_search_cards_hybrid command without any pre-configured scope."
+commands.allow = ["db_search_cards_hybrid"]
+
+[[permission]]
+identifier = "deny-db-search-cards-hybrid"
+description = "Denies the db_search_cards_hybrid command without any pre-configured scope."
+commands.deny = ["db_search_cards_hybrid"]

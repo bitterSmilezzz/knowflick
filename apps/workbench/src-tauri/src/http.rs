@@ -44,7 +44,11 @@ pub async fn complete_chat(endpoint: &str, api_key: &str, body: String) -> Resul
         .header("Content-Type", "application/json")
         .header("User-Agent", "KnowFlick/0.1")
         .body(body);
-    if !api_key.is_empty() {
+    if endpoint.contains("anthropic.com") {
+        request = request
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01");
+    } else if !api_key.is_empty() {
         request = request.header("Authorization", format!("Bearer {api_key}"));
     }
     let response = request.send().await.map_err(|err| format!("AI 请求失败: {err}"))?;
@@ -57,12 +61,83 @@ pub async fn complete_chat(endpoint: &str, api_key: &str, body: String) -> Resul
     let content = serde_json::from_str::<serde_json::Value>(&text)
         .ok()
         .and_then(|value| {
-            value["choices"][0]["message"]["content"]
-                .as_str()
-                .map(str::to_string)
+            if let Some(c) = value["choices"][0]["message"]["content"].as_str() {
+                return Some(c.to_string());
+            }
+            if let Some(c) = value["content"][0]["text"].as_str() {
+                return Some(c.to_string());
+            }
+            None
         })
         .unwrap_or(text);
     Ok(content)
+}
+
+pub async fn request_embeddings(
+    endpoint: &str,
+    api_key: &str,
+    model: &str,
+    input: Vec<String>,
+) -> Result<Vec<Vec<f32>>, String> {
+    validate_url(endpoint)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|err| err.to_string())?;
+
+    let body = serde_json::json!({
+        "model": model,
+        "input": input,
+    });
+
+    let mut request = client
+        .post(endpoint)
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "KnowFlick/0.1")
+        .body(body.to_string());
+
+    if !api_key.is_empty() {
+        request = request.header("Authorization", format!("Bearer {api_key}"));
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|err| format!("Embedding 请求失败: {err}"))?;
+    let status = response.status();
+    let text = read_capped(response, 10 * 1024 * 1024).await?;
+    let text = String::from_utf8_lossy(&text).to_string();
+    if !status.is_success() {
+        return Err(format!(
+            "Embedding API 返回 {}：{}",
+            status.as_u16(),
+            text.chars().take(200).collect::<String>()
+        ));
+    }
+
+    let parsed: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("解析 Embedding 响应 JSON 失败: {e}"))?;
+
+    let data = parsed["data"]
+        .as_array()
+        .ok_or_else(|| "Embedding 响应缺少 data 数组".to_string())?;
+
+    let mut embeddings = Vec::with_capacity(data.len());
+    for item in data {
+        let vec = item["embedding"]
+            .as_array()
+            .ok_or_else(|| "Embedding 条目缺少 embedding 浮点数组".to_string())?;
+        let f32_vec: Result<Vec<f32>, String> = vec
+            .iter()
+            .map(|v| {
+                v.as_f64()
+                    .map(|f| f as f32)
+                    .ok_or_else(|| "非浮点数".to_string())
+            })
+            .collect();
+        embeddings.push(f32_vec?);
+    }
+    Ok(embeddings)
 }
 
 fn validate_url(raw: &str) -> Result<reqwest::Url, String> {

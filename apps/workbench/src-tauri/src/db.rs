@@ -306,6 +306,23 @@ pub struct DbStatsDto {
     pub due_cards: i64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactDto {
+    pub id: String,
+    pub artifact_type: String,
+    pub title: String,
+    pub content_markdown: String,
+    #[serde(default)]
+    pub source_card_ids: Vec<String>,
+    pub date_scope_start: Option<i64>,
+    pub date_scope_end: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    #[serde(default)]
+    pub is_deleted: bool,
+}
+
 pub fn resolve_library_dir(dir: Option<&str>) -> PathBuf {
     match dir {
         Some(s) if !s.trim().is_empty() => PathBuf::from(s.trim()),
@@ -422,6 +439,13 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             created_at          INTEGER NOT NULL,
             updated_at          INTEGER NOT NULL,
             is_deleted          INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS card_embeddings (
+            card_id             TEXT PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,
+            dim                 INTEGER NOT NULL,
+            embedding           BLOB NOT NULL,
+            updated_at          INTEGER NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS subscriptions (
@@ -710,6 +734,45 @@ pub fn replace_cards(conn: &mut Connection, cards: &[KnowledgeCardDto]) -> Resul
     Ok(())
 }
 
+fn map_card_row(row: &rusqlite::Row) -> rusqlite::Result<KnowledgeCardDto> {
+    let links_str: String = row.get(6)?;
+    let tags_str: String = row.get(7)?;
+    let prereq_str: String = row.get(26)?;
+    let is_fav_int: i64 = row.get(11)?;
+
+    Ok(KnowledgeCardDto {
+        id: row.get(0)?,
+        material_id: row.get(1)?,
+        category: row.get(2)?,
+        headline: row.get(3)?,
+        summary: row.get(4)?,
+        details: row.get(5)?,
+        links: serde_json::from_str(&links_str).unwrap_or_default(),
+        tags: serde_json::from_str(&tags_str).unwrap_or_default(),
+        source: row.get(8)?,
+        seen_at: row.get(9)?,
+        swiped: row.get(10)?,
+        is_favorite: is_fav_int != 0,
+        favorited_at: row.get(12)?,
+        review_count: row.get(13)?,
+        mastery_level: row.get(14)?,
+        last_reviewed_at: row.get(15)?,
+        repetition: row.get(16)?,
+        interval_days: row.get(17)?,
+        ease_factor: row.get(18)?,
+        stability: row.get(19)?,
+        difficulty: row.get(20)?,
+        subject: row.get(21)?,
+        branch: row.get(22)?,
+        level: row.get(23)?,
+        track: row.get(24)?,
+        order_key: row.get(25)?,
+        prereq: serde_json::from_str(&prereq_str).unwrap_or_default(),
+        created_at: row.get(27)?,
+        edited_at: row.get(28)?,
+    })
+}
+
 pub fn list_cards(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<KnowledgeCardDto>> {
     let sql = if limit < 0 {
         r#"
@@ -742,53 +805,14 @@ pub fn list_cards(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<Know
     };
 
     let mut stmt = conn.prepare(sql)?;
-    let row_mapper = |row: &rusqlite::Row| {
-        let links_str: String = row.get(6)?;
-        let tags_str: String = row.get(7)?;
-        let prereq_str: String = row.get(26)?;
-        let is_fav_int: i64 = row.get(11)?;
-
-        Ok(KnowledgeCardDto {
-            id: row.get(0)?,
-            material_id: row.get(1)?,
-            category: row.get(2)?,
-            headline: row.get(3)?,
-            summary: row.get(4)?,
-            details: row.get(5)?,
-            links: serde_json::from_str(&links_str).unwrap_or_default(),
-            tags: serde_json::from_str(&tags_str).unwrap_or_default(),
-            source: row.get(8)?,
-            seen_at: row.get(9)?,
-            swiped: row.get(10)?,
-            is_favorite: is_fav_int != 0,
-            favorited_at: row.get(12)?,
-            review_count: row.get(13)?,
-            mastery_level: row.get(14)?,
-            last_reviewed_at: row.get(15)?,
-            repetition: row.get(16)?,
-            interval_days: row.get(17)?,
-            ease_factor: row.get(18)?,
-            stability: row.get(19)?,
-            difficulty: row.get(20)?,
-            subject: row.get(21)?,
-            branch: row.get(22)?,
-            level: row.get(23)?,
-            track: row.get(24)?,
-            order_key: row.get(25)?,
-            prereq: serde_json::from_str(&prereq_str).unwrap_or_default(),
-            created_at: row.get(27)?,
-            edited_at: row.get(28)?,
-        })
-    };
-
     let mut cards = Vec::new();
     if limit < 0 {
-        let rows = stmt.query_map(params![offset], row_mapper)?;
+        let rows = stmt.query_map(params![offset], map_card_row)?;
         for r in rows {
             cards.push(r?);
         }
     } else {
-        let rows = stmt.query_map(params![limit, offset], row_mapper)?;
+        let rows = stmt.query_map(params![limit, offset], map_card_row)?;
         for r in rows {
             cards.push(r?);
         }
@@ -826,46 +850,7 @@ pub fn search_cards_fts(conn: &Connection, query: &str, limit: i64) -> Result<Ve
         "#,
     )?;
 
-    let row_mapper = |row: &rusqlite::Row| {
-        let links_str: String = row.get(6)?;
-        let tags_str: String = row.get(7)?;
-        let prereq_str: String = row.get(26)?;
-        let is_fav_int: i64 = row.get(11)?;
-
-        Ok(KnowledgeCardDto {
-            id: row.get(0)?,
-            material_id: row.get(1)?,
-            category: row.get(2)?,
-            headline: row.get(3)?,
-            summary: row.get(4)?,
-            details: row.get(5)?,
-            links: serde_json::from_str(&links_str).unwrap_or_default(),
-            tags: serde_json::from_str(&tags_str).unwrap_or_default(),
-            source: row.get(8)?,
-            seen_at: row.get(9)?,
-            swiped: row.get(10)?,
-            is_favorite: is_fav_int != 0,
-            favorited_at: row.get(12)?,
-            review_count: row.get(13)?,
-            mastery_level: row.get(14)?,
-            last_reviewed_at: row.get(15)?,
-            repetition: row.get(16)?,
-            interval_days: row.get(17)?,
-            ease_factor: row.get(18)?,
-            stability: row.get(19)?,
-            difficulty: row.get(20)?,
-            subject: row.get(21)?,
-            branch: row.get(22)?,
-            level: row.get(23)?,
-            track: row.get(24)?,
-            order_key: row.get(25)?,
-            prereq: serde_json::from_str(&prereq_str).unwrap_or_default(),
-            created_at: row.get(27)?,
-            edited_at: row.get(28)?,
-        })
-    };
-
-    let rows = stmt.query_map(params![match_query, limit], row_mapper)?;
+    let rows = stmt.query_map(params![match_query, limit], map_card_row)?;
     let mut cards = Vec::new();
     for r in rows {
         cards.push(r?);
@@ -888,7 +873,7 @@ pub fn search_cards_fts(conn: &Connection, query: &str, limit: i64) -> Result<Ve
             LIMIT ?2
             "#,
         )?;
-        let fb_rows = fallback_stmt.query_map(params![wildcard, limit], row_mapper)?;
+        let fb_rows = fallback_stmt.query_map(params![wildcard, limit], map_card_row)?;
         for r in fb_rows {
             cards.push(r?);
         }
@@ -943,6 +928,236 @@ pub fn get_db_stats(conn: &Connection) -> Result<DbStatsDto> {
         seen_cards,
         due_cards,
     })
+}
+
+pub fn save_artifact(conn: &Connection, artifact: &ArtifactDto) -> Result<()> {
+    let source_ids_json = serde_json::to_string(&artifact.source_card_ids)
+        .unwrap_or_else(|_| "[]".to_string());
+    conn.execute(
+        r#"
+        INSERT INTO artifacts (
+            id, artifact_type, title, content_markdown, source_card_ids,
+            date_scope_start, date_scope_end, created_at, updated_at, is_deleted
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)
+        ON CONFLICT(id) DO UPDATE SET
+            artifact_type = excluded.artifact_type,
+            title = excluded.title,
+            content_markdown = excluded.content_markdown,
+            source_card_ids = excluded.source_card_ids,
+            date_scope_start = excluded.date_scope_start,
+            date_scope_end = excluded.date_scope_end,
+            updated_at = excluded.updated_at,
+            is_deleted = 0
+        "#,
+        params![
+            artifact.id,
+            artifact.artifact_type,
+            artifact.title,
+            artifact.content_markdown,
+            source_ids_json,
+            artifact.date_scope_start,
+            artifact.date_scope_end,
+            artifact.created_at,
+            artifact.updated_at,
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn list_artifacts(conn: &Connection, limit: i64) -> Result<Vec<ArtifactDto>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, artifact_type, title, content_markdown, source_card_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted
+         FROM artifacts WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?1"
+    )?;
+    let rows = stmt.query_map(params![limit], |row| {
+        let source_ids_str: String = row.get(4)?;
+        let source_ids: Vec<String> = serde_json::from_str(&source_ids_str).unwrap_or_default();
+        let is_del_int: i64 = row.get(9)?;
+        Ok(ArtifactDto {
+            id: row.get(0)?,
+            artifact_type: row.get(1)?,
+            title: row.get(2)?,
+            content_markdown: row.get(3)?,
+            source_card_ids: source_ids,
+            date_scope_start: row.get(5)?,
+            date_scope_end: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            is_deleted: is_del_int != 0,
+        })
+    })?;
+    let mut list = Vec::new();
+    for r in rows {
+        list.push(r?);
+    }
+    Ok(list)
+}
+
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let mut dot = 0.0f32;
+    let mut norm_a = 0.0f32;
+    let mut norm_b = 0.0f32;
+    for i in 0..a.len() {
+        dot += a[i] * b[i];
+        norm_a += a[i] * a[i];
+        norm_b += b[i] * b[i];
+    }
+    let denom = norm_a.sqrt() * norm_b.sqrt();
+    if denom == 0.0 {
+        0.0
+    } else {
+        dot / denom
+    }
+}
+
+pub fn save_card_embedding(conn: &Connection, card_id: &str, embedding: &[f32]) -> Result<()> {
+    let mut bytes = Vec::with_capacity(embedding.len() * 4);
+    for &val in embedding {
+        bytes.extend_from_slice(&val.to_le_bytes());
+    }
+    let now = chrono_or_epoch_now();
+    conn.execute(
+        r#"
+        INSERT INTO card_embeddings (card_id, dim, embedding, updated_at)
+        VALUES (?1, ?2, ?3, ?4)
+        ON CONFLICT(card_id) DO UPDATE SET
+            dim = excluded.dim,
+            embedding = excluded.embedding,
+            updated_at = excluded.updated_at
+        "#,
+        params![card_id, embedding.len() as i64, bytes, now],
+    )?;
+    Ok(())
+}
+
+pub fn list_unembedded_card_ids(conn: &Connection, limit: i64) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id FROM cards c
+         LEFT JOIN card_embeddings e ON c.id = e.card_id
+         WHERE c.is_deleted = 0 AND e.card_id IS NULL
+         ORDER BY c.created_at DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map([limit], |r| r.get(0))?;
+    let mut ids = Vec::new();
+    for r in rows {
+        ids.push(r?);
+    }
+    Ok(ids)
+}
+
+pub fn save_card_embeddings_batch(
+    conn: &mut Connection,
+    items: &[(String, Vec<f32>)],
+) -> Result<()> {
+    let tx = conn.transaction()?;
+    let now = chrono_or_epoch_now();
+    for (card_id, embedding) in items {
+        let mut bytes = Vec::with_capacity(embedding.len() * 4);
+        for &val in embedding {
+            bytes.extend_from_slice(&val.to_le_bytes());
+        }
+        tx.execute(
+            r#"
+            INSERT INTO card_embeddings (card_id, dim, embedding, updated_at)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(card_id) DO UPDATE SET
+                dim = excluded.dim,
+                embedding = excluded.embedding,
+                updated_at = excluded.updated_at
+            "#,
+            params![card_id, embedding.len() as i64, bytes, now],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn search_cards_vector(
+    conn: &Connection,
+    query_embedding: &[f32],
+    limit: usize,
+) -> Result<Vec<(KnowledgeCardDto, f32)>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.material_id, c.category, c.headline, c.summary, c.details,
+                c.links_json, c.tags_json, c.source, c.seen_at, c.swiped, c.is_favorite,
+                c.favorited_at, c.review_count, c.mastery_level, c.last_reviewed_at,
+                c.repetition, c.interval_days, c.ease_factor, c.stability, c.difficulty,
+                c.subject, c.branch, c.level, c.track, c.order_key, c.prereq_json,
+                c.created_at, c.edited_at, e.embedding
+         FROM cards c
+         INNER JOIN card_embeddings e ON c.id = e.card_id
+         WHERE c.is_deleted = 0"
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        let card = map_card_row(row)?;
+        let emb_bytes: Vec<u8> = row.get(29)?;
+        Ok((card, emb_bytes))
+    })?;
+
+    let mut scored: Vec<(KnowledgeCardDto, f32)> = Vec::new();
+    for r in rows {
+        let (card, bytes) = r?;
+        if bytes.len() % 4 == 0 {
+            let mut vec = Vec::with_capacity(bytes.len() / 4);
+            for chunk in bytes.chunks_exact(4) {
+                let arr: [u8; 4] = chunk.try_into().unwrap();
+                vec.push(f32::from_le_bytes(arr));
+            }
+            let sim = cosine_similarity(query_embedding, &vec);
+            scored.push((card, sim));
+        }
+    }
+
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    if scored.len() > limit {
+        scored.truncate(limit);
+    }
+    Ok(scored)
+}
+
+pub fn search_cards_hybrid(
+    conn: &Connection,
+    query_text: &str,
+    query_embedding: Option<&[f32]>,
+    limit: usize,
+) -> Result<Vec<KnowledgeCardDto>> {
+    let k = 60.0f32;
+    let mut rrf_scores: std::collections::HashMap<String, (KnowledgeCardDto, f32)> =
+        std::collections::HashMap::new();
+
+    // 1. FTS5 关键词排序
+    if !query_text.trim().is_empty() {
+        let fts_results = search_cards_fts(conn, query_text, (limit * 2) as i64).unwrap_or_default();
+        for (rank, card) in fts_results.into_iter().enumerate() {
+            let contrib = 1.0 / (k + rank as f32 + 1.0);
+            let entry = rrf_scores.entry(card.id.clone()).or_insert_with(|| (card, 0.0));
+            entry.1 += contrib;
+        }
+    }
+
+    // 2. 向量相似度排序
+    if let Some(emb) = query_embedding {
+        if !emb.is_empty() {
+            let vec_results = search_cards_vector(conn, emb, limit * 2).unwrap_or_default();
+            for (rank, (card, _sim)) in vec_results.into_iter().enumerate() {
+                let contrib = 1.0 / (k + rank as f32 + 1.0);
+                let entry = rrf_scores.entry(card.id.clone()).or_insert_with(|| (card, 0.0));
+                entry.1 += contrib;
+            }
+        }
+    }
+
+    let mut ranked: Vec<(KnowledgeCardDto, f32)> = rrf_scores.into_values().collect();
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    if ranked.len() > limit {
+        ranked.truncate(limit);
+    }
+    Ok(ranked.into_iter().map(|(c, _)| c).collect())
 }
 
 pub fn migrate_legacy_cards_json(conn: &Connection, json_str: &str) -> Result<usize> {
@@ -1500,5 +1715,131 @@ mod tests {
         assert_eq!(fts_c1.len(), 0);
         let fts_c3 = search_cards_fts(&conn, "新卡片 3", 10).unwrap();
         assert_eq!(fts_c3.len(), 1);
+    }
+
+    #[test]
+    fn test_artifact_lifecycle() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+
+        let artifact = ArtifactDto {
+            id: "artifact-1".to_string(),
+            artifact_type: "briefing".to_string(),
+            title: "认知简报 · 第 42 周".to_string(),
+            content_markdown: "# 认知简报\n\n- 本周新增卡片: 12条".to_string(),
+            source_card_ids: vec!["card-1".to_string(), "card-2".to_string()],
+            date_scope_start: Some(1700000000000),
+            date_scope_end: Some(1700000604800),
+            created_at: 1700000605000,
+            updated_at: 1700000605000,
+            is_deleted: false,
+        };
+
+        save_artifact(&conn, &artifact).unwrap();
+
+        let list = list_artifacts(&conn, 10).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "artifact-1");
+        assert_eq!(list[0].title, "认知简报 · 第 42 周");
+        assert_eq!(list[0].source_card_ids, vec!["card-1".to_string(), "card-2".to_string()]);
+
+        // 测试幂等更新
+        let mut updated = artifact.clone();
+        updated.title = "认知简报 · 终稿".to_string();
+        save_artifact(&conn, &updated).unwrap();
+
+        let list2 = list_artifacts(&conn, 10).unwrap();
+        assert_eq!(list2.len(), 1);
+        assert_eq!(list2[0].title, "认知简报 · 终稿");
+    }
+
+    #[test]
+    fn test_vector_similarity_and_hybrid_rrf() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+
+        // 1. 验证余弦相似度边界
+        assert_eq!(cosine_similarity(&[], &[]), 0.0);
+        let v1 = vec![1.0, 0.0, 0.0];
+        let v2 = vec![0.0, 1.0, 0.0];
+        let v3 = vec![1.0, 0.0, 0.0];
+        assert_eq!(cosine_similarity(&v1, &v2), 0.0);
+        assert!((cosine_similarity(&v1, &v3) - 1.0).abs() < 1e-5);
+
+        // 2. 插入测试卡片与对应向量
+        let c1 = KnowledgeCardDto {
+            id: "card-vec-1".to_string(),
+            material_id: None,
+            category: "计算机".to_string(),
+            headline: "SQLite 全文索引与向量存储".to_string(),
+            summary: "SQLite 内置 FTS5 与向量扩展。".to_string(),
+            details: "利用轻量单文件数据库构建端侧第二大脑。".to_string(),
+            links: vec![],
+            tags: vec!["SQLite".to_string(), "架构".to_string()],
+            source: "imported".to_string(),
+            created_at: 1700000000000,
+            edited_at: None,
+            seen_at: None,
+            swiped: None,
+            is_favorite: false,
+            favorited_at: None,
+            review_count: 0,
+            mastery_level: 0,
+            last_reviewed_at: None,
+            repetition: 0,
+            interval_days: 0.0,
+            ease_factor: 2.5,
+            stability: 0.0,
+            difficulty: 0.0,
+            subject: None,
+            branch: None,
+            level: None,
+            track: None,
+            order_key: None,
+            prereq: vec![],
+        };
+        let c2 = KnowledgeCardDto {
+            id: "card-vec-2".to_string(),
+            headline: "深度学习中的反向传播算法".to_string(),
+            summary: "微积分链式法则在神经网络权重更新中的应用。".to_string(),
+            details: "通过梯度下降优化损失函数。".to_string(),
+            ..c1.clone()
+        };
+        upsert_card(&conn, &c1).unwrap();
+        upsert_card(&conn, &c2).unwrap();
+
+        // 验证尚未向量化的卡片列表
+        let unembedded = list_unembedded_card_ids(&conn, 10).unwrap();
+        assert_eq!(unembedded.len(), 2);
+        assert!(unembedded.contains(&"card-vec-1".to_string()));
+        assert!(unembedded.contains(&"card-vec-2".to_string()));
+
+        // 存储向量 (4维测试向量)，测试批量保存
+        let mut conn_mut = conn;
+        save_card_embeddings_batch(
+            &mut conn_mut,
+            &[
+                ("card-vec-1".to_string(), vec![0.9, 0.1, 0.0, 0.0]),
+                ("card-vec-2".to_string(), vec![0.0, 0.1, 0.9, 0.8]),
+            ],
+        )
+        .unwrap();
+        let conn = conn_mut;
+
+        // 保存后无遗留未嵌入卡片
+        let unembedded_after = list_unembedded_card_ids(&conn, 10).unwrap();
+        assert_eq!(unembedded_after.len(), 0);
+
+        // 3. 纯向量检索：查询更接近 c1
+        let query_vec = vec![0.85, 0.15, 0.0, 0.0];
+        let vec_hits = search_cards_vector(&conn, &query_vec, 2).unwrap();
+        assert_eq!(vec_hits.len(), 2);
+        assert_eq!(vec_hits[0].0.id, "card-vec-1");
+        assert!(vec_hits[0].1 > 0.9);
+
+        // 4. 混合检索 RRF：FTS 命中 + 向量命中融合
+        let hybrid_hits = search_cards_hybrid(&conn, "SQLite", Some(&query_vec), 2).unwrap();
+        assert_eq!(hybrid_hits.len(), 2);
+        assert_eq!(hybrid_hits[0].id, "card-vec-1");
     }
 }

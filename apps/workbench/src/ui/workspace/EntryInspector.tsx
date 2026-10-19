@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { Entry } from "./model";
 import { Icon, sourceLabel } from "./Icon";
 import { openExternalUrl, type RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
+import { estimateTokenCount } from "../../domain/ingest";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface Props {
   entry: Entry;
+  readerRef?: RefObject<HTMLElement | null>;
   onSave: (title: string, text: string, category: string, tags: string[]) => Promise<void>;
   onArchive: () => Promise<void>;
   onConvert: () => Promise<void>;
@@ -19,6 +22,7 @@ interface Props {
 
 export function EntryInspector({
   entry,
+  readerRef,
   onSave,
   onArchive,
   onConvert,
@@ -35,6 +39,18 @@ export function EntryInspector({
   const [category, setCategory] = useState(entry.category);
   const [tags, setTags] = useState(entry.tags.join(", "));
   const [error, setError] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const resetDraft = () => {
+    setTitle(entry.title); setText(entry.text); setCategory(entry.category); setTags(entry.tags.join(", "));
+  };
+  useEffect(() => {
+    const edit = () => { if (!busy) { resetDraft(); setEditing(true); } };
+    window.addEventListener("knowflick:edit-entry", edit);
+    return () => window.removeEventListener("knowflick:edit-entry", edit);
+  }, [entry, busy]);
+  useEffect(() => {
+    if (editing) titleRef.current?.focus();
+  }, [editing]);
 
   const run = async (action: () => Promise<void>) => {
     setError("");
@@ -52,7 +68,7 @@ export function EntryInspector({
   const meta = sourceLabel(isCard ? "card" : material?.sourceType ?? "", entry.url);
 
   return (
-    <article className="ws-reader" data-workspace-pane="inspector" aria-label="内容详情">
+    <article ref={readerRef} tabIndex={-1} className="ws-reader" data-workspace-pane="inspector" aria-label="内容详情">
       <div className="ws-reader-scroll">
         {error ? (
           <div className="ws-feedback" role="alert">
@@ -63,6 +79,14 @@ export function EntryInspector({
         {editing ? (
           <form
             className="ws-editor"
+            onKeyDown={e => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Escape" && !busy) {
+                e.preventDefault(); e.stopPropagation();
+                resetDraft(); setEditing(false);
+                requestAnimationFrame(() => readerRef?.current?.focus());
+              }
+            }}
             onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
@@ -81,7 +105,7 @@ export function EntryInspector({
           >
             <label className="ws-field">
               标题
-              <input aria-label="标题" required value={title} onChange={(e) => setTitle(e.target.value)} />
+              <input ref={titleRef} aria-label="标题" required value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
             {isCard ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -107,8 +131,7 @@ export function EntryInspector({
                 type="button"
                 disabled={busy}
                 onClick={() => {
-                  setTitle(entry.title);
-                  setText(entry.text);
+                  resetDraft();
                   setEditing(false);
                 }}
               >
@@ -141,14 +164,7 @@ export function EntryInspector({
                 ))}
               </div>
             )}
-            <div className="ws-prose">
-              {entry.text
-                .split(/\n{2,}/)
-                .filter((p) => p.trim())
-                .map((p, i) => (
-                  <p key={i}>{p}</p>
-                ))}
-            </div>
+            <MarkdownRenderer text={entry.text} />
             {entry.url ? (
               <button
                 className="ws-source-link"
@@ -165,7 +181,9 @@ export function EntryInspector({
                   <Icon name="layers" size={16} />
                   <div>
                     <strong>从素材提炼知识</strong>
-                    <p>保留原始记录，将关键结论沉淀为原子知识卡。</p>
+                    <p>
+                      保留原始记录，将关键结论沉淀为原子知识卡（{estimateTokenCount(entry.text).summary}）。
+                    </p>
                   </div>
                 </div>
                 <div className="ws-material-box-actions">
@@ -191,7 +209,7 @@ export function EntryInspector({
         <span>{busy ? "正在处理…" : `${entry.text.length.toLocaleString()} 字符 · 已保存在本机`}</span>
         <div style={{ display: "flex", gap: 4 }}>
           {!editing ? (
-            <button className="ws-icon-button" aria-label="编辑" title="编辑" onClick={() => setEditing(true)} disabled={busy}>
+            <button className="ws-icon-button" aria-label="编辑" title="编辑" onClick={() => { resetDraft(); setEditing(true); }} disabled={busy}>
               <Icon name="edit" />
             </button>
           ) : null}

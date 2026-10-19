@@ -61,6 +61,14 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     docUrl: "https://platform.openai.com",
   },
   {
+    id: "claude",
+    name: "Anthropic Claude",
+    baseURL: "https://api.anthropic.com/v1",
+    defaultModel: "claude-3-5-sonnet-20241022",
+    availableModels: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+    docUrl: "https://docs.anthropic.com",
+  },
+  {
     id: "ollama",
     name: "本地 Ollama",
     baseURL: "http://localhost:11434/v1",

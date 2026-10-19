@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "KnowFlick",
         "width": 1040,
         "height": 760,
@@ -20,6 +21,20 @@
         "resizable": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
+      },
+      {
+        "label": "quick-capture",
+        "title": "KnowFlick 快速记录",
+        "url": "/index.html#capture-capsule",
+        "width": 580,
+        "height": 180,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "center": true,
+        "skipTaskbar": true
       }
     ],
     "security": {

@@ -163,3 +163,67 @@ export function dbGetStats(dir?: string): Promise<DbStats> {
   return invoke("db_get_stats", { dir: dir ?? null });
 }
 
+export interface Artifact {
+  id: string;
+  artifactType: string;
+  title: string;
+  contentMarkdown: string;
+  sourceCardIds: string[];
+  dateScopeStart?: number | null;
+  dateScopeEnd?: number | null;
+  createdAt: number;
+  updatedAt: number;
+  isDeleted?: boolean;
+}
+
+export function dbSaveArtifact(artifact: Artifact, dir?: string): Promise<void> {
+  return invoke("db_save_artifact", { dir: dir ?? null, artifact });
+}
+
+export function dbListArtifacts(limit?: number, dir?: string): Promise<Artifact[]> {
+  return invoke("db_list_artifacts", { dir: dir ?? null, limit: limit ?? 50 });
+}
+
+export function dbSaveCardEmbedding(cardId: string, embedding: number[], dir?: string): Promise<void> {
+  return invoke("db_save_card_embedding", { dir: dir ?? null, cardId, embedding });
+}
+
+export function dbSearchCardsVector(queryEmbedding: number[], limit?: number, dir?: string): Promise<Array<[KnowledgeCard, number]>> {
+  return invoke("db_search_cards_vector", { dir: dir ?? null, queryEmbedding, limit: limit ?? 10 });
+}
+
+export function dbSearchCardsHybrid(
+  queryText: string,
+  queryEmbedding?: number[] | null,
+  limit?: number,
+  dir?: string
+): Promise<KnowledgeCard[]> {
+  return invoke("db_search_cards_hybrid", {
+    dir: dir ?? null,
+    queryText,
+    queryEmbedding: queryEmbedding ?? null,
+    limit: limit ?? 10,
+  });
+}
+
+export function dbListUnembeddedCardIds(limit?: number, dir?: string): Promise<string[]> {
+  return invoke("db_list_unembedded_card_ids", { dir: dir ?? null, limit: limit ?? 100 });
+}
+
+export function dbSaveCardEmbeddingsBatch(
+  items: Array<{ cardId: string; embedding: number[] }>,
+  dir?: string
+): Promise<void> {
+  const payload = items.map((it) => ({ card_id: it.cardId, embedding: it.embedding }));
+  return invoke("db_save_card_embeddings_batch", { dir: dir ?? null, items: payload });
+}
+
+export function requestEmbeddings(
+  endpoint: string,
+  apiKey: string,
+  model: string,
+  input: string[]
+): Promise<number[][]> {
+  return invoke("request_embeddings", { endpoint, apiKey, model, input });
+}
+

@@ -190,11 +190,20 @@ fn db_search_cards_fts(dir: Option<String>, query: String, limit: Option<i64>) -
 }
 
 #[tauri::command]
-fn db_save_material(dir: Option<String>, material: db::RawMaterialDto) -> Result<(), String> {
+fn db_save_material(app: tauri::AppHandle, dir: Option<String>, material: db::RawMaterialDto) -> Result<(), String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
-    db::save_material(&conn, &material).map_err(|e| e.to_string())
+    db::save_material(&conn, &material).map_err(|e| e.to_string())?;
+
+    use tauri::{Emitter, Manager};
+    let _ = app.emit("knowflick:library-changed", ());
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.emit("knowflick:library-changed", ());
+        let _ = main_win.eval("window.dispatchEvent(new CustomEvent('knowflick:library-changed'))");
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -219,6 +228,97 @@ fn db_get_stats(dir: Option<String>) -> Result<db::DbStatsDto, String> {
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
     db::get_db_stats(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_save_artifact(dir: Option<String>, artifact: db::ArtifactDto) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::save_artifact(&conn, &artifact).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_list_artifacts(dir: Option<String>, limit: Option<i64>) -> Result<Vec<db::ArtifactDto>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::list_artifacts(&conn, limit.unwrap_or(50)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_save_card_embedding(dir: Option<String>, card_id: String, embedding: Vec<f32>) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::save_card_embedding(&conn, &card_id, &embedding).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_search_cards_vector(
+    dir: Option<String>,
+    query_embedding: Vec<f32>,
+    limit: Option<usize>,
+) -> Result<Vec<(db::KnowledgeCardDto, f32)>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::search_cards_vector(&conn, &query_embedding, limit.unwrap_or(10)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_search_cards_hybrid(
+    dir: Option<String>,
+    query_text: String,
+    query_embedding: Option<Vec<f32>>,
+    limit: Option<usize>,
+) -> Result<Vec<db::KnowledgeCardDto>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::search_cards_hybrid(
+        &conn,
+        &query_text,
+        query_embedding.as_deref(),
+        limit.unwrap_or(10),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_list_unembedded_card_ids(dir: Option<String>, limit: Option<i64>) -> Result<Vec<String>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::list_unembedded_card_ids(&conn, limit.unwrap_or(100)).map_err(|e| e.to_string())
+}
+
+#[derive(serde::Deserialize)]
+pub struct CardEmbeddingBatchItem {
+    pub card_id: String,
+    pub embedding: Vec<f32>,
+}
+
+#[tauri::command]
+fn db_save_card_embeddings_batch(
+    dir: Option<String>,
+    items: Vec<CardEmbeddingBatchItem>,
+) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let mut conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    let pairs: Vec<(String, Vec<f32>)> = items.into_iter().map(|it| (it.card_id, it.embedding)).collect();
+    db::save_card_embeddings_batch(&mut conn, &pairs).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn request_embeddings(
+    endpoint: String,
+    api_key: String,
+    model: String,
+    input: Vec<String>,
+) -> Result<Vec<Vec<f32>>, String> {
+    http::request_embeddings(&endpoint, &api_key, &model, input).await
 }
 
 #[cfg(test)]
@@ -267,6 +367,7 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tau
         true,
         &[
             &MenuItem::with_id(app, "capture", "记录一件闪念", true, Some("CmdOrCtrl+N"))?,
+            &MenuItem::with_id(app, "capsule", "呼出闪念胶囊", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "import", "导入文件…", true, Some("CmdOrCtrl+O"))?,
             &MenuItem::with_id(app, "export", "导出备份…", true, Some("CmdOrCtrl+Shift+E"))?,
@@ -305,19 +406,242 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tau
     Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu])
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortcutStatus {
+    pub shortcut: String,
+    pub registered: bool,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+fn get_shortcut_status(state: tauri::State<ShortcutStatus>) -> ShortcutStatus {
+    state.inner().clone()
+}
+
+#[tauri::command]
+fn hide_capsule(app: tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("quick-capture") {
+        let _ = w.hide();
+    }
+}
+
+#[tauri::command]
+fn toggle_capsule(app: tauri::AppHandle) {
+    toggle_capsule_window(&app);
+}
+
+fn show_capsule_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::{Emitter, Manager};
+    if let Some(w) = app.get_webview_window("quick-capture") {
+        let _ = w.center();
+        let _ = w.show();
+        let _ = w.set_focus();
+        let _ = w.emit("knowflick:capsule-open", ());
+        let _ = app.emit("knowflick:capsule-open", ());
+        let _ = w.eval("window.dispatchEvent(new CustomEvent('knowflick:capsule-open'))");
+    }
+}
+
+fn toggle_capsule_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("quick-capture") {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+        } else {
+            show_capsule_window(app);
+        }
+    }
+}
+
+fn platform_capture_tray_label(registered: bool) -> &'static str {
+    if registered {
+        if cfg!(target_os = "macos") {
+            "快速闪念 (⌥Space)"
+        } else {
+            "快速闪念 (Alt+Space)"
+        }
+    } else {
+        "快速闪念"
+    }
+}
+
+fn setup_tray<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    shortcut_status: &ShortcutStatus,
+) -> tauri::Result<()> {
+    use std::sync::atomic::Ordering;
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    use tauri::Manager;
+
+    let capture_label = platform_capture_tray_label(shortcut_status.registered);
+
+    let tray_menu = Menu::with_items(
+        app,
+        &[
+            &MenuItem::with_id(app, "tray_open", "打开主窗口", true, None::<&str>)?,
+            &MenuItem::with_id(app, "tray_capture", capture_label, true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "tray_quit", "退出 KnowFlick", true, None::<&str>)?,
+        ],
+    )?;
+
+    if let Some(icon) = app.default_window_icon() {
+        let mut builder = TrayIconBuilder::with_id("knowflick-tray")
+            .icon(icon.clone())
+            .menu(&tray_menu)
+            .on_menu_event(|app, event| {
+                match event.id().as_ref() {
+                    "tray_open" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.unminimize();
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "tray_capture" => {
+                        toggle_capsule_window(app);
+                    }
+                    "tray_quit" => {
+                        IS_QUITTING.store(true, Ordering::SeqCst);
+                        app.exit(0);
+                    }
+                    _ => {}
+                }
+            })
+            .on_tray_icon_event(|tray, event| {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    let app = tray.app_handle();
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.unminimize();
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                }
+            });
+
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder.show_menu_on_left_click(true);
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            builder = builder.show_menu_on_left_click(false);
+        }
+
+        let _tray = builder.build(app)?;
+    } else {
+        eprintln!("[KnowFlick] Warning: default_window_icon not available, tray icon skipped");
+    }
+    Ok(())
+}
+
+fn setup_shortcuts<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<ShortcutStatus> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+    let shortcut_str = "Alt+Space";
+    let shortcut: Shortcut = shortcut_str.parse().expect("valid shortcut");
+    let shortcut_clone = shortcut.clone();
+
+    app.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(move |app_h, s, event| {
+                if event.state() == ShortcutState::Pressed && *s == shortcut_clone {
+                    toggle_capsule_window(app_h);
+                }
+            })
+            .build(),
+    )?;
+
+    // Register Alt+Space (Option+Space on macOS). Do NOT silently fall back to Control+Space
+    // to avoid hijacking system input method (IME) switching.
+    match app.global_shortcut().register(shortcut) {
+        Ok(_) => {
+            eprintln!("[KnowFlick] Global shortcut registered: {}", shortcut_str);
+            Ok(ShortcutStatus {
+                shortcut: shortcut_str.to_string(),
+                registered: true,
+                error: None,
+            })
+        }
+        Err(err) => {
+            let err_msg = err.to_string();
+            eprintln!(
+                "[KnowFlick] Failed to register global shortcut {}: {}",
+                shortcut_str, err_msg
+            );
+            Ok(ShortcutStatus {
+                shortcut: shortcut_str.to_string(),
+                registered: false,
+                error: Some(err_msg),
+            })
+        }
+    }
+}
+
+static IS_QUITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            use tauri::Manager;
             let menu = build_menu(app.handle())?;
             app.set_menu(menu)?;
+            let shortcut_status = setup_shortcuts(app.handle())?;
+            setup_tray(app.handle(), &shortcut_status)?;
+            app.manage(shortcut_status);
+
+            // Apply platform vibrancy / materials where supported
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(main_win) = app.get_webview_window("main") {
+                    let _ = window_vibrancy::apply_vibrancy(
+                        &main_win,
+                        window_vibrancy::NSVisualEffectMaterial::Sidebar,
+                        Some(window_vibrancy::NSVisualEffectState::Active),
+                        Some(8.0),
+                    );
+                }
+            }
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(main_win) = app.get_webview_window("main") {
+                    let _ = window_vibrancy::apply_mica(&main_win, None);
+                }
+            }
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            use std::sync::atomic::Ordering;
+            if IS_QUITTING.load(Ordering::SeqCst) {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let label = window.label();
+                if label == "main" || label == "quick-capture" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .on_menu_event(|app, event| {
             use tauri::Manager;
-            // Forward the menu choice to the web layer; ignore when no window is ready.
             let id = event.id().as_ref().to_string();
+            if id == "capsule" {
+                toggle_capsule_window(app);
+                return;
+            }
+            // Forward the menu choice to the web layer; ignore when no window is ready.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.eval(&format!(
                     "window.dispatchEvent(new CustomEvent('knowflick:menu', {{detail: '{}'}}))",
@@ -347,8 +671,76 @@ pub fn run() {
             db_list_materials,
             db_update_material_status,
             db_get_stats,
-            db_replace_cards
+            db_replace_cards,
+            hide_capsule,
+            toggle_capsule,
+            get_shortcut_status,
+            db_save_artifact,
+            db_list_artifacts,
+            db_save_card_embedding,
+            db_search_cards_vector,
+            db_search_cards_hybrid,
+            db_list_unembedded_card_ids,
+            db_save_card_embeddings_batch,
+            request_embeddings
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running KnowFlick");
+        .build(tauri::generate_context!())
+        .expect("error while running KnowFlick")
+        .run(|app_handle, event| {
+            use std::sync::atomic::Ordering;
+            match event {
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { has_visible_windows, .. } => {
+                    use tauri::Manager;
+                    if !has_visible_windows {
+                        if let Some(w) = app_handle.get_webview_window("main") {
+                            let _ = w.unminimize();
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                }
+                tauri::RunEvent::ExitRequested { .. } => {
+                    IS_QUITTING.store(true, Ordering::SeqCst);
+                }
+                _ => {}
+            }
+        });
+}
+
+#[cfg(test)]
+mod shortcut_and_tray_tests {
+    use super::*;
+
+    #[test]
+    fn shortcut_status_serialization() {
+        let ok_status = ShortcutStatus {
+            shortcut: "Alt+Space".to_string(),
+            registered: true,
+            error: None,
+        };
+        let ok_json = serde_json::to_string(&ok_status).unwrap();
+        assert!(ok_json.contains("\"shortcut\":\"Alt+Space\""));
+        assert!(ok_json.contains("\"registered\":true"));
+        assert!(ok_json.contains("\"error\":null"));
+
+        let err_status = ShortcutStatus {
+            shortcut: "Alt+Space".to_string(),
+            registered: false,
+            error: Some("Shortcut in use by system".to_string()),
+        };
+        let err_json = serde_json::to_string(&err_status).unwrap();
+        assert!(err_json.contains("\"registered\":false"));
+        assert!(err_json.contains("\"error\":\"Shortcut in use by system\""));
+    }
+
+    #[test]
+    fn platform_tray_label_test() {
+        if cfg!(target_os = "macos") {
+            assert_eq!(platform_capture_tray_label(true), "快速闪念 (⌥Space)");
+        } else {
+            assert_eq!(platform_capture_tray_label(true), "快速闪念 (Alt+Space)");
+        }
+        assert_eq!(platform_capture_tray_label(false), "快速闪念");
+    }
 }

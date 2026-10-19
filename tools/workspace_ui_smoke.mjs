@@ -146,12 +146,13 @@ try {
 
   // Narrow window collapses the nav instead of squeezing three panes
   await browser("set", "viewport", "900", "760");
+  await browser("screenshot");
   await check(
     'getComputedStyle(document.querySelector(".ws-nav")).visibility === "hidden"',
     "narrow window collapses the navigation"
   );
   await browser("click", '[aria-label="展开导航栏"]');
-  await check('document.querySelector(".ws").dataset.nav === "expanded"', "navigation can be reopened on narrow windows");
+  await check('document.querySelector(".ws").dataset.nav === "overlay"', "navigation can be reopened on narrow windows");
   await browser("press", "Escape");
   await browser("set", "viewport", "1040", "760");
 

@@ -43,11 +43,66 @@ export function requiresKey(baseURL: string): boolean {
   return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
 }
 
+export function estimateTokenCount(text: string): { tokens: number; summary: string } {
+  const chars = text.length;
+  const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const otherChars = chars - chineseChars;
+  const tokens = Math.ceil(chineseChars / 1.5 + otherChars / 4);
+  return {
+    tokens,
+    summary: `约 ${tokens.toLocaleString()} tokens (${chars.toLocaleString()} 字符)`,
+  };
+}
+
+export function smartSliceText(text: string, maxChunkLength = 4000): string[] {
+  if (text.length <= maxChunkLength) return [text];
+
+  const chunks: string[] = [];
+  const sections = text.split(/(?=\n#{1,3}\s+)/);
+
+  let currentChunk = "";
+  for (const sec of sections) {
+    if (currentChunk.length + sec.length <= maxChunkLength) {
+      currentChunk += sec;
+    } else {
+      if (currentChunk.trim()) {
+        chunks.push(currentChunk.trim());
+      }
+      if (sec.length > maxChunkLength) {
+        const paragraphs = sec.split(/\n{2,}/);
+        let sub = "";
+        for (const p of paragraphs) {
+          if (sub.length + p.length <= maxChunkLength) {
+            sub += (sub ? "\n\n" : "") + p;
+          } else {
+            if (sub.trim()) chunks.push(sub.trim());
+            sub = p.slice(0, maxChunkLength);
+          }
+        }
+        if (sub.trim()) currentChunk = sub;
+        else currentChunk = "";
+      } else {
+        currentChunk = sec;
+      }
+    }
+  }
+
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks.length > 0 ? chunks : [text.slice(0, maxChunkLength)];
+}
+
 const TRANSFORM_SYSTEM = "你是一位博学敏锐的知识架构师。你的任务是将用户提供的非结构化笔记、长文或书摘，提炼提纯为 1 到 5 张结构精炼、具有深刻洞察力的 KnowFlick 知识卡片，必须且仅输出标准 JSON 数组。";
 
 export function transformPrompt(note: string): string {
-  return `你是一位知识提炼专家。请将用户提供的以下笔记或文章内容，深度解构并提炼为 1 到 5 张高品质的「KnowFlick 知识闪卡」。
+  const isLong = note.length > 3000;
+  const longNoteGuidance = isLong
+    ? "\n【长文智能切片提示】\n原文篇幅较长，请根据文章段落脉络与逻辑主线，分别提炼 3 到 5 张自包含、相互独立的原子知识卡，覆盖核心论证与结论。\n"
+    : "";
 
+  return `你是一位知识提炼专家。请将用户提供的以下笔记或文章内容，深度解构并提炼为 1 到 5 张高品质的「KnowFlick 知识闪卡」。${longNoteGuidance}
 【提炼设计准则】
 1. 必须提炼为符合以下 JSON 结构的卡片数组，仅输出 JSON，不要任何多余解释；
 2. category: 精准学科分类（如：物理、计算机、心理学、经济学、生物学、历史、哲学、医学等）；
@@ -70,7 +125,7 @@ export function transformPrompt(note: string): string {
 ]
 
 【用户笔记原文】
-${note.slice(0, 4000)}`;
+${note.slice(0, 5000)}`;
 }
 
 export function cardsFromModelText(text: string, now = Date.now()): KnowledgeCard[] {
