@@ -302,54 +302,29 @@ fn asr_model_status(model: Option<String>) -> Result<asr::AsrModelStatus, String
 /// 下载语音模型到 `<data_root>/models/`。进度通过 `knowflick:asr-progress` 事件推给界面。
 #[tauri::command]
 async fn asr_download_model(app: tauri::AppHandle, model: String) -> Result<asr::AsrModelStatus, String> {
-    use std::io::Write;
     use tauri::Emitter;
 
     let url = asr::model_download_url(&model)?;
-    let dir = asr::models_dir(&store::data_root());
-    std::fs::create_dir_all(&dir).map_err(|e| format!("创建模型目录失败: {e}"))?;
     let target = asr::model_path(&store::data_root(), &model)?;
-    // 先写 .part 再改名：下载中断不会留下一个「看起来装好了」的坏模型。
-    let partial = target.with_extension("part");
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let response = client
-        .get(&url)
-        .header("User-Agent", "KnowFlick/0.1")
-        .send()
-        .await
-        .map_err(|e| format!("下载模型失败: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!("下载模型失败: HTTP {}", response.status().as_u16()));
-    }
-    let total = response.content_length().unwrap_or(0);
-
-    let mut file = std::fs::File::create(&partial).map_err(|e| format!("写入模型失败: {e}"))?;
-    let mut downloaded: u64 = 0;
+    // 每 2 MB 或每跨过一个百分位推一次，避免刷爆事件队列
     let mut last_emitted: u64 = 0;
-    let mut stream = response;
-    while let Some(chunk) = stream.chunk().await.map_err(|e| format!("下载中断: {e}"))? {
-        file.write_all(&chunk).map_err(|e| format!("写入模型失败: {e}"))?;
-        downloaded += chunk.len() as u64;
-        // 每 5% 或 2MB 推一次，避免刷爆事件队列
-        if downloaded - last_emitted > 2 * 1024 * 1024 || (total > 0 && downloaded * 100 / total > last_emitted * 100 / total.max(1)) {
-            last_emitted = downloaded;
+    let downloaded = asr::download_to_path(&url, &target, |done, total| {
+        let step = done - last_emitted >= 2 * 1024 * 1024;
+        let pct_step = total > 0 && (done * 100 / total) > (last_emitted * 100 / last_emitted.max(1));
+        if step || pct_step || done == total {
+            last_emitted = done;
             let _ = app.emit(
                 "knowflick:asr-progress",
-                serde_json::json!({ "model": model, "downloaded": downloaded, "total": total }),
+                serde_json::json!({ "model": model, "downloaded": done, "total": total }),
             );
         }
-    }
-    file.flush().map_err(|e| format!("写入模型失败: {e}"))?;
-    drop(file);
+    })
+    .await?;
 
-    std::fs::rename(&partial, &target).map_err(|e| format!("保存模型失败: {e}"))?;
     let _ = app.emit(
         "knowflick:asr-progress",
-        serde_json::json!({ "model": model, "downloaded": downloaded, "total": total, "done": true }),
+        serde_json::json!({ "model": model, "downloaded": downloaded, "total": downloaded, "done": true }),
     );
 
     asr::model_status(&store::data_root(), &model)

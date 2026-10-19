@@ -81,6 +81,70 @@ pub fn model_download_url(model: &str) -> Result<String, String> {
     ))
 }
 
+/// 把 URL 流式下到 `target`，先写 `.part` 再改名。
+///
+/// 抽成独立函数是为了能脱离 Tauri 测：命令层只负责转进度事件。
+/// 失败时删除 `.part`，避免留下一个「文件存在但内容是半截」的假模型。
+pub async fn download_to_path<F>(
+    url: &str,
+    target: &Path,
+    mut on_progress: F,
+) -> Result<u64, String>
+where
+    F: FnMut(u64, u64),
+{
+    use std::io::Write;
+
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建模型目录失败: {e}"))?;
+    }
+    let partial = target.with_extension("part");
+    let _ = std::fs::remove_file(&partial);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client
+        .get(url)
+        .header("User-Agent", "KnowFlick/0.1")
+        .send()
+        .await
+        .map_err(|e| format!("下载模型失败: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("下载模型失败: HTTP {}", response.status().as_u16()));
+    }
+    let total = response.content_length().unwrap_or(0);
+
+    let mut file = std::fs::File::create(&partial).map_err(|e| format!("写入模型失败: {e}"))?;
+    let mut downloaded: u64 = 0;
+    let mut response = response;
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if let Err(e) = file.write_all(&chunk) {
+                    drop(file);
+                    let _ = std::fs::remove_file(&partial);
+                    return Err(format!("写入模型失败: {e}"));
+                }
+                downloaded += chunk.len() as u64;
+                on_progress(downloaded, total);
+            }
+            Ok(None) => break,
+            Err(e) => {
+                drop(file);
+                let _ = std::fs::remove_file(&partial);
+                return Err(format!("下载中断: {e}"));
+            }
+        }
+    }
+    file.flush().map_err(|e| format!("写入模型失败: {e}"))?;
+    drop(file);
+
+    std::fs::rename(&partial, target).map_err(|e| format!("保存模型失败: {e}"))?;
+    Ok(downloaded)
+}
+
 pub fn model_path(data_root: &Path, model: &str) -> Result<PathBuf, String> {
     Ok(models_dir(data_root).join(model_file_name(model)?))
 }
@@ -283,6 +347,79 @@ mod tests {
         let after = model_status(&dir, "tiny").unwrap();
         assert!(after.installed);
         assert!(after.path.unwrap().ends_with("ggml-tiny.bin"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 起一个只服务一次的本地 HTTP 服务，用真实 socket 验证下载 → .part → 改名。
+    fn serve_once(body: &'static [u8]) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/octet-stream\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(header.as_bytes()).unwrap();
+            stream.write_all(body).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://127.0.0.1:{port}/model.bin"), handle)
+    }
+
+    #[test]
+    fn download_to_path_writes_file_via_part_and_reports_progress() {
+        static BODY: &[u8] = b"pretend whisper weights, 40 bytes long....";
+        let (url, handle) = serve_once(BODY);
+        let dir = std::env::temp_dir().join(format!("kf-dl-{}", uuid::Uuid::new_v4()));
+        let target = dir.join("ggml-tiny.bin");
+
+        let mut seen: Vec<(u64, u64)> = Vec::new();
+        let downloaded = tauri::async_runtime::block_on(download_to_path(&url, &target, |done, total| {
+            seen.push((done, total));
+        }))
+        .unwrap();
+        handle.join().unwrap();
+
+        assert_eq!(downloaded, BODY.len() as u64);
+        assert_eq!(std::fs::read(&target).unwrap(), BODY);
+        assert!(!target.with_extension("part").exists(), ".part 必须被改名掉");
+        assert!(!seen.is_empty(), "至少要上报一次进度");
+        assert_eq!(seen.last().unwrap().0, BODY.len() as u64);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn download_to_path_leaves_no_partial_file_on_http_error() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            stream
+                .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+                .unwrap();
+            stream.flush().unwrap();
+        });
+
+        let dir = std::env::temp_dir().join(format!("kf-dl-{}", uuid::Uuid::new_v4()));
+        let target = dir.join("ggml-tiny.bin");
+        let err = tauri::async_runtime::block_on(download_to_path(
+            &format!("http://127.0.0.1:{port}/model.bin"),
+            &target,
+            |_, _| {},
+        ))
+        .unwrap_err();
+        handle.join().unwrap();
+
+        assert!(err.contains("404"), "错误里要带上 HTTP 状态: {err}");
+        assert!(!target.exists(), "失败不该留下目标文件");
+        assert!(!target.with_extension("part").exists(), "失败不该留下 .part");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
