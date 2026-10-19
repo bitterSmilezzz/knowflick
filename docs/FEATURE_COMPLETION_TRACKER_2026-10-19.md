@@ -38,6 +38,7 @@
 - [x] 主动收集（订阅源）：按 DATA_MODEL_SECOND_BRAIN.md §4 接通 `subscriptions` 表——Rust 侧 `SubscriptionDto` + `save/list/mark_polled/delete` CRUD（`mark_subscription_polled` 单独一条 UPDATE，抓取不覆盖类型/标题，标记不存在的订阅返回错误）；`subscription.ts` 负责目标串归一化（RSS/社区要求完整 http(s) 且禁凭据、GitHub 只收 owner/repo、趋势收语言名）、到期计算、RSS 2.0 与 Atom 手写解析（零依赖、坏条目跳过不拖垮整次抓取）、GitHub Release 与趋势仓库解析、条目按来源链接去重后转素材（`itemsToMaterials`，带订阅来源元数据）；20 项单测覆盖解析、归一化、到期与去重。工作台新增「订阅源」页（新增/启停/删除/立即抓取），并加自动轮询：每 60 秒检查一次到期项，一次只抓一个（并发抓取只会放大网络与写库开销），抓取期间或用户正在编辑时跳过；抓取的条目按去重结果进收件箱 Layer 1，不直接生成卡片；浏览器体验模式没有该表时表单禁用并如实说明。Rust 侧另加 `test_subscription_lifecycle` 与走真实命令函数的 `subscription_commands_round_trip_in_a_real_library`。**真实数据验证**：用 `hnrss.org/frontpage` 的真实 RSS 跑解析，20 条全部解析成功、0 条缺标题或链接、去重按预期跳过 1 条；用 GitHub 真实 releases API 跑 `parseGithubReleases`，5 条 release 的 key/标题/链接/时间都对。
 - [x] 端到端浏览器回归补充：新增 `tools/settings_plugins_smoke.mjs`（22 项断言），覆盖插件开关渲染与重载持久化、`plugins` 键写盘形状、MCP 片段、以及「点真实导出按钮拿字节 → 清库 → 走真实恢复输入框」的 .kfbackup 全链路。
 
+- [x] 检索性能门禁（PLUGIN_SPECIFICATION §5：万条卡片首屏 ≤ 30 ms）：加 `search_latency_at_ten_thousand_cards` 基准（`#[ignore]`，灌一万条卡片 + 一万条 384 维向量）。首轮实测混合检索 33.2 ms **不达标**，定位到 `search_cards_vector` 把一万行卡片字段全部组装成 DTO 只为排序；改成「先扫 `(card_id, vector)` 打分 → 取 Top-N id → 只回查这 N 条」，release 下：FTS5 6.64 ms、向量扫描 7.34 ms、混合 RRF 13.57 ms，三项全部进线。
 ## 后续规划与跨平台分发（来自 M1–M4）
 
 | 范围 | 后续规划 | 当前状态 |

@@ -839,6 +839,13 @@ pub fn replace_cards(conn: &mut Connection, cards: &[KnowledgeCardDto]) -> Resul
     Ok(())
 }
 
+/// 卡片查询的列清单。`map_card_row` 按下标取值，顺序必须与这里一致。
+const CARD_COLUMN_LIST: &str = "id, material_id, category, headline, summary, details,
+    links_json, tags_json, source, seen_at, swiped, is_favorite, favorited_at,
+    review_count, mastery_level, last_reviewed_at, repetition, interval_days,
+    ease_factor, stability, difficulty, subject, branch, level, track, order_key,
+    prereq_json, created_at, edited_at";
+
 fn map_card_row(row: &rusqlite::Row) -> rusqlite::Result<KnowledgeCardDto> {
     let links_str: String = row.get(6)?;
     let tags_str: String = row.get(7)?;
@@ -1284,37 +1291,35 @@ pub fn search_cards_vector(
     query_embedding: &[f32],
     limit: usize,
 ) -> Result<Vec<(KnowledgeCardDto, f32)>> {
-    let mut stmt = conn.prepare(
-        "SELECT c.id, c.material_id, c.category, c.headline, c.summary, c.details,
-                c.links_json, c.tags_json, c.source, c.seen_at, c.swiped, c.is_favorite,
-                c.favorited_at, c.review_count, c.mastery_level, c.last_reviewed_at,
-                c.repetition, c.interval_days, c.ease_factor, c.stability, c.difficulty,
-                c.subject, c.branch, c.level, c.track, c.order_key, c.prereq_json,
-                c.created_at, c.edited_at, e.embedding
-         FROM cards c
-         INNER JOIN card_embeddings e ON c.id = e.card_id
-         WHERE c.is_deleted = 0 AND e.dim = ?1"
-    )?;
+    if query_embedding.is_empty() {
+        return Ok(Vec::new());
+    }
 
+    // 第一步只取 (card_id, 向量)：暴力扫描的代价在解码与余弦，不在把整行卡片字段
+    // 组装成 DTO。万条规模下先扫向量再按 id 取回前 N 条，比逐行 map_card_row 快得多。
+    //
     // 只比同维度的向量：哈希投影（128 维）与本地/远程模型（384 维等）不在同一空间，
     // 混着算余弦只会得到无意义的 0。
-    let rows = stmt.query_map(params![query_embedding.len() as i64], |row| {
-        let card = map_card_row(row)?;
-        let emb_bytes: Vec<u8> = row.get(29)?;
-        Ok((card, emb_bytes))
-    })?;
-
-    let mut scored: Vec<(KnowledgeCardDto, f32)> = Vec::new();
-    for r in rows {
-        let (card, bytes) = r?;
-        if bytes.len() % 4 == 0 {
-            let mut vec = Vec::with_capacity(bytes.len() / 4);
-            for chunk in bytes.chunks_exact(4) {
-                let arr: [u8; 4] = chunk.try_into().unwrap();
-                vec.push(f32::from_le_bytes(arr));
+    let mut scored: Vec<(String, f32)> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT e.card_id, e.embedding
+             FROM card_embeddings e
+             JOIN cards c ON c.id = e.card_id
+             WHERE c.is_deleted = 0 AND e.dim = ?1",
+        )?;
+        let mut rows = stmt.query(params![query_embedding.len() as i64])?;
+        while let Some(row) = rows.next()? {
+            let card_id: String = row.get(0)?;
+            let bytes: Vec<u8> = row.get(1)?;
+            if bytes.len() % 4 != 0 {
+                continue;
             }
-            let sim = cosine_similarity(query_embedding, &vec);
-            scored.push((card, sim));
+            let mut vector = Vec::with_capacity(bytes.len() / 4);
+            for chunk in bytes.chunks_exact(4) {
+                vector.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+            }
+            scored.push((card_id, cosine_similarity(query_embedding, &vector)));
         }
     }
 
@@ -1322,7 +1327,30 @@ pub fn search_cards_vector(
     if scored.len() > limit {
         scored.truncate(limit);
     }
-    Ok(scored)
+    if scored.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // 第二步按 id 取回这几张卡片的完整字段，再按分数顺序还原。
+    let mut cards = std::collections::HashMap::with_capacity(scored.len());
+    let placeholders = std::iter::repeat("?").take(scored.len()).collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT {} FROM cards WHERE id IN ({})",
+        CARD_COLUMN_LIST, placeholders
+    );
+    {
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(rusqlite::params_from_iter(scored.iter().map(|(id, _)| id)))?;
+        while let Some(row) = rows.next()? {
+            let card = map_card_row(row)?;
+            cards.insert(card.id.clone(), card);
+        }
+    }
+
+    Ok(scored
+        .into_iter()
+        .filter_map(|(id, score)| cards.remove(&id).map(|card| (card, score)))
+        .collect())
 }
 
 pub fn search_cards_hybrid(
@@ -1616,6 +1644,105 @@ mod tests {
         assert_eq!(search_cards_vector(&conn, &[0.1; 384], 10).unwrap().len(), 1);
         assert!(list_stale_embedding_card_ids(&conn, 384, 10).unwrap().is_empty());
         assert!(list_unembedded_card_ids(&conn, 10).unwrap().is_empty());
+    }
+
+    /// PLUGIN_SPECIFICATION §5 的检索门禁：万条卡片下混合检索首屏 ≤ 30 ms。
+    /// 默认 `#[ignore]`：要灌一万条数据，不该拖慢常规测试。
+    /// 跑法：cargo test -- --ignored search_latency --nocapture
+    #[test]
+    #[ignore]
+    fn search_latency_at_ten_thousand_cards() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+
+        const N: usize = 10_000;
+        let categories = ["计算机", "物理", "心理学", "经济学", "生物学", "历史", "哲学"];
+        {
+            let tx = conn.transaction().unwrap();
+            for i in 0..N {
+                let card = KnowledgeCardDto {
+                    id: format!("bench-{i}"),
+                    material_id: None,
+                    category: categories[i % categories.len()].to_string(),
+                    headline: format!("第 {i} 条基准卡片：向量检索与全文索引的工程实践"),
+                    summary: "在万级知识库里比较 FTS5 与余弦扫描的延迟表现。".to_string(),
+                    details: format!(
+                        "正文 {i}：SQLite 的单文件结构让检索与写入共享同一事务边界，端侧嵌入推理则把语义相关度留在本机。"
+                    ),
+                    links: vec![],
+                    tags: vec!["基准".to_string(), categories[i % categories.len()].to_string()],
+                    source: "imported".to_string(),
+                    created_at: 1_700_000_000_000 + i as i64,
+                    edited_at: None,
+                    seen_at: None,
+                    swiped: None,
+                    is_favorite: i % 7 == 0,
+                    favorited_at: None,
+                    review_count: 0,
+                    mastery_level: 0,
+                    last_reviewed_at: None,
+                    repetition: 0,
+                    interval_days: 0.0,
+                    ease_factor: 2.5,
+                    stability: 0.0,
+                    difficulty: 0.0,
+                    subject: None,
+                    branch: None,
+                    level: None,
+                    track: None,
+                    order_key: None,
+                    prereq: vec![],
+                };
+                upsert_card(&tx, &card).unwrap();
+            }
+            tx.commit().unwrap();
+        }
+
+        // 给每张卡灌 384 维向量（与本地 E5 同维），模拟真实使用后的库
+        let items: Vec<(String, Vec<f32>)> = (0..N)
+            .map(|i| {
+                let mut v = vec![0f32; 384];
+                for (k, slot) in v.iter_mut().enumerate() {
+                    *slot = ((i * 31 + k * 17) % 97) as f32 / 97.0 - 0.5;
+                }
+                (format!("bench-{i}"), v)
+            })
+            .collect();
+        let mut conn = conn;
+        save_card_embeddings_batch(&mut conn, &items).unwrap();
+
+        let query_vec = vec![0.05f32; 384];
+
+        // 预热一次，避免把首次 prepared statement 编译算进延迟
+        let _ = search_cards_fts(&conn, "向量检索", 20).unwrap();
+        let _ = search_cards_vector(&conn, &query_vec, 20).unwrap();
+        let _ = search_cards_hybrid(&conn, "向量检索", Some(&query_vec), 20).unwrap();
+
+        let measure = |label: &str, runs: usize, mut f: Box<dyn FnMut() + '_>| {
+            let started = std::time::Instant::now();
+            for _ in 0..runs {
+                f();
+            }
+            let per = started.elapsed().as_secs_f64() * 1000.0 / runs as f64;
+            println!("{label}: {per:.2} ms/次（{runs} 次平均，{N} 条卡片）");
+            per
+        };
+
+        let fts = measure("FTS5 全文", 20, Box::new(|| {
+            let _ = search_cards_fts(&conn, "向量检索", 20).unwrap();
+        }));
+        let vector = measure("向量余弦扫描", 20, Box::new(|| {
+            let _ = search_cards_vector(&conn, &query_vec, 20).unwrap();
+        }));
+        let hybrid = measure("混合 RRF", 20, Box::new(|| {
+            let _ = search_cards_hybrid(&conn, "向量检索", Some(&query_vec), 20).unwrap();
+        }));
+
+        // 规范要求首屏 ≤ 30 ms；debug 构建下放宽到 120 ms，release 下应远低于 30。
+        let limit = if cfg!(debug_assertions) { 120.0 } else { 30.0 };
+        assert!(fts <= limit, "FTS5 {fts:.2} ms 超过 {limit} ms");
+        assert!(hybrid <= limit, "混合检索 {hybrid:.2} ms 超过 {limit} ms");
+        println!("（向量扫描 {vector:.2} ms；门禁 {limit} ms）");
     }
 
     #[test]
