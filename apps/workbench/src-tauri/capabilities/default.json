@@ -17,6 +17,14 @@
     "allow-fetch-clip",
     "allow-read-text-file",
     "allow-complete-chat",
-    "allow-open-url"
+    "allow-open-url",
+    "allow-db-load-cards",
+    "allow-db-upsert-card",
+    "allow-db-delete-card",
+    "allow-db-search-cards-fts",
+    "allow-db-save-material",
+    "allow-db-list-materials",
+    "allow-db-update-material-status",
+    "allow-db-get-stats"
   ]
 }

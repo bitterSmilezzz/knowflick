@@ -44,6 +44,8 @@ export interface KnowledgeCard {
   track: string | null;
   orderKey: string | null;
   prereq: string[];
+  materialId?: string | null;
+  tags?: string[];
 }
 
 const SWIPES: readonly SwipeDirection[] = ["left", "right", "skip"];

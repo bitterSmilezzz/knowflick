@@ -1,5 +1,31 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { KnowledgeCard } from "../domain/card";
+
+export interface RawMaterial {
+  id: string;
+  sourceType: string;
+  title: string;
+  sourceUrl?: string | null;
+  rawText: string;
+  cleanedMarkdown?: string | null;
+  contentHash: string;
+  mediaPath?: string | null;
+  mediaSizeBytes?: number;
+  metadataJson: string;
+  inboxStatus: "inbox" | "processed" | "dismissed";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DbStats {
+  totalCards: number;
+  totalMaterials: number;
+  inboxMaterials: number;
+  favoriteCards: number;
+  seenCards: number;
+  dueCards: number;
+}
 
 export interface StoreSnapshot {
   dir: string;
@@ -93,7 +119,6 @@ export async function openExternalUrl(url: string): Promise<void> {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-/** 「另存为」：选 ZIP 得备份包（卡片 + 设置），选 JSON 得裸 cards.json（与安卓侧同一份线格式）。 */
 export async function pickExportPath(): Promise<string | null> {
   const { save } = await import("@tauri-apps/plugin-dialog");
   const selected = await save({
@@ -105,3 +130,36 @@ export async function pickExportPath(): Promise<string | null> {
   });
   return typeof selected === "string" ? selected : null;
 }
+
+export function dbLoadCards(dir?: string, limit?: number, offset?: number): Promise<KnowledgeCard[]> {
+  return invoke("db_load_cards", { dir: dir ?? null, limit: limit ?? null, offset: offset ?? null });
+}
+
+export function dbUpsertCard(card: KnowledgeCard, dir?: string): Promise<void> {
+  return invoke("db_upsert_card", { dir: dir ?? null, card });
+}
+
+export function dbDeleteCard(id: string, dir?: string): Promise<void> {
+  return invoke("db_delete_card", { dir: dir ?? null, id });
+}
+
+export function dbSearchCardsFts(query: string, dir?: string, limit?: number): Promise<KnowledgeCard[]> {
+  return invoke("db_search_cards_fts", { dir: dir ?? null, query, limit: limit ?? null });
+}
+
+export function dbSaveMaterial(material: RawMaterial, dir?: string): Promise<void> {
+  return invoke("db_save_material", { dir: dir ?? null, material });
+}
+
+export function dbListMaterials(inboxOnly?: boolean, dir?: string, limit?: number): Promise<RawMaterial[]> {
+  return invoke("db_list_materials", { dir: dir ?? null, inboxOnly: inboxOnly ?? true, limit: limit ?? null });
+}
+
+export function dbUpdateMaterialStatus(id: string, status: string, dir?: string): Promise<void> {
+  return invoke("db_update_material_status", { dir: dir ?? null, id, status });
+}
+
+export function dbGetStats(dir?: string): Promise<DbStats> {
+  return invoke("db_get_stats", { dir: dir ?? null });
+}
+

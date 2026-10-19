@@ -31,15 +31,20 @@ import { SearchSheet } from "./ui/SearchSheet";
 import { playPaperSlide, playSwipeTone } from "./shell/sounds";
 import { stampColor } from "./ui/stampColor";
 import { ClipView, GenerateView, NotesView, QuizView, StatsView } from "./ui/StudyViews";
+import { InboxView } from "./ui/InboxView";
+import { QuickCaptureModal } from "./ui/QuickCaptureModal";
+import { BriefingView, BrainAssistantDrawer } from "./ui/BrainViews";
+import { dbGetStats, dbLoadCards, dbUpsertCard } from "./shell/store";
+import { AI_PROVIDER_PRESETS, findPresetById } from "./domain/aiPresets";
 
-type View = "deck" | "library" | "detail" | "settings" | "quiz" | "stats" | "notes" | "clip" | "generate";
+type View = "deck" | "library" | "detail" | "settings" | "quiz" | "stats" | "notes" | "clip" | "generate" | "inbox" | "briefing" | "brain";
 
 export function App() {
   const [dir, setDir] = useState("");
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
   const [settingsFile, setSettingsFile] = useState<SettingsFile>(() => parseSettings(null));
   const [apiKey, setApiKey] = useState("");
-  const [view, setView] = useState<View>("deck");
+  const [view, setView] = useState<View>("inbox");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [undo, setUndo] = useState<KnowledgeCard | null>(null);
   const [error, setError] = useState("");
@@ -54,6 +59,9 @@ export function App() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [importPreview, setImportPreview] = useState<ArchivePreview | null>(null);
   const [quizDueOnly, setQuizDueOnly] = useState(false);
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
+  const [inboxCount, setInboxCount] = useState(0);
+  const [reviewPluginEnabled, setReviewPluginEnabled] = useState(false);
   const deckLaunchRef = useRef<((direction: SwipeDirection) => void) | null>(null);
 
   const persistSearchHistory = useCallback(async (next: string[], libraryDir = dir) => {
@@ -69,8 +77,24 @@ export function App() {
       backup2: snapshot.backup2,
     });
     setDir(snapshot.dir);
-    setCards(loaded.cards);
-    pruneThemeCache(new Set(loaded.cards.map((card) => card.id)));
+
+    // 优先从 SQLite 读卡
+    try {
+      const dbCards = await dbLoadCards(snapshot.dir);
+      if (dbCards.length > 0) {
+        setCards(dbCards);
+        pruneThemeCache(new Set(dbCards.map((card) => card.id)));
+      } else {
+        setCards(loaded.cards);
+        pruneThemeCache(new Set(loaded.cards.map((card) => card.id)));
+      }
+      const stats = await dbGetStats(snapshot.dir);
+      setInboxCount(stats.inboxMaterials);
+    } catch {
+      setCards(loaded.cards);
+      pruneThemeCache(new Set(loaded.cards.map((card) => card.id)));
+    }
+
     setSettingsFile(parseSettings(snapshot.settings));
     const rawAlgorithm = parseSettings(snapshot.settings).raw.spacedAlgorithm;
     setAlgorithm(rawAlgorithm === "fsrs" ? "fsrs" : "sm2");
@@ -114,6 +138,8 @@ export function App() {
   const persistCards = useCallback(async (next: KnowledgeCard[], libraryDir = dir) => {
     setCards(next);
     await saveCards(libraryDir, encodeCardList(next));
+    // 同步到 SQLite
+    void Promise.allSettled(next.map((card) => dbUpsertCard(card, libraryDir)));
   }, [dir]);
 
   const swipe = useCallback(async (direction: SwipeDirection) => {
@@ -245,6 +271,11 @@ export function App() {
         setSearchOpen(true);
         return;
       }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        setQuickCaptureOpen(true);
+        return;
+      }
       if (event.key === "?" || ((event.metaKey || event.ctrlKey) && event.key === "/")) {
         event.preventDefault();
         setHelpOpen(true);
@@ -268,20 +299,33 @@ export function App() {
     <div className="app" data-paper={settingsFile.settings.paperTheme || "SYSTEM"}>
       <aside className="sidebar">
         <p className="brand">KnowFlick</p>
-        <p className="group">学习</p>
+        <p className="group">收集</p>
         <nav>
-          <button type="button" className={view === "deck" ? "on" : ""} onClick={() => setView("deck")}>刷卡</button>
-          <button type="button" className={view === "quiz" ? "on" : ""} onClick={() => { setQuizDueOnly(false); setView("quiz"); }}>测验</button>
-          <button type="button" className={view === "stats" ? "on" : ""} onClick={() => setView("stats")}>统计</button>
+          <button type="button" className={view === "inbox" ? "on" : ""} onClick={() => setView("inbox")}>
+            收件箱 {inboxCount > 0 ? <span className="inbox-badge">{inboxCount}</span> : null}
+          </button>
+          <button type="button" onClick={() => setQuickCaptureOpen(true)}>闪念胶囊 ⌘N</button>
         </nav>
+        {reviewPluginEnabled ? (
+          <>
+            <p className="group">温故知新 (插件)</p>
+            <nav>
+              <button type="button" className={view === "deck" ? "on" : ""} onClick={() => setView("deck")}>刷卡</button>
+              <button type="button" className={view === "quiz" ? "on" : ""} onClick={() => { setQuizDueOnly(false); setView("quiz"); }}>测验</button>
+              <button type="button" className={view === "stats" ? "on" : ""} onClick={() => setView("stats")}>统计</button>
+            </nav>
+          </>
+        ) : null}
         <p className="group">入库</p>
         <nav>
           <button type="button" className={view === "clip" ? "on" : ""} onClick={() => setView("clip")}>剪藏</button>
           <button type="button" className={view === "notes" ? "on" : ""} onClick={() => setView("notes")}>笔记</button>
           <button type="button" className={view === "generate" ? "on" : ""} onClick={() => setView("generate")}>AI 出卡</button>
         </nav>
-        <p className="group">资料</p>
+        <p className="group">大脑与洞察</p>
         <nav>
+          <button type="button" className={view === "brain" ? "on" : ""} onClick={() => setView("brain")}>智能问答</button>
+          <button type="button" className={view === "briefing" ? "on" : ""} onClick={() => setView("briefing")}>认知简报</button>
           <button type="button" className={view === "library" || view === "detail" ? "on" : ""} onClick={() => setView("library")}>卡库</button>
           <button type="button" onClick={() => setSearchOpen(true)}>搜索 ⌘K</button>
           <button type="button" onClick={() => setHelpOpen(true)}>帮助</button>
@@ -372,6 +416,36 @@ export function App() {
             }}
           />
         ) : null}
+        {view === "inbox" ? (
+          <InboxView
+            dir={dir}
+            onTransformMaterial={() => setView("notes")}
+            onOpenCard={(id) => {
+              setSelectedId(id);
+              setView("detail");
+            }}
+          />
+        ) : null}
+        {view === "brain" ? (
+          <BrainAssistantDrawer
+            cards={cards}
+            settings={settingsFile.settings}
+            apiKey={apiKey}
+            onOpenCard={(id) => {
+              setSelectedId(id);
+              setView("detail");
+            }}
+          />
+        ) : null}
+        {view === "briefing" ? (
+          <BriefingView
+            cards={cards}
+            onOpenCard={(id) => {
+              setSelectedId(id);
+              setView("detail");
+            }}
+          />
+        ) : null}
         {view === "notes" ? (
           <NotesView cards={cards} settings={settingsFile.settings} apiKey={apiKey} onImported={importCards} />
         ) : null}
@@ -386,6 +460,8 @@ export function App() {
             settings={settingsFile.settings}
             apiKey={apiKey}
             categories={[...new Set(cards.map((card) => card.category).filter(Boolean))].sort()}
+            reviewEnabled={reviewPluginEnabled}
+            onToggleReviewPlugin={setReviewPluginEnabled}
             onSave={(next, key) => saveAi(next, key).catch((err: unknown) => setError(String(err)))}
           />
         ) : null}
@@ -430,6 +506,12 @@ export function App() {
           }}
         />
       ) : null}
+      <QuickCaptureModal
+        open={quickCaptureOpen}
+        onClose={() => setQuickCaptureOpen(false)}
+        onSaved={() => void reload()}
+        dir={dir}
+      />
     </div>
   );
 }
@@ -752,11 +834,15 @@ function Settings({
   settings,
   apiKey,
   categories,
+  reviewEnabled,
+  onToggleReviewPlugin,
   onSave,
 }: {
   settings: AiSettings;
   apiKey: string;
   categories: string[];
+  reviewEnabled: boolean;
+  onToggleReviewPlugin: (enabled: boolean) => void;
   onSave: (settings: AiSettings, apiKey: string) => void;
 }) {
   const [draft, setDraft] = useState(settings);
@@ -776,6 +862,29 @@ function Settings({
     >
       <h1>AI</h1>
       <p>接口和模型写在 settings.json。API 密钥保存在数据目录下 credentials/apiKey.credential（明文文件、仅本机用户可读），不会进 settings 或导出包。</p>
+      <label>模型服务商
+        <select
+          value={draft.providerId || "deepseek"}
+          onChange={(event) => {
+            const pId = event.target.value;
+            const preset = findPresetById(pId);
+            if (preset && pId !== "custom") {
+              setDraft({
+                ...draft,
+                providerId: pId,
+                baseURL: preset.baseURL,
+                model: preset.defaultModel,
+              });
+            } else {
+              setDraft({ ...draft, providerId: "custom" });
+            }
+          }}
+        >
+          {AI_PROVIDER_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </label>
       <label>接口地址<input value={draft.baseURL} onChange={(event) => setDraft({ ...draft, baseURL: event.target.value })} /></label>
       <label>模型<input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} /></label>
       <label>纸面
@@ -799,6 +908,14 @@ function Settings({
       <label className="check">
         <input type="checkbox" checked={draft.soundEffectsEnabled} onChange={(event) => setDraft({ ...draft, soundEffectsEnabled: event.target.checked })} />
         划卡音效
+      </label>
+      <label className="check" style={{ marginTop: "8px", fontWeight: "bold" }}>
+        <input
+          type="checkbox"
+          checked={reviewEnabled}
+          onChange={(event) => onToggleReviewPlugin(event.target.checked)}
+        />
+        启用「温故知新」模块（滑动刷卡、测验与 FSRS 记忆间隔）
       </label>
       <fieldset className="pref-cats">
         <legend>优先分类（卡堆里有这些分类时优先刷）</legend>

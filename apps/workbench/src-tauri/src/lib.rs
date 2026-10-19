@@ -1,3 +1,4 @@
+pub mod db;
 mod http;
 mod store;
 
@@ -127,6 +128,83 @@ fn open_url(url: String) -> Result<(), String> {
     open::that(trimmed).map_err(|err| err.to_string())
 }
 
+#[tauri::command]
+fn db_load_cards(dir: Option<String>, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<db::KnowledgeCardDto>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+
+    // 检查是否需要自动从 cards.json 迁移
+    let legacy_json_path = path.join("cards.json");
+    if legacy_json_path.exists() {
+        if let Ok(stats) = db::get_db_stats(&conn) {
+            if stats.total_cards == 0 {
+                if let Ok(text) = std::fs::read_to_string(&legacy_json_path) {
+                    let _ = db::migrate_legacy_cards_json(&conn, &text);
+                }
+            }
+        }
+    }
+
+    db::list_cards(&conn, limit.unwrap_or(200), offset.unwrap_or(0)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_upsert_card(dir: Option<String>, card: db::KnowledgeCardDto) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::upsert_card(&conn, &card).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_delete_card(dir: Option<String>, id: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::delete_card(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_search_cards_fts(dir: Option<String>, query: String, limit: Option<i64>) -> Result<Vec<db::KnowledgeCardDto>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::search_cards_fts(&conn, &query, limit.unwrap_or(50)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_save_material(dir: Option<String>, material: db::RawMaterialDto) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::save_material(&conn, &material).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_list_materials(dir: Option<String>, inbox_only: Option<bool>, limit: Option<i64>) -> Result<Vec<db::RawMaterialDto>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::list_materials(&conn, inbox_only.unwrap_or(true), limit.unwrap_or(100)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_update_material_status(dir: Option<String>, id: String, status: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::update_material_status(&conn, &id, &status).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_get_stats(dir: Option<String>) -> Result<db::DbStatsDto, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::get_db_stats(&conn).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod open_url_tests {
     use super::http_url_for_open;
@@ -161,7 +239,15 @@ pub fn run() {
             fetch_clip,
             read_text_file,
             complete_chat,
-            open_url
+            open_url,
+            db_load_cards,
+            db_upsert_card,
+            db_delete_card,
+            db_search_cards_fts,
+            db_save_material,
+            db_list_materials,
+            db_update_material_status,
+            db_get_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running KnowFlick");
