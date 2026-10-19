@@ -337,11 +337,22 @@ export function WorkspaceSettings({
                           plugin.id,
                           false
                         );
+                  const unavailable = plugin.availability !== "ready";
                   return (
                     <div className="ws-settings-row" key={plugin.id} data-plugin={plugin.id}>
                       <div className="ws-settings-label">
-                        <strong>{plugin.name}</strong>
+                        <strong>
+                          {plugin.name}
+                          {unavailable ? (
+                            <em className="ws-plugin-badge" data-plugin-availability={plugin.availability}>
+                              {plugin.availability === "needs-download" ? "需下载模型" : "待接入"}
+                            </em>
+                          ) : null}
+                        </strong>
                         <span>{plugin.description}</span>
+                        {plugin.availabilityNote ? (
+                          <span className="ws-plugin-note">{plugin.availabilityNote}</span>
+                        ) : null}
                         <span className="ws-plugin-perms">
                           {plugin.permissions.map((perm) => (
                             <em key={perm} title={PERMISSION_DESCRIPTIONS[perm]}>

@@ -1766,6 +1766,26 @@ select {
   margin-top: 2px;
 }
 
+/* 「需下载模型 / 待接入」徽标：不可用的插件必须在列表里看得出来，不能只靠开关状态暗示 */
+.ws-plugin-badge {
+  font-style: normal;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-left: 6px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+.ws-plugin-note {
+  font-size: var(--text-meta);
+  color: var(--muted);
+  opacity: 0.85;
+}
+
 .ws-plugin-perms em {
   font-style: normal;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);

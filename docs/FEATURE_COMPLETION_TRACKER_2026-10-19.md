@@ -31,7 +31,7 @@
 
 - [x] 持久化跨素材全文索引：新增 SQLite FTS5 虚表 `fts_materials`（`material_id` / `title` / `raw_text` / `source_url`，与 `fts_cards` 同构同分词）。`save_material` 在同一事务语义下先删后插同步索引；老库在应用启动时由 `db_backfill_material_fts` 幂等补齐；`db_search_materials_fts` 先走 FTS5（bm25 排序），空结果再走 `LIKE` 兜底，保证短中文查询不丢召回。工作台搜索在桌面端按 120ms 去抖查询该索引，命中集合与内存子串匹配取并集，索引不可用时自动退化为纯内存匹配。Rust 侧新增 `test_material_fts_index_lifecycle`（中文/正文命中、编辑后重建、无重复行、清空后 backfill 幂等），前端 `filterEntries` 新增索引集合入参与 5 项断言。
 - [x] M4 系统级完整备份包 (.kfbackup)：按 DATA_MODEL_SECOND_BRAIN.md §5.2 实现标准 ZIP 备份包（`manifest.json` 清单 + 各层 JSON + FNV-1a 校验和），浏览器与桌面端同一套纯客户端打包/解包实现 `systemBackup.ts`（`unpackZipStore` 只读 Store 模式 ZIP，无外部依赖）；设置页「导出完整备份包 (.kfbackup)」与「从备份包恢复…」两条真实链路均已接通，恢复走合并语义（按 id 覆盖，不清空本地库），并兼容旧版单一 JSON 格式；3 项单测覆盖逐字段往返、旧格式兼容与缺失清单报错。
-- [x] 插件架构与官方插件矩阵：按 PLUGIN_SPECIFICATION.md 落地 `pluginRegistry.ts`（5 个官方插件的清单：权限声明、默认启用状态、偏好项），设置页「功能模块与官方插件」按清单渲染开关与权限芯片；`pluginSettings.ts` 负责在 settings.json 的独立 `plugins` 键持久化，旧键 `reviewPluginEnabled` 保持兼容（不折进插件表，避免盖掉旧值），9 项单测覆盖旧键兼容、显式覆盖、写回保留其余键与默认值不落盘。
+- [x] 插件架构与官方插件矩阵：按 PLUGIN_SPECIFICATION.md §4 落地 `pluginRegistry.ts`，规范里的 5 个官方插件（嗅探 / 文档解析 / 温故 FSRS / 语音 ASR / 认知简报）全部登记，另加 MCP 服务插件共 6 项；每项带权限声明、默认启用状态、偏好项与 `availability`（ready / needs-download / planned）。设置页「功能模块与官方插件」按清单渲染开关与权限芯片，**未就绪的插件带「需下载模型 / 待接入」徽标与说明**，不用开关冒充可用。`pluginSettings.ts` 负责在 settings.json 的独立 `plugins` 键持久化，旧键 `reviewPluginEnabled` 保持兼容（不折进插件表，避免盖掉旧值），9 项单测覆盖旧键兼容、显式覆盖、写回保留其余键与默认值不落盘，另 5 项覆盖插件清单与 availability。
 - [x] MCP (Model Context Protocol) 外部代理接入：按 PLUGIN_SPECIFICATION.md §6 暴露 5 个工具（`search_knowledge` / `create_flash_card` / `add_material` / `get_weekly_briefing` / `get_knowledge_stats`）与 `knowflick://` 资源；`mcpServer.ts` 是宿主内嵌的协议实现（9 项单测），`tools/mcp-server.mjs` 是可被外部 Agent 直接 `node` 启动的 stdio 服务端（真实 SQLite 连接、FTS5 检索、写入后同步全文索引）；`tools/mcp_server_smoke.mjs` 用真实库文件跑通 12 项端到端断言（含写入后重新开库校验落库与索引一致）；设置页展示即插即用的配置片段。
 - [x] 端到端浏览器回归补充：新增 `tools/settings_plugins_smoke.mjs`（22 项断言），覆盖插件开关渲染与重载持久化、`plugins` 键写盘形状、MCP 片段、以及「点真实导出按钮拿字节 → 清库 → 走真实恢复输入框」的 .kfbackup 全链路。
 
@@ -42,5 +42,6 @@
 | M3 检索 | 端侧嵌入推理模型本地打包（如 ONNX Runtime Web / ort-rust 结合量化小模型） | 统一 Embedding 引擎（API + 本地语义特征投影）与端侧混合检索全链路闭环，可进一步增加本地 ONNX 模型权重 |
 | M4 分发 | Windows MSI、Linux DEB CI 构建及安装冒烟 | macOS DMG 本机实测通过；Windows/Linux 依赖 GitHub Actions CI 矩阵 |
 | 插件生态 | 第三方插件沙箱（独立进程 / WASM）与签名体系 | 官方插件矩阵、权限声明与零开销禁用开关已就绪；第三方加载器按规范排在 M4 之后 |
+| 本地语音转写 | whisper.cpp 运行时与模型随包或按需下载接入 | 插件已在清单登记为 `needs-download`、默认关闭，界面如实标注「需下载模型」；**转写能力尚未接入** |
 
 本文件必须随实际验收更新，未勾选项不因代码存在或单测通过自动视作完成。

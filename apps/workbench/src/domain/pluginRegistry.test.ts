@@ -8,14 +8,19 @@ import {
 } from "./pluginRegistry";
 
 describe("插件架构与注册表 (PluginRegistry)", () => {
-  it("包含 5 个官方核心插件且全部具备规范清单与权限声明", () => {
-    expect(OFFICIAL_PLUGINS.length).toBe(5);
+  it("包含 PLUGIN_SPECIFICATION §4 的全部官方插件且都有清单与权限声明", () => {
     const ids = OFFICIAL_PLUGINS.map((p) => p.id);
-    expect(ids).toContain("official-inbox-sniff");
-    expect(ids).toContain("official-doc-extractor");
-    expect(ids).toContain("official-review-fsrs");
-    expect(ids).toContain("official-cognitive-brief");
+    for (const specId of [
+      "official-inbox-sniff",
+      "official-doc-extractor",
+      "official-review-fsrs",
+      "official-speech-asr",
+      "official-cognitive-brief",
+    ]) {
+      expect(ids).toContain(specId);
+    }
     expect(ids).toContain("official-mcp-server");
+    expect(OFFICIAL_PLUGINS.length).toBe(6);
 
     for (const plugin of OFFICIAL_PLUGINS) {
       expect(plugin.name).toBeTruthy();
@@ -25,6 +30,19 @@ describe("插件架构与注册表 (PluginRegistry)", () => {
       for (const perm of plugin.permissions) {
         expect(PERMISSION_DESCRIPTIONS[perm]).toBeTruthy();
       }
+    }
+  });
+
+  it("未就绪的插件如实标注状态，不假装可用", () => {
+    const asr = OFFICIAL_PLUGINS.find((p) => p.id === "official-speech-asr");
+    expect(asr).toBeTruthy();
+    expect(asr?.availability).toBe("needs-download");
+    expect(asr?.availabilityNote).toBeTruthy();
+    expect(asr?.defaultEnabled).toBe(false);
+
+    // 已经能用的插件不该带 availabilityNote
+    for (const plugin of OFFICIAL_PLUGINS.filter((p) => p.availability === "ready")) {
+      expect(plugin.availabilityNote).toBeUndefined();
     }
   });
 

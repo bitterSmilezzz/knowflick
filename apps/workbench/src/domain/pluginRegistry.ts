@@ -23,6 +23,15 @@ export interface PluginPreferenceDef {
   options?: Array<{ label: string; value: unknown }>;
 }
 
+/**
+ * 插件在当前版本里的可用状态。
+ *
+ * `ready` 是真正能用；`needs-download` 表示能力已规划但还要用户拉模型/运行时，
+ * 现在打开也算不上能用（whisper.cpp 的语音模型属于这一类）；`planned` 是清单里
+ * 占位、代码还没写。三种状态都要在界面上如实显示，不能靠开关假装完成。
+ */
+export type PluginAvailability = "ready" | "needs-download" | "planned";
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -32,6 +41,9 @@ export interface PluginManifest {
   icon: string;
   type: "official" | "community";
   defaultEnabled: boolean;
+  availability: PluginAvailability;
+  /** 不可用时的补充说明（为什么、缺什么）。 */
+  availabilityNote?: string;
   permissions: PluginPermission[];
   preferences?: PluginPreferenceDef[];
 }
@@ -54,6 +66,7 @@ export const OFFICIAL_PLUGINS: readonly PluginManifest[] = [
     icon: "link",
     type: "official",
     defaultEnabled: true,
+    availability: "ready",
     permissions: ["network:fetch", "storage:materials:write"],
   },
   {
@@ -65,6 +78,7 @@ export const OFFICIAL_PLUGINS: readonly PluginManifest[] = [
     icon: "file-text",
     type: "official",
     defaultEnabled: true,
+    availability: "ready",
     permissions: ["fs:read_temp", "storage:materials:write"],
   },
   {
@@ -76,6 +90,7 @@ export const OFFICIAL_PLUGINS: readonly PluginManifest[] = [
     icon: "sparkles",
     type: "official",
     defaultEnabled: false,
+    availability: "ready",
     permissions: ["storage:cards:read", "storage:cards:write", "ui:views:register"],
     preferences: [
       {
@@ -99,7 +114,35 @@ export const OFFICIAL_PLUGINS: readonly PluginManifest[] = [
     icon: "brief",
     type: "official",
     defaultEnabled: true,
+    availability: "ready",
     permissions: ["storage:cards:read", "storage:artifacts:write"],
+  },
+  {
+    id: "official-speech-asr",
+    name: "本地语音转文字（Whisper）",
+    version: "0.1.0",
+    description: "基于 whisper.cpp 的纯本地离线口述与灵感录入，禁用时零内存占用、推理时按需加载模型",
+    author: "KnowFlick Official",
+    icon: "note",
+    type: "official",
+    defaultEnabled: false,
+    availability: "needs-download",
+    availabilityNote:
+      "语音推理运行时与模型（约数百 MB）尚未随安装包分发；接入前此开关只登记启用意图，不产生转写能力",
+    permissions: ["fs:read_temp", "storage:materials:write"],
+    preferences: [
+      {
+        name: "model",
+        type: "select",
+        title: "识别模型",
+        default: "small",
+        options: [
+          { label: "tiny（最快，准确率低）", value: "tiny" },
+          { label: "small（均衡，推荐）", value: "small" },
+          { label: "medium（最准，最慢）", value: "medium" },
+        ],
+      },
+    ],
   },
   {
     id: "official-mcp-server",
@@ -110,6 +153,7 @@ export const OFFICIAL_PLUGINS: readonly PluginManifest[] = [
     icon: "cpu",
     type: "official",
     defaultEnabled: true,
+    availability: "ready",
     permissions: ["storage:cards:read", "storage:materials:write"],
   },
 ];
