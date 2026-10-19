@@ -344,6 +344,7 @@ export function Workspace() {
       className="ws"
       data-appearance={appearance}
       data-nav={navMode}
+      data-view={isCollection ? "collection" : "page"}
       data-workspace-root=""
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("Files")) e.preventDefault();
@@ -725,8 +726,7 @@ export function Workspace() {
         </>
       ) : (
         <>
-          <section className="ws-list" aria-label="子页面" style={{ display: "none" }} />
-          <main className="ws-reader" aria-label={pageTitle}>
+          <main className="ws-reader ws-page" aria-label={pageTitle}>
             <Suspense fallback={<p className="ws-reader-scroll">正在加载…</p>}>
               {page === "settings" ? (
                 <WorkspaceSettings

@@ -1049,3 +1049,51 @@ select {
 .ws-settings-foot .ws-editor-actions {
   align-items: center;
 }
+
+/* Sub-pages (settings, briefing, Q&A, review) take the full width right of the
+   navigation: leaving an empty list column there wastes half the window. */
+.ws[data-view="page"] {
+  grid-template-columns: var(--nav-w, 200px) 0 minmax(0, 1fr);
+}
+
+.ws[data-view="page"][data-nav="expanded"] {
+  grid-template-columns: 0 0 minmax(0, 1fr);
+}
+
+.ws[data-view="page"] .ws-nav {
+  border-right-width: 1px;
+}
+
+.ws[data-view="page"][data-nav="expanded"] .ws-nav {
+  position: absolute;
+  top: var(--toolbar-h);
+  bottom: var(--status-h);
+  left: 0;
+  width: 240px;
+  z-index: 20;
+  visibility: visible;
+  padding: 12px 10px 10px;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+  box-shadow: 8px 0 24px rgb(0 0 0 / 12%);
+}
+
+.ws[data-view="page"] .ws-header-list {
+  border-right: 0;
+}
+
+.ws-page .ws-reader-scroll {
+  padding: 26px 40px 32px;
+}
+
+@media (max-width: 980px) {
+  .ws[data-view="page"]:not([data-nav="expanded"]) {
+    grid-template-columns: 0 0 minmax(0, 1fr);
+  }
+
+  .ws[data-view="page"]:not([data-nav="expanded"]) .ws-nav {
+    visibility: hidden;
+    padding: 0;
+    border: 0;
+  }
+}
