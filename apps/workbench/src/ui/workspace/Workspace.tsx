@@ -45,6 +45,7 @@ import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import {
+  isDue,
   itemsToMaterials,
   parseSubscriptionPayload,
   requestUrlFor,
@@ -516,6 +517,42 @@ export function Workspace() {
       setError(`导入未全部完成，已保存内容保留：${String(e)}`);
     }
   };
+
+  /**
+   * 订阅源自动轮询。
+   *
+   * 只在桌面端、且没有其它批量操作在跑时触发；一次只抓一个到期的订阅，
+   * 抓完再排下一个——并发抓取会把 ext 的请求与 SQLite 写放大到没必要。
+   * 失败只记一条提示，不打断用户正在做的事。
+   */
+  const autoPollLock = useRef(false);
+  useEffect(() => {
+    if (!inShell()) return;
+    let disposed = false;
+
+    const tick = async () => {
+      if (disposed || autoPollLock.current || busy) return;
+      const due = subscriptions.filter((s) => isDue(s));
+      if (due.length === 0) return;
+
+      autoPollLock.current = true;
+      const sub = due[0];
+      try {
+        await pollSubscription(sub);
+      } catch (err) {
+        setNotice(`「${sub.title}」自动抓取失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        autoPollLock.current = false;
+      }
+    };
+
+    void tick();
+    const timer = window.setInterval(() => void tick(), 60_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [subscriptions, busy, dir]);
 
   // 订阅源只在桌面端的 SQLite 里有；浏览器体验模式没有这层表，页面显示空列表。
   useEffect(() => {
