@@ -235,3 +235,31 @@ export function dbBackfillMaterialFts(dir?: string): Promise<number> {
   return invoke("db_backfill_material_fts", { dir: dir ?? null });
 }
 
+/** subscriptions 表的线上形状（camelCase，对应 Rust `SubscriptionDto`）。 */
+export interface SubscriptionRow {
+  id: string;
+  type: string;
+  title: string;
+  targetUrl: string;
+  intervalMinutes: number;
+  lastPolledAt: number | null;
+  isActive: boolean;
+  createdAt: number;
+}
+
+export function dbListSubscriptions(dir?: string): Promise<SubscriptionRow[]> {
+  return invoke("db_list_subscriptions", { dir: dir ?? null });
+}
+
+export function dbSaveSubscription(subscription: SubscriptionRow, dir?: string): Promise<void> {
+  return invoke("db_save_subscription", { dir: dir ?? null, subscription });
+}
+
+export function dbMarkSubscriptionPolled(id: string, polledAt: number, dir?: string): Promise<void> {
+  return invoke("db_mark_subscription_polled", { dir: dir ?? null, id, polledAt });
+}
+
+export function dbDeleteSubscription(id: string, dir?: string): Promise<void> {
+  return invoke("db_delete_subscription", { dir: dir ?? null, id });
+}
+

@@ -1798,6 +1798,34 @@ select {
   white-space: nowrap;
 }
 
+/* 订阅源行：左侧目标与时间信息、右侧开关与动作 */
+.ws-subscription-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ws-subscription-row:last-child {
+  border-bottom: 0;
+}
+
+.ws-subscription-target {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--text-meta);
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.ws-subscription-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* MCP 接入片段：等宽只读展示，可横向滚动不撑破面板 */
 .ws-mcp-snippet {
   margin: 0;

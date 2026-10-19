@@ -40,6 +40,10 @@
     "allow-db-save-card-embeddings-batch",
     "allow-request-embeddings",
     "allow-db-search-materials-fts",
-    "allow-db-backfill-material-fts"
+    "allow-db-backfill-material-fts",
+    "allow-db-list-subscriptions",
+    "allow-db-save-subscription",
+    "allow-db-mark-subscription-polled",
+    "allow-db-delete-subscription"
   ]
 }

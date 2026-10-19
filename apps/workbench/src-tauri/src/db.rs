@@ -1035,6 +1035,87 @@ pub fn get_db_stats(conn: &Connection) -> Result<DbStatsDto> {
     })
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionDto {
+    pub id: String,
+    /// 'rss' | 'github_release' | 'github_trending' | 'tech_board'
+    pub r#type: String,
+    pub title: String,
+    pub target_url: String,
+    pub interval_minutes: i64,
+    pub last_polled_at: Option<i64>,
+    pub is_active: bool,
+    pub created_at: i64,
+}
+
+pub fn save_subscription(conn: &Connection, sub: &SubscriptionDto) -> Result<()> {
+    conn.execute(
+        r#"
+        INSERT INTO subscriptions (id, type, title, target_url, interval_minutes, last_polled_at, is_active, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        ON CONFLICT(id) DO UPDATE SET
+            type = excluded.type,
+            title = excluded.title,
+            target_url = excluded.target_url,
+            interval_minutes = excluded.interval_minutes,
+            is_active = excluded.is_active
+        "#,
+        params![
+            sub.id,
+            sub.r#type,
+            sub.title,
+            sub.target_url,
+            sub.interval_minutes,
+            sub.last_polled_at,
+            if sub.is_active { 1 } else { 0 },
+            sub.created_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// 只更新轮询时间：抓完一条订阅不该顺手把它的类型/标题也覆盖一遍。
+pub fn mark_subscription_polled(conn: &Connection, id: &str, polled_at: i64) -> Result<()> {
+    let changed = conn.execute(
+        "UPDATE subscriptions SET last_polled_at = ?1 WHERE id = ?2",
+        params![polled_at, id],
+    )?;
+    if changed == 0 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    Ok(())
+}
+
+pub fn list_subscriptions(conn: &Connection) -> Result<Vec<SubscriptionDto>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, type, title, target_url, interval_minutes, last_polled_at, is_active, created_at
+         FROM subscriptions ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(SubscriptionDto {
+            id: row.get(0)?,
+            r#type: row.get(1)?,
+            title: row.get(2)?,
+            target_url: row.get(3)?,
+            interval_minutes: row.get(4)?,
+            last_polled_at: row.get(5)?,
+            is_active: row.get::<_, i64>(6)? != 0,
+            created_at: row.get(7)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn delete_subscription(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM subscriptions WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
 pub fn save_artifact(conn: &Connection, artifact: &ArtifactDto) -> Result<()> {
     let source_ids_json = serde_json::to_string(&artifact.source_card_ids)
         .unwrap_or_else(|_| "[]".to_string());
@@ -1462,6 +1543,48 @@ mod tests {
         assert_eq!(indexed_after_backfill, 1);
         // 幂等：再跑一次不重复插入
         assert_eq!(backfill_material_fts(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_subscription_lifecycle() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+
+        let sub = SubscriptionDto {
+            id: "sub-1".to_string(),
+            r#type: "rss".to_string(),
+            title: "技术周刊".to_string(),
+            target_url: "https://example.com/feed.xml".to_string(),
+            interval_minutes: 360,
+            last_polled_at: None,
+            is_active: true,
+            created_at: 1700000000000,
+        };
+        save_subscription(&conn, &sub).unwrap();
+
+        let list = list_subscriptions(&conn).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].title, "技术周刊");
+        assert!(list[0].is_active);
+        assert_eq!(list[0].last_polled_at, None);
+
+        // 同 id 再存是更新而不是插重复；但轮询时间不被 save 覆盖
+        mark_subscription_polled(&conn, "sub-1", 1700000900000).unwrap();
+        let mut updated = sub.clone();
+        updated.is_active = false;
+        updated.title = "技术周刊（改名）".to_string();
+        save_subscription(&conn, &updated).unwrap();
+        let after = list_subscriptions(&conn).unwrap();
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].title, "技术周刊（改名）");
+        assert!(!after[0].is_active);
+        assert_eq!(after[0].last_polled_at, Some(1700000900000));
+
+        // 标记不存在的订阅要报错，而不是静默成功
+        assert!(mark_subscription_polled(&conn, "missing", 1).is_err());
+
+        delete_subscription(&conn, "sub-1").unwrap();
+        assert_eq!(list_subscriptions(&conn).unwrap().len(), 0);
     }
 
     #[test]

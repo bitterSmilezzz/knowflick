@@ -36,6 +36,10 @@ fn main() {
             "request_embeddings",
             "db_search_materials_fts",
             "db_backfill_material_fts",
+            "db_list_subscriptions",
+            "db_save_subscription",
+            "db_mark_subscription_polled",
+            "db_delete_subscription",
         ]),
     );
     tauri_build::try_build(attributes).expect("failed to run tauri-build");

@@ -294,6 +294,38 @@ fn db_list_unembedded_card_ids(dir: Option<String>, limit: Option<i64>) -> Resul
 }
 
 #[tauri::command]
+fn db_list_subscriptions(dir: Option<String>) -> Result<Vec<db::SubscriptionDto>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::list_subscriptions(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_save_subscription(dir: Option<String>, subscription: db::SubscriptionDto) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::save_subscription(&conn, &subscription).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_mark_subscription_polled(dir: Option<String>, id: String, polled_at: i64) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::mark_subscription_polled(&conn, &id, polled_at).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_delete_subscription(dir: Option<String>, id: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::delete_subscription(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn db_search_materials_fts(dir: Option<String>, query: String, limit: Option<i64>) -> Result<Vec<db::RawMaterialDto>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
@@ -703,7 +735,11 @@ pub fn run() {
             db_save_card_embeddings_batch,
             request_embeddings,
             db_search_materials_fts,
-            db_backfill_material_fts
+            db_backfill_material_fts,
+            db_list_subscriptions,
+            db_save_subscription,
+            db_mark_subscription_polled,
+            db_delete_subscription
         ])
         .build(tauri::generate_context!())
         .expect("error while running KnowFlick")
@@ -727,6 +763,48 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+#[cfg(test)]
+mod library_command_tests {
+    use super::*;
+
+    /// 走真实命令函数（目录解析 + 开库 + 落库），覆盖 IPC 层之下的整条链路。
+    #[test]
+    fn subscription_commands_round_trip_in_a_real_library() {
+        let dir = std::env::temp_dir().join(format!("kf_cmd_sub_{}", uuid::Uuid::new_v4()));
+        let dir_string = dir.to_string_lossy().to_string();
+
+        let sub = db::SubscriptionDto {
+            id: "cmd-sub-1".to_string(),
+            r#type: "github_release".to_string(),
+            title: "Rust 发布".to_string(),
+            target_url: "rust-lang/rust".to_string(),
+            interval_minutes: 720,
+            last_polled_at: None,
+            is_active: true,
+            created_at: 1_700_000_000_000,
+        };
+        db_save_subscription(Some(dir_string.clone()), sub.clone()).unwrap();
+
+        let listed = db_list_subscriptions(Some(dir_string.clone())).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].target_url, "rust-lang/rust");
+
+        // 命令层能标已轮询（这条路径是 save 不会覆盖的字段）
+        db_mark_subscription_polled(Some(dir_string.clone()), "cmd-sub-1".to_string(), 1_700_000_900_000).unwrap();
+        let after_poll = db_list_subscriptions(Some(dir_string.clone())).unwrap();
+        assert_eq!(after_poll[0].last_polled_at, Some(1_700_000_900_000));
+
+        db_delete_subscription(Some(dir_string.clone()), "cmd-sub-1".to_string()).unwrap();
+        assert!(db_list_subscriptions(Some(dir_string.clone())).unwrap().is_empty());
+
+        // 素材全文检索命令：空库不该报错
+        let hits = db_search_materials_fts(Some(dir_string.clone()), "任何词".to_string(), Some(10)).unwrap();
+        assert!(hits.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]

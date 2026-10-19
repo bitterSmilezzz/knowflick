@@ -5,7 +5,20 @@ import { normalizePaperTheme, parseSettings, type SettingsFile } from "../../dom
 import { askModel } from "../../domain/aiChat";
 import { requiresKey } from "../../domain/ingest";
 import { digest } from "../../domain/clipEngine";
-import { dbBackfillMaterialFts, dbListArtifacts, dbSaveArtifact, dbSearchMaterialsFts, fetchClip, inShell, type RawMaterial } from "../../shell/store";
+import {
+  dbBackfillMaterialFts,
+  dbListArtifacts,
+  dbListSubscriptions,
+  dbDeleteSubscription,
+  dbMarkSubscriptionPolled,
+  dbSaveArtifact,
+  dbSaveSubscription,
+  dbSearchMaterialsFts,
+  fetchClip,
+  inShell,
+  type RawMaterial,
+  type SubscriptionRow,
+} from "../../shell/store";
 import {
   entriesFor,
   filterEntries,
@@ -30,6 +43,13 @@ import { EntryInspector } from "./EntryInspector";
 import { CaptureDialog } from "./CaptureDialog";
 import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
+import { SubscriptionsView } from "./SubscriptionsView";
+import {
+  itemsToMaterials,
+  parseSubscriptionPayload,
+  requestUrlFor,
+  type Subscription,
+} from "../../domain/subscription";
 import {
   identifyPlatform,
   parseGitHubRepo,
@@ -46,13 +66,14 @@ const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.B
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "briefing" | "brain" | "review";
+type Page = Collection | "settings" | "briefing" | "brain" | "review" | "subscriptions";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
   briefing: "认知简报",
   brain: "知识问答",
   review: "温故复习",
+  subscriptions: "订阅源",
 };
 
 const PAGE_HINTS: Record<Collection, string> = {
@@ -83,6 +104,7 @@ export function Workspace() {
   const [previewSource, setPreviewSource] = useState<RawMaterial | null>(null);
   const [visibleCount, setVisibleCount] = useState(60);
   const [indexedMaterialIds, setIndexedMaterialIds] = useState<ReadonlySet<string>>(new Set());
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const layout = usePaneLayout();
   const readerRef = useRef<HTMLElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -495,6 +517,83 @@ export function Workspace() {
     }
   };
 
+  // 订阅源只在桌面端的 SQLite 里有；浏览器体验模式没有这层表，页面显示空列表。
+  useEffect(() => {
+    if (!inShell()) return;
+    void dbListSubscriptions(dir)
+      .then((rows: SubscriptionRow[]) => {
+        setSubscriptions(
+          rows.map((r) => ({
+            id: r.id,
+            type: r.type as Subscription["type"],
+            title: r.title,
+            targetUrl: r.targetUrl,
+            intervalMinutes: r.intervalMinutes,
+            lastPolledAt: r.lastPolledAt,
+            isActive: r.isActive,
+            createdAt: r.createdAt,
+          }))
+        );
+      })
+      .catch((err) => console.warn("读取订阅源失败:", err));
+  }, [dir]);
+
+  const addSubscription = async (sub: Subscription) => {
+    if (!inShell()) throw new Error("订阅源保存在桌面端的 SQLite 里，请在桌面客户端添加");
+    await dbSaveSubscription(sub, dir);
+    setSubscriptions((prev) => [sub, ...prev]);
+    setNotice(`已添加订阅：${sub.title}`);
+  };
+
+  const toggleSubscription = async (sub: Subscription, active: boolean) => {
+    const next = { ...sub, isActive: active };
+    if (inShell()) await dbSaveSubscription(next, dir);
+    setSubscriptions((prev) => prev.map((s) => (s.id === sub.id ? next : s)));
+  };
+
+  const removeSubscription = async (sub: Subscription) => {
+    if (inShell()) await dbDeleteSubscription(sub.id, dir);
+    setSubscriptions((prev) => prev.filter((s) => s.id !== sub.id));
+    setNotice(`已删除订阅：${sub.title}`);
+  };
+
+  /**
+   * 抓一次订阅。新条目按 sourceUrl 去重后进收件箱素材层（Layer 1），
+   * 不直接生成卡片——提炼仍然由用户/模型决定。
+   */
+  const pollSubscription = async (sub: Subscription) => {
+    await act(async () => {
+      if (!inShell()) throw new Error("浏览器无法跨站抓取，订阅抓取请在桌面客户端进行");
+      const url = requestUrlFor(sub);
+      const response = await fetchClip(url);
+      const items = parseSubscriptionPayload(sub, response.text);
+      if (items.length === 0) throw new Error("这次没有解析出条目，检查订阅地址是否为有效的 feed / GitHub 仓库");
+
+      const { materials: incoming, skipped } = itemsToMaterials(
+        items,
+        materials.map((m) => m.sourceUrl || ""),
+        sub
+      );
+      for (const entry of incoming) {
+        await updateMaterial({
+          ...makeMaterial({ title: entry.title, text: entry.text, url: entry.url }),
+          metadataJson: entry.metadataJson,
+        });
+      }
+      const added = incoming.length;
+
+      const polledAt = Date.now();
+      await dbMarkSubscriptionPolled(sub.id, polledAt, dir);
+      setSubscriptions((prev) =>
+        prev.map((s) => (s.id === sub.id ? { ...s, lastPolledAt: polledAt } : s))
+      );
+      setNotice(
+        `「${sub.title}」抓取完成：新增 ${added} 条素材` +
+          (skipped > 0 ? `，${skipped} 条已存在或无链接` : "")
+      );
+    });
+  };
+
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 4000);
@@ -712,6 +811,15 @@ export function Workspace() {
             >
               <Icon name="ask" />
               <span>知识问答</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "subscriptions" ? "page" : undefined}
+              onClick={() => navigate("subscriptions")}
+            >
+              <Icon name="inbox" />
+              <span>订阅源</span>
+              <span className="ws-count">{subscriptions.length}</span>
             </button>
             <button
               className="ws-nav-row"
@@ -1030,6 +1138,17 @@ export function Workspace() {
                     setFile(updated);
                     setApiKey(key);
                   }}
+                />
+              ) : null}
+              {page === "subscriptions" ? (
+                <SubscriptionsView
+                  subscriptions={subscriptions}
+                  busy={busy}
+                  available={inShell()}
+                  onAdd={addSubscription}
+                  onToggle={toggleSubscription}
+                  onDelete={removeSubscription}
+                  onPoll={pollSubscription}
                 />
               ) : null}
               {page === "briefing" ? <Briefing cards={cards} onOpenCard={openCard} /> : null}
