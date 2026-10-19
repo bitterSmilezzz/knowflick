@@ -102,6 +102,13 @@ try {
   );
   await check('document.body.innerText.includes("温故复习")', "温故复习导航随插件开启出现");
 
+  // 本地语义检索面板：浏览器模式要说明只在桌面端可用
+  await check('!!document.querySelector(\'[data-group="embedding"] [data-embed-status]\')', "本地语义检索面板渲染");
+  await check(
+    'document.querySelector(\'[data-group="embedding"] [data-embed-status]\').textContent.includes("桌面客户端")',
+    "浏览器模式下语义模型面板说明限制"
+  );
+
   // MCP 面板
   await check('!!document.querySelector("[data-mcp-snippet]")', "MCP 配置片段面板渲染");
   await check(

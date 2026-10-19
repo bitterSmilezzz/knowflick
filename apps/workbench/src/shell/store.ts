@@ -299,3 +299,27 @@ export async function pickAudioFile(): Promise<string | null> {
   });
   return typeof selected === "string" ? selected : null;
 }
+
+/** 本地语义向量（fastembed / multilingual-e5-small，384 维）。 */
+export interface LocalEmbedStatus {
+  model: string;
+  dim: number;
+  downloaded: boolean;
+  cacheDir: string;
+}
+
+export function localEmbedStatus(): Promise<LocalEmbedStatus> {
+  return invoke("local_embed_status");
+}
+
+export function localEmbedWarmUp(): Promise<LocalEmbedStatus> {
+  return invoke("local_embed_warm_up");
+}
+
+export function localEmbed(texts: string[], isQuery = false): Promise<number[][]> {
+  return invoke("local_embed", { texts, isQuery });
+}
+
+export function dbListStaleEmbeddingCardIds(dim: number, limit?: number, dir?: string): Promise<string[]> {
+  return invoke("db_list_stale_embedding_card_ids", { dir: dir ?? null, dim, limit: limit ?? 100 });
+}

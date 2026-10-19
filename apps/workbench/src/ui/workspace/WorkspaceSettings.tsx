@@ -7,6 +7,7 @@ import { pluginEnabledIn, readPluginSettings, togglePluginIn, writePluginSetting
 import { generateMcpConfigSnippet } from "../../domain/mcpServer";
 import { DEFAULT_ASR_MODEL } from "../../domain/asr";
 import { AsrModelPanel } from "./AsrModelPanel";
+import { LocalEmbedPanel } from "./LocalEmbedPanel";
 import { inShell } from "../../shell/store";
 import { Icon } from "./Icon";
 import { invoke } from "@tauri-apps/api/core";
@@ -453,6 +454,8 @@ export function WorkspaceSettings({
                 </p>
               </div>
             </section>
+
+            <LocalEmbedPanel />
 
             {/* 第五组：MCP 外部 Agent 接入 (PLUGIN_SPECIFICATION.md §6) */}
             <section data-group="mcp" className="ws-settings-card">

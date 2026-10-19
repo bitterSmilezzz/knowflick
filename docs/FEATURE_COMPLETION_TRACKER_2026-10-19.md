@@ -15,6 +15,7 @@
 - [x] M4 数据主权与开放导出：一键生成带 YAML Frontmatter 的 Markdown 知识库文件夹体系（按分类及收件箱分层归档，Obsidian 友好），支持纯本地生成标准 ZIP 压缩包下载，往返解析一致性通过自动化单测。
 - [x] M1 检索与高亮：⌘K 全局搜索中文分词匹配，列表标题与正文关键词 `<mark>` 实体高亮，智能居中截取长正文上下文摘要片段（`extractSnippet`），通过单测覆盖。
 - [x] M3 端侧 Embedding 向量生成与流水线闭环：实现 `EmbeddingEngine` 统一向量引擎，支持远程神经网络模型嵌入（OpenAI / 硅基流动 BGE / Ollama / 智谱等 `/v1/embeddings` 端点）与本地 100% 离线确定性语义特征投影（Zero-dependency Local Semantic Feature Projection，微秒级 128 维单位向量，具备单调余弦区分度）；实现后台非阻塞卡片批量同步流水线 `syncCardEmbeddings`，与 Rust 原生 SQLite `db_list_unembedded_card_ids` / `db_save_card_embeddings_batch` 事务无缝协同；问答抽屉接入真实向量生成并触发 `dbSearchCardsHybrid` 检索；单测覆盖端点正规化、文本拼接、L2 归一化、语义区分度与引擎回退全逻辑。
+- [x] M3 本地语义向量推理（补上路线图里的「本地轻量 Embedding 推理」）：接入 `fastembed`（ONNX Runtime）跑 `multilingual-e5-small`，384 维、纯本地离线，模型按需下载到 `<data_root>/models/fastembed`，且只有用户点「下载」才拉——检索路径 `local_embed` 传 `allow_download=false`，搜一下不会静默下一百多 MB。E5 家族要求 query/passage 前缀，查询侧带 `query:`、卡片侧带 `passage:`，否则检索质量明显下降。向量空间问题用「维度即引擎标识」解决：`search_cards_vector` 只比较同维度向量，`list_stale_embedding_card_ids` 找出换引擎后失配的旧向量，同步流水线一并重算。三档优先级：远程 API → 本地 E5 → 确定性哈希投影。Rust 5 项单测（含缓存探测、未下载时的可执行报错、前缀约定）+ 1 个 `#[ignore]` 真下载真推理测试，本机实测：冷启（含 120 MB 下载）72 s，热启 2.7 s，query~A=0.919 / query~B=0.896 / 跨主题 query~C=0.822，同主题稳定高于跨主题。
 - [x] M3 检索与向量融合：Rust SQLite 层已建立 `card_embeddings` 向量表（f32 浮点序列化为小端二进制存储），实现无外部依赖的高性能余弦相似度计算 `search_cards_vector` 与多路倒数排名融合 `search_cards_hybrid`（FTS5 词法 + 向量语义 RRF），通过单元测试闭环；前端 `store.ts` 完整封装调用接口。
 - [x] M3 问答与认知产物持久化：问答抽屉采用 RRF (Reciprocal Rank Fusion) 多路倒数排名融合（词法匹配 + 分类/标签权重 + 优先级加权）召回上下文，支持多轮会话追问；周度认知简报支持一键落库至 SQLite Layer 3 `artifacts` 产物表（包含 Rust 原生 CRUD 与单测闭环），问答引用卡片支持点击直达回溯。
 - [x] M2 AI 智能切片与卡片确认流：长文自动结构化提示词与切片能力（`smartSliceText`）、素材面板实时字符与 Token 用量预估（`estimateTokenCount`），AI 生成的多张原子卡支持独立勾选/反选/全选后再确认入库。
@@ -41,7 +42,7 @@
 
 | 范围 | 后续规划 | 当前状态 |
 |---|---|---|
-| M3 检索 | 端侧嵌入推理模型本地打包（如 ONNX Runtime Web / ort-rust 结合量化小模型） | 统一 Embedding 引擎（API + 本地语义特征投影）与端侧混合检索全链路闭环，可进一步增加本地 ONNX 模型权重 |
+| M3 检索 | 模型随包分发 / 量化更小的中文模型 / 向量索引加速 | 端侧 ONNX 推理已落地（e5-small 384 维，按需下载）；万级库仍是暴力余弦扫描，量级再大才需要 ANN |
 | M4 分发 | Windows MSI、Linux DEB CI 构建及安装冒烟 | macOS DMG 本机实测通过；Windows/Linux 依赖 GitHub Actions CI 矩阵 |
 | 插件生态 | 第三方插件沙箱（独立进程 / WASM）与签名体系 | 官方插件矩阵、权限声明与零开销禁用开关已就绪；第三方加载器按规范排在 M4 之后 |
 | 本地语音转写 | 更高质量模型（medium/large）与实时流式识别 | 运行时已静态链接、模型按需下载、WAV 与非 WAV（macOS afconvert）都能转；当前是整段文件转写，没有麦克风流式录入 |

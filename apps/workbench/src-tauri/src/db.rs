@@ -1235,6 +1235,23 @@ pub fn list_unembedded_card_ids(conn: &Connection, limit: i64) -> Result<Vec<Str
     Ok(ids)
 }
 
+/// 列出「有向量但维度对不上」的卡片：换嵌入引擎后这些向量已经失效，需要重算。
+pub fn list_stale_embedding_card_ids(conn: &Connection, dim: i64, limit: i64) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id FROM cards c
+         INNER JOIN card_embeddings e ON c.id = e.card_id
+         WHERE c.is_deleted = 0 AND e.dim <> ?1
+         ORDER BY c.created_at DESC
+         LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![dim, limit], |r| r.get(0))?;
+    let mut ids = Vec::new();
+    for r in rows {
+        ids.push(r?);
+    }
+    Ok(ids)
+}
+
 pub fn save_card_embeddings_batch(
     conn: &mut Connection,
     items: &[(String, Vec<f32>)],
@@ -1276,10 +1293,12 @@ pub fn search_cards_vector(
                 c.created_at, c.edited_at, e.embedding
          FROM cards c
          INNER JOIN card_embeddings e ON c.id = e.card_id
-         WHERE c.is_deleted = 0"
+         WHERE c.is_deleted = 0 AND e.dim = ?1"
     )?;
 
-    let rows = stmt.query_map([], |row| {
+    // 只比同维度的向量：哈希投影（128 维）与本地/远程模型（384 维等）不在同一空间，
+    // 混着算余弦只会得到无意义的 0。
+    let rows = stmt.query_map(params![query_embedding.len() as i64], |row| {
         let card = map_card_row(row)?;
         let emb_bytes: Vec<u8> = row.get(29)?;
         Ok((card, emb_bytes))
@@ -1543,6 +1562,60 @@ mod tests {
         assert_eq!(indexed_after_backfill, 1);
         // 幂等：再跑一次不重复插入
         assert_eq!(backfill_material_fts(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_vector_search_ignores_other_dimensions() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+
+        let card = KnowledgeCardDto {
+            id: "dim-card-1".to_string(),
+            material_id: None,
+            category: "计算机".to_string(),
+            headline: "向量维度必须一致".to_string(),
+            summary: "跨空间余弦无意义".to_string(),
+            details: "128 维哈希投影与 384 维模型向量不能混比。".to_string(),
+            links: vec![],
+            tags: vec![],
+            source: "imported".to_string(),
+            created_at: 1700000000000,
+            edited_at: None,
+            seen_at: None,
+            swiped: None,
+            is_favorite: false,
+            favorited_at: None,
+            review_count: 0,
+            mastery_level: 0,
+            last_reviewed_at: None,
+            repetition: 0,
+            interval_days: 0.0,
+            ease_factor: 2.5,
+            stability: 0.0,
+            difficulty: 0.0,
+            subject: None,
+            branch: None,
+            level: None,
+            track: None,
+            order_key: None,
+            prereq: vec![],
+        };
+        upsert_card(&conn, &card).unwrap();
+
+        // 先存 128 维（哈希投影）
+        save_card_embeddings_batch(&mut conn, &[("dim-card-1".to_string(), vec![0.1; 128])]).unwrap();
+        assert_eq!(search_cards_vector(&conn, &[0.1; 128], 10).unwrap().len(), 1);
+        // 用 384 维查询时不该命中 128 维的向量
+        assert!(search_cards_vector(&conn, &[0.1; 384], 10).unwrap().is_empty());
+        assert_eq!(list_stale_embedding_card_ids(&conn, 384, 10).unwrap(), vec!["dim-card-1".to_string()]);
+        assert!(list_stale_embedding_card_ids(&conn, 128, 10).unwrap().is_empty());
+
+        // 重算成 384 维后反过来：128 维查询不再命中，也不再算「脏」
+        save_card_embeddings_batch(&mut conn, &[("dim-card-1".to_string(), vec![0.1; 384])]).unwrap();
+        assert!(search_cards_vector(&conn, &[0.1; 128], 10).unwrap().is_empty());
+        assert_eq!(search_cards_vector(&conn, &[0.1; 384], 10).unwrap().len(), 1);
+        assert!(list_stale_embedding_card_ids(&conn, 384, 10).unwrap().is_empty());
+        assert!(list_unembedded_card_ids(&conn, 10).unwrap().is_empty());
     }
 
     #[test]

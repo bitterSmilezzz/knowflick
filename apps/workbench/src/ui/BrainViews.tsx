@@ -239,7 +239,7 @@ export function BrainAssistantDrawer({
           baseURL: settings.baseURL,
           apiKey,
         });
-        const queryVec = await engine.embedText(q);
+        const queryVec = await engine.embedText(q, true);
         const hybridHits = await dbSearchCardsHybrid(q, queryVec, 6);
         if (hybridHits.length > 0) {
           matched = hybridHits.slice(0, 4);

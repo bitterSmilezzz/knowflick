@@ -1,5 +1,13 @@
 import type { KnowledgeCard } from "./card";
-import { inShell, dbListUnembeddedCardIds, dbSaveCardEmbeddingsBatch, requestEmbeddings } from "../shell/store";
+import {
+  inShell,
+  dbListUnembeddedCardIds,
+  dbListStaleEmbeddingCardIds,
+  dbSaveCardEmbeddingsBatch,
+  localEmbed,
+  localEmbedStatus,
+  requestEmbeddings,
+} from "../shell/store";
 
 export interface EmbeddingConfig {
   providerId?: string;
@@ -152,7 +160,16 @@ export class EmbeddingEngine {
     return !!(baseURL?.trim() && apiKey?.trim() && inShell());
   }
 
-  async embedTexts(texts: string[]): Promise<number[][]> {
+  /**
+   * 三档优先级：
+   * 1. 配了 API key → 远程模型（质量最好，但要联网、按量计费）；
+   * 2. 桌面端且本地语义模型已下载 → fastembed `multilingual-e5-small`（384 维，离线）；
+   * 3. 都没有 → 确定性哈希投影（128 维，零依赖兜底）。
+   *
+   * 三档不在同一向量空间，**维度即引擎标识**：检索只比同维度向量，换档后旧向量由
+   * `syncCardEmbeddings` 按维度标脏重算。
+   */
+  async embedTexts(texts: string[], isQuery = false): Promise<number[][]> {
     if (texts.length === 0) return [];
 
     if (this.canUseApi()) {
@@ -164,16 +181,44 @@ export class EmbeddingEngine {
           "text-embedding-3-small";
         return await requestEmbeddings(endpoint, this.config.apiKey!, model, texts);
       } catch (err) {
-        console.warn("[EmbeddingEngine] API 嵌入生成失败，自动回退到本地语义特征投影:", err);
+        console.warn("[EmbeddingEngine] API 嵌入生成失败，尝试本地语义模型:", err);
+      }
+    }
+
+    if (inShell() && (await this.localModelReady())) {
+      try {
+        return await localEmbed(texts, isQuery);
+      } catch (err) {
+        console.warn("[EmbeddingEngine] 本地语义模型不可用，回退到哈希投影:", err);
       }
     }
 
     return texts.map((t) => localSemanticHashEmbedding(t, 128));
   }
 
-  async embedText(text: string): Promise<number[]> {
-    const [vec] = await this.embedTexts([text]);
+  async embedText(text: string, isQuery = false): Promise<number[]> {
+    const [vec] = await this.embedTexts([text], isQuery);
     return vec ?? localSemanticHashEmbedding(text, 128);
+  }
+
+  /** 本地语义模型是否就绪（只在桌面端有意义）。结果缓存在实例上，避免每次查询都走 IPC。 */
+  private localReady: boolean | null = null;
+  async localModelReady(): Promise<boolean> {
+    if (this.localReady !== null) return this.localReady;
+    try {
+      const status = await localEmbedStatus();
+      this.localReady = status.downloaded;
+    } catch {
+      this.localReady = false;
+    }
+    return this.localReady;
+  }
+
+  /** 当前引擎输出的维度，用于判断旧向量是否需要重算。 */
+  async currentDim(): Promise<number> {
+    if (this.canUseApi()) return 0; // 远程维度未知，交给「未嵌入」逻辑处理
+    if (inShell() && (await this.localModelReady())) return 384;
+    return 128;
   }
 
   async embedCard(card: KnowledgeCard): Promise<number[]> {
@@ -199,6 +244,8 @@ export async function syncCardEmbeddings(
 
   if (inShell()) {
     let indexedCount = 0;
+    // 先清掉维度对不上的旧向量（换过嵌入引擎），再补没向量化的卡片。
+    const dim = await engine.currentDim();
     while (true) {
       const missingIds = await dbListUnembeddedCardIds(batchSize, options.dir);
       if (!missingIds.length) break;
@@ -220,6 +267,23 @@ export async function syncCardEmbeddings(
       await dbSaveCardEmbeddingsBatch(items, options.dir);
       indexedCount += items.length;
       options.onProgress?.(indexedCount, cards.length);
+    }
+
+    // 维度已知且与旧向量不同：这些卡片重算一遍，否则它们在检索里永远匹配不到。
+    if (dim > 0) {
+      const stale = await dbListStaleEmbeddingCardIds(dim, batchSize, options.dir);
+      const staleCards = stale
+        .map((id) => cards.find((c) => c.id === id))
+        .filter((c): c is KnowledgeCard => !!c);
+      if (staleCards.length > 0) {
+        const texts = staleCards.map(cardToEmbeddingText);
+        const embeddings = await engine.embedTexts(texts);
+        await dbSaveCardEmbeddingsBatch(
+          staleCards.map((card, idx) => ({ cardId: card.id, embedding: embeddings[idx] })),
+          options.dir
+        );
+        indexedCount += staleCards.length;
+      }
     }
     return { indexedCount };
   }

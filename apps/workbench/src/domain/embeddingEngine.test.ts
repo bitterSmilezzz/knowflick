@@ -77,6 +77,29 @@ describe("向量嵌入引擎 (EmbeddingEngine)", () => {
     });
   });
 
+  describe("三档引擎与维度标识", () => {
+    it("没有 API、没有本地模型时用哈希投影，维度 128", async () => {
+      const engine = new EmbeddingEngine();
+      expect(engine.canUseApi()).toBe(false);
+      expect(await engine.currentDim()).toBe(128);
+      const vec = await engine.embedText("离线兜底", true);
+      expect(vec.length).toBe(128);
+    });
+
+    it("配置了 API 时 canUseApi 为真（浏览器/无 shell 除外）", () => {
+      const engine = new EmbeddingEngine({ baseURL: "https://api.example.com/v1", apiKey: "sk-x" });
+      // 测试环境没有 Tauri shell，inShell() 为假 → 仍不算可用
+      expect(engine.canUseApi()).toBe(false);
+    });
+
+    it("embedTexts 传 isQuery 时查询侧仍能拿到同维向量", async () => {
+      const engine = new EmbeddingEngine();
+      const [q, p] = await Promise.all([engine.embedTexts(["问题"], true), engine.embedTexts(["段落"], false)]);
+      expect(q[0].length).toBe(p[0].length);
+      expect(q[0].length).toBe(128);
+    });
+  });
+
   describe("统一引擎 EmbeddingEngine 调用与回退", () => {
     it("无 API 配置时自动平滑走本地嵌入生成", async () => {
       const engine = new EmbeddingEngine();

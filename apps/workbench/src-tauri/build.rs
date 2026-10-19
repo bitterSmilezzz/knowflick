@@ -43,6 +43,10 @@ fn main() {
             "asr_model_status",
             "asr_download_model",
             "asr_transcribe",
+            "local_embed_status",
+            "local_embed_warm_up",
+            "local_embed",
+            "db_list_stale_embedding_card_ids",
         ]),
     );
     tauri_build::try_build(attributes).expect("failed to run tauri-build");

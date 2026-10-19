@@ -47,6 +47,10 @@
     "allow-db-delete-subscription",
     "allow-asr-model-status",
     "allow-asr-download-model",
-    "allow-asr-transcribe"
+    "allow-asr-transcribe",
+    "allow-local-embed-status",
+    "allow-local-embed-warm-up",
+    "allow-local-embed",
+    "allow-db-list-stale-embedding-card-ids"
   ]
 }

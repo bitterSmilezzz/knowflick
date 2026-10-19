@@ -1,5 +1,6 @@
 mod asr;
 pub mod db;
+mod embed;
 mod http;
 mod store;
 
@@ -292,6 +293,44 @@ fn db_list_unembedded_card_ids(dir: Option<String>, limit: Option<i64>) -> Resul
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
     db::list_unembedded_card_ids(&conn, limit.unwrap_or(100)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn local_embed_status() -> embed::LocalEmbedStatus {
+    embed::status(&store::data_root())
+}
+
+/// 下载并预热本地语义模型。会真的跑一次推理，确保「下载完成」等于「能用」。
+#[tauri::command]
+async fn local_embed_warm_up() -> Result<embed::LocalEmbedStatus, String> {
+    let root = store::data_root();
+    tauri::async_runtime::spawn_blocking(move || embed::warm_up(&root))
+        .await
+        .map_err(|e| format!("本地语义模型预热失败: {e}"))?
+}
+
+#[tauri::command]
+async fn local_embed(texts: Vec<String>, is_query: Option<bool>) -> Result<Vec<Vec<f32>>, String> {
+    let root = store::data_root();
+    let is_query = is_query.unwrap_or(false);
+    // 检索路径不允许顺手下载模型：没下载就返回错误，由界面提示去设置里下。
+    tauri::async_runtime::spawn_blocking(move || embed::embed(&root, texts, is_query, false))
+        .await
+        .map_err(|e| format!("本地嵌入任务失败: {e}"))?
+}
+
+#[derive(serde::Deserialize)]
+pub struct EmbeddingBatchItemV2 {
+    pub card_id: String,
+    pub embedding: Vec<f32>,
+}
+
+#[tauri::command]
+fn db_list_stale_embedding_card_ids(dir: Option<String>, dim: i64, limit: Option<i64>) -> Result<Vec<String>, String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::list_stale_embedding_card_ids(&conn, dim, limit.unwrap_or(100)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -801,7 +840,11 @@ pub fn run() {
             db_delete_subscription,
             asr_model_status,
             asr_download_model,
-            asr_transcribe
+            asr_transcribe,
+            local_embed_status,
+            local_embed_warm_up,
+            local_embed,
+            db_list_stale_embedding_card_ids
         ])
         .build(tauri::generate_context!())
         .expect("error while running KnowFlick")
