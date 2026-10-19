@@ -75,8 +75,12 @@ try {
   await browser("open", url);
   await check('document.querySelector(".ws-prose")?.textContent.includes("修改后的正文")', "edited body survives reload");
 
-  // 语音转写入口存在（浏览器模式点它会被 act 拦在「只在桌面客户端可用」）
+  // 语音转写入口存在，但插件默认关闭时必须是禁用态
   await check('!!document.querySelector(\'[aria-label="语音转写"]\')', "top bar exposes the speech entry");
+  await check(
+    'document.querySelector(\'[aria-label="语音转写"]\').disabled === true && document.querySelector(\'[aria-label="语音转写"]\').title.includes("插件未启用")',
+    "speech entry is disabled while its plugin is off"
+  );
 
   // Material -> card
   await clickButton("保存为知识卡");

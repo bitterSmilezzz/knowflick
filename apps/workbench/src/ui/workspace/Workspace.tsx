@@ -48,6 +48,7 @@ import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import { DEFAULT_ASR_MODEL, realtimeFactor, titleFromTranscript } from "../../domain/asr";
+import { pluginEnabledIn } from "../../domain/pluginSettings";
 import {
   isDue,
   itemsToMaterials,
@@ -304,6 +305,7 @@ export function Workspace() {
   }, [page, loading, busy, isCollection, filtered, selected, layout]);
   const tags = [...new Set(cards.flatMap((c) => [c.category, ...(c.tags ?? [])]).filter(Boolean))].sort();
   const reviewEnabled = file.raw.reviewPluginEnabled === true;
+  const asrEnabled = pluginEnabledIn(file.raw, "official-speech-asr");
 
   let aiReady = false;
   try {
@@ -644,6 +646,7 @@ export function Workspace() {
   const transcribeAudio = async () => {
     await act(async () => {
       if (!inShell()) throw new Error("语音转写只在桌面客户端可用");
+      if (!asrEnabled) throw new Error("语音转写插件未启用：在设置 →「功能模块与官方插件」里开启");
       const path = await pickAudioFile();
       if (!path) return;
 
@@ -790,8 +793,12 @@ export function Workspace() {
             <button
               className="ws-icon-button"
               aria-label="语音转写"
-              title="语音转写（本地 Whisper）"
-              disabled={loading || busy}
+              title={
+                asrEnabled
+                  ? "语音转写（本地 Whisper）"
+                  : "语音转写插件未启用：在设置 →「功能模块与官方插件」里开启"
+              }
+              disabled={loading || busy || !asrEnabled}
               onClick={() => void transcribeAudio()}
             >
               <Icon name="mic" />
