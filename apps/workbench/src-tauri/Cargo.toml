@@ -24,5 +24,6 @@ tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tokio = { version = "1", features = ["fs"] }
 uuid = { version = "1", features = ["v4"] }
+whisper-rs = "0.16"
 window-vibrancy = "0.5"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }

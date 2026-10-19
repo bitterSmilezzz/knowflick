@@ -68,14 +68,14 @@ try {
     'document.querySelector(\'[data-plugin="official-inbox-sniff"] .ws-plugin-perms\').textContent.includes("network:fetch")',
     "插件行展示声明的权限"
   );
-  // 语音插件尚未接入，必须如实标注而不是用开关冒充可用
+  // 语音插件：浏览器模式没有 Rust 侧，模型面板要如实说「只在桌面客户端可用」
   await check(
-    'document.querySelector(\'[data-plugin="official-speech-asr"] [data-plugin-availability\]\')?.dataset.pluginAvailability === "needs-download"',
-    "语音插件标注「需下载模型」"
+    '!!document.querySelector(\'[data-plugin="official-speech-asr"] [data-asr-panel]\')',
+    "语音插件展开模型面板"
   );
   await check(
-    'document.querySelector(\'[data-plugin="official-speech-asr"] .ws-plugin-note\')?.textContent.includes("尚未随安装包分发")',
-    "语音插件说明缺什么"
+    'document.querySelector(\'[data-plugin="official-speech-asr"] [data-asr-status\]\').textContent.includes("桌面客户端")',
+    "浏览器模式下模型面板说明限制"
   );
 
   // 切换插件并保存后持久化

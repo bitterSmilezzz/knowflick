@@ -1798,6 +1798,51 @@ select {
   white-space: nowrap;
 }
 
+/* 语音模型面板：插件行里的第二层，缩进以示从属 */
+.ws-asr-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ws-asr-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ws-asr-status {
+  font-size: var(--text-meta);
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ws-asr-status[data-asr-status="installed"] {
+  color: var(--fg);
+}
+
+.ws-asr-path {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--text-meta);
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.ws-asr-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* 订阅源行：左侧目标与时间信息、右侧开关与动作 */
 .ws-subscription-row {
   display: flex;

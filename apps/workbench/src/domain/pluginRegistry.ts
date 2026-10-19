@@ -123,12 +123,12 @@ export const OFFICIAL_PLUGINS: readonly PluginManifest[] = [
     version: "0.1.0",
     description: "基于 whisper.cpp 的纯本地离线口述与灵感录入，禁用时零内存占用、推理时按需加载模型",
     author: "KnowFlick Official",
-    icon: "note",
+    icon: "mic",
     type: "official",
     defaultEnabled: false,
-    availability: "needs-download",
-    availabilityNote:
-      "语音推理运行时与模型（约数百 MB）尚未随安装包分发；接入前此开关只登记启用意图，不产生转写能力",
+    // 推理运行时（whisper.cpp via whisper-rs）已随宿主链接；模型权重按需下载，
+    // 缺模型时由 AsrModelPanel 显示「未安装 · 需要下载」并给出下载按钮。
+    availability: "ready",
     permissions: ["fs:read_temp", "storage:materials:write"],
     preferences: [
       {

@@ -33,14 +33,13 @@ describe("插件架构与注册表 (PluginRegistry)", () => {
     }
   });
 
-  it("未就绪的插件如实标注状态，不假装可用", () => {
+  it("语音插件默认关闭，且能用的插件不带未就绪说明", () => {
     const asr = OFFICIAL_PLUGINS.find((p) => p.id === "official-speech-asr");
     expect(asr).toBeTruthy();
-    expect(asr?.availability).toBe("needs-download");
-    expect(asr?.availabilityNote).toBeTruthy();
     expect(asr?.defaultEnabled).toBe(false);
+    // 运行时已随宿主链接，模型按需下载由设置页的模型面板呈现
+    expect(asr?.availability).toBe("ready");
 
-    // 已经能用的插件不该带 availabilityNote
     for (const plugin of OFFICIAL_PLUGINS.filter((p) => p.availability === "ready")) {
       expect(plugin.availabilityNote).toBeUndefined();
     }

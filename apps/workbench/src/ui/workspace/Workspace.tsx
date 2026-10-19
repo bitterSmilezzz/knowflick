@@ -15,7 +15,10 @@ import {
   dbSaveSubscription,
   dbSearchMaterialsFts,
   fetchClip,
+  asrModelStatus,
+  asrTranscribe,
   inShell,
+  pickAudioFile,
   type RawMaterial,
   type SubscriptionRow,
 } from "../../shell/store";
@@ -44,6 +47,7 @@ import { CaptureDialog } from "./CaptureDialog";
 import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
+import { DEFAULT_ASR_MODEL, realtimeFactor, titleFromTranscript } from "../../domain/asr";
 import {
   isDue,
   itemsToMaterials,
@@ -631,6 +635,45 @@ export function Workspace() {
     });
   };
 
+  /**
+   * 语音导入：选一个音频文件 → 本地 Whisper 转写 → 落成收件箱素材。
+   *
+   * 转写文本同时作为正文与标题来源；不在这里顺手调用大模型出卡——
+   * 转写只是入口，要不要提炼由用户在素材页决定。
+   */
+  const transcribeAudio = async () => {
+    await act(async () => {
+      if (!inShell()) throw new Error("语音转写只在桌面客户端可用");
+      const path = await pickAudioFile();
+      if (!path) return;
+
+      const model =
+        (file.raw.plugins as Record<string, { preferences?: Record<string, unknown> }> | undefined)?.[
+          "official-speech-asr"
+        ]?.preferences?.model as string | undefined ?? DEFAULT_ASR_MODEL;
+
+      const status = await asrModelStatus(model);
+      if (!status.installed) {
+        throw new Error(`语音模型 ${model} 尚未下载：去设置 →「功能模块与官方插件」里下载`);
+      }
+
+      const result = await asrTranscribe(path, model);
+      const text = result.text.trim();
+      if (!text) throw new Error("没有识别出文字。可以换更清晰的录音，或在设置里换更大的模型");
+
+      const material = {
+        ...makeMaterial({ title: titleFromTranscript(text), text, url: "" }),
+        sourceType: "audio",
+      };
+      await updateMaterial(material);
+      navigate("inbox");
+      setNotice(
+        `语音已转写并存入收件箱：${text.length} 字，音频 ${(result.audioMs / 1000).toFixed(1)} 秒，` +
+          `耗时 ${(result.elapsedMs / 1000).toFixed(1)} 秒（${realtimeFactor(result.audioMs, result.elapsedMs)}）`
+      );
+    });
+  };
+
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 4000);
@@ -744,6 +787,15 @@ export function Workspace() {
             {selected && isCollection ? ` / ${selected.category}` : ""}
           </span>
           <div className="ws-toolbar-actions">
+            <button
+              className="ws-icon-button"
+              aria-label="语音转写"
+              title="语音转写（本地 Whisper）"
+              disabled={loading || busy}
+              onClick={() => void transcribeAudio()}
+            >
+              <Icon name="mic" />
+            </button>
             <button
               className="ws-icon-button"
               aria-label="导入文件"

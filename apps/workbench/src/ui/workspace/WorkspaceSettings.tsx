@@ -5,6 +5,8 @@ import { probeConnection } from "../../domain/aiChat";
 import { OFFICIAL_PLUGINS, PERMISSION_DESCRIPTIONS } from "../../domain/pluginRegistry";
 import { pluginEnabledIn, readPluginSettings, togglePluginIn, writePluginSettings } from "../../domain/pluginSettings";
 import { generateMcpConfigSnippet } from "../../domain/mcpServer";
+import { DEFAULT_ASR_MODEL } from "../../domain/asr";
+import { AsrModelPanel } from "./AsrModelPanel";
 import { inShell } from "../../shell/store";
 import { Icon } from "./Icon";
 import { invoke } from "@tauri-apps/api/core";
@@ -37,6 +39,8 @@ export function WorkspaceSettings({
     readPluginSettings(file.raw)
   );
   const [mcpCopied, setMcpCopied] = useState(false);
+  const asrModel =
+    (draftPlugins["official-speech-asr"]?.preferences?.model as string | undefined) ?? DEFAULT_ASR_MODEL;
   const mcpSnippet = generateMcpConfigSnippet("tools/mcp-server.mjs");
 
   const copyMcpConfig = async () => {
@@ -360,6 +364,23 @@ export function WorkspaceSettings({
                             </em>
                           ))}
                         </span>
+                        {plugin.id === "official-speech-asr" ? (
+                          <AsrModelPanel
+                            model={asrModel}
+                            onModelChange={(next) => {
+                              setDraftPlugins((prev) => ({
+                                ...prev,
+                                "official-speech-asr": {
+                                  enabled: prev["official-speech-asr"]?.enabled ?? false,
+                                  preferences: {
+                                    ...(prev["official-speech-asr"]?.preferences ?? {}),
+                                    model: next,
+                                  },
+                                },
+                              }));
+                            }}
+                          />
+                        ) : null}
                       </div>
                       <div className="ws-settings-control">
                         <label className="ws-switch-label" aria-label={`启用${plugin.name}`}>

@@ -29,6 +29,7 @@ const paths: Record<string, string> = {
   close: "m6 6 12 12 M18 6 6 18",
   download: "M12 3v13 M7 11l5 5 5-5 M4 18v3h16v-3",
   layers: "m12 3 9 4.5-9 4.5-9-4.5z M3 12l9 4.5 9-4.5 M3 16.5 12 21l9-4.5",
+  mic: "M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z M5 11a7 7 0 0 0 14 0 M12 18v3",
 };
 
 export type IconName = keyof typeof paths;

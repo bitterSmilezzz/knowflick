@@ -40,6 +40,9 @@ fn main() {
             "db_save_subscription",
             "db_mark_subscription_polled",
             "db_delete_subscription",
+            "asr_model_status",
+            "asr_download_model",
+            "asr_transcribe",
         ]),
     );
     tauri_build::try_build(attributes).expect("failed to run tauri-build");

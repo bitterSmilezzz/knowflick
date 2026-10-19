@@ -44,6 +44,9 @@
     "allow-db-list-subscriptions",
     "allow-db-save-subscription",
     "allow-db-mark-subscription-polled",
-    "allow-db-delete-subscription"
+    "allow-db-delete-subscription",
+    "allow-asr-model-status",
+    "allow-asr-download-model",
+    "allow-asr-transcribe"
   ]
 }

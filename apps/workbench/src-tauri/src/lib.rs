@@ -1,3 +1,4 @@
+mod asr;
 pub mod db;
 mod http;
 mod store;
@@ -291,6 +292,89 @@ fn db_list_unembedded_card_ids(dir: Option<String>, limit: Option<i64>) -> Resul
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
     db::list_unembedded_card_ids(&conn, limit.unwrap_or(100)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn asr_model_status(model: Option<String>) -> Result<asr::AsrModelStatus, String> {
+    asr::model_status(&store::data_root(), model.as_deref().unwrap_or("small"))
+}
+
+/// 下载语音模型到 `<data_root>/models/`。进度通过 `knowflick:asr-progress` 事件推给界面。
+#[tauri::command]
+async fn asr_download_model(app: tauri::AppHandle, model: String) -> Result<asr::AsrModelStatus, String> {
+    use std::io::Write;
+    use tauri::Emitter;
+
+    let url = asr::model_download_url(&model)?;
+    let dir = asr::models_dir(&store::data_root());
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建模型目录失败: {e}"))?;
+    let target = asr::model_path(&store::data_root(), &model)?;
+    // 先写 .part 再改名：下载中断不会留下一个「看起来装好了」的坏模型。
+    let partial = target.with_extension("part");
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client
+        .get(&url)
+        .header("User-Agent", "KnowFlick/0.1")
+        .send()
+        .await
+        .map_err(|e| format!("下载模型失败: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("下载模型失败: HTTP {}", response.status().as_u16()));
+    }
+    let total = response.content_length().unwrap_or(0);
+
+    let mut file = std::fs::File::create(&partial).map_err(|e| format!("写入模型失败: {e}"))?;
+    let mut downloaded: u64 = 0;
+    let mut last_emitted: u64 = 0;
+    let mut stream = response;
+    while let Some(chunk) = stream.chunk().await.map_err(|e| format!("下载中断: {e}"))? {
+        file.write_all(&chunk).map_err(|e| format!("写入模型失败: {e}"))?;
+        downloaded += chunk.len() as u64;
+        // 每 5% 或 2MB 推一次，避免刷爆事件队列
+        if downloaded - last_emitted > 2 * 1024 * 1024 || (total > 0 && downloaded * 100 / total > last_emitted * 100 / total.max(1)) {
+            last_emitted = downloaded;
+            let _ = app.emit(
+                "knowflick:asr-progress",
+                serde_json::json!({ "model": model, "downloaded": downloaded, "total": total }),
+            );
+        }
+    }
+    file.flush().map_err(|e| format!("写入模型失败: {e}"))?;
+    drop(file);
+
+    std::fs::rename(&partial, &target).map_err(|e| format!("保存模型失败: {e}"))?;
+    let _ = app.emit(
+        "knowflick:asr-progress",
+        serde_json::json!({ "model": model, "downloaded": downloaded, "total": total, "done": true }),
+    );
+
+    asr::model_status(&store::data_root(), &model)
+}
+
+#[tauri::command]
+fn asr_transcribe(model: Option<String>, path: String) -> Result<asr::TranscriptionResult, String> {
+    let model = model.unwrap_or_else(|| "small".to_string());
+    let root = store::data_root();
+    let status = asr::model_status(&root, &model)?;
+    if !status.installed {
+        return Err(format!("语音模型 {model} 尚未下载，请先在设置里下载模型"));
+    }
+    let model_path = asr::model_path(&root, &model)?;
+    let source = std::path::Path::new(&path);
+    if !source.exists() {
+        return Err(format!("音频文件不存在: {path}"));
+    }
+    let wav = asr::to_wav_16k_mono(source)?;
+    let result = asr::transcribe(&model_path, &wav);
+    // 只有我们自己造的临时 wav 才删，用户的原始文件不动
+    if wav != source {
+        let _ = std::fs::remove_file(&wav);
+    }
+    result
 }
 
 #[tauri::command]
@@ -739,7 +823,10 @@ pub fn run() {
             db_list_subscriptions,
             db_save_subscription,
             db_mark_subscription_polled,
-            db_delete_subscription
+            db_delete_subscription,
+            asr_model_status,
+            asr_download_model,
+            asr_transcribe
         ])
         .build(tauri::generate_context!())
         .expect("error while running KnowFlick")

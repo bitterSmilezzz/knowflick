@@ -263,3 +263,39 @@ export function dbDeleteSubscription(id: string, dir?: string): Promise<void> {
   return invoke("db_delete_subscription", { dir: dir ?? null, id });
 }
 
+/** 本地语音转写（official-speech-asr）。 */
+export interface AsrModelStatus {
+  model: string;
+  installed: boolean;
+  path: string | null;
+  sizeBytes: number;
+  expectedBytes: number;
+}
+
+export interface TranscriptionResult {
+  text: string;
+  audioMs: number;
+  elapsedMs: number;
+  model: string;
+}
+
+export function asrModelStatus(model: string): Promise<AsrModelStatus> {
+  return invoke("asr_model_status", { model });
+}
+
+export function asrDownloadModel(model: string): Promise<AsrModelStatus> {
+  return invoke("asr_download_model", { model });
+}
+
+export function asrTranscribe(path: string, model?: string): Promise<TranscriptionResult> {
+  return invoke("asr_transcribe", { path, model: model ?? null });
+}
+
+export async function pickAudioFile(): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: "音频", extensions: ["wav", "m4a", "mp3", "aiff", "aif", "caf", "flac"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
