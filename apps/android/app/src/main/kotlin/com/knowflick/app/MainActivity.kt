@@ -142,6 +142,27 @@ class MainActivity : ComponentActivity() {
                                     viewModel.submitReviewRating(card, rating)
                                 },
                                 reviewSessionCount = viewModel.reviewSessionCount,
+                                // 桌面上没有的两项能力由宿主注入（迁进共享层时改成的槽位）：
+                                // 微件是 Android 独有；海报导出要 Bitmap 光栅化。
+                                onAddWidget = {
+                                    val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(this@MainActivity)
+                                    if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                                        val component = android.content.ComponentName(
+                                            this@MainActivity,
+                                            com.knowflick.app.widget.DailyCardGlanceWidgetReceiver::class.java,
+                                        )
+                                        appWidgetManager.requestPinAppWidget(component, null, null)
+                                    } else {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "当前桌面启动器不支持直接锁定添加微件，请长按桌面手动添加",
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                },
+                                posterSheet = { card, onClose ->
+                                    com.knowflick.app.ui.CardPosterExportSheet(card = card, onClose = onClose)
+                                },
                             )
                         }
                         Screen.DETAIL -> {

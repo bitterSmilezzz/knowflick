@@ -66,7 +66,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -156,9 +156,13 @@ fun DeckScreen(
     onToggleReviewMode: () -> Unit = {},
     onSubmitReviewRating: (KnowledgeCard, SpacedRating) -> Unit = { _, _ -> },
     reviewSessionCount: Int = 0,
+    /** 添加桌面微件（Android 的 Glance 微件）；null = 该端没有微件能力，菜单项隐藏 */
+    onAddWidget: (() -> Unit)? = null,
+    /** 海报导出面板（Android 有 Bitmap 光栅化）；null = 该端没有海报导出，不弹出 */
+    posterSheet: (@Composable (card: KnowledgeCard, onClose: () -> Unit) -> Unit)? = null,
 ) {
-    val haptics = com.knowflick.app.ui.common.rememberHapticFeedbackHelper()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val haptics = com.knowflick.app.ui.common.rememberPlatformHaptics()
+    val sounds = com.knowflick.app.ui.common.rememberPlatformSounds()
 
     // 跨设备一致的手势标尺：全部由 dp 推导，与设备像素密度无关
     // （此前硬编码 220px/180px/28px：3.5x 密度机上阈值仅约 63dp，2x 机上却要划 110dp）
@@ -169,7 +173,7 @@ fun DeckScreen(
     val minFlingVelocityPx = with(density) { MIN_FLING_VELOCITY_DP.dp.toPx() }
     val minFlingDistancePx = with(density) { MIN_FLING_DISTANCE_DP.dp.toPx() }
     // 飞出层宽度兜底：deckWidthPx 尚未测量时（防御分支）用屏宽，而非硬编码 900px
-    val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    val screenWidthPx = LocalWindowInfo.current.containerSize.width.toFloat()
 
     var rawDrag by remember { mutableStateOf(Offset.Zero) }
     var thresholdCrossed by remember { mutableStateOf(false) }
@@ -438,20 +442,16 @@ fun DeckScreen(
                                     sharePosterCard = topCard
                                 },
                             )
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text("添加桌面微件…", fontSize = 13.sp) },
-                                onClick = {
-                                    showMore = false
-                                    val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                                    val hasSupported = appWidgetManager.isRequestPinAppWidgetSupported
-                                    if (hasSupported) {
-                                        val component = android.content.ComponentName(context, com.knowflick.app.widget.DailyCardGlanceWidgetReceiver::class.java)
-                                        appWidgetManager.requestPinAppWidget(component, null, null)
-                                    } else {
-                                        android.widget.Toast.makeText(context, "当前桌面启动器不支持直接锁定添加微件，请长按桌面手动添加", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                },
-                            )
+                            // 桌面微件是 Android 独有能力：由宿主注入（null = 该端没有微件，菜单项不出现）
+                            onAddWidget?.let { addWidget ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("添加桌面微件…", fontSize = 13.sp) },
+                                    onClick = {
+                                        showMore = false
+                                        addWidget()
+                                    },
+                                )
+                            }
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("学习统计", fontSize = 13.sp) },
                                 onClick = { showMore = false; onOpenStats() },
@@ -566,7 +566,7 @@ fun DeckScreen(
                             if (isTop && flyingCard == null) {
                                 cardModifier = cardModifier
                                     .clickable(onClickLabel = "查看详情") {
-                                        com.knowflick.app.ui.common.AudioEffectHelper.playCardFlip(context)
+                                        sounds.playCardFlip()
                                         onOpenDetail(card)
                                     }
                                     .pointerInput(card.id) {
@@ -574,7 +574,7 @@ fun DeckScreen(
                                         detectDragGestures(
                                             onDragStart = {
                                                 haptics.tick()
-                                                com.knowflick.app.ui.common.AudioEffectHelper.playPaperSlide(context)
+                                                sounds.playPaperSlide()
                                                 velocityTracker.resetTracking()
                                                 val current = if (isReturning) returnAnim.value else rawDrag
                                                 returnJob?.cancel()
@@ -602,10 +602,10 @@ fun DeckScreen(
                                                     flyingStart = Offset(rawDrag.x, rawDrag.y * VERTICAL_DAMPING_RATIO)
                                                     if (direction == SwipeDirection.RIGHT) {
                                                         haptics.success()
-                                                        com.knowflick.app.ui.common.AudioEffectHelper.playMasteryChime(context)
+                                                        sounds.playMasteryChime()
                                                     } else {
                                                         haptics.warning()
-                                                        com.knowflick.app.ui.common.AudioEffectHelper.playPaperSlide(context)
+                                                        sounds.playPaperSlide()
                                                     }
                                                     if (isReviewMode) {
                                                         val rating = if (direction == SwipeDirection.RIGHT) SpacedRating.GOOD else SpacedRating.AGAIN
@@ -631,7 +631,7 @@ fun DeckScreen(
                                             if (crossed) {
                                                 thresholdCrossed = true
                                                 haptics.click()
-                                                com.knowflick.app.ui.common.AudioEffectHelper.playClick(context)
+                                                sounds.playClick()
                                             } else if (abs(rawDrag.x) < hysteresisPx || !isHorizontalDominant) {
                                                 thresholdCrossed = false
                                             }
@@ -772,7 +772,7 @@ fun DeckScreen(
                         color = Color(0xFF389E82),
                     ) {
                         haptics.success()
-                        com.knowflick.app.ui.common.AudioEffectHelper.playMasteryChime(context)
+                        sounds.playMasteryChime()
                         topCard?.let { card ->
                             flyingCard = card
                             flyingDirection = SwipeDirection.RIGHT
@@ -786,7 +786,7 @@ fun DeckScreen(
                         color = Color(0xFF4A88B8),
                     ) {
                         haptics.success()
-                        com.knowflick.app.ui.common.AudioEffectHelper.playMasteryChime(context)
+                        sounds.playMasteryChime()
                         topCard?.let { card ->
                             flyingCard = card
                             flyingDirection = SwipeDirection.RIGHT
@@ -840,7 +840,7 @@ fun DeckScreen(
                         label = "详情",
                     ) {
                         topCard?.let { card ->
-                            com.knowflick.app.ui.common.AudioEffectHelper.playCardFlip(context)
+                            sounds.playCardFlip()
                             onOpenDetail(card)
                         }
                     }
@@ -848,11 +848,9 @@ fun DeckScreen(
             }
         }
 
+        // 海报导出同为 Android 能力（要 Bitmap 光栅化）：宿主注入；null = 该端没有海报导出
         sharePosterCard?.let { card ->
-            CardPosterExportSheet(
-                card = card,
-                onClose = { sharePosterCard = null },
-            )
+            posterSheet?.invoke(card) { sharePosterCard = null }
         }
     }
 }

@@ -68,6 +68,10 @@ class DesktopHostState(val model: AppModel) {
         model.persistNow()
     }
 
+    /** 是否正在看收藏阁（第三个导航目的地；刷卡页是首页） */
+    var showingLibrary by mutableStateOf(false)
+        private set
+
     fun openStats() {
         showingStats = true
         version++
@@ -76,6 +80,31 @@ class DesktopHostState(val model: AppModel) {
     fun closeStats() {
         showingStats = false
         version++
+    }
+
+    fun openLibrary() {
+        showingLibrary = true
+        version++
+    }
+
+    /** 回到刷卡首页：关掉所有覆盖层并退出测验（对应 Android 的 Screen.DECK） */
+    fun goHome() {
+        showingStats = false
+        showingLibrary = false
+        detailCardId = null
+        quizCycle.exit()
+        syncQuizSession()
+        version++
+    }
+
+    /**
+     * 统一写入入口：执行动作 → 推进版本 → 落盘。
+     * 与 Android `KnowFlickViewModel.mutate` 同一语义（刷卡等卡库变更都经这里）。
+     */
+    fun mutate(action: () -> Unit) {
+        action()
+        version++
+        model.persistNow()
     }
 
     private fun syncQuizSession() {
