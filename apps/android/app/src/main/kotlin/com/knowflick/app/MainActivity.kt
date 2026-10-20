@@ -82,6 +82,9 @@ class MainActivity : ComponentActivity() {
         maybeRequestNotificationPermission()
         enableEdgeToEdge()
         setContent {
+            // 共享界面里的「轻量提示」走宿主提供的实现：Android = 系统 Toast，
+            // 与迁移前共享屏里直接 Toast 的用户可见行为完全一致（不提供则静默）。
+            com.knowflick.app.ui.common.ProvideToastNotifier {
             KnowFlickTheme(paperTheme = viewModel.currentPaperTheme) {
                 val libraryState = rememberSaveableStateHolder()
                 Box(
@@ -497,6 +500,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
             }
         }
     }

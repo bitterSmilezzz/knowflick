@@ -42,6 +42,13 @@ kotlin {
                 api(project(":domain"))
             }
         }
+        // ChatStateHolder 用 Compose 的可观察状态承载会话（与 :domain 的 @Immutable 同一份 runtime）
+        val jvmAndAndroidMain by getting {
+            dependencies {
+                implementation("org.jetbrains.compose.runtime:runtime:1.7.3")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+            }
+        }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))

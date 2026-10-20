@@ -1,5 +1,7 @@
 package com.knowflick.app
 
+import com.knowflick.app.data.ChatStateHolder
+
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
@@ -126,21 +128,18 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         apiKeyProvider = { currentApiKey() },
     )
     val chatStorage: ChatSessionStorage get() = chat.storage
-    var activeChatCard: KnowledgeCard?
-        get() = chat.activeCard
-        private set(value) { chat.activeCard = value }
+
+    // 以下五个只读转发：状态转移由 ChatStateHolder 自己负责（它已搬到 :shared-data）。
+    // 原先还带 setter，但全仓无人赋值——留着会迫使 :shared-data 把 setter 开成 public，
+    // 等于把「谁能改会话状态」这条边界交出去。删掉比放宽可见性更对。
+    val activeChatCard: KnowledgeCard? get() = chat.activeCard
     var currentChatSession: CardChatSession?
         get() = chat.currentSession
-        internal set(value) { chat.currentSession = value }
-    var isChatStreaming: Boolean
-        get() = chat.isStreaming
-        private set(value) { chat.isStreaming = value }
-    var chatErrorMessage: String?
-        get() = chat.errorMessage
-        private set(value) { chat.errorMessage = value }
-    var savedChatMessageIds: Set<String>
-        get() = chat.savedMessageIds
-        private set(value) { chat.savedMessageIds = value }
+        // 转发给 holder 的 restoreSession：字段级 setter 仍不对宿主开放（见其 KDoc）
+        internal set(value) { chat.restoreSession(value) }
+    val isChatStreaming: Boolean get() = chat.isStreaming
+    val chatErrorMessage: String? get() = chat.errorMessage
+    val savedChatMessageIds: Set<String> get() = chat.savedMessageIds
 
     private var persistJob: Job? = null
     private val persistenceQueue = CardPersistenceQueue(model.storage, ::handlePersistenceResult)
