@@ -1,7 +1,5 @@
 package com.knowflick.app.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,7 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knowflick.app.domain.CardThemeResolver
 import com.knowflick.app.domain.KnowledgeCard
-import com.knowflick.app.ui.common.HapticFeedbackHelper
+import com.knowflick.app.ui.common.rememberPlatformHaptics
 
 /** 详情页：整页摄影底图 + 遮罩 + 正文段落 + 延伸阅读 + 收藏切换 */
 @Composable
@@ -77,8 +76,18 @@ fun DetailScreen(
     onExportChatMarkdown: () -> Unit = {},
     relatedCards: List<KnowledgeCard> = emptyList(),
     onSelectRelatedCard: (KnowledgeCard) -> Unit = {},
+    /**
+     * 两个 Sheet **由宿主提供**（`null` = 该端没有这个能力）：
+     * Android 传聊天/海报两个 Sheet；桌面端暂未接（聊天要 AI 供应商配置、海报要光栅化）。
+     * 共享屏只负责「什么时候显示」，不负责「怎么实现」——这样迁移详情页不必连 1215 行 Sheet 一起搬。
+     */
+    chatSheet: (@Composable (onClose: () -> Unit) -> Unit)? = null,
+    posterSheet: (@Composable (onClose: () -> Unit) -> Unit)? = null,
+    /** 任一 Sheet 展开/收起时通知宿主：系统返回键要据此决定是否让位给 Sheet */
+    onOverlayVisibilityChanged: (Boolean) -> Unit = {},
 ) {
-    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val haptics = rememberPlatformHaptics()
     val bg = rememberBackgroundImage(CardThemeResolver.forCard(card))
     var showChatSheet by remember { mutableStateOf(false) }
     var showPosterSheet by remember { mutableStateOf(false) }
@@ -89,8 +98,12 @@ fun DetailScreen(
     val textColorSecondary = textColorPrimary.copy(alpha = if (isDark) 0.88f else 0.78f)
     val textColorTertiary = textColorPrimary.copy(alpha = if (isDark) 0.65f else 0.55f)
 
-    // 系统返回键与屏内返回语义一致（弹窗展开时拦截返回键优先关闭弹窗）
-    androidx.activity.compose.BackHandler(enabled = !showChatSheet && !showPosterSheet) { onBack() }
+    // 系统返回键与屏内返回语义一致（弹窗展开时拦截返回键优先关闭弹窗）：
+    // 共享屏不再自己用 BackHandler（桌面没有 androidx.activity），改为把「有没有浮层展开」
+    // 告诉宿主，由宿主决定它的 BackHandler 是否生效。
+    LaunchedEffect(showChatSheet, showPosterSheet) {
+        onOverlayVisibilityChanged(showChatSheet || showPosterSheet)
+    }
 
     Box(Modifier.fillMaxSize().background(bgColor)) {
         Box(Modifier.fillMaxSize()) {
@@ -190,8 +203,11 @@ fun DetailScreen(
                 Spacer(Modifier.height(12.dp))
                 card.links.forEachIndexed { linkIdx, link ->
                     if (linkIdx > 0) Spacer(Modifier.height(8.dp))
-                    val linkUri = runCatching { Uri.parse(link.url) }.getOrNull()
-                        ?.takeIf { it.scheme == "https" || it.scheme == "http" }
+                    // 打开外链用 CMP 的公共 LocalUriHandler：Android 走 Intent、桌面走系统浏览器，
+                    // **共享屏不需要任何平台代码**（原先这里直接 startActivity）。
+                    val openableUrl = link.url.takeIf {
+                        it.startsWith("https://") || it.startsWith("http://")
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -200,12 +216,10 @@ fun DetailScreen(
                             .background(if (isDark) Color.White.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
                             .clickable(
-                                enabled = linkUri != null,
+                                enabled = openableUrl != null,
                                 onClickLabel = "打开延伸阅读",
                             ) {
-                                runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, linkUri))
-                                }
+                                openableUrl?.let { runCatching { uriHandler.openUri(it) } }
                             }
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                     ) {
@@ -254,7 +268,7 @@ fun DetailScreen(
                             .background(if (isDark) Color.White.copy(alpha = 0.05f) else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (isDark) Color.White.copy(alpha = 0.10f) else MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
                             .clickable {
-                                HapticFeedbackHelper.click(context)
+                                haptics.click()
                                 onSelectRelatedCard(related)
                             }
                             .padding(14.dp),
@@ -417,30 +431,14 @@ fun DetailScreen(
         }
 
         if (showChatSheet) {
-            CardFollowUpChatSheet(
-                card = card,
-                session = chatSession,
-                isStreaming = isChatStreaming,
-                errorMessage = chatErrorMessage,
-                savedMessageIds = savedChatMessageIds,
-                onSendMessage = onSendChatMessage,
-                onCancelStreaming = onCancelChatStreaming,
-                onClearSession = onClearChatSession,
-                onSpeakMessage = onSpeakChatMessage,
-                onDeriveCard = onDeriveCardFromChat,
-                onExportMarkdown = onExportChatMarkdown,
-                onClose = {
-                    showChatSheet = false
-                    onCloseChat()
-                },
-            )
+            chatSheet?.invoke {
+                showChatSheet = false
+                onCloseChat()
+            }
         }
 
         if (showPosterSheet) {
-            CardPosterExportSheet(
-                card = card,
-                onClose = { showPosterSheet = false },
-            )
+            posterSheet?.invoke { showPosterSheet = false }
         }
     }
 }

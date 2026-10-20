@@ -100,6 +100,7 @@
 | 10 | mac Swift 处置 | 冻结新增能力 → 按功能清单对等后退役（§5.1） | 进行中（按第一原则收敛） |
 | 11 | 能力对齐：测验 | 测验轮次编排 `QuizCycle` 抽到 `:domain`，两端用同一份编排 + 同一份 `QuizScreen`；桌面入口放原生菜单栏 | ✅ 已完成：桌面端可用「知识测验 / 只测今天到期」，评分经 SM-2 落库；Android 的 ViewModel 改为委托同一份编排 |
 | 12 | 能力对齐：统计 | 日期接缝 `rememberLearningDay`（Android 广播 / 桌面轮询）→ 解锁并迁移 `StatsScreen`(825)；桌面菜单栏加入口 | ✅ 已完成：三个共享整屏（卡库 / 测验 / 统计）在桌面全部可用 |
+| 13 | 能力对齐：详情页 | 公共 API 消解（`LocalUriHandler`）+ 宿主槽位（聊天/海报 Sheet 由宿主注入）+ 推荐打分抽进 `:domain` | ✅ 已完成：四个共享整屏（卡库 / 测验 / 统计 / 详情）在桌面全部可用；桌面未接的两个 Sheet 以 `null` 传入 |
 
 工作量参考：[CMP-FEASIBILITY §4.2](../windows-route/CMP-FEASIBILITY.md)——Windows 端首版 22–35 人日，
 三端打包与平台抽象另计。

@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.knowflick.app.data.AppModel
+import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.QuizCycle
 import com.knowflick.app.domain.QuizRating
 import com.knowflick.app.domain.QuizSession
@@ -41,6 +42,31 @@ class DesktopHostState(val model: AppModel) {
     /** 是否正在看学习统计（与测验互斥的第二个共享整屏） */
     var showingStats by mutableStateOf(false)
         private set
+
+    /** 正在看详情的卡片 id（null = 不在详情页）。存 id 而不是卡片对象：卡库变更后要重新取最新版 */
+    var detailCardId by mutableStateOf<String?>(null)
+        private set
+
+    /** 详情页要展示的卡片（按 id 从卡库现取，保证收藏/复习状态是最新的） */
+    val detailCard: KnowledgeCard?
+        get() = detailCardId?.let { id -> model.store.cards.firstOrNull { it.id == id } }
+
+    fun openDetail(cardId: String) {
+        detailCardId = cardId
+        version++
+    }
+
+    fun closeDetail() {
+        detailCardId = null
+        version++
+    }
+
+    /** 收藏/取消收藏（与 Android 端同一条 store 路径），并立即落盘 */
+    fun toggleFavorite(card: KnowledgeCard) {
+        model.store.toggleFavorite(card)
+        version++
+        model.persistNow()
+    }
 
     fun openStats() {
         showingStats = true

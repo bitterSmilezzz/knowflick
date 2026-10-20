@@ -18,6 +18,7 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 | 导入归档 | ✅ 原生文件对话框选 `.zip` 备份包 / `.json` 镜像 → **共享** `ArchiveImportManager` 探测 → 按 MERGE 合并 → 落盘 → 界面刷新 |
 | 知识测验 | ✅ **共享** `QuizScreen` + **共享** `QuizCycle`（`:domain`）——菜单栏「学习 → 知识测验 / 只测今天到期」，评分经 SM-2 落库，可「再测一组」 |
 | 学习统计 | ✅ **共享** `StatsScreen`（同一个 `StatsCalculator` / `LearningPlan` / 热力图）——菜单栏「学习 → 学习统计」，统计页里的「今日到期」可直接跳进到期复习 |
+| 卡片详情 | ✅ **共享** `DetailScreen`——卡库与统计里都能点进详情（背景图、正文、外链、延伸阅读、收藏切换）；两个 Android 专属 Sheet（聊天/海报）在桌面传 `null` |
 | 导出 | ✅ 收藏阁 → Markdown、整库 → JSON 镜像，选「另存为」；导出格式由**共享** `CardExportEngine` 决定 |
 | 平台动作 | ⚠️ 系统级分享用「另存为」替代（桌面无 `ACTION_SEND` 对等物）；剪贴板、Toast 未接 |
 | 详情页 | ❌ 尚未迁入共享模块（点击卡片只给提示） |
