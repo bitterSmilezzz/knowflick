@@ -51,9 +51,12 @@ PASS 没有横向溢出
 ## 复现
 
 ```sh
-cd apps/workbench && npm run dev          # 另一个终端
-node tools/taste_usability_gate.mjs       # 仓库根
+cd apps/workbench && npm run dev     # 终端 A
+cd apps/workbench && npm run gate:taste   # 终端 B（等价于仓库根 node tools/taste_usability_gate.mjs）
 ```
+
+这个门禁需要浏览器，所以**没有并进 `./tools/verify_workbench.sh`**（后者是 CI 的无浏览器门禁）。
+两者分工：`verify_workbench.sh` 守「能不能用」，`gate:taste` 守「看起来对不对、用起来顺不顺」。
 
 ## 远端验证（commit 269b0a0）
 
