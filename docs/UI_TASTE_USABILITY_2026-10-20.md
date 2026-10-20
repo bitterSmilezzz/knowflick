@@ -54,3 +54,18 @@ PASS 没有横向溢出
 cd apps/workbench && npm run dev          # 另一个终端
 node tools/taste_usability_gate.mjs       # 仓库根
 ```
+
+## 远端验证（commit 269b0a0）
+
+四条工作流全部 success：
+
+| 工作流 | 结论 |
+| --- | --- |
+| Workbench（npm test + tsc + cargo test） | success |
+| Workbench Release（Tauri 三平台） | success —— Linux DEB / macOS DMG / Windows MSI |
+| Desktop（冻结 JVM 桌面三平台） | success |
+| Android | success |
+
+CI 附件：`workbench-deb` 67,781,690 B、`workbench-dmg` 26,941,337 B、`workbench-msi` 18,426,117 B。
+
+顺带说明：上一轮 Android 的失败（`DesktopSkeletonTest` 流式增量断言）在这一轮**没有复现**——这次改动没有触碰 `apps/android/**`，工作流仍按路径过滤整体触发，结果是 success。也就是说那条失败是间歇性或与当时提交内容相关，尚不能判定已修好；记录在此，不做「已解决」的结论。
