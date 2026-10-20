@@ -36,6 +36,8 @@ jobs:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +59,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+          sudo apt-get install -y cmake libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
 
       - name: 配置 Node
         uses: actions/setup-node@v6
@@ -89,6 +91,24 @@ jobs:
       - name: 打本系统安装包
         working-directory: apps/workbench
         run: npm run tauri build -- --bundles ${{ matrix.format }}
+
+      # whisper.cpp 用到 C++17 的 std::filesystem，低于 macOS 10.15 会直接编译失败。
+      # 这里兜住两处：产物声明的 LSMinimumSystemVersion，以及二进制实际的 minos。
+      - name: 校验 macOS 最低系统版本
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          binary=apps/workbench/src-tauri/target/release/knowflick-workbench
+          minos=$(otool -l "$binary" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+          echo "binary minos=$minos"
+          [[ "$minos" == 11.* ]] || { echo "::error::二进制 minos 是 $minos，应为 11.x（whisper.cpp 需要 ≥10.15）"; exit 1; }
+          dmg=$(ls apps/workbench/src-tauri/target/release/bundle/dmg/*.dmg)
+          mnt=$(mktemp -d)
+          hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -quiet
+          plist_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$mnt/KnowFlick.app/Contents/Info.plist")
+          hdiutil detach "$mnt" -quiet
+          echo "LSMinimumSystemVersion=$plist_version"
+          [[ "$plist_version" == 11.* ]] || { echo "::error::Info.plist 的 LSMinimumSystemVersion 是 $plist_version，应为 11.x"; exit 1; }
 
       - name: 校验产物存在
         shell: bash

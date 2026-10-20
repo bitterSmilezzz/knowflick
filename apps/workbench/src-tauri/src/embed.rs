@@ -137,7 +137,8 @@ mod tests {
         assert_eq!(s.model, LOCAL_MODEL_ID);
         assert_eq!(s.dim, LOCAL_MODEL_DIM);
         assert!(!s.downloaded);
-        assert!(s.cache_dir.ends_with("models/fastembed"));
+        let expected_suffix = PathBuf::from("models").join("fastembed");
+        assert!(Path::new(&s.cache_dir).ends_with(&expected_suffix));
     }
 
     #[test]
