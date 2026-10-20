@@ -420,18 +420,23 @@ class CardStore(
             // details 冲突（docs/SYNC_PROTOCOL.md §5，修「用户缩短被旧长文覆盖」）：
             // 双方均有 editedAt 且不等 → 新者赢（即使更短，缩短本身就是编辑）；
             // 任一方缺失或时间戳持平 → 沿用 v1「较长者」规则，兼容历史数据且保证对称确定。
+            //
+            // 先落局部变量：:domain 迁出后 KnowledgeCard 属性来自另一模块，
+            // public API 属性不再允许 smart cast（Kotlin 跨模块限制），必须显式判空。
+            val aEditedAt = a.editedAt
+            val bEditedAt = b.editedAt
             val details = when {
-                a.editedAt != null && b.editedAt != null && a.editedAt != b.editedAt ->
-                    (if (a.editedAt > b.editedAt) a else b).details
+                aEditedAt != null && bEditedAt != null && aEditedAt != bEditedAt ->
+                    (if (aEditedAt > bEditedAt) a else b).details
                 primary.details.isBlank() -> secondary.details
                 primary.details.length >= secondary.details.length -> primary.details
                 else -> secondary.details
             }
             // 合并后的编辑时间取较新者（墓碑合并的卡片时间戳随之保持最新编辑口径）
             val mergedEditedAt = when {
-                a.editedAt != null && b.editedAt != null -> maxOf(a.editedAt, b.editedAt)
-                a.editedAt != null -> a.editedAt
-                else -> b.editedAt
+                aEditedAt != null && bEditedAt != null -> maxOf(aEditedAt, bEditedAt)
+                aEditedAt != null -> aEditedAt
+                else -> bEditedAt
             }
             val links = if (primary.links.isNotEmpty()) primary.links else secondary.links
             val source = if (primary.source == CardSource.SEED && secondary.source != CardSource.SEED) {
@@ -470,11 +475,14 @@ class CardStore(
             }
 
             // 4. 收藏状态（任一端收藏即为收藏，保留最新收藏时间）
+            // 同样先落局部变量以避开跨模块 smart cast 限制。
             val isFavorite = a.isFavorite || b.isFavorite
+            val aFavoritedAt = a.favoritedAt
+            val bFavoritedAt = b.favoritedAt
             val favoritedAt = when {
-                a.favoritedAt != null && b.favoritedAt != null -> maxOf(a.favoritedAt, b.favoritedAt)
-                a.favoritedAt != null -> a.favoritedAt
-                b.favoritedAt != null -> b.favoritedAt
+                aFavoritedAt != null && bFavoritedAt != null -> maxOf(aFavoritedAt, bFavoritedAt)
+                aFavoritedAt != null -> aFavoritedAt
+                bFavoritedAt != null -> bFavoritedAt
                 isFavorite -> seenAt
                 else -> null
             }

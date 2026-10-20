@@ -22,7 +22,8 @@ KnowFlick 是多端学习工作台：`apps/mac`（Swift/SwiftUI，完整功能�
    | --- | --- | --- |
    | `apps/mac/**` UI 层 | macOS | 云端 CI（无完整 Xcode 时）或本地 `./tools/test.sh` |
    | `apps/mac/**` Core | 任意机器可改 | `./tools/test.sh --core-only`（只需 CommandLineTools） |
-   | `apps/android/**` | 任意机器（JDK 17 + SDK） | `./tools/build_android.sh` |
+   | `apps/android/domain/**`（KMP 领域层） | 任意机器，**只需 JDK 17，不要 SDK** | `cd apps/android && ./gradlew :domain:jvmTest`（171 项） |
+   | 其余 `apps/android/**` | 任意机器（JDK 17 + SDK） | `./tools/build_android.sh` |
    | `shared/**` 契约 | 任意机器，但**两端 CI 都要绿** | `python3 tools/check_taxonomy.py` |
    | Windows 端 | Windows | 视路线而定 |
 
@@ -46,6 +47,7 @@ KnowFlick 是多端学习工作台：`apps/mac`（Swift/SwiftUI，完整功能�
 ./tools/test.sh                    # mac 全量（需完整 Xcode）
 cd apps/mac && ./build_app.sh      # mac 打包
 ./tools/build_android.sh           # android：单测 + Lint + release + 签名校验
+cd apps/android && ./gradlew :domain:jvmTest   # KMP 领域层 171 项（只需 JDK 17，无需 SDK）
 ./tools/sync_shared_assets.sh      # 共享资源同步（两端测试脚本会自动调）
 python3 tools/check_taxonomy.py    # 三处学科契约一致性
 ```
@@ -65,4 +67,6 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
 - **mac UI 层报 `SwiftUIMacros.StateMacro` 找不到 = 缺完整 Xcode**，不是代码问题，交给 CI。
 - **行尾**：仓库一律 LF（`.gitattributes` 管辖）。Windows 上 clone 后如果 `git status` 出现大范围假修改，先查 `git config core.autocrlf`——应为 `false`（或 `input`），不要设为 `true`。
 - **两个 workflow 路径过滤**：改 mac 不会触发 android CI、反之亦然。改了 `shared/**` 则两端 CI 都会跑——这是有意设计，因为契约漂移必须两端同抓。
+- **Gradle 任务要显式点名 `:domain:jvmTest`**：领域层 171 项测试在 `apps/android/domain`（KMP 模块），跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错——只是静默少跑。`tools/build_android.sh` 与 `android.yml` 已同步点名，改验证命令时别漏。
+- **`java.*` 不要放进 `:domain` 的 `commonMain`**：当前 `androidTarget + jvm` 组合下能编译通过，但那是元数据编译被跳过的副作用，加非 JVM target 即失效；含 `java.time`/`java.util` 的文件放 `jvmAndAndroidMain`（依据见 [KMP 探针结果](docs/windows-route/KMP_PROBE_RESULT.md)）。
 - 全仓扫描类工作**严禁 head 截断后下「清零」结论**（PR #45 教训）。

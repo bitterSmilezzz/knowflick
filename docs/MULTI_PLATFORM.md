@@ -14,6 +14,8 @@ KnowFlick/
 │   │   ├── Resources/       # 应用图标等仅 mac 使用的资源
 │   │   └── build_app.sh
 │   ├── android/             # Android 端（Gradle + Compose）
+│   │   ├── app/             # 应用与装配层（data / ui / speech / sync / export / widget）
+│   │   └── domain/          # :domain —— KMP 领域层（androidTarget + jvm），与桌面端共享一份
 │   └── <windows|extension>/ # 待创建
 ├── shared/                  # 跨端共享内容（单一事实来源）
 │   └── assets/
@@ -56,6 +58,24 @@ unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" |
 ```
 
 底图统一用 **WebP**（mac 端自 macOS 11 起原生支持解码，两条加载路径 `NSImage(contentsOf:)` 与 ImageIO 缩略图均已验证）。同画质下体积约为 JPEG 的三分之一。
+
+## 共享代码（KMP 领域层 `:domain`）
+
+`shared/` 解决的是**内容**共享；**代码**共享目前只有一处：`apps/android/domain`（Gradle 模块 `:domain`）。
+
+| 项 | 现状（2026-10-11，探针落地后） |
+| --- | --- |
+| 内容 | 卡片模型 / 卡库状态机 / 学科与学习范围 / 统计 / 搜索 / 图谱 / 间隔重复 / 剪藏抽取——19 文件 4149 行，包名 `com.knowflick.app.domain` |
+| 技术形态 | Kotlin Multiplatform，双 target：`androidTarget` + `jvm`（JVM 17） |
+| 谁在用 | `:app`（Android 装配层）经 `implementation(project(":domain"))` 消费；未来桌面端走同一个 `jvm` target |
+| 源集约定 | `commonMain` 放平台无关代码；**含 `java.time` / `java.util` 的文件放 `jvmAndAndroidMain`**（手建中间源集），不要放 `commonMain`——理由见 [KMP 探针结果](windows-route/KMP_PROBE_RESULT.md) |
+| 验证 | `cd apps/android && ./gradlew :domain:jvmTest`（171 项，**只需 JDK 17**） |
+
+**可移植边界**：领域层今天是「纯 JVM Kotlin」，可移植到 JVM 家族宿主（Android + Windows/macOS/Linux 桌面）。
+要加非 JVM target（iOS / Web），必须先把 `java.*` 换成 `kotlinx-datetime` 等公共库（约 9 文件 25 处）。
+
+`:domain` 的测试要显式点名才会跑（`./tools/build_android.sh` 与 `android.yml` 已同步）；只跑 `:app:testDebugUnitTest`
+不会带上它们，也不会报错。
 
 ## 分支模型
 
@@ -165,6 +185,7 @@ tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是�
 | 端 | 依赖 | 本机状态 |
 | --- | --- | --- |
 | android | JDK 17、Android SDK（Platform 35 + Build Tools 35.0.0） | ✅ 可用（Homebrew openjdk@17 + `~/Library/Android/sdk`） |
+| android 领域层（`:domain`，KMP） | **只需 JDK 17**——不需要 Android SDK | ✅ 可用（实测：移走 `local.properties` 且 `ANDROID_HOME` 指向不存在路径，`./gradlew :domain:jvmTest` 仍 171 项全绿；见 [KMP 探针结果](windows-route/KMP_PROBE_RESULT.md)） |
 | mac | **完整 Xcode**（SwiftUI 宏需要 Xcode 的工具链插件） | ✅ 可用（2026-10 起 `/Applications/Xcode.app` 已装，Swift 6.4；UI 层可本机编译验证） |
 
 #### 无完整 Xcode 时的降级验证（备用口径）
