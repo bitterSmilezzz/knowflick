@@ -90,6 +90,14 @@ export function SubscriptionsView({ subscriptions, busy, available, onAdd, onTog
               </div>
             </div>
             <form className="ws-settings-body" onSubmit={(e) => void submit(e)}>
+              {/* 整排禁用而不给就地理由，用户只会以为是坏的。
+                  这里把「为什么不能用」放在控件正上方。 */}
+              {!available ? (
+                <p className="ws-hint" data-subscription-disabled-note role="status" style={{ margin: 0 }}>
+                  当前是浏览器体验模式：订阅需要桌面端的本地数据库与网络权限，请在
+                  KnowFlick 桌面应用中添加与抓取。
+                </p>
+              ) : null}
               <div className="ws-field-grid">
                 <label className="ws-field">
                   类型
