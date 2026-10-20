@@ -161,3 +161,18 @@ CI 第三次暴露 `DesktopSkeletonTest.chatStreamsThroughSharedHolderAndPersist
 | 根治 | shared-data 流式竞态（`:desktop:test` 本地 5 连跑 + CI 三平台全绿） |
 | 新增测试 | `ingest.aiPreview.test.ts` 6 项 |
 | 全量回归 | Vitest 42 套件 201 项、cargo 40 项、品味门禁 9 项、旅程走查 12 项、浏览器冒烟 5 套件全部通过 |
+
+## 追加：同一测试家族暴露的第二个竞态（已根治）
+
+竞态修复上线后，CI 在**另一行**（`DesktopSkeletonTest.kt:171`「会话应落进共享存储」）再次失败——
+流式断言已过，现在是「换个实例读会话」拿到 null。定位：完成块里 `storage.saveSession`
+用 `scope.launch` 即发即忘，`isStreaming=false` 可能早于文件写完。
+
+修法：`saveSession` 本就是阻塞调用（非 suspend），在完成块内**同步执行**——先落盘，
+再置 `isStreaming=false`。语义随之变诚实：**「流式已结束」就等于「已保存在本机」**。
+`cancelStreaming` 保持异步（它在宿主 UI 线程上调用，不应被磁盘写阻塞）。
+
+验证：`:desktop:test` 连跑 6 轮全绿；四个共享模块全量通过；CI 三平台与 Android 全绿。
+
+> 这个案例说明「一次修复 + 一次全绿」不等于根除：同一初始化路径上可能串着**多个**竞态，
+> 修掉第一个只会让第二个显形。flaky 要修到「换断言行也不再出新行」才算完。
