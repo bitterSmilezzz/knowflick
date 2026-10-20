@@ -14,6 +14,7 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 | 离屏渲染测试 | ✅ `./gradlew :desktop:test`（7 项：领域层复用 / 持久化往返 / 归档导入 / 导出往返 / 非法输入 / 整屏渲染 / 导入后界面更新） |
 | 三端目标 | ✅ 一份产物跑 Windows / macOS / Linux（jvm target） |
 | 安装包 | ✅ 三端各出原生包（dmg / msi / deb），由 [desktop.yml](../../../.github/workflows/desktop.yml) 的三系统 matrix 构建并附 Release |
+| 底图资源 | ✅ 仓库根 `shared/assets/bg`（42 张 webp，2.4 MB）经 `resources.srcDir` 打进 jar，`:shared-ui` 的 jvm 侧 actual 用 Skia 解码——与 Android 端同一份来源、同一布局、零副本 |
 | 导入归档 | ✅ 原生文件对话框选 `.zip` 备份包 / `.json` 镜像 → **共享** `ArchiveImportManager` 探测 → 按 MERGE 合并 → 落盘 → 界面刷新 |
 | 导出 | ✅ 收藏阁 → Markdown、整库 → JSON 镜像，选「另存为」；导出格式由**共享** `CardExportEngine` 决定 |
 | 平台动作 | ⚠️ 系统级分享用「另存为」替代（桌面无 `ACTION_SEND` 对等物）；剪贴板、Toast 未接 |
@@ -31,6 +32,9 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 | --- | --- | --- |
 | `DesktopPaths.kt` | 数据目录在哪（mac/Win/Linux 各按惯例） | `context.filesDir/store` |
 | `DesktopFileDialogs.kt` | 原生文件对话框（打开/另存为）与取路径 | SAF `ActivityResultContracts.OpenDocument` |
+
+另两条平台接缝的桌面侧在 `:shared-ui/src/jvmMain`（触觉 no-op、底图 Skia 解码），
+与 Android 侧同处一个 expect/actual 接缝——见 [UI_EXTRACTION §7.1](../../../docs/windows-route/UI_EXTRACTION.md)。
 
 **归档怎么解析、导出成什么格式，不在这两个文件里**——那是 `:shared-data` 的引擎，
 两端跑同一份（见 [UI_EXTRACTION §7](../../../docs/windows-route/UI_EXTRACTION.md)）。

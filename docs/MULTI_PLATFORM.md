@@ -70,9 +70,9 @@ unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" |
 
 | 模块 | 内容 | 技术形态 | 谁在用 |
 | --- | --- | --- | --- |
-| `:domain`（`apps/android/domain`） | 卡片模型 / 卡库状态机 / 学科与学习范围 / 统计 / 搜索 / 图谱 / 间隔重复 / 剪藏抽取——19 文件 4149 行，包名 `com.knowflick.app.domain` | KMP：`androidTarget` + `jvm`（JVM 17） | `:app`、`:shared-data`、`:shared-ui`、`:desktop` |
+| `:domain`（`apps/android/domain`） | 卡片模型 / 卡库状态机 / 学科与学习范围 / 统计 / 搜索 / 图谱 / 间隔重复 / 剪藏抽取，以及 AI 会话模型（`CardChatMessage` / `CardChatSession`）——20 文件，包名 `com.knowflick.app.domain` / `.ai` | KMP：`androidTarget` + `jvm`（JVM 17） | `:app`、`:shared-data`、`:shared-ui`、`:desktop` |
 | `:shared-data`（`apps/android/shared-data`） | 共享持久化层：卡库 JSON 原子写 / 备份轮转 / 损坏回退 / 持久化队列 / `AppModel`，以及**归档引擎**（ZIP/JSON 探测 + 合并策略）与导出（Markdown / JSON / TSV / ZIP）；包名 `com.knowflick.app.data` | KMP（`jvmAndAndroidMain` 承载 `java.io`） | `:app`、`:desktop` |
-| `:shared-ui`（`apps/android/shared-ui`） | 跨端界面：主题令牌（4 套纸质主题 + `EditorialColor`）、`QuizScreen`(833) / `LibraryScreen`(326) 两个整屏、`LearningHeatmap`(214)、`AppIcons`(668)、`MarkdownTextRenderer`(297)、`CategoryStampColor`(27)——8 个生产文件 2578 行；包名 `com.knowflick.app.ui` / `.data` 等原样保留 | KMP + CMP 1.8.2，同双 target（含 `jvmAndAndroidMain` 中间源集） | `:app`（Android 端生产路径）、`:desktop` |
+| `:shared-ui`（`apps/android/shared-ui`） | 跨端界面：主题令牌、`QuizScreen`/`LibraryScreen` 整屏、`LearningHeatmap`、`AppIcons`、`MarkdownTextRenderer`，以及两条平台接缝（**触觉** `PlatformHaptics`、**底图** `rememberBackgroundImage`）；包名 `com.knowflick.app.ui` 原样保留 | KMP + CMP 1.8.2，四个源集（`commonMain` / `jvmAndAndroidMain` / `androidMain` / `jvmMain`） | `:app`（Android 端生产路径）、`:desktop` |
 | `:desktop`（`apps/android/desktop`） | 桌面宿主（一份产物跑 Win/mac/Linux）：**直接渲染 `:shared-ui` 的 `LibraryScreen`**，尚未接平台动作与持久化 | Kotlin JVM + CMP 1.8.2 | 三端桌面 |
 
 分档进度、迁移边界与下一批计划见 [界面共享迁移](windows-route/UI_EXTRACTION.md)（含可复现的

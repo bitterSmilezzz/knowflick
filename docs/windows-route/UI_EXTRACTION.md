@@ -30,18 +30,17 @@
 
 ## 2. 分档结果
 
-当前（`:shared-ui` 已迁 6 文件、`:shared-data` 已迁 7 文件之后）：
+当前（`:shared-ui` 已迁 6 文件、`:shared-data` 已迁 7 文件、两条平台接缝落地之后）：
 
 | 档 | 文件数 / 行数（app 模块剩余） |
 | --- | --- |
-| **A**（可直接搬） | 21 文件 / 2877 行 |
-| **B**（被平台文件拖累） | 5 文件 / 1883 行 |
-| **C**（自身带平台信号） | 33 文件 / 12362 行 |
+| **A**（可直接搬） | 21 文件 / 3117 行 |
+| **B**（被平台文件拖累） | 4 文件 / 1602 行 |
+| **C**（自身带平台信号） | 31 文件 / 12135 行 |
 
-B 档只被**单个**平台文件拖累，抽象掉那个文件就能整片解锁，例如：
-`ui/StatsScreen.kt`(825) ← `ui/LearningDay.kt`；`ui/CardFace.kt`(281) ← `ui/BackgroundImage.kt`；
-`ui/AmbientAudioPlayerBar.kt`(331) ← `speech/SpeechController.kt`；
-`sync/SyncClient.kt`(246) ← `sync/SyncServer.kt`；`ChatStateHolder.kt`(200) ← `KnowFlickViewModel.kt`。
+**底图接缝一落地，`ui/CardFace.kt`(281) 立刻从 B 升到 A**——这就是「先抽平台边界，界面自然解锁」的效果：
+B 档已从 5 个降到 4 个（`StatsScreen` ← `LearningDay`；`AmbientAudioPlayerBar` ← `SpeechController`；
+`SyncClient` ← `SyncServer`；`ChatStateHolder` ← `KnowFlickViewModel`）。
 
 ## 3. 已经搬进 `:shared-ui` 的（本次，6 个生产文件 2365 行）
 
@@ -117,6 +116,21 @@ B 档只被**单个**平台文件拖累，抽象掉那个文件就能整片解�
 
 桌面端因此**第一次能真正把卡片放进来**（此前只能看空库）。两端跑的是同一份探测与合并实现——
 新增平台时照这个形状接 IO 即可，**不要复制引擎**。
+
+### 7.1 另外两条接缝：触觉与底图
+
+| 接缝 | 共享侧（commonMain） | Android 实际实现 | 桌面实际实现 |
+| --- | --- | --- | --- |
+| 触觉反馈 | `PlatformHaptics` + `rememberPlatformHaptics()` | `androidMain`：包住原来的 `HapticFeedbackHelper`（API 29+ `VibrationEffect` 预设，**行为不变**） | `jvmMain`：`NoOpPlatformHaptics`（桌面无触觉） |
+| 分类底图 | `rememberBackgroundImage(key)` / `PreloadBackgroundImage(key)` | `androidMain`：assets + `BitmapFactory` + `LruCache`（原实现整体搬入） | `jvmMain`：classpath 资源 + Skia 解码 + 内存缓存 |
+
+底图的**图片来源仍是仓库根 `shared/assets`**：Android 经 `assets.srcDirs` 直读，桌面经
+`resources.srcDir` 打进 jar——两端同布局（`bg/<key>.webp`）、零副本。桌面侧已实测能解出
+`bg/ai.webp`（`:desktop:test` 的 `resolvesBackgroundImageFromBundledSharedAssets`）。
+
+**为何先做这两条而不是直接搬详情页**：`DetailScreen`(446) 还渲染着 `CardFollowUpChatSheet`(844)
+与 `CardPosterExportSheet`(371)，三者串起来是一次 1600+ 行的迁移；而触觉与底图是所有卡片视觉
+（刷卡页、详情页、海报）的**共同前置**，先做它们能让后续每一屏都少一道坎。
 
 ## 6. 复现
 

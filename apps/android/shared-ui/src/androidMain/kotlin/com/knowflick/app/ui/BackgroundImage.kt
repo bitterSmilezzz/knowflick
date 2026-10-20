@@ -94,7 +94,7 @@ object BackgroundImageCache {
 
 /** IO 线程解码，分类切换时按图片 key 更新。 */
 @Composable
-fun rememberBackgroundImage(key: String): ImageBitmap? {
+actual fun rememberBackgroundImage(key: String): ImageBitmap? {
     val context = LocalContext.current.applicationContext
     // 卡片从堆底升为顶卡、或复制到飞出层时先复用内存图，避免异步任务启动前闪灰一帧。
     val image = remember(key, context) { mutableStateOf(BackgroundImageCache.cached(key)) }
@@ -109,7 +109,7 @@ fun rememberBackgroundImage(key: String): ImageBitmap? {
  * 卡片升层后 [rememberBackgroundImage] 会立即命中缓存，减少滑动过程中的解码等待。
  */
 @Composable
-fun PreloadBackgroundImage(key: String) {
+actual fun PreloadBackgroundImage(key: String) {
     val context = LocalContext.current.applicationContext
     LaunchedEffect(key, context) {
         withContext(Dispatchers.IO) { BackgroundImageCache.image(context, key) }
