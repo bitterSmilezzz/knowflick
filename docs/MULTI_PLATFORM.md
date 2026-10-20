@@ -209,8 +209,39 @@ tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是�
 `android-v*` 不触发任何 workflow，签名 APK 必须本地 `./tools/build_android.sh` 产出、本地上传附件。
 
 > 桌面端 tag 有两个纪律：① tag 里的版本必须等于 `apps/android/desktop/build.gradle.kts` 的
-> `packageVersion`（workflow 会硬校验，与 macos.yml 同一条）；② 与 `macos.yml` 同一取舍——`paths`
-> 过滤对 tag 推送同样生效，所以 tag 要打在**包含桌面端改动**的提交上（正常发版流程本就如此）。
+> `packageVersion`（硬校验，与 macos.yml 同一条；本地可用 `tools/assemble_desktop_release.sh --tag …` 空跑验证）；
+> ② **`paths` 过滤对 tag 推送不生效**——GitHub 官方文档原话是 "Path filters are not evaluated for
+> pushes of tags"（[workflow syntax, `on.<push>.paths`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore)），
+> 所以 tag 打在只改文档的提交上**同样会**触发三系统构建与发布。
+> （本条此前写成「paths 对 tag 同样生效」，是错的——别按那个说法去挑「含桌面改动的提交」打 tag。）
+
+### 安装包图标：一份美术，三端格式
+
+jpackage 不交叉编译，也不认「一种图标走三端」：macOS 要 `.icns`、Windows 要 `.ico`、Linux 要 `.png`。
+按第一原则，**美术只有一份**（`apps/mac/Resources/AppIcon.iconset/`），三端格式由
+`tools/generate_app_icons.py` 派生到 `shared/icons/` 并随仓库分发：
+
+```sh
+python3 tools/generate_app_icons.py          # 重新生成（.icns 需要 macOS 的 iconutil）
+python3 tools/generate_app_icons.py --check  # 只校验产物在不在（产物是二进制，评审看不到 diff）
+```
+
+打包任务依赖 `:desktop:verifyAppIcons`：图标缺失时**在打包这一步就失败并给出生成命令**，
+而不是静默套上 jpackage 的默认图标（那种问题在安装包里很难被发现）。
+
+### 发布前三端附件怎么组装（可本地空跑）
+
+`tools/assemble_desktop_release.sh` 是那条「只在打 tag 时走」的通道的**唯一实现**，workflow 直接调它：
+
+```sh
+# 目录布局 = actions/download-artifact 落盘后的样子
+mkdir -p dryrun/desktop-{dmg,msi,deb} && cp … dmg msi deb 各一份
+bash tools/assemble_desktop_release.sh --tag desktop-v0.1.0 --artifacts-dir dryrun --out dryrun-out
+```
+
+它做四件事：校验 tag 与 `packageVersion` 一致 → 把 jpackage 的原名（如 `KnowFlick-1.0.0.dmg`，
+macOS 的 MAJOR>0 别名）统一成产品版本名 → 生成 `SHA256SUMS.txt` → （加 `--publish` 时）附到 Release。
+放在脚本里的理由很直接：这条通道打 tag 才会走，而在 YAML 里的一坨 shell 没法本地空跑。
 
 ## 环境要求
 
