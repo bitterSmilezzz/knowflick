@@ -19,6 +19,9 @@
 - 工具链与 CI：`tools/build_android.sh` 与 `android.yml` **显式点名 `:domain:jvmTest`**（领域层 171 项测试迁出 `:app` 后，不点名会静默少跑）；workflow 的测试汇总同时扫 `app/…/testDebugUnitTest/*.xml` 与 `domain/…/jvmTest/*.xml`；`tools/check_taxonomy.py` 的 Kotlin 学科表路径随迁。
 - 构建（双机网络）：Gradle wrapper 改走华为云镜像并补官方 `distributionSha256Sum`（镜像损坏即校验失败），超时 10s→60s、重试 3 次；本地默认启用阿里云仓库，检测到 CI 环境变量时只用官方源。
 - 验证口径：**领域层测试不再需要 Android SDK**——只需 JDK 17 即可 `./gradlew :domain:jvmTest`（171 项）；Android 装配层（`:app`）仍需要 SDK。
+- 跨平台（CMP 工具链对齐实验，只读不改产品代码）：三条版本路线全部实测通过——冻结线（Kotlin 2.0.21 + CMP 1.7.3）、最小改动线（Kotlin 2.1.21 + CMP 1.8.2）、现代线（Kotlin 2.4.21 + CMP 1.12.1），每条都在桌面 JVM 上跑通「`:domain` 逻辑 + `@Serializable` 往返 + Compose 离屏渲染」。结论：`compose-bom:2025.06.00` 锁的 `androidx.compose.*` 正是 1.8.2，与 CMP 1.8.2 对应的 Jetpack 版本逐号相同，**推荐只升 Kotlin 到 2.1.21、BOM 与 AGP 不动**。见 [CMP 工具链对齐实验](docs/windows-route/CMP_TOOLCHAIN_ALIGNMENT.md)。
+- 跨平台（实测结论）：**现代 Kotlin 能消费旧产物**——Kotlin 2.4.21 的桌面工程编译并运行 Kotlin 2.0.21 编译的 `:domain` jar 全部通过，因此「桌面端独立构建走现代版本、Android 端完全不动」这条路可行；Windows 目标（`desktop-jvm-windows-x64` / `skiko-awt-runtime-windows-x64`）可在 macOS 上编译，运行与 MSI 打包仍需 Windows 机器。
+- 跨平台（硬约束实测）：Kotlin 元数据**只能向后读一个次版本**——Kotlin 2.0.21 最高读到 2.1.0（实测 2.4.21 产物被拒，报 `actual metadata version is 2.4.0, but the compiler version 2.0.0 can read versions up to 2.1.0`）。因此：Android 端停在 2.0.21 时可以共享由 Kotlin 2.1.x（即 CMP 1.8.2）编译的模块，但**现代 CMP（≥Kotlin 2.2）一旦参与共享 UI，Android 端就必须跟着升**。
 
 ## [v0.2.0] - 2026-10-02
 
