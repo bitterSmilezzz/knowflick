@@ -132,7 +132,7 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     initialSpeech = state.speechSettings,
                     initialSpeechKey = state.currentSpeechApiKey(),
                     onBack = state::closeSettings,
-                    onTestConnection = { _, _ -> "桌面端暂未接线连接测试（AI 服务尚未迁入共享模块）" },
+                    onTestConnection = state::testAiConnection,
                     onSave = state::saveAiSettings,
                     onSaveSpeech = state::saveSpeechSettings,
                     isSavingSettings = false,
@@ -204,7 +204,9 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onOpenMap = { state.showNotice("学习地图尚未迁入共享模块") },
                     onOpenSync = { state.showNotice("局域网同步尚未在桌面端接线") },
                     onOpenClip = { state.showNotice("网页剪藏尚未在桌面端接线") },
-                    onGenerateRequest = { state.showNotice("AI 生成尚未在桌面端接线（需要供应商配置）") },
+                    // AI 生成：与 Android 端同一份 :domain `AiService`，密钥来自桌面凭据文件
+                    onGenerateRequest = { state.generateNewCards() },
+                    isGenerating = state.isGenerating,
                     onOpenBackupExport = { state.showNotice("备份导出面板尚未在桌面端接线") },
                     onPickImportFile = pickAndImport,
                     // 微件与海报导出是 Android 能力：桌面不传槽位，菜单项与面板自然不出现
@@ -212,7 +214,10 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
             }
         }
 
-        state.notice?.let { message ->
+        // 刷卡页自带 notice 区域（DeckScreen 的 notice 参数），宿主不再重复弹一条
+        val onDeck = quizSession == null && detailCard == null &&
+            !state.showingSettings && !state.showingStats && !state.showingLibrary
+        state.notice?.takeIf { !onDeck }?.let { message ->
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp),
                 color = MaterialTheme.colorScheme.inverseSurface,

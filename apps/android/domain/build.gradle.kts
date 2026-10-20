@@ -58,6 +58,12 @@ kotlin {
                 // Card.kt 的 @Immutable：Compose Multiplatform runtime 在 android target 上
                 // 解析为 androidx.compose.runtime，在 jvm（桌面）上是 Skiko 版——同一份 import。
                 implementation("org.jetbrains.compose.runtime:runtime:1.7.3")
+                // AI 服务层（:domain 的 ai/ 与 net/）：两个 target 都是 JVM，OkHttp 通吃；
+                // 版本与 :app 一致（4.12.0），避免同一份代码在不同类路径上跑不同版本。
+                implementation("com.squareup.okhttp3:okhttp:4.12.0")
+                // AI 服务是 suspend 的，且 net/OkHttpAwait 用 suspendCancellableCoroutine——
+                // 显式声明，不靠 compose runtime 的传递依赖（传递依赖一旦变化就会编译不过）
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
             }
         }
 
@@ -69,6 +75,9 @@ kotlin {
         val jvmTest by getting {
             dependencies {
                 implementation(kotlin("test"))
+                implementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+                // AI 服务测试用 runTest（与 :app 同版本）
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
                 // 领域层测试套件（15 文件 2850 行）2026-10-10 从 app 模块整体迁入本模块：
                 // 迁入前写在 org.junit 的 JUnit4 API 上，此处与 app 的 testImplementation 同版本。
                 // 落在 jvmTest 而非 commonTest 的原因：断言 API 是 org.junit（commonTest 只能写
