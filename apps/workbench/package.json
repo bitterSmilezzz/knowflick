@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "tauri": "tauri",
-    "gate:taste": "node ../../tools/taste_usability_gate.mjs"
+    "gate:taste": "node ../../tools/taste_usability_gate.mjs && node ../../tools/usability_journey_smoke.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

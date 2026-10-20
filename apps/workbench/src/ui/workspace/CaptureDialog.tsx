@@ -62,8 +62,14 @@ export function CaptureDialog({ onClose, onSave }: CaptureDialogProps) {
 
   const handleSave = async (e?: FormEvent) => {
     e?.preventDefault();
+    if (saving) return;
     const trimmedText = text.trim();
-    if (!trimmedText || saving) return;
+    // HTML5 `required` 只挡「完全空」，一个空格就能过；直接 return 又让点了保存的人
+    // 看不到任何反应。所以这里显式给一句错误，别让它静默。
+    if (!trimmedText) {
+      setError("正文不能为空，记一句话也可以");
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -96,7 +102,6 @@ export function CaptureDialog({ onClose, onSave }: CaptureDialogProps) {
     }
   };
 
-  const canSave = text.trim().length > 0 && !saving;
 
   return (
     <dialog
@@ -126,7 +131,10 @@ export function CaptureDialog({ onClose, onSave }: CaptureDialogProps) {
         </div>
       )}
 
-      <form onSubmit={(e) => void handleSave(e)}>
+      {/* noValidate：浏览器原生的 required 气泡在打包后的 webview 里样式不可控，
+        而且它挡在 onSubmit 之前，等于把「为什么不能保存」交给系统提示。
+        这里自己校验、自己给中文错误，错误文案与位置都可控。 */}
+      <form noValidate onSubmit={(e) => void handleSave(e)}>
         <label className="ws-field">
           <span>标题（可选）</span>
           <input
@@ -168,7 +176,8 @@ export function CaptureDialog({ onClose, onSave }: CaptureDialogProps) {
           <button
             type="submit"
             className="ws-primary"
-            disabled={!canSave}
+            disabled={saving}
+            title={text.trim() ? undefined : "正文为空，写一句话即可保存"}
           >
             {saving ? "正在存入…" : "存入收件箱"}
           </button>
