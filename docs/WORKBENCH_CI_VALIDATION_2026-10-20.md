@@ -52,4 +52,35 @@
 - GitHub token 无 `workflow` scope，HTTPS 推送含 workflow 的提交会被拒绝；改用 SSH over 443（`ssh -p 443 git@ssh.github.com`）推送成功。
 - workflow 的 `workflow_dispatch` 只认默认分支；未合并前无法手动触发，因此给打包 workflow 增加 `pull_request` 触发，PR 只留短期安装包附件，Release job 仍只接受 `workbench-v*` tag。
 
-第二轮（commit a9bd877）结果待 CI 完成后补记。安装包成功生成也不能替代原生安装、首启以及导入 → 刷卡 → 测验 → 导出的交互冒烟。
+## 第二轮结果（commit 934182c）
+
+| 工作流 | 结论 |
+| --- | --- |
+| Workbench（Linux 门禁：npm test + tsc + cargo test） | **success** |
+| Workbench Release（Tauri 三平台打包） | **success**：Linux DEB、macOS DMG、Windows MSI 均成功 |
+| Desktop（冻结 JVM 桌面三平台） | **success** |
+| Android | **failure**（见下，继承自基线分支） |
+
+产物（CI 附件，保留 7 天）：
+
+| 平台 | 产物 | 大小 |
+| --- | --- | --- |
+| Linux | `workbench-deb`（`KnowFlick_0.1.0_amd64.deb`） | 67,782,454 B |
+| macOS | `workbench-dmg` | 26,939,669 B |
+| Windows | `workbench-msi` | 18,425,634 B |
+
+macOS 部署目标校验步骤同时通过：二进制 `minos=11.0`、`Info.plist` 的 `LSMinimumSystemVersion=11.0`。
+
+此外修掉一处我自己引入的问题：`tools/lint_shell_vars.sh`（Android job 里运行）指出 workflow 中 `$minos，` 与 `$plist_version，` 会把全角逗号并入变量名，已改为 `${minos}` / `${plist_version}`，本地 lint 通过。
+
+## Android 失败：继承自基线，不是本批改动
+
+- 失败测试：`:desktop:test` → `DesktopSkeletonTest.chatStreamsThroughSharedHolderAndPersistsSession`（`DesktopSkeletonTest.kt:163`）。
+- 断言消息：`流式增量应拼进回答：先看` —— 只收到第一个 SSE 增量，第二个 `叠加态。` 没有拼进回答。
+- 该失败在本地同样复现（`./gradlew :desktop:test --tests '*DesktopSkeletonTest*'`，20 项中 1 项失败），并且基线分支 `chore/shared-chat-ui`（PR #94）的 Android 检查在合并前即为 failure。
+- 该文件属于「AI 追问全链共享」那批改动（PR #94 范围），本次工作台改动没有触碰 `apps/android/**`。
+- 处置：不擅自改别人在途 PR 的测试语义。此处如实登记，建议由 PR #94 侧修复后再叠加。
+
+## 解释一句「为什么推送会取消上一轮」
+
+`pull_request` 的 `paths` 过滤按**整个 PR 改动的文件集**判定，不是按本次推送的增量。只要 PR 里包含 `apps/workbench/**`，之后任何一次推送都会重新触发打包 workflow；配合 `concurrency.cancel-in-progress` 就会把上一轮取消。因此收尾阶段应避免在验证期间继续推送。安装包成功生成也不能替代原生安装、首启以及导入 → 刷卡 → 测验 → 导出的交互冒烟。
