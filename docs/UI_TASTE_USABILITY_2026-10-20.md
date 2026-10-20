@@ -129,3 +129,25 @@ CI 附件：`workbench-deb` 67,781,690 B、`workbench-dmg` 26,941,337 B、`workb
 ## 顺带查明的一个「假问题」
 
 一度以为「本地语义检索面板塌陷、标题被挤出可见区」，量过 DOM 后发现面板结构完好（宽 560、头高 68），塌陷只是我截图时只滚到面板一半。**先量再下结论**，否则会把测试脚本的问题当成产品缺陷去「修」。
+
+## 第二轮补充：根治 Android/Desktop 共享层的流式竞态
+
+CI 第三次暴露 `DesktopSkeletonTest.chatStreamsThroughSharedHolderAndPersistsSession`
+间歇失败（断言「流式增量应拼进回答：先看」，第二个增量「叠加态。」没拼上）。
+前两轮分别记为「继承自基线」与「未复现」，这次本地 5 连跑复现失败后不再归因运气，
+直接定位到 **产品代码竞态**：
+
+- `ChatStateHolder.onDelta` 对每条增量都 `scope.launch(stateDispatcher)` 起独立协程；
+- 桌面端注入的 `stateDispatcher` 是 `Dispatchers.Default`（多线程池）；
+- 增量协程彼此并行、与「流结束」块之间没有先后保证 → 「完成」可以插在两条增量中间执行，
+  先置 `isStreaming=false` 并落盘，最后一条增量随后才拼上。
+
+修法（`apps/android/shared-data/.../ChatStateHolder.kt`）：
+新增 `sessionMutex`，所有会话读-改-写都在锁内；增量在 `streamCardChat` 回调里**就地**
+落锁执行（回调本身是顺序调用的），保证流返回时增量全部就位，完成块天然排在最后；
+错误路径同样落锁。Android 宿主默认 `Dispatchers.Main` 的行为不变。
+
+验证：`:desktop:test` 连跑 5 轮全绿（20 项 0 失败）；四个共享模块全量套件通过。
+
+> 教训：flaky 测试前两次「没复现」就放过了，第三次才根治。**间歇性失败必须本地连跑复现**，
+> 否则等于把随机故障留给 CI 当裁判。
