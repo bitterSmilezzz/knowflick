@@ -11,6 +11,14 @@ name: Workbench Release (Web + Tauri)
 # paths 过滤对 tag 推送**不生效**（GitHub 官方文档："Path filters are not evaluated for pushes of tags"），
 # 所以这里不写 paths——写了只会让人误以为「改文档的提交打 tag 不会触发」。
 on:
+  # 新 workflow 进默认分支之前不能手动触发，先在 PR 中验证三平台安装包。
+  # PR 只留 CI 附件；release job 仍仅接受 workbench-v* tag。
+  pull_request:
+    paths:
+      - 'apps/workbench/**'
+      - 'shared/assets/**'
+      - 'tools/verify_workbench.sh'
+      - '.github/workflows/workbench-release.yml'
   workflow_dispatch:
   push:
     tags:
@@ -89,7 +97,7 @@ jobs:
           ls -la
           test -n "$(ls -A)" || { echo "::error::没有产出 ${{ matrix.format }} 安装包"; exit 1; }
 
-      # PR/分支上不留档（安装包 10MB 量级，三系统存档白烧配额）；tag 与手动触发时留档，便于回看与发版。
+      # 三平台产物短期留档，便于 PR 安装验收；不创建 Release、不打 tag。
       - name: 留档安装包
         uses: actions/upload-artifact@v7
         with:
