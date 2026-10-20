@@ -27,6 +27,9 @@
 - Android（库契约）：`:domain` 的 kotlinx-serialization 依赖由 `implementation` 改为 `api`——`KnowledgeCard.serializer()` / `Json.encodeToString` 属于公开 API，消费者（`:app`、`:desktop`）不该各写一遍同一行依赖。
 - 架构（首个 ADR）：[ADR-0001 桌面三端与 Android 共用一份 Kotlin / Compose 代码](docs/adr/0001-desktop-tri-platform-shared-kotlin.md)——确定 **Windows / macOS / Linux + Android 四端共用一份实现**（`:domain` 逻辑 + `:shared-ui` 界面，各端只是薄宿主），并如实登记两条代价：mac 会出现 Swift 原生与 CMP 两套实现的并存期、平台专有能力需各写或用 expect/actual；Swift mac 端最终处置列为待决。
 - 跨平台（新模块 `:shared-ui`）：**共享界面层起步**——`apps/android/shared-ui`（KMP + CMP 1.8.2，androidTarget + jvm）。首个迁移是把 app 模块的 `ui/Theme.kt`（4 套纸质主题 + `EditorialColor` 令牌，150 行）整体搬入，**24 个引用文件 import 零改动**（包名保持 `com.knowflick.app.ui`）；另加首个真正跨端的组件 `KnowledgeCardTeaser`。`:app` 与 `:desktop` 现在共用同一份主题与组件，桌面骨架已改用产品主题渲染共享卡片。验证：`:shared-ui:jvmTest` 2 项（令牌 + 无头渲染）+ `:desktop:test` 2 项 + app 159 项 + 领域层 171 项 = **334 项全绿**，Lint、R8 release 与签名校验通过。
+- 跨平台（A 档界面平移）：**6 个界面文件 2365 行迁入 `:shared-ui`**——`QuizScreen`(833) 与 `LibraryScreen`(326) 两个整屏（参数是纯领域类型 + 回调，不依赖 ViewModel）、`AppIcons`(668)、`MarkdownTextRenderer`(297)、`LearningHeatmap`(214)、`CategoryStampColor`(27)；加上更早的主题与组件，`:shared-ui` 共 8 个生产文件 2578 行。**桌面宿主现在直接渲染 `LibraryScreen`**——与 Android 端同一份 Compose 代码，离屏渲染测试进 CI。包名保持原样，app 侧 import 零改动。
+- 跨平台（迁移边界，实测）：① **系统返回必须外移宿主**——`androidx.activity.compose.BackHandler` 桌面不存在，CMP 1.8.2 的 `ui-desktop` 里只有内部 dispatcher 类，没有公开 `BackHandler`；改由 Android 宿主在调用点包一层（`MainActivity`）。② **多平台 Material 图标在 1.8+ 不存在**——JetBrains 的 `material-icons-*` 最后一次发布是 1.7.3，androidx 侧无 `-desktop` 变体（实测 404），故 `:shared-ui` 暂时钉 `material-icons-core:1.7.3` 并记为技术债（后续改为手写进 `AppIcons`）。
+- 工具与文档：新增 `tools/classify_ui_portability.py`——按**平台信号 + 依赖闭包不动点**给界面分档（A 可直接搬 / B 被平台文件拖累 / C 自身带平台信号），可复现；结果与下一批计划见 [界面共享迁移](docs/windows-route/UI_EXTRACTION.md)。迁移前基线 A 27 文件 5196 行 / B 8 文件 2298 行 / C 36 文件 12941 行。
 
 ## [v0.2.0] - 2026-10-02
 

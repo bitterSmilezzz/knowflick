@@ -1,53 +1,34 @@
 package com.knowflick.desktop
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.knowflick.app.ui.KnowFlickTheme
+import com.knowflick.app.ui.LibraryScreen
 import com.knowflick.app.ui.PaperTheme
-import com.knowflick.app.ui.shared.KnowledgeCardTeaser
 
 fun main() = application {
     Window(onCloseRequest = ::exitApplication, title = "KnowFlick 桌面（骨架）") {
-        // 产品主题来自 :shared-ui——与 Android 端是同一份 Theme.kt
-        KnowFlickTheme(paperTheme = PaperTheme.SYSTEM) { SkeletonScreen() }
+        KnowFlickTheme(paperTheme = PaperTheme.SYSTEM) { DesktopHost() }
     }
 }
 
 /**
- * 骨架界面：只陈述现状，不假装已有功能。
- * 卡片由 :shared-ui 的共享组件渲染（Android 端用同一份代码），真实界面
- * （刷卡 / 详情 / 收藏 / 统计）属「UI 抽取」波次，见 docs/windows-route/CMP-FEASIBILITY.md §4.1。
+ * 桌面宿主骨架：直接渲染**共享界面模块 `:shared-ui` 里的 LibraryScreen**——
+ * 与 Android 端跑的是同一份 Compose 代码（`shared-ui/src/jvmAndAndroidMain/.../ui/LibraryScreen.kt`）。
+ *
+ * 尚未接线：平台动作（分享 / 导入文件 / 备份导出）在桌面是空实现；库数据还是示例卡
+ * （桌面侧没有 data 层）。范围与波次见 docs/adr/0001-desktop-tri-platform-shared-kotlin.md。
  */
 @Composable
-fun SkeletonScreen() {
-    Column(
-        modifier = Modifier
-            .padding(28.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("KnowFlick 桌面（骨架）", style = MaterialTheme.typography.headlineSmall)
-        Text(DomainBridge.smokeLine(), style = MaterialTheme.typography.bodyMedium)
-        Text(
-            "下面两张卡由 :shared-ui 的共享组件渲染——Android 端跑的是同一份 Compose 代码。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        DomainBridge.sampleCards().forEach { card -> KnowledgeCardTeaser(card) }
-        Text(
-            "尚未实现：卡库持久化、真实界面（刷卡/详情/统计）、打包分发。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+fun DesktopHost() {
+    LibraryScreen(
+        cards = DomainBridge.sampleCards(),
+        version = 0,
+        onOpenDetail = { /* 详情页尚未迁入共享模块 */ },
+        onBack = { /* 桌面没有系统返回 */ },
+        onShareFavorites = { /* 平台分享待接线 */ },
+        onShareArchive = { /* 平台分享待接线 */ },
+        onPickImportFile = { /* 文件选择器待接线 */ },
+    )
 }

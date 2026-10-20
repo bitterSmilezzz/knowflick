@@ -20,6 +20,17 @@ plugins {
 }
 
 kotlin {
+    // 与 :domain 同一套源集策略：建 JVM 家族的共享中间源集（含 java.* 的界面文件放这里）。
+    // 官方默认层级模板不给「JVM + Android」自动建共享源集，group 声明是 KGP 支持的扩展点。
+    applyDefaultHierarchyTemplate {
+        common {
+            group("jvmAndAndroid") {
+                withAndroidTarget()
+                withJvm()
+            }
+        }
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
@@ -40,6 +51,12 @@ kotlin {
                 implementation(compose.foundation)
                 implementation(compose.material3)
                 implementation(compose.ui)
+                // Material 图标：**多平台版本只发布到 1.7.3**（JetBrains 之后停更；androidx 侧
+                // 只有 Android 变体、没有 -desktop，实测 material-icons-core:1.8.2 → HTTP 404）。
+                // 已迁入的界面有 6 处 Icons.* 依赖它，先钉 1.7.3——纯 ImageVector 定义，
+                // 与 1.8.2 的 Compose 运行时不冲突（Gradle 取更高版本）。
+                // TODO(技术债)：改为手写进 AppIcons（本模块已有该模式），去掉这个停更依赖。
+                implementation("org.jetbrains.compose.material:material-icons-core:1.7.3")
             }
         }
         val commonTest by getting {
