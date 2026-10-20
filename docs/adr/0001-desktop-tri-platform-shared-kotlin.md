@@ -98,7 +98,8 @@
 | 8 | 平台抽象（B 档） | 底图资源、系统返回、Toast/剪贴板、文件选择抽 expect/actual 或外移宿主 | 🔄 进行中：已落地**文件选择/归档导入导出**（共享引擎 + 各端 IO）、**触觉接缝**（`PlatformHaptics`，桌面 no-op）与**底图接缝**（`rememberBackgroundImage`，桌面 Skia + 共享 assets）——`CardFace` 因此解锁；还剩剪贴板、系统分享、Toast。`DetailScreen` 待其依赖的两个 Sheet（聊天 844 + 海报 371）一并处理 |
 | 9 | 各端打包 | Windows/mac/Linux 安装包 + 三系统 CI + Release 通道 | ✅ 已完成（#81）：一份配置 × 三台 runner，各自出包并附同一 Release。**安装包图标未接入** |
 | 10 | mac Swift 处置 | 冻结新增能力 → 按功能清单对等后退役（§5.1） | 进行中（按第一原则收敛） |
-| 11 | 能力对齐：测验 | 测验轮次编排 `QuizCycle` 抽到 `:domain`，两端用同一份编排 + 同一份 `QuizScreen`；桌面入口放原生菜单栏 | ✅ 已完成：桌面端可用「开始知识测验 / 只测今天到期」，评分经 SM-2 落库；Android 的 ViewModel 改为委托同一份编排 |
+| 11 | 能力对齐：测验 | 测验轮次编排 `QuizCycle` 抽到 `:domain`，两端用同一份编排 + 同一份 `QuizScreen`；桌面入口放原生菜单栏 | ✅ 已完成：桌面端可用「知识测验 / 只测今天到期」，评分经 SM-2 落库；Android 的 ViewModel 改为委托同一份编排 |
+| 12 | 能力对齐：统计 | 日期接缝 `rememberLearningDay`（Android 广播 / 桌面轮询）→ 解锁并迁移 `StatsScreen`(825)；桌面菜单栏加入口 | ✅ 已完成：三个共享整屏（卡库 / 测验 / 统计）在桌面全部可用 |
 
 工作量参考：[CMP-FEASIBILITY §4.2](../windows-route/CMP-FEASIBILITY.md)——Windows 端首版 22–35 人日，
 三端打包与平台抽象另计。

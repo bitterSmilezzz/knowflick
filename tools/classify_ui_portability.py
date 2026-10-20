@@ -49,6 +49,10 @@ PLATFORM_PATTERNS = {
     "BuildConfig": r"\bBuildConfig\b",
     "android.util.Log": r"\bLog\.[dviwe]\s*\(",
     "ActivityResult": r"rememberLauncherForActivityResult|ActivityResultContract",
+    # BackHandler 是 Android 独有的系统返回 API（CMP 1.8 没有公共替代）。前几轮漏检了它，
+    # 因为它常以全限定调用出现（`androidx.activity.compose.BackHandler { … }`，没有括号没有 import）——
+    # 判定用词边界，宁可误报为「带平台信号」也不要漏报后搬进去再编译失败。
+    "BackHandler(系统返回)": r"\bBackHandler\b",
     "MediaPlayer/TTS": r"\bMediaPlayer\b|\bTextToSpeech\b|\bSpeechRecognizer\b",
     "Notification/Service": r"\bNotificationCompat\b|\bForegroundService\b|\bService\b",
     "Glance/widget": r"\bGlanceAppWidget\b|\bRemoteViews\b|\bGlanceModifier\b",
