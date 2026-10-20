@@ -1,24 +1,37 @@
 # :desktop —— 桌面宿主（Windows / macOS / Linux）
 
-Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**领域逻辑**（`:domain`）
-与同一份**界面代码**（`:shared-ui`）。
+Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**领域逻辑**（`:domain`）、
+同一份**持久化实现**（`:shared-data`）与同一份**界面代码**（`:shared-ui`）——三份都是同一份代码。
 
 ## 现状
 
 | 项 | 状态 |
 | --- | --- |
 | 共享领域层 | ✅ `implementation(project(":domain"))`，卡库状态机 / JSON 线格式 / 学科表均可用 |
+| 共享持久化层 | ✅ `implementation(project(":shared-data"))`——**真实卡库落盘/回读**，与 Android 端同一份 `CardStorage`（原子写 + 备份轮转 + 损坏回退） |
 | 共享界面层 | ✅ `implementation(project(":shared-ui"))`——**主界面直接渲染 `LibraryScreen`**，与 Android 端是同一份 Compose 代码 |
 | Compose 运行时 | ✅ CMP 1.8.2，与 Android 端 `compose-bom:2025.06.00`（`androidx.compose.*` = 1.8.2）逐号对齐 |
-| 离屏渲染测试 | ✅ `./gradlew :desktop:test`（2 项：领域层复用 + 共享整屏无头渲染） |
+| 离屏渲染测试 | ✅ `./gradlew :desktop:test`（3 项：领域层复用 + 持久化往返 + 共享整屏无头渲染） |
 | 三端目标 | ✅ 一份产物跑 Windows / macOS / Linux（jvm target） |
 | 安装包 | ✅ 三端各出原生包（dmg / msi / deb），由 [desktop.yml](../../../.github/workflows/desktop.yml) 的三系统 matrix 构建并附 Release |
-| 平台动作 | ❌ 分享 / 文件选择 / 备份导出在桌面还是空实现 |
-| 卡库持久化 | ❌ 桌面侧还没有 data 层；`DomainBridge` 用示例卡验证链路 |
+| 平台动作 | ❌ 分享 / 文件选择 / 备份导出在桌面还是空实现——**因此桌面端目前还没法把卡片放进来** |
 | 应用图标 | ❌ 未接入（三端各需 `.icns` / `.ico` / `.png`） |
 
 总目标与决策见 [ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)；
 界面分档进度见 [UI_EXTRACTION](../../../docs/windows-route/UI_EXTRACTION.md)。
+
+## 数据目录（桌面侧唯一的平台相关代码）
+
+落盘逻辑全在 `:shared-data`，桌面端只回答「目录在哪」（`DesktopPaths.kt`，全文二十来行）：
+
+| 系统 | 目录 |
+| --- | --- |
+| macOS | `~/Library/Application Support/KnowFlick/store` |
+| Windows | `%APPDATA%\KnowFlick\store` |
+| Linux | `$XDG_DATA_HOME/knowflick/store`（未设则 `~/.local/share`） |
+
+结构与 Android 端 `filesDir/store` 完全一致（`cards.json` + `cards.backup.json` + `cards.backup2.json`）。
+**首次启动是空库**——这是正常起点（预置知识库已退役，内容由用户剪藏/导入产生），不是 bug。
 
 跑起来看窗口：
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""界面可移植性分析：算出哪些文件能整体搬进共享模块（A 档）。
+"""可移植性分析：算出哪些文件能整体搬进共享模块（A 档）。
+
+A 档含义 = 除「共享模块本身」外无需平台改造即可搬入；**含 java.* 的落 jvmAndAndroidMain，
+不含的落 commonMain**。真正的平台信号只有 android.* / 各 Android 专有 API / 资源引用。
 
 用法：
     python3 tools/classify_ui_portability.py [--json]
@@ -51,7 +54,9 @@ PLATFORM_PATTERNS = {
     "Glance/widget": r"\bGlanceAppWidget\b|\bRemoteViews\b|\bGlanceModifier\b",
     "EncryptedSharedPreferences": r"EncryptedSharedPreferences|MasterKey",
     "Context param": r"\bcontext\s*:\s*Context\b|\bContext\b",
-    "java.io.File": r"\bjava\.io\.File\b|\bFile\s*\(",
+    # 注意：`java.io.File` / `java.util` / `java.time` **不算平台信号**——它们只是不能进
+    # commonMain，放进 jvmAndAndroidMain 完全合法。早先把 `File(` 当信号，把整个 data/
+    # 持久化层（CardStorage 等）误判成不可搬，实际它们一行不用改就能共享（见 :shared-data）。
 }
 
 LINE_DECL = re.compile(

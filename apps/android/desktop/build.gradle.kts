@@ -23,6 +23,9 @@ dependencies {
     implementation(project(":domain"))
     // 共享界面层：桌面端用的主题与组件与 Android 端是同一份（:shared-ui）
     implementation(project(":shared-ui"))
+    // 共享持久化层：卡库落盘逻辑与 Android 端是同一份（:shared-data），
+    // 桌面端只负责告诉它「数据目录在哪」——这就是平台边界。
+    implementation(project(":shared-data"))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
 

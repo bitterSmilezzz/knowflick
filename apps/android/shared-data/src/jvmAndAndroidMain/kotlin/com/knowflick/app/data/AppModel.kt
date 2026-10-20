@@ -5,7 +5,13 @@ package com.knowflick.app.data
  * 无视图依赖，可在 JVM 测试中注入临时目录直接驱动。
  */
 class AppModel(
-    internal val storage: CardStorage,
+    /**
+     * 卡库存储。**刻意公开**：Kotlin 的 `internal` 是按**模块**算的，本类迁进 `:shared-data`
+     * 之后，宿主（`:app` / `:desktop`）再拿它就跨模块了——原先的 `internal` 直接编译不过。
+     * 这里选择公开而不是给 AppModel 加十个转发方法：`saveSettingsJson` / `loadCards` 这些
+     * 本来就是数据层的公开 API 面，包一层只会增加无谓间接。
+     */
+    val storage: CardStorage,
 ) {
     val store = com.knowflick.app.domain.CardStore(
         // 排布防重（minDistance）与渲染必须解析同一 key：显式接线，避免两套 key 空间再次漂移

@@ -19,23 +19,29 @@
 **C** = 自身就有平台信号。
 
 > 工具的第一版把函数体内的局部量（`val path = …`）和函数参数误当成包级符号，制造了大量假依赖
-> （`AppIcons` 被误判成依赖 `BackgroundImage`，只因两边都有个叫 `path` 的局部量）。
-> 现在只认**从第 0 列开始**的行——Kotlin 顶层声明必然顶格。这个修正让 A 档从 12 文件 1720 行
-> 变成 27 文件 5196 行，与 CMP-FEASIBILITY 独立估的「10 文件 5064 行可直搬」量级一致。
+> （`AppIcons` 被误判成依赖 `BackgroundImage`，只因两边都有个叫 `path` 的局部量）。只认**从第 0 列
+> 开始**的行修掉了它，A 档从 12 文件 1720 行变成 27 文件 5196 行。
+>
+> 第二版又发现另一个更隐蔽的假信号：把 `java.io.File` 也当成平台信号。**`java.*` 不是平台信号**——
+> 它只是不能进 `commonMain`，放进 `jvmAndAndroidMain` 完全合法。这个假信号把整个 `data/` 持久化层
+> （`CardStorage` 等）错判成不可搬，直到真要动手做 `:shared-data` 时才暴露（那个模块 4 个文件
+> 一行未改就共享成功）。修正后 A 档的含义明确为：**无需平台改造即可搬入共享模块，含 `java.*` 的
+> 落 `jvmAndAndroidMain`、不含的落 `commonMain`**。
 
 ## 2. 分档结果
 
-| 档 | 迁移前（2026-10-11 基线） | 当前（已迁 6 文件后） |
-| --- | --- | --- |
-| **A**（可直接搬） | 27 文件 / 5196 行 | 21 文件 / 2828 行 |
-| **B**（被平台文件拖累） | 8 文件 / 2298 行 | 8 文件 / 2298 行 |
-| **C**（自身带平台信号） | 36 文件 / 12941 行 | 36 文件 / 12949 行 |
-| **已迁入 `:shared-ui`** | — | **10 文件 / 2707 行**（含 2 个测试文件） |
+当前（`:shared-ui` 已迁 6 文件、`:shared-data` 已迁 4 文件之后）：
+
+| 档 | 文件数 / 行数（app 模块剩余） |
+| --- | --- |
+| **A**（可直接搬） | 22 文件 / 2975 行 |
+| **B**（被平台文件拖累） | 6 文件 / 2171 行 |
+| **C**（自身带平台信号） | 33 文件 / 12490 行 |
 
 B 档只被**单个**平台文件拖累，抽象掉那个文件就能整片解锁，例如：
 `ui/StatsScreen.kt`(825) ← `ui/LearningDay.kt`；`ui/CardFace.kt`(281) ← `ui/BackgroundImage.kt`；
 `ui/ImportRestoreDialog.kt`(288) ← `data/ArchiveImportManager.kt`；
-`sync/SyncClient.kt`(246) ← `sync/SyncServer.kt`。
+`sync/SyncClient.kt`(246) ← `sync/SyncServer.kt`；`ChatStateHolder.kt`(200) ← `KnowFlickViewModel.kt`。
 
 ## 3. 已经搬进 `:shared-ui` 的（本次，6 个生产文件 2365 行）
 
@@ -85,14 +91,19 @@ B 档只被**单个**平台文件拖累，抽象掉那个文件就能整片解�
 
 ## 5. 下一批建议（按价值 / 风险排序）
 
-1. **抽象 `data/CategoryStampColor` 之外的 `ui/LearningDay.kt`** → 一次解锁 `StatsScreen`(825) + `ui/stats/*`；
+> 注：`:shared-data` 已经把持久化层搬走，所以 `data/*` 只剩 `ArchiveImportManager` / `ShareFileWriter` /
+> `SystemCredentialStore` / `WebClipFetcher` 等与平台强相关的部分。
+
+1. **抽象 `ui/LearningDay.kt`** → 一次解锁 `StatsScreen`(825) 与 `ui/stats/*`；
 2. **`BackgroundImage` 的桌面实现**（expect/actual：Android 读 assets，桌面读文件/classpath）
    → 解锁 `CardFace.kt`(281) 与整个刷卡页视觉；
-3. **`AiService` + `ai/*`（约 1100 行）**：A 档的「后端」半边，可随 `:shared-services` 或并入
-   `:domain` 一起共享（模块归属需先定，见 ADR §5）；
-4. **平台动作抽象**（分享 / 文件选择 / 剪贴板 / Toast）→ 解锁 `SettingsScreen`、`DetailScreen`、
-   各 Sheet。
-5. **打包**：Win/mac/Linux 三个 `package*` 任务接进 CI（需各端真机/runner 验证）。
+3. **`ai/*` 约 1100 行 + `data/CardArchiveEngine`(275) / `ChatSessionStorage`(147) / `WebClipFetcher`(114) /
+   `CardExportEngine`(111)**：已是 A 档，可平移到 `:shared-data` / `:domain`（模块归属按内容定：
+   网络与归档属数据层，AI 提示词与服务属逻辑层）；
+4. **平台动作抽象**（分享 / 文件选择 / 剪贴板 / Toast）→ 解锁 `SettingsScreen`、`DetailScreen`、各 Sheet，
+   也是**桌面端能真正用起来的前提**（现在桌面端还没法把卡片放进来）；
+5. **安装包图标**：三端各需 `.icns` / `.ico` / `.png`，仓库已有 mac 的 `AppIcon.iconset` 与 Android 侧图标，
+   接入时同样要避免三份手工维护。
 
 ## 6. 复现
 
