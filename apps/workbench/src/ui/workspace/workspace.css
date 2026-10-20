@@ -57,6 +57,31 @@ select {
   grid-template-columns: 0 var(--list-w, 320px) minmax(0, 1fr);
 }
 
+/* ---------- scrollbars ---------- */
+/* WebKit 的默认滚动条在深色主题里是亮白的，一眼像渲染 bug；
+   统一用 token 画细条，跟随主题。 */
+.ws ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.ws ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ws ::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+.ws ::-webkit-scrollbar-thumb:hover {
+  background: var(--control);
+  background-clip: content-box;
+}
+.ws {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
 /* ---------- toolbar (Overlay titlebar) ---------- */
 
 .ws-header {
@@ -210,8 +235,8 @@ select {
 }
 
 .ws .ws-primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-solid, var(--accent));
+  border-color: var(--accent-solid, var(--accent));
   color: var(--accent-ink);
   font-weight: 500;
 }
@@ -299,6 +324,18 @@ select {
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
+  /* 底部留出渐隐带的高度，保证最后一行能完整滚进可视区，
+     不会停在「半行被切断」的位置。 */
+  padding-bottom: 20px;
+}
+
+.ws-nav-fade {
+  position: sticky;
+  bottom: -1px;
+  height: 20px;
+  margin-top: -20px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg));
 }
 
 .ws-nav-bottom {
@@ -1104,11 +1141,22 @@ select {
 
 /* ---------- review (QuizView) ---------- */
 
-.ws-review-container {
+/* 温故复习页：整页单一滚动容器（面板 + 测验卡），
+   避免「外层固定、里层各滚一段」制造的双重滚动条与底部按钮遮挡。 */
+.ws-review-page-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 32px 24px 40px;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 48px;
+}
+
+.ws-review-container {
+  width: 100%;
+  padding: 20px 24px 32px;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -1303,10 +1351,17 @@ select {
   color: #d32f2f !important;
 }
 
-.ws-rating-btn.rating-good {
-  background: var(--selected) !important;
+/* 「良好」是主推荐档，用更实的边框表示推荐，而不是用「选中态」配色。
+   先前这里写成 accent 背景 + accent 文字，四个按钮里它永远高亮，
+   看上去像「已经替你选了良好」——评分是用户动作，界面不该先替他选。 */
+.ws-rating-btn.rating-good:not(:disabled) {
+  border-color: var(--control) !important;
+  background: var(--surface) !important;
+}
+
+.ws-rating-btn.rating-good:not(:disabled):hover {
   border-color: var(--accent) !important;
-  color: var(--accent) !important;
+  background: var(--hover) !important;
 }
 
 .ws-rating-btn:disabled {
@@ -1556,9 +1611,9 @@ select {
 }
 
 .ws-chat-row.user .ws-chat-avatar {
-  background: var(--accent);
+  background: var(--accent-solid, var(--accent));
   color: var(--accent-ink);
-  border-color: var(--accent);
+  border-color: var(--accent-solid, var(--accent));
 }
 
 .ws-chat-content {
@@ -2028,7 +2083,7 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .ws-capsule-tip { font-size: 12px; color: var(--muted); }
 .ws-capsule-submit {
   height: 28px; font: 12px var(--font-ui); padding: 0 10px;
-  background: var(--accent); color: var(--accent-ink); border: 0;
+  background: var(--accent-solid, var(--accent)); color: var(--accent-ink); border: 0;
   border-radius: var(--radius-control); cursor: pointer; flex: none;
 }
 .ws-capsule-submit:disabled { opacity: .5; cursor: default; }
@@ -2054,12 +2109,17 @@ body.capsule-window { overflow: hidden; background: transparent; }
 }
 
 /* ---------- review overview (掌握度与到期负荷) ---------- */
+.ws-empty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 .ws-review-overview {
-  padding: 18px 24px 0;
+  padding: 24px 24px 0;
   display: grid;
   gap: 14px;
-  max-width: 720px;
-  margin: 0 auto;
+  max-width: 640px;
   width: 100%;
 }
 

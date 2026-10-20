@@ -303,7 +303,24 @@ export function Workspace() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [page, loading, busy, isCollection, filtered, selected, layout]);
-  const tags = [...new Set(cards.flatMap((c) => [c.category, ...(c.tags ?? [])]).filter(Boolean))].sort();
+  // 分类按「用得多的在前」排，同量再按名称；纯字母序对使用频率没有信息量。
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const card of cards) {
+      for (const tag of [card.category, ...(card.tags ?? [])]) {
+        if (!tag) continue;
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [cards]);
+  const tags = useMemo(
+    () =>
+      [...tagCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hans-CN"))
+        .map(([tag]) => tag),
+    [tagCounts]
+  );
   const reviewEnabled = file.raw.reviewPluginEnabled === true;
   const asrEnabled = pluginEnabledIn(file.raw, "official-speech-asr");
 
@@ -677,6 +694,21 @@ export function Workspace() {
     });
   };
 
+  // 简报/问答/复习是 lazy chunk，首次点开要等下载。空闲时先取回，
+  // 把「正在加载…」从用户路径上挪走（失败无所谓，真打开时还会再请求）。
+  useEffect(() => {
+    const prefetch = () => {
+      void import("../BrainViews").catch(() => {});
+      void import("../StudyViews").catch(() => {});
+    };
+    const idle = window.requestIdleCallback ?? ((cb: IdleRequestCallback) => window.setTimeout(cb, 1200));
+    const handle = idle(prefetch);
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(handle as number);
+      else window.clearTimeout(handle as number);
+    };
+  }, []);
+
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 4000);
@@ -889,6 +921,7 @@ export function Workspace() {
                 >
                   {t}
                 </span>
+                <span className="ws-count">{tagCounts.get(t) ?? 0}</span>
               </button>
             ))}
             {tags.length === 0 ? (
@@ -936,6 +969,9 @@ export function Workspace() {
               </button>
             ) : null}
           </nav>
+          {/* 内容超过可视高度时，底部渐隐提示「还能往下滚」——
+              否则最后一行被硬切一半，看起来像布局坏了。 */}
+          <div className="ws-nav-fade" aria-hidden="true" />
         </div>
 
         <div className="ws-nav-bottom">
@@ -1190,13 +1226,37 @@ export function Workspace() {
           ) : (
             <article className="ws-reader" data-workspace-pane="inspector" aria-label="阅读区">
               <div className="ws-empty">
-                {filtered.length === 0 ? (
-                  <div className="ws-empty-calm" aria-hidden="true" />
-                ) : (
+                {filtered.length > 0 ? (
                   <div className="ws-empty-guide">
                     <Icon name="library" size={28} style={{ opacity: 0.35, marginBottom: 8 }} />
                     <p style={{ fontWeight: 500, color: "var(--ink)" }}>选择一条内容，开始阅读</p>
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>点击左侧条目查看正文，或使用快捷键浏览</span>
+                  </div>
+                ) : (
+                  /* 空列表时右栏不能是一片空白：首次打开应用的用户会不知道下一步做什么。
+                     这里给的是可执行的三条入口，而不是一句「暂无内容」。 */
+                  <div className="ws-empty-guide" data-empty-onboarding="">
+                    <Icon name="inbox" size={26} style={{ opacity: 0.35, marginBottom: 8 }} />
+                    <p style={{ fontWeight: 500, color: "var(--ink)" }}>
+                      {query.trim() || tag ? "这个条件下没有内容" : "从一个想法开始"}
+                    </p>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                      {query.trim() || tag
+                        ? "换个关键词，或清空筛选看看全部内容"
+                        : "按 ⌘N 记一条闪念，拖入文件，粘贴链接自动抓取，或用订阅源定期收集"}
+                    </span>
+                    {/* 不再放「记录」按钮：中栏空状态已经有「记录第一条」，
+                        同一动作同一屏出现两次是重复 CTA。这里补的是用户还没看到的入口。 */}
+                    {!(query.trim() || tag) ? (
+                      <div className="ws-empty-actions">
+                        <button className="ws-bordered" type="button" onClick={() => importRef.current?.click()}>
+                          导入文件
+                        </button>
+                        <button className="ws-bordered" type="button" onClick={() => navigate("subscriptions")}>
+                          添加订阅
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -1258,7 +1318,7 @@ export function Workspace() {
                 />
               ) : null}
               {page === "review" && reviewEnabled ? (
-                <>
+                <div className="ws-review-page-scroll">
                   <ReviewOverviewPanel cards={cards} />
                   <Quiz
                     cards={cards}
@@ -1268,7 +1328,7 @@ export function Workspace() {
                       setCards(next);
                     }}
                   />
-                </>
+                </div>
               ) : null}
             </Suspense>
           </main>

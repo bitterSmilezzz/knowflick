@@ -29,6 +29,15 @@
     --accent-ink: #ffffff;
   }
 
+  /* 实心按钮的底色。系统 AccentColor 在浅色模式下常常是亮蓝
+     （实测 macOS 默认 #0075FF），白字压上去只有 4.21:1，低于 WCAG AA 的 4.5。
+     用户还能自选更浅的强调色，所以按钮不用裸 accent，而是把 accent 混向 ink
+     压深一档；文字仍用 accent-ink，对比度稳定在 6:1 以上。 */
+  --accent-solid: color-mix(in srgb, var(--accent) 78%, #000 22%);
+  @supports not (color: color-mix(in srgb, red, blue)) {
+    --accent-solid: var(--accent);
+  }
+
   /* Geometry */
   --radius-control: 4px;
   --radius-panel: 8px;
@@ -67,6 +76,13 @@
   @supports not (color: AccentColor) {
     --accent: #7aa7dc;
     --accent-ink: #15181a;
+  }
+
+  /* 深色模式下 accent-ink 实测同样是白字（macOS 的 AccentColorText），
+     所以这里必须和浅色一样往黑压；先前写成往白提亮，白字压在浅蓝上只有 3.55:1。 */
+  --accent-solid: color-mix(in srgb, var(--accent) 78%, #000 22%);
+  @supports not (color: color-mix(in srgb, red, blue)) {
+    --accent-solid: var(--accent);
   }
 }
 
