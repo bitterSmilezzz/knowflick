@@ -12,6 +12,9 @@ import com.knowflick.app.domain.KnowledgeCard
 import com.knowflick.app.domain.QuizCycle
 import com.knowflick.app.domain.QuizRating
 import com.knowflick.app.domain.QuizSession
+import com.knowflick.app.domain.search.KnowledgeSearchEngine
+import com.knowflick.app.domain.search.SearchResultItem
+import com.knowflick.app.domain.search.SearchSourceFilter
 import com.knowflick.app.speech.SpeechSettings
 import com.knowflick.app.ui.PaperTheme
 import java.awt.Frame
@@ -69,6 +72,87 @@ class DesktopHostState(
         private set
     var speechSaveSucceeded by mutableStateOf(true)
         private set
+
+    /**
+     * 全局搜索：筛选与结果计算都在共享层（`:domain` 的 `KnowledgeSearchEngine`），
+     * 历史落共享 `CardStorage`——桌面端只做状态与调用，不重写检索逻辑。
+     */
+    private val searchEngine = KnowledgeSearchEngine()
+
+    var showingSearch by mutableStateOf(false)
+        private set
+    var searchQuery by mutableStateOf("")
+        private set
+    var searchCategory by mutableStateOf<String?>("全部")
+        private set
+    var searchSource by mutableStateOf(SearchSourceFilter.ALL)
+        private set
+    var searchHistory: List<String> by mutableStateOf(model.storage.loadSearchHistory())
+        private set
+
+    val searchResults: List<SearchResultItem>
+        get() = searchEngine.search(
+            query = searchQuery,
+            category = searchCategory,
+            source = searchSource,
+            intent = null,
+            cards = model.store.cards,
+        )
+
+    fun openSearch() {
+        showingSearch = true
+        version++
+    }
+
+    fun closeSearch() {
+        showingSearch = false
+        version++
+    }
+
+    fun updateSearchQuery(query: String) {
+        searchQuery = query
+        version++
+    }
+
+    fun updateSearchCategory(category: String?) {
+        searchCategory = category
+        version++
+    }
+
+    fun updateSearchSource(source: SearchSourceFilter) {
+        searchSource = source
+        version++
+    }
+
+    fun resetSearchFilters() {
+        searchQuery = ""
+        searchCategory = "全部"
+        searchSource = SearchSourceFilter.ALL
+        version++
+    }
+
+    fun addSearchHistory(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
+        searchHistory = (listOf(trimmed) + searchHistory.filter { it != trimmed }).take(8)
+        model.storage.saveSearchHistory(searchHistory)
+        version++
+    }
+
+    fun removeSearchHistory(query: String) {
+        searchHistory = searchHistory.filter { it != query }
+        model.storage.saveSearchHistory(searchHistory)
+        version++
+    }
+
+    fun clearSearchHistory() {
+        searchHistory = emptyList()
+        model.storage.saveSearchHistory(searchHistory)
+        version++
+    }
+
+    /** 搜索结果置顶到卡堆（共享 CardStore 方法） */
+    fun promoteToDeckTop(card: KnowledgeCard) = mutate { model.store.promoteToDeckTop(card) }
 
     /** 正在查看设置页 */
     var showingSettings by mutableStateOf(false)

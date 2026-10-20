@@ -83,8 +83,6 @@ fun DetailScreen(
      */
     chatSheet: (@Composable (onClose: () -> Unit) -> Unit)? = null,
     posterSheet: (@Composable (onClose: () -> Unit) -> Unit)? = null,
-    /** 任一 Sheet 展开/收起时通知宿主：系统返回键要据此决定是否让位给 Sheet */
-    onOverlayVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     val haptics = rememberPlatformHaptics()
@@ -92,18 +90,16 @@ fun DetailScreen(
     var showChatSheet by remember { mutableStateOf(false) }
     var showPosterSheet by remember { mutableStateOf(false) }
 
+    // 系统返回：浮层展开时让位给浮层（Sheet 自己处理返回），未展开时退出详情。
+    // 这条判断原先由 Android 宿主记在 onOverlayVisibilityChanged 里——收进接缝后宿主不必知道。
+    com.knowflick.app.ui.common.PlatformBackHandler(enabled = !showChatSheet && !showPosterSheet) { onBack() }
+
     val isDark = MaterialTheme.colorScheme.background.red < 0.2f
     val bgColor = MaterialTheme.colorScheme.background
     val textColorPrimary = MaterialTheme.colorScheme.onBackground
     val textColorSecondary = textColorPrimary.copy(alpha = if (isDark) 0.88f else 0.78f)
     val textColorTertiary = textColorPrimary.copy(alpha = if (isDark) 0.65f else 0.55f)
 
-    // 系统返回键与屏内返回语义一致（弹窗展开时拦截返回键优先关闭弹窗）：
-    // 共享屏不再自己用 BackHandler（桌面没有 androidx.activity），改为把「有没有浮层展开」
-    // 告诉宿主，由宿主决定它的 BackHandler 是否生效。
-    LaunchedEffect(showChatSheet, showPosterSheet) {
-        onOverlayVisibilityChanged(showChatSheet || showPosterSheet)
-    }
 
     Box(Modifier.fillMaxSize().background(bgColor)) {
         Box(Modifier.fillMaxSize()) {

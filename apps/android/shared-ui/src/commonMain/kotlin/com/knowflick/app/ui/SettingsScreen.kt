@@ -85,7 +85,8 @@ fun SettingsScreen(
     soundEffectsEnabled: Boolean = true,
     onToggleSoundEffects: (Boolean) -> Unit = {},
 ) {
-    // 系统返回外移宿主（同其余整屏）：桌面没有 androidx.activity，由 Android 宿主包 BackHandler。
+    // 系统返回：平台差异收在 PlatformBackHandler 接缝里（见 LibraryScreen 的同类说明）
+    com.knowflick.app.ui.common.PlatformBackHandler { onBack() }
 
     var providerId by rememberSaveable { mutableStateOf(initial.providerId) }
     var baseURL by rememberSaveable { mutableStateOf(initial.baseURL) }

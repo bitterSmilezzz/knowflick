@@ -36,7 +36,7 @@
 | --- | --- |
 | **A**（可直接搬） | 10 文件 / 1081 行 |
 | **B**（被平台文件拖累） | 3 文件 / 777 行 |
-| **C**（自身带平台信号） | 27 文件 / 10378 行 |
+| **C**（自身带平台信号） | 26 文件 / 9417 行 |
 
 **每次抽掉一条平台边界，都会有一片文件从 B/C 升到 A**：底图接缝解锁了 `CardFace`，
 日期接缝解锁了 `StatsScreen`（825 行，本次已迁），系统返回外移解锁了 `LibraryScreen` / `QuizScreen`。
@@ -129,6 +129,7 @@ B 档从最初的 8 个降到 3 个。
 | --- | --- | --- | --- |
 | 触觉反馈 | `PlatformHaptics` + `rememberPlatformHaptics()` | `androidMain`：包住原来的 `HapticFeedbackHelper`（API 29+ `VibrationEffect` 预设，**行为不变**） | `jvmMain`：`NoOpPlatformHaptics`（桌面无触觉） |
 | 分类底图 | `rememberBackgroundImage(key)` / `PreloadBackgroundImage(key)` | `androidMain`：assets + `BitmapFactory` + `LruCache`（原实现整体搬入） | `jvmMain`：classpath 资源 + Skia 解码 + 内存缓存 |
+| 系统返回 | `PlatformBackHandler(enabled) { … }` | `androidMain`：转给 `androidx.activity.compose.BackHandler` | `jvmMain`：no-op（桌面没有系统返回，屏内返回按钮才是路径） |
 | 界面音效 | `PlatformSounds`（滑纸 / 翻卡 / 掌握提示 / 点击） | `androidMain`：包住原 `AudioEffectHelper`（`AudioTrack` 合成音，行为不变） | `jvmMain`：no-op（桌面暂未设计音效） |
 | 「今天」快照 | `LearningDay` + `rememberLearningDay()`（`internal`，仅统计页用） | `androidMain`：`ACTION_DATE_CHANGED` / `TIME_CHANGED` / `TIMEZONE_CHANGED` 广播 + 回到前台 + 到午夜定时（原实现；`ContextCompat.registerReceiver` 换成手写 API 33 分支，少引一个依赖） | `jvmMain`：30 秒轮询（桌面没有日期变更广播；睡眠唤醒最多晚 30 秒） |
 
@@ -141,11 +142,29 @@ B 档从最初的 8 个降到 3 个。
 | **公共 API 直接消解** | 打开外链、触觉反馈 | `LocalUriHandler` / `rememberPlatformHaptics()` 都是 CMP 公共面：Android 自动走 `Intent`、桌面走系统浏览器；**共享屏里一行平台代码都不需要** |
 | **宿主槽位（slot）** | 聊天 Sheet(844)、海报 Sheet(371)、桌面微件（`AppWidgetManager`） | 共享屏只负责「什么时候显示/触发」，能力由宿主以 `chatSheet` / `posterSheet` / `onAddWidget` 参数注入（`null` = 该端没这个能力；菜单项或面板自然不出现）。Android 传它的实现，桌面不传——**因此迁详情页与刷卡页都不必连带搬平台专属功能**（合计省下 1215+ 行） |
 
-**槽位的配套约定**：Sheet 展开时系统返回要让位给 Sheet。共享屏不再自己用 `BackHandler`（桌面没有该 API），
-改为通过 `onOverlayVisibilityChanged` 把「有没有浮层」告诉宿主，由宿主的 `BackHandler(enabled = …)` 决定。
+**槽位的配套约定**：Sheet 展开时系统返回要让位给 Sheet。共享屏不再自己用 `androidx` 的 `BackHandler`，
+而是用 **`PlatformBackHandler(enabled = …)` 接缝**自己声明（详情页据此在浮层展开时让位）。
+
+> 约定演进（值得记一笔）：最初的做法是**把返回语义外移到宿主**（每个屏在 `MainActivity` 调用点再包一层
+> `BackHandler`）。搬到第五个屏时它的代价显出来了：一个屏的返回语义被拆到两个文件里，宿主越写越厚，
+> 且每迁一个新屏都要记得去改宿主。后来补上 `PlatformBackHandler` 接缝（与触觉/音效同一形态）后，
+> 五处宿主包装与 `onOverlayVisibilityChanged` 回调全部删除——**接缝 > 外移**，因为前者让组件自洽。
 
 另外顺手把「延伸阅读」的推荐打分从 Android 调用点抽进 `:domain`（`RelatedCards`，5 项表征测试）——
 否则桌面详情页就得把同一套打分逻辑再写一遍。
+
+### 7.3 一类「看着能搬、其实搬不了」的界面：自己画布
+
+`ui/graph/KnowledgeGraphScreen.kt`(833) 的分档理由是 `LocalContext`，把触觉/音效换上接缝后看起来可以整屏搬走——
+实际编译才发现它用 **`android.graphics.Paint` 做文字测量**（全限定写法，没有 import）：
+
+```kotlin
+val labelPaint = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
+```
+
+这类「自己开画布 + 用平台绘图 API 量文字」的界面**不是接缝能解决的**：要么改用 Compose 的
+`TextMeasurer`/`DrawScope`（真迁移），要么留在各端。教训：分档工具补了「全限定 Android 调用」检测，
+但**最终判定仍然只能靠真编译**——这次是编译器先发现的。
 
 底图的**图片来源仍是仓库根 `shared/assets`**：Android 经 `assets.srcDirs` 直读，桌面经
 `resources.srcDir` 打进 jar——两端同布局（`bg/<key>.webp`）、零副本。桌面侧已实测能解出

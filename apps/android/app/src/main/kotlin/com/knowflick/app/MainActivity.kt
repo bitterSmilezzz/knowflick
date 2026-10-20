@@ -178,12 +178,6 @@ class MainActivity : ComponentActivity() {
                                 val relatedCards = remember(card.id, viewModel.version) {
                                     com.knowflick.app.domain.RelatedCards.pick(card, viewModel.model.store.cards)
                                 }
-                                var overlayOpen by remember { mutableStateOf(false) }
-                                // 系统返回：浮层展开时让位给浮层（Sheet 自己处理返回），与迁移前语义一致
-                                androidx.activity.compose.BackHandler(enabled = !overlayOpen) {
-                                    viewModel.closeChat()
-                                    screen = detailReturnScreen
-                                }
                                 DetailScreen(
                                     card = card,
                                     isFavorite = isFavorite,
@@ -263,13 +257,10 @@ class MainActivity : ComponentActivity() {
                                     posterSheet = { onClose ->
                                         com.knowflick.app.ui.CardPosterExportSheet(card = card, onClose = onClose)
                                     },
-                                    onOverlayVisibilityChanged = { overlayOpen = it },
                                 )
                             }
                         }
                         Screen.STATS -> {
-                            // 系统返回由宿主接线（共享界面里已移除 BackHandler，桌面无此 API）
-                            androidx.activity.compose.BackHandler { screen = Screen.DECK }
                             StatsScreen(
                             cards = viewModel.model.store.cards,
                             onBack = { screen = Screen.DECK },
@@ -285,8 +276,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         Screen.SETTINGS -> {
-                            // 系统返回由宿主接线（共享屏里已移除 BackHandler，桌面无此 API）
-                            androidx.activity.compose.BackHandler { screen = Screen.DECK }
                             com.knowflick.app.ui.SettingsScreen(
                             initial = viewModel.settings,
                             initialApiKey = viewModel.currentApiKey(),
@@ -317,12 +306,6 @@ class MainActivity : ComponentActivity() {
                             if (session == null) {
                                 screen = Screen.DECK
                             } else {
-                                // 系统返回由**宿主**接线：界面已搬进 :shared-ui，那边不能引用
-                                // androidx.activity（桌面不存在该 API），只暴露 onExit 回调。
-                                androidx.activity.compose.BackHandler {
-                                    viewModel.exitQuiz()
-                                    screen = Screen.DECK
-                                }
                                 com.knowflick.app.ui.QuizScreen(
                                     session = session,
                                     onRate = { rating -> viewModel.rateQuiz(rating) },
@@ -346,8 +329,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Screen.LIBRARY -> libraryState.SaveableStateProvider("library") {
-                            // 系统返回由宿主接线（同上）
-                            androidx.activity.compose.BackHandler { screen = Screen.DECK }
                             com.knowflick.app.ui.LibraryScreen(
                                 cards = viewModel.model.store.cards,
                                 version = viewModel.version,
