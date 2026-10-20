@@ -36,7 +36,8 @@
 - 跨平台（三系统产物落地，CI 实测）：同一份代码在 CI 上产出三个原生安装包——`KnowFlick-0.1.0.msi`(57.7 MB) / `knowflick_0.1.0-1_amd64.deb`(53.9 MB) / `KnowFlick-1.0.0.dmg`(67.8 MB)，全程**未装 Android SDK**。
 - 跨平台（新模块 `:shared-data`）：**持久化层共享，桌面端拿到真实卡库**——`apps/android/shared-data`（KMP）承载卡库 JSON 的原子写 / 备份轮转 / 损坏回退 / 持久化队列与 `AppModel`（4 文件 435 行 + 21 项随之迁来的测试）。平台边界只剩「目录从哪来」：Android 注入 `filesDir/store`（行为与磁盘结构不变），桌面注入 `~/Library/Application Support/KnowFlick/store`（mac）/ `%APPDATA%\KnowFlick\store`（Win）/ `$XDG_DATA_HOME/knowflick/store`（Linux）；目录以下四端共用同一份代码。**桌面端首次启动是空库**（预置库退役后的正常起点），界面与存储现在都是共享实现。
 - 跨平台（迁移边界，实测）：**Kotlin 的 `internal` 按模块算**——类搬进共享模块后，宿主访问原先的 `internal` 成员直接编译不过（`AppModel.storage`、`CardPersistenceQueue` 各触发一批错误）。处理：该公开的公开并写明理由，不在共享模块里用转发方法堆间接。
-- 工具：`tools/classify_ui_portability.py` 修掉第二个假信号——把 `java.io.File` 当成平台信号，导致整个 `data/` 持久化层被误判成不可搬（实际一行未改即可共享）。现在 A 档含义明确为「无需平台改造即可搬入共享模块，含 `java.*` 的落 `jvmAndAndroidMain`」；修正后 A/B/C = 22 文件 2975 行 / 6 文件 2171 行 / 33 文件 12490 行。
+- 工具：`tools/classify_ui_portability.py` 修掉第二个假信号——把 `java.io.File` 当成平台信号，导致整个 `data/` 持久化层被误判成不可搬（实际一行未改即可共享）。现在 A 档含义明确为「无需平台改造即可搬入共享模块，含 `java.*` 的落 `jvmAndAndroidMain`」；修正后 A/B/C = 21 文件 2877 行 / 5 文件 1883 行 / 33 文件 12362 行。
+- 跨平台（平台动作，第一块）：**归档导入/导出共享，桌面端第一次能真正把卡片放进来**——`ArchiveImportManager`（ZIP/JSON 探测、预览构造、合并策略）、`CardArchiveEngine`、`CardExportEngine` 一并迁入 `:shared-data`；平台边界只剩「字节从哪来」：Android 走 SAF `Uri`（新增 `AndroidArchiveReader` 承担读字节），桌面走原生文件对话框（`DesktopFileDialogs`）。桌面端现在支持：选 `.zip`/`.json` 导入（MERGE 合并 + 落盘 + 界面刷新）、收藏导出 Markdown、整库导出 JSON 镜像；导出格式与解析逻辑两端跑的是同一份引擎。验证：`:shared-data:jvmTest` 27 项 + `:desktop:test` 7 项（含「导入后界面跟着更新」这条接线用例），全量 **343 项全绿**。
 
 ## [v0.2.0] - 2026-10-02
 

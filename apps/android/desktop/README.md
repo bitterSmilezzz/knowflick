@@ -11,18 +11,31 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 | 共享持久化层 | ✅ `implementation(project(":shared-data"))`——**真实卡库落盘/回读**，与 Android 端同一份 `CardStorage`（原子写 + 备份轮转 + 损坏回退） |
 | 共享界面层 | ✅ `implementation(project(":shared-ui"))`——**主界面直接渲染 `LibraryScreen`**，与 Android 端是同一份 Compose 代码 |
 | Compose 运行时 | ✅ CMP 1.8.2，与 Android 端 `compose-bom:2025.06.00`（`androidx.compose.*` = 1.8.2）逐号对齐 |
-| 离屏渲染测试 | ✅ `./gradlew :desktop:test`（3 项：领域层复用 + 持久化往返 + 共享整屏无头渲染） |
+| 离屏渲染测试 | ✅ `./gradlew :desktop:test`（7 项：领域层复用 / 持久化往返 / 归档导入 / 导出往返 / 非法输入 / 整屏渲染 / 导入后界面更新） |
 | 三端目标 | ✅ 一份产物跑 Windows / macOS / Linux（jvm target） |
 | 安装包 | ✅ 三端各出原生包（dmg / msi / deb），由 [desktop.yml](../../../.github/workflows/desktop.yml) 的三系统 matrix 构建并附 Release |
-| 平台动作 | ❌ 分享 / 文件选择 / 备份导出在桌面还是空实现——**因此桌面端目前还没法把卡片放进来** |
+| 导入归档 | ✅ 原生文件对话框选 `.zip` 备份包 / `.json` 镜像 → **共享** `ArchiveImportManager` 探测 → 按 MERGE 合并 → 落盘 → 界面刷新 |
+| 导出 | ✅ 收藏阁 → Markdown、整库 → JSON 镜像，选「另存为」；导出格式由**共享** `CardExportEngine` 决定 |
+| 平台动作 | ⚠️ 系统级分享用「另存为」替代（桌面无 `ACTION_SEND` 对等物）；剪贴板、Toast 未接 |
+| 详情页 | ❌ 尚未迁入共享模块（点击卡片只给提示） |
 | 应用图标 | ❌ 未接入（三端各需 `.icns` / `.ico` / `.png`） |
 
 总目标与决策见 [ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)；
 界面分档进度见 [UI_EXTRACTION](../../../docs/windows-route/UI_EXTRACTION.md)。
 
-## 数据目录（桌面侧唯一的平台相关代码）
+## 桌面侧的平台相关代码只有两个文件
 
-落盘逻辑全在 `:shared-data`，桌面端只回答「目录在哪」（`DesktopPaths.kt`，全文二十来行）：
+除下面这些，桌面端的一切都来自共享模块（这就是「一套开发」在宿主侧的体现）：
+
+| 文件 | 职责 | 对应 Android 端 |
+| --- | --- | --- |
+| `DesktopPaths.kt` | 数据目录在哪（mac/Win/Linux 各按惯例） | `context.filesDir/store` |
+| `DesktopFileDialogs.kt` | 原生文件对话框（打开/另存为）与取路径 | SAF `ActivityResultContracts.OpenDocument` |
+
+**归档怎么解析、导出成什么格式，不在这两个文件里**——那是 `:shared-data` 的引擎，
+两端跑同一份（见 [UI_EXTRACTION §7](../../../docs/windows-route/UI_EXTRACTION.md)）。
+
+## 数据目录
 
 | 系统 | 目录 |
 | --- | --- |

@@ -30,17 +30,17 @@
 
 ## 2. 分档结果
 
-当前（`:shared-ui` 已迁 6 文件、`:shared-data` 已迁 4 文件之后）：
+当前（`:shared-ui` 已迁 6 文件、`:shared-data` 已迁 7 文件之后）：
 
 | 档 | 文件数 / 行数（app 模块剩余） |
 | --- | --- |
-| **A**（可直接搬） | 22 文件 / 2975 行 |
-| **B**（被平台文件拖累） | 6 文件 / 2171 行 |
-| **C**（自身带平台信号） | 33 文件 / 12490 行 |
+| **A**（可直接搬） | 21 文件 / 2877 行 |
+| **B**（被平台文件拖累） | 5 文件 / 1883 行 |
+| **C**（自身带平台信号） | 33 文件 / 12362 行 |
 
 B 档只被**单个**平台文件拖累，抽象掉那个文件就能整片解锁，例如：
 `ui/StatsScreen.kt`(825) ← `ui/LearningDay.kt`；`ui/CardFace.kt`(281) ← `ui/BackgroundImage.kt`；
-`ui/ImportRestoreDialog.kt`(288) ← `data/ArchiveImportManager.kt`；
+`ui/AmbientAudioPlayerBar.kt`(331) ← `speech/SpeechController.kt`；
 `sync/SyncClient.kt`(246) ← `sync/SyncServer.kt`；`ChatStateHolder.kt`(200) ← `KnowFlickViewModel.kt`。
 
 ## 3. 已经搬进 `:shared-ui` 的（本次，6 个生产文件 2365 行）
@@ -91,19 +91,32 @@ B 档只被**单个**平台文件拖累，抽象掉那个文件就能整片解�
 
 ## 5. 下一批建议（按价值 / 风险排序）
 
-> 注：`:shared-data` 已经把持久化层搬走，所以 `data/*` 只剩 `ArchiveImportManager` / `ShareFileWriter` /
-> `SystemCredentialStore` / `WebClipFetcher` 等与平台强相关的部分。
+> 注：`:shared-data` 已经把持久化层与归档引擎搬走（`CardStorage` / `ArchiveImportManager` /
+> `CardArchiveEngine` / `CardExportEngine`），所以 app 侧 `data/` 只剩与平台强相关的
+> `ShareFileWriter` / `SystemCredentialStore` / `WebClipFetcher` / `ChatSessionStorage`。
 
 1. **抽象 `ui/LearningDay.kt`** → 一次解锁 `StatsScreen`(825) 与 `ui/stats/*`；
 2. **`BackgroundImage` 的桌面实现**（expect/actual：Android 读 assets，桌面读文件/classpath）
    → 解锁 `CardFace.kt`(281) 与整个刷卡页视觉；
-3. **`ai/*` 约 1100 行 + `data/CardArchiveEngine`(275) / `ChatSessionStorage`(147) / `WebClipFetcher`(114) /
-   `CardExportEngine`(111)**：已是 A 档，可平移到 `:shared-data` / `:domain`（模块归属按内容定：
-   网络与归档属数据层，AI 提示词与服务属逻辑层）；
-4. **平台动作抽象**（分享 / 文件选择 / 剪贴板 / Toast）→ 解锁 `SettingsScreen`、`DetailScreen`、各 Sheet，
-   也是**桌面端能真正用起来的前提**（现在桌面端还没法把卡片放进来）；
+3. **`ai/*` 约 1100 行**：已是 A 档，按内容归属搬到 `:domain`（AI 提示词与服务属逻辑层）
+   或 `:shared-data`；
+4. **平台动作继续抽象**：文件选择/归档导入导出已落地（见下），还剩**底图资源、剪贴板、
+   系统分享、Toast**；这些是 `SettingsScreen` / `DetailScreen` 等屏的解锁条件；
 5. **安装包图标**：三端各需 `.icns` / `.ico` / `.png`，仓库已有 mac 的 `AppIcon.iconset` 与 Android 侧图标，
    接入时同样要避免三份手工维护。
+
+## 7. 平台动作（B 档第一块，已落地）
+
+归档导入/导出这条线已经打通，形状是「**共享引擎 + 各端只做 IO 边界**」：
+
+| 层 | 内容 | 位置 |
+| --- | --- | --- |
+| 共享 | ZIP/JSON 探测、预览构造、合并策略、Markdown/JSON/TSV/ZIP 导出 | `:shared-data` 的 `ArchiveImportManager` / `CardArchiveEngine` / `CardExportEngine` |
+| Android | SAF `Uri` → 字节；`Intent` 分享 | `:app` 的 `AndroidArchiveReader` / `ShareFileWriter` |
+| 桌面 | AWT 文件对话框 → 字节；「另存为」代替系统分享 | `:desktop` 的 `DesktopFileDialogs` |
+
+桌面端因此**第一次能真正把卡片放进来**（此前只能看空库）。两端跑的是同一份探测与合并实现——
+新增平台时照这个形状接 IO 即可，**不要复制引擎**。
 
 ## 6. 复现
 
