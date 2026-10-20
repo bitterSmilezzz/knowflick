@@ -412,7 +412,6 @@ export function Workspace() {
 
   const aiTransform = async (entry: Entry) =>
     act(async () => {
-      if (!inShell()) throw new Error("浏览器体验支持本地整理；AI 提炼请在桌面客户端使用");
       const m = entry.original as RawMaterial;
       const result = await askModel(m.rawText, file.settings, apiKey);
       if (!result.length) throw new Error("没有生成有效卡片，素材未改动，请稍后重试");
@@ -909,10 +908,10 @@ export function Workspace() {
                 className="ws-nav-row"
                 aria-current={tag === t ? "page" : undefined}
                 onClick={() => {
-                  setPage("library");
+                  // 走 navigate 而不是只改 page/tag：否则从「收藏」等集合点进来时
+                  // selectedId 留着上一屏的条目，右栏面包屑会显示成「收藏 / 计算机」。
+                  navigate("library");
                   setTag(tag === t ? "" : t);
-                  setQuery("");
-                  layout.closeNavOverlay();
                 }}
               >
                 <Icon name="folder" size={14} />

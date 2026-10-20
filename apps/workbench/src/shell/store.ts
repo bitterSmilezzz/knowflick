@@ -99,8 +99,44 @@ export function fetchClip(url: string): Promise<{ text: string; finalUrl: string
   return invoke("fetch_clip", { url });
 }
 
-export function completeChat(endpoint: string, apiKey: string, body: string): Promise<string> {
-  return invoke("complete_chat", { endpoint, apiKey, body });
+/**
+ * 调一次对话补全。桌面端走 Rust（reqwest，规避 webview 的 CORS 限制）；
+ * 浏览器体验模式没有 Rust 壳，改用 fetch 直连。
+ *
+ * 浏览器模式下服务商要放开 CORS 才通；不通时错误信息里说明原因，
+ * 不要让用户对着一个网络错误猜。
+ */
+export async function completeChat(endpoint: string, apiKey: string, body: string): Promise<string> {
+  if (inShell()) {
+    return invoke("complete_chat", { endpoint, apiKey, body });
+  }
+  const isAnthropic = endpoint.includes("anthropic.com");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (isAnthropic) {
+    headers["x-api-key"] = apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+  } else if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  let response: Response;
+  try {
+    response = await fetch(endpoint, { method: "POST", headers, body });
+  } catch (err) {
+    throw new Error(
+      `浏览器模式无法直接请求该服务商（跨域被拒绝）：${String(err)}。请在桌面客户端使用，或换一个允许跨域的服务商。`
+    );
+  }
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`API 返回 ${response.status}：${text.slice(0, 200)}`);
+  }
+  const parsed = JSON.parse(text) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    content?: Array<{ text?: string }>;
+  };
+  if (parsed.choices?.[0]?.message?.content) return parsed.choices[0].message.content;
+  if (parsed.content?.[0]?.text) return parsed.content[0].text;
+  return text;
 }
 
 export function exportArchive(dir: string, dest: string): Promise<void> {

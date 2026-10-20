@@ -77,7 +77,9 @@ export function CapsuleWindow() {
           <div className="ws-capsule-brand" data-tauri-drag-region="">
             <Icon name="edit" size={16} />
             <strong>闪念胶囊</strong>
-            <span className="ws-capsule-sub">{isMac ? "⌥ Space" : "Alt+Space"}</span>
+            {/* ⌥ 这个字形在部分 webview 字体里缺失，会渲染成方框。
+                这里用纯 ASCII 的 "Option+Space"，含义相同且不依赖字体。 */}
+            <span className="ws-capsule-sub">{isMac ? "Option+Space" : "Alt+Space"}</span>
           </div>
           <button type="button" className="ws-capsule-close" disabled={saving} onClick={() => void closeCapsule()} aria-label="隐藏闪念胶囊">
             <Icon name="close" size={14} />
