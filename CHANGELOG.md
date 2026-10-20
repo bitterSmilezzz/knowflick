@@ -23,6 +23,8 @@
 - 跨平台（实测结论）：**现代 Kotlin 能消费旧产物**——Kotlin 2.4.21 的桌面工程编译并运行 Kotlin 2.0.21 编译的 `:domain` jar 全部通过，因此「桌面端独立构建走现代版本、Android 端完全不动」这条路可行；Windows 目标（`desktop-jvm-windows-x64` / `skiko-awt-runtime-windows-x64`）可在 macOS 上编译，运行与 MSI 打包仍需 Windows 机器。
 - 跨平台（硬约束实测）：Kotlin 元数据**只能向后读一个次版本**——Kotlin 2.0.21 最高读到 2.1.0（实测 2.4.21 产物被拒，报 `actual metadata version is 2.4.0, but the compiler version 2.0.0 can read versions up to 2.1.0`）。因此：Android 端停在 2.0.21 时可以共享由 Kotlin 2.1.x（即 CMP 1.8.2）编译的模块，但**现代 CMP（≥Kotlin 2.2）一旦参与共享 UI，Android 端就必须跟着升**。
 - Android（工具链）：**Kotlin 2.0.21 → 2.1.21**——为桌面端铺路（CMP ≥1.8 的最低要求是 Kotlin ≥2.1.0），AGP 8.9.2 与 Compose BOM 2025.06.00 不动。全量验证：159 项 app 单测 + 171 项领域层测试全绿，Lint 无 error，R8 release 构建与 apksigner/zipalign 校验通过，仪器测试 APK 编译通过；Kotlin 2.0.21 时代那条「AGP 高于 KGP 已知上限」告警随之消失。运行时行为无变化（纯编译器版本升级）。见 [CMP 工具链对齐实验](docs/windows-route/CMP_TOOLCHAIN_ALIGNMENT.md)。
+- 跨平台（新模块 `:desktop`）：**桌面宿主骨架**上线——Kotlin JVM + Compose Multiplatform 1.8.2，经 `implementation(project(":domain"))` 复用同一份领域逻辑（不是引 jar），离线组合渲染测试进 CI。`./gradlew :desktop:test` 与 `:desktop:run` **只需 JDK 17，不需要 Android SDK**（实测）。尚未实现：真实界面、卡库持久化、打包分发。骨架定位与「何时提升为 `apps/desktop/` 独立端」的取舍见 [模块说明](apps/android/desktop/README.md)。
+- Android（库契约）：`:domain` 的 kotlinx-serialization 依赖由 `implementation` 改为 `api`——`KnowledgeCard.serializer()` / `Json.encodeToString` 属于公开 API，消费者（`:app`、`:desktop`）不该各写一遍同一行依赖。
 
 ## [v0.2.0] - 2026-10-02
 
