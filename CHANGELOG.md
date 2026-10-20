@@ -41,6 +41,8 @@
 - 跨平台（平台动作，第二块）：**触觉与底图两条接缝落地，卡片视觉的前置条件打掉**——① `PlatformHaptics` + `rememberPlatformHaptics()`：Android 侧把原 `HapticFeedbackHelper`（API 29+ `VibrationEffect` 预设）整体搬进 `:shared-ui/androidMain`，**手感不变**；桌面 `jvmMain` 为 no-op。② `rememberBackgroundImage` / `PreloadBackgroundImage`：Android 保留 assets + `BitmapFactory` + `LruCache` 实现，桌面新增 classpath 资源 + Skia 解码 + 内存缓存；**图片来源仍是仓库根 `shared/assets`**（Android `assets.srcDirs`、桌面 `resources.srcDir`，同布局零副本），桌面已实测解出 `bg/ai.webp`。收益立刻可见：`ui/CardFace.kt` 从 B 档升到 A 档（分档 B 5→4、A 21/3117 行）。
 - 跨平台（模型共享）：AI 会话模型 `CardChatMessage` / `CardChatSession` 迁入 `:domain`（40 行，仅依赖 UUID 与序列化）——它是详情页那条链上的第一块。
 - 说明（未做的取舍）：`DetailScreen`(446) 的迁移**主动推迟**——它还渲染 `CardFollowUpChatSheet`(844) 与 `CardPosterExportSheet`(371)，串起来是一次 1600+ 行迁移；先把两条公共接缝做掉，后续每屏都少一道坎。
+- 跨平台（能力对齐·测验）：**测验编排抽成共享的 `QuizCycle`，桌面端因此第一次拥有真实功能而不只是浏览**——原先这套编排（起一轮 / 下一轮剔除已评卡 / 弱项重测 / 评分驱动 SM-2 并落库）只写在 Android 的 ViewModel 里；抽到 `:domain` 后，Android ViewModel 改为委托，桌面宿主直接复用同一份编排 + 同一份 `QuizScreen`，入口放在**原生菜单栏**（学习 → 开始知识测验 / 只测今天到期）。行为由 7 项新表征测试钉住（`:domain:jvmTest`），桌面侧另有一条端到端用例走完「起一轮 → 评完 → 落库 → 退出」。
+- 跨平台（实测修复）：**宿主的重组契约**——`CardStore` 与 `QuizSession` 都不是 Compose 状态，且评分只改动**同一个会话实例**的内部进度；桌面宿主最初只订阅了会话实例，于是「评分后界面停在第一张卡」——被端到端测试逮到。修法是版本驱动屏幕外面套 `key(state.version)`（与 Android `MainActivity` 的 `key(viewModel.version)` 同一手法），并写进 AGENTS 陷阱清单。
 
 ## [v0.2.0] - 2026-10-02
 
