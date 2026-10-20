@@ -78,6 +78,11 @@ dependencies {
     // 探针结论见 docs/windows-route/KMP_PROBE_RESULT.md。
     implementation(project(":domain"))
 
+    // 跨端共享界面层（CMP）：主题令牌等界面基础已迁入，包名同样保持 com.knowflick.app.ui
+    // 不变——所以 :app 这边只是本文件少一个文件、多一行依赖，调用方 import 零改动。
+    // 后续按 docs/windows-route/CMP-FEASIBILITY.md §4.1 的 A 档分批迁移屏幕。
+    implementation(project(":shared-ui"))
+
     // Compose BOM 随工具链升级：2024.10.01 → 2025.06.00（compileSdk 36 配套；
     // material3/ui 的 API 变更由 265 项 JVM 测试 + 34 项仪器测试兜底）。
     val composeBom = platform("androidx.compose:compose-bom:2025.06.00")

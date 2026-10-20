@@ -1,0 +1,99 @@
+# ADR-0001：桌面三端与 Android 共用一份 Kotlin / Compose 代码
+
+- 状态：**已接受**（2026-10-11）；其中「Swift mac 端最终处置」为**待决**，见 §5
+- 决策人：项目所有者
+- 相关：`docs/windows-route/` 三份实测卷宗 · [MULTI_PLATFORM.md](../MULTI_PLATFORM.md) · [CONTEXT.md](../../CONTEXT.md)
+
+## 1. 背景与约束
+
+产品目标（2026-10-11 明确）：**Windows / macOS / Linux 三端 + Android，前后端都共享，一次开发多端同步。**
+
+仓库当时的现实：
+
+| 端 | 技术栈 | 状态 |
+| --- | --- | --- |
+| macOS | Swift / SwiftUI | 功能最完整（旗舰） |
+| Android | Kotlin / Jetpack Compose | 功能完整 |
+| Windows / Linux | — | 未启动 |
+
+而同一份要求下的两条硬约束（沿自 Windows 路线调研）：**① 跨平台一次开发多端同步**（尽量少重复）；**② 性能与资源占用要求高**。
+
+## 2. 决策
+
+**以 Kotlin Multiplatform + Compose Multiplatform 作为桌面三端与 Android 的唯一共享栈：**
+
+- **后端（逻辑）半边** = `:domain`（KMP，`androidTarget` + `jvm`）——19 文件 4149 行，无 Android 依赖；
+- **前端（界面）半边** = `:shared-ui`（KMP + CMP，同样双 target）——共享 Compose 界面与主题令牌；
+- **各端只是薄宿主**：`:app`（Android）、`:desktop`（桌面宿主，**同一份产物跑 Windows / macOS / Linux**）。
+
+「一次开发多端同步」在本决策下的具体含义：**界面的改动改一次，Android 与三个桌面系统同时得到**。
+它与**数据同步**（局域网 `docs/SYNC_PROTOCOL.md`）是两件事，后者是独立课题，见 §5。
+
+## 3. 目标矩阵
+
+| 端 | 承载方式 | 目标支持下限（官方口径） |
+| --- | --- | --- |
+| Android | `:app` + `:domain` + `:shared-ui` 的 android target | Android 5.0 / API 21（本仓 minSdk 26） |
+| Windows | `:desktop` 的 jvm target（Skiko/awt） | Windows 10（x86-64 / arm64） |
+| macOS | 同上 | macOS 13 arm64 |
+| Linux | 同上 | Ubuntu 20.04（x86-64 / arm64） |
+
+> 来源：[Compose Multiplatform 兼容性与版本页](https://kotlinlang.org/docs/multiplatform/compose-compatibility-and-versioning.html)（页面日期 2026-09-22，实测复核见卷宗）。
+
+## 4. 已经实测过的依据（不是纸面推演）
+
+| 事实 | 证据 |
+| --- | --- |
+| `:domain` 在桌面 JVM 上跑通全部 171 项测试，且**不需要 Android SDK** | [KMP 探针结果](../windows-route/KMP_PROBE_RESULT.md) |
+| 三条版本路线（冻结 / 最小改动 / 现代）均能支撑 CMP 桌面宿主 | [CMP 工具链对齐实验](../windows-route/CMP_TOOLCHAIN_ALIGNMENT.md) |
+| 本仓选定 **Kotlin 2.1.21 + CMP 1.8.2 + BOM 2025.06.00**（三者逐号对齐），AGP 不动 | 同上 + [adr 依据] |
+| Windows 目标可在 macOS 上**编译**（`skiko-awt-runtime-windows-x64` 真实解析） | 同上；运行与 MSI 打包仍需 Windows |
+| `:desktop` 骨架在真实构建里复用 `:domain` 与 `:shared-ui`，无头渲染测试进 CI | [desktop/README.md](../../apps/android/desktop/README.md) |
+| 界面文件搬进共享模块**不需要改调用方 import**（包名保持 `com.knowflick.app.*`） | 本次 `Theme.kt` 迁移：24 个引用文件零改动 |
+
+## 5. 后果
+
+### 正面
+
+- 桌面三端与 Android 的界面/逻辑只有一份实现，**新功能天然四端同步**；
+- 领域层、界面层都已被实测证明可跨 target 编译与运行，工具链风险已前置消化；
+- Android 端存在成熟实现，可作为共享 UI 的**参照实现**逐块平移，而不是从零写。
+
+### 负面（必须承认）
+
+- **macOS 会出现两套实现并存期**：Swift 原生 App 与 CMP 桌面版。这是「一次开发」要付的代价，
+  也是本 ADR 唯一未决项；
+- CMP 桌面的 JVM + Skiko 运行时体积、冷启动与内存占用高于原生 SwiftUI（资源对比见
+  [RESOURCE-REPORT](../windows-route/RESOURCE-REPORT.md)），与「性能占用要求高」这条约束存在张力；
+- 平台专有能力（系统分享、菜单栏、通知、TTS/语音通道、桌面微件）在 CMP 侧要**各写一份或用 JNI/expect-actual**，
+  不会自动获得。
+
+### 待决
+
+1. **Swift mac 端的最终处置**——三选一，属产品决策，不在本 ADR 单方面裁定：
+   - (a) **CMP 桌面版达到功能对等后退役 Swift 版**：彻底兑现「一次开发」，代价是放弃 SwiftUI 的原生手感与系统集成深度；
+   - (b) **长期并存**：Swift 版作为 mac 原生首选，CMP 版服务 Win/Linux（mac 上也可用）——重复维护 mac 界面，
+     违背「少重复工作」，但保住原生体验；
+   - (c) **CMP 为主、Swift 保留只读/兜底**：过渡策略，随后收敛到 (a)。
+2. **数据同步跨端化**：现有 `SYNC_PROTOCOL.md` 是 mac ↔ Android 的局域网同步。四端之后，
+   桌面端要不要接入同一协议、还是改为账号/云同步，需要单独一轮设计。
+3. **桌面端的目录与构建拓扑**：`:desktop` 目前暂驻 `apps/android` 构建内。当三端要独立打包与发版
+   （`packageMsi` / `packageDmg` / `packageDeb`，各自 CI）时，应提升为 `apps/desktop/`（或按端拆分），
+   与共享模块之间用 composite build / 产物契约相连。判据写在 [desktop/README.md](../../apps/android/desktop/README.md)。
+
+## 6. 波次计划（按依赖顺序）
+
+| # | 波次 | 内容 | 状态 |
+| --- | --- | --- | --- |
+| 1 | 后端共享 | `:domain` 抽出 KMP 模块 | ✅ 已完成（#74） |
+| 2 | 工具链 | 三路线实测 + 选定对齐版本 | ✅ 已完成（#76） |
+| 3 | 工具链落地 | Kotlin 2.1.21 升级（AGP/BOM 不动） | ✅ 已完成（#77） |
+| 4 | 桌面宿主 | `:desktop` 骨架 + CI | ✅ 已完成（#78） |
+| 5 | 前端共享起步 | `:shared-ui` 模块 + 主题令牌迁移 + 首个共享组件 | ✅ 本次 |
+| 6 | 界面平移（A 档） | 纯 Compose 屏幕平移进 `:shared-ui`（10 文件 5064 行可直搬） | 待启动 |
+| 7 | 平台抽象（B 档） | 底图资源、Toast/Intent、剪贴板、持久化路径等抽 expect/actual | 待启动 |
+| 8 | 各端打包 | Windows/mac/Linux 安装包 + 三端 CI | 待启动（需 Windows 真机验证） |
+| 9 | mac Swift 处置 | 按 §5.1 决议执行 | 待决 |
+
+工作量参考：[CMP-FEASIBILITY §4.2](../windows-route/CMP-FEASIBILITY.md)——Windows 端首版 22–35 人日，
+三端打包与平台抽象另计。

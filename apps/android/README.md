@@ -15,20 +15,27 @@ sdk.dir=/absolute/path/to/Android/sdk
 在 `apps/android` 目录运行：
 
 ```sh
-./gradlew :app:testDebugUnitTest :domain:jvmTest :desktop:test :app:lintDebug :app:assembleDebug
+./gradlew :app:testDebugUnitTest :domain:jvmTest :shared-ui:jvmTest :desktop:test :app:lintDebug :app:assembleDebug
 # 先启动安卓模拟器或连接允许 USB 调试的测试手机
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-`:domain:jvmTest` 与 `:desktop:test` 必须显式点名：它们不在 `:app` 的依赖图里，只跑
-`:app:testDebugUnitTest` 不会带上它们，也不会报错（`./tools/build_android.sh` 已同步）。
+`:domain:jvmTest` / `:shared-ui:jvmTest` / `:desktop:test` 必须显式点名：它们不在 `:app` 的依赖图里，
+只跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错（`./tools/build_android.sh` 已同步）。
 
-### :desktop 模块（CMP 桌面宿主骨架）
+### :shared-ui 模块（跨端共享界面层）
 
-`desktop/` 是 Kotlin JVM + Compose Multiplatform 的**骨架**宿主，用 `project(":domain")` 复用同一份
-领域逻辑。`./gradlew :desktop:test`（2 项：领域层复用 + 无头渲染）与 `./gradlew :desktop:run`
-**都只需 JDK 17，不需要 Android SDK**。定位、未实现项与「何时提升为独立端」见
-[desktop/README.md](desktop/README.md)。
+`shared-ui/` 是 Compose Multiplatform 的共享界面层，**Windows / macOS / Linux 三端 + Android 共用
+同一份界面代码**（目标与决策见 [ADR-0001](../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)）。
+已迁入：`Theme.kt`（4 套纸质主题 + `EditorialColor` 令牌）；首个共享组件：`KnowledgeCardTeaser`。
+迁移约定：**包名保持 `com.knowflick.app.ui` 不变**，因此 app 侧 import 零改动。
+
+### :desktop 模块（桌面宿主，跑 Windows / macOS / Linux）
+
+`desktop/` 是 Kotlin JVM + Compose Multiplatform 的**骨架**宿主，用 `project(":domain")` 与
+`project(":shared-ui")` 复用同一份逻辑与界面。`./gradlew :desktop:test`（2 项：领域层复用 + 共享界面
+无头渲染）与 `./gradlew :desktop:run` **都只需 JDK 17，不需要 Android SDK**。定位、未实现项与
+「何时提升为独立端」见 [desktop/README.md](desktop/README.md)。
 
 ### :domain 模块（KMP 领域层）
 

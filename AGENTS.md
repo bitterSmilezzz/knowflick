@@ -6,7 +6,7 @@
 
 ## 仓库定位
 
-KnowFlick 是多端学习工作台：`apps/mac`（Swift/SwiftUI，完整功能）· `apps/android`（Kotlin/Compose，完整功能）· Windows 端（规划中）· `shared/assets`（契约与底图，单一事实来源）。
+KnowFlick 是多端学习工作台。**目标架构（[ADR-0001](docs/adr/0001-desktop-tri-platform-shared-kotlin.md)）：Windows / macOS / Linux 三端 + Android 共用一份 Kotlin Multiplatform + Compose Multiplatform 代码**——`:domain`（逻辑）+ `:shared-ui`（界面）共享，各端只是薄宿主。现状：`apps/android`（`:app` Android 宿主 + `:domain` + `:shared-ui` + `:desktop` 桌面宿主）· `apps/mac`（Swift/SwiftUI，功能最完整的原生端，**其最终处置待决**，见 ADR §5）· `shared/assets`（契约与底图）。
 
 **当前处于产品转向期**：预置知识库已退役（PR #70），知识内容改由用户剪藏/导入产生。规格见 [剪藏提炼复习设计规格](docs/CLIP_INGEST_DESIGN_2026-10.md)。**实现新功能前先读该规格，不要按 old seed 库时代的假设写代码。**
 
@@ -22,7 +22,7 @@ KnowFlick 是多端学习工作台：`apps/mac`（Swift/SwiftUI，完整功能�
    | --- | --- | --- |
    | `apps/mac/**` UI 层 | macOS | 云端 CI（无完整 Xcode 时）或本地 `./tools/test.sh` |
    | `apps/mac/**` Core | 任意机器可改 | `./tools/test.sh --core-only`（只需 CommandLineTools） |
-   | `apps/android/{domain,desktop}/**`（KMP 领域层 / CMP 桌面骨架） | 任意机器，**只需 JDK 17，不要 SDK** | `cd apps/android && ./gradlew :domain:jvmTest :desktop:test`（173 项） |
+   | `apps/android/{domain,shared-ui,desktop}/**`（共享逻辑 / 共享界面 / 桌面宿主） | 任意机器，**只需 JDK 17，不要 SDK** | `cd apps/android && ./gradlew :domain:jvmTest :shared-ui:jvmTest :desktop:test`（175 项） |
    | 其余 `apps/android/**` | 任意机器（JDK 17 + SDK） | `./tools/build_android.sh` |
    | `shared/**` 契约 | 任意机器，但**两端 CI 都要绿** | `python3 tools/check_taxonomy.py` |
    | Windows 端 | Windows | 视路线而定 |
@@ -47,7 +47,7 @@ KnowFlick 是多端学习工作台：`apps/mac`（Swift/SwiftUI，完整功能�
 ./tools/test.sh                    # mac 全量（需完整 Xcode）
 cd apps/mac && ./build_app.sh      # mac 打包
 ./tools/build_android.sh           # android：单测 + Lint + release + 签名校验
-cd apps/android && ./gradlew :domain:jvmTest :desktop:test   # 领域层 171 + 桌面骨架 2（只需 JDK 17，无需 SDK）
+cd apps/android && ./gradlew :domain:jvmTest :shared-ui:jvmTest :desktop:test   # 共享逻辑/界面 + 桌面宿主 175 项（只需 JDK 17，无需 SDK）
 ./tools/sync_shared_assets.sh      # 共享资源同步（两端测试脚本会自动调）
 python3 tools/check_taxonomy.py    # 三处学科契约一致性
 ```
@@ -59,7 +59,7 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
 - **临时产物写 `.scratch/<主题>/`**（已 gitignore），不要散落在仓库根目录；不要提交 `.scratch/` 内容。
 - 跨会话的结论要**落到仓库**（`docs/` 或代码注释），只写在 `.scratch/` 的结论另一台机器看不到。
 - 发布记录写 `docs/<端>_RELEASE_<版本>.md`；CHANGELOG 顶部对应端的分节登记。**两端的 CHANGELOG 与 docs 是同仓文件——这就是为什么禁止长期分叉分支，也是为什么改动要小步合回。**
-- 修改领域语言（新词条、口径变化）→ 同步更新 [CONTEXT.md](CONTEXT.md)；架构决策 → `docs/adr/`（当前为空，重大决策时首次启用）。
+- 修改领域语言（新词条、口径变化）→ 同步更新 [CONTEXT.md](CONTEXT.md)；架构决策 → `docs/adr/`（首个：[ADR-0001 桌面三端与 Android 共用一份代码](docs/adr/0001-desktop-tri-platform-shared-kotlin.md)）。
 
 ## 已知陷阱
 
@@ -67,7 +67,8 @@ python3 tools/check_taxonomy.py    # 三处学科契约一致性
 - **mac UI 层报 `SwiftUIMacros.StateMacro` 找不到 = 缺完整 Xcode**，不是代码问题，交给 CI。
 - **行尾**：仓库一律 LF（`.gitattributes` 管辖）。Windows 上 clone 后如果 `git status` 出现大范围假修改，先查 `git config core.autocrlf`——应为 `false`（或 `input`），不要设为 `true`。
 - **两个 workflow 路径过滤**：改 mac 不会触发 android CI、反之亦然。改了 `shared/**` 则两端 CI 都会跑——这是有意设计，因为契约漂移必须两端同抓。
-- **Gradle 任务要显式点名 `:domain:jvmTest` 与 `:desktop:test`**：领域层 171 项在 `apps/android/domain`（KMP），桌面骨架 2 项在 `apps/android/desktop`（CMP）——两者都不在 `:app` 的依赖图里，跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错，只是静默少跑。`tools/build_android.sh` 与 `android.yml` 已同步点名，改验证命令时别漏。
+- **Gradle 任务要显式点名 `:domain:jvmTest` / `:shared-ui:jvmTest` / `:desktop:test`**：这三个模块都不在 `:app` 的依赖图里，跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错，只是静默少跑。`tools/build_android.sh` 与 `android.yml` 已同步点名，改验证命令时别漏。
 - **新增 Gradle 模块必须同时更新三处**：`tools/build_android.sh`、`android.yml` 的测试步骤、以及 workflow 里「汇总测试结果」的 glob 路径——只改名不加汇总，CI 绿了但覆盖率已经掉了。
+- **搬文件进共享模块时不要改包名**：`:domain`（`com.knowflick.app.domain`）与 `:shared-ui`（`com.knowflick.app.ui`）都保持原包名，调用方 import 零改动。这是 12k 行 UI 能分批平移的前提，别为了「模块名好看」制造上千处 import 改动。
 - **`java.*` 不要放进 `:domain` 的 `commonMain`**：当前 `androidTarget + jvm` 组合下能编译通过，但那是元数据编译被跳过的副作用，加非 JVM target 即失效；含 `java.time`/`java.util` 的文件放 `jvmAndAndroidMain`（依据见 [KMP 探针结果](docs/windows-route/KMP_PROBE_RESULT.md)）。
 - 全仓扫描类工作**严禁 head 截断后下「清零」结论**（PR #45 教训）。
