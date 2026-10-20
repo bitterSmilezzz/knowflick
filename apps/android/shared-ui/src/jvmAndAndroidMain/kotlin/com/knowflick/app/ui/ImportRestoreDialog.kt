@@ -34,8 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.knowflick.app.data.ArchivePreview
-import com.knowflick.app.data.RestoreStrategy
+import com.knowflick.app.domain.ArchivePreview
+import com.knowflick.app.domain.RestoreStrategy
 import com.knowflick.app.domain.CardSource
 
 /**
