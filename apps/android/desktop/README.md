@@ -11,21 +11,51 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 | 共享界面层 | ✅ `implementation(project(":shared-ui"))`——**主界面直接渲染 `LibraryScreen`**，与 Android 端是同一份 Compose 代码 |
 | Compose 运行时 | ✅ CMP 1.8.2，与 Android 端 `compose-bom:2025.06.00`（`androidx.compose.*` = 1.8.2）逐号对齐 |
 | 离屏渲染测试 | ✅ `./gradlew :desktop:test`（2 项：领域层复用 + 共享整屏无头渲染） |
-| 三端目标 | ✅ 一份产物跑 Windows / macOS / Linux（jvm target；实际打包各端各出） |
+| 三端目标 | ✅ 一份产物跑 Windows / macOS / Linux（jvm target） |
+| 安装包 | ✅ 三端各出原生包（dmg / msi / deb），由 [desktop.yml](../../../.github/workflows/desktop.yml) 的三系统 matrix 构建并附 Release |
 | 平台动作 | ❌ 分享 / 文件选择 / 备份导出在桌面还是空实现 |
 | 卡库持久化 | ❌ 桌面侧还没有 data 层；`DomainBridge` 用示例卡验证链路 |
-| 打包分发 | ❌ 未接（`packageMsi` / `packageDmg` / `packageDeb` 需各端真机验证） |
+| 应用图标 | ❌ 未接入（三端各需 `.icns` / `.ico` / `.png`） |
 
 总目标与决策见 [ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)；
 界面分档进度见 [UI_EXTRACTION](../../../docs/windows-route/UI_EXTRACTION.md)。
 
-跑起来看骨架窗口：
+跑起来看窗口：
 
 ```sh
 cd apps/android
 ./gradlew :desktop:run          # 需要图形会话；测试用 headless，不进 CI 的窗口路径
 ./gradlew :desktop:test         # 只需 JDK 17——**不需要 Android SDK**
 ```
+
+## 打包与发布（一套开发，多处发布）
+
+```sh
+cd apps/android
+./gradlew :desktop:packageDmg   # macOS → build/compose/binaries/main/dmg/*.dmg（实测 65 MB）
+./gradlew :desktop:packageMsi   # Windows（要在 Windows 上跑）
+./gradlew :desktop:packageDeb   # Linux（要在 Linux 上跑）
+./gradlew :desktop:createDistributable   # 免安装的应用目录（三端都可用、无需额外打包工具）
+```
+
+**jpackage 不支持交叉编译**：三个包必须在各自系统上构建。发布不做三份配置，而是
+[desktop.yml](../../../.github/workflows/desktop.yml) 一份配置跑三台 runner，各自出包后统一命名附到同一个 Release
+（tag `desktop-v*`）。那个 workflow **刻意不装 Android SDK**，等于在 CI 上再证一次
+「桌面端独立于 Android 工具链」。
+
+打包时踩到的两条真实约束（都已写进注释，别当成配置错误）：
+
+1. **只有 macOS 的包版本要求 MAJOR > 0**（CI 实测：Windows/Linux 直接用产品版本 `0.1.0` 正常出包）——
+   macOS 会被 `0.1.0` 直接拒绝，所以 `macOS { packageVersion = "1.0.0" }` 是**打包器别名**；
+   对外一律用产品版本（tag、Release、附件名都用 `0.1.0`，发布流程里统一改名）。
+   三端产物命名因此不同：`KnowFlick-0.1.0.msi` / `knowflick_0.1.0-1_amd64.deb` / `KnowFlick-1.0.0.dmg`。
+2. **JDK 厂商检查** —— Compose 只认 Temurin/Corretto/Zulu，开发机的 Homebrew openjdk@17 会被拒；
+   `gradle.properties` 里为此关掉了检查，**但对外产物一律由 CI 用 Temurin 构建**，避免把开发机的
+   运行时打进包里。
+3. **安装器元数据必须纯 ASCII** —— jpackage 用平台默认字符集读自己的 `@argfile`，Windows runner
+   的 cp1252 遇到中文直接抛 `Input length = 1`（MalformedInputException），MSI 构建失败（实测踩过）。
+   所以 `description` 用英文；**同理，Windows 机器上的仓库路径也避免中文**（路径同样进 argfile）。
+   中文只留在产品界面里，安装器文案等 jpackage 支持按端覆盖再补。
 
 ## 为什么暂驻 `apps/android/` 构建内
 
