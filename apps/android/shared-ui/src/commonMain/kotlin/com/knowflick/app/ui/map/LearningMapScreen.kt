@@ -1,6 +1,5 @@
 package com.knowflick.app.ui.map
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -45,7 +43,8 @@ import com.knowflick.app.domain.StudyMap
 import com.knowflick.app.domain.StudyScope
 import com.knowflick.app.domain.SubjectRegistry
 import com.knowflick.app.ui.EditorialColor
-import com.knowflick.app.ui.common.HapticFeedbackHelper
+import com.knowflick.app.ui.common.PlatformBackHandler
+import com.knowflick.app.ui.common.rememberPlatformHaptics
 
 /**
  * 学习地图：学科 → 分支 → 难度 三级选择器，回答「我现在学什么」。
@@ -64,10 +63,10 @@ fun LearningMapScreen(
     onApplyScope: (StudyScope) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    val haptics = rememberPlatformHaptics()
     var openedSubject by rememberSaveable { mutableStateOf<String?>(null) }
 
-    BackHandler {
+    PlatformBackHandler {
         if (openedSubject != null) openedSubject = null else onBack()
     }
 
@@ -108,7 +107,7 @@ fun LearningMapScreen(
             }
             if (scope.isActive) {
                 TextMapButton("退出范围") {
-                    HapticFeedbackHelper.click(context)
+                    haptics.click()
                     onApplyScope(StudyScope.None)
                     onBack()
                 }
@@ -135,7 +134,7 @@ fun LearningMapScreen(
                         subtitle = "${progress.total} 张 · 已看 ${progress.seen} · 已掌握 ${progress.mastered} · ${progress.branchCount} 条支线",
                         ratio = if (progress.total > 0) progress.seen.toFloat() / progress.total else 0f,
                         onClick = {
-                            HapticFeedbackHelper.tick(context)
+                            haptics.tick()
                             openedSubject = progress.slug
                         },
                     )
@@ -155,7 +154,7 @@ fun LearningMapScreen(
                         branch = branch,
                         selected = branch.key in scope.branches,
                         onStudyOnly = {
-                            HapticFeedbackHelper.click(context)
+                            haptics.click()
                             onApplyScope(
                                 StudyScope(
                                     subjects = setOfNotNull(opened),
@@ -166,7 +165,7 @@ fun LearningMapScreen(
                             onBack()
                         },
                         onToggleMix = {
-                            HapticFeedbackHelper.tick(context)
+                            haptics.tick()
                             onApplyScope(
                                 scope.copy(
                                     subjects = if (scope.subjects.isEmpty()) scope.subjects else scope.subjects + opened,
@@ -182,7 +181,7 @@ fun LearningMapScreen(
                     branches = branches,
                     selectedLevels = scope.levels,
                     onPickLevel = { level ->
-                        HapticFeedbackHelper.click(context)
+                        haptics.click()
                         val next = if (level in scope.levels) scope.levels - level else scope.levels + level
                         onApplyScope(
                             scope.copy(

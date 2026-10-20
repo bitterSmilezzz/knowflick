@@ -14,6 +14,7 @@ import com.knowflick.app.domain.QuizRating
 import com.knowflick.app.domain.QuizSession
 import com.knowflick.app.domain.search.KnowledgeSearchEngine
 import com.knowflick.app.domain.search.SearchResultItem
+import com.knowflick.app.domain.StudyScope
 import com.knowflick.app.domain.search.SearchSourceFilter
 import com.knowflick.app.speech.SpeechSettings
 import com.knowflick.app.ui.PaperTheme
@@ -153,6 +154,27 @@ class DesktopHostState(
 
     /** 搜索结果置顶到卡堆（共享 CardStore 方法） */
     fun promoteToDeckTop(card: KnowledgeCard) = mutate { model.store.promoteToDeckTop(card) }
+
+    /**
+     * 学习地图：范围存在共享 `CardStore.studyScope`（与 Android 同一处状态），
+     * 地图屏与 `StudyMap` 计算都在共享层——桌面端只负责导航与落盘。
+     */
+    var showingMap by mutableStateOf(false)
+        private set
+
+    val studyScope: StudyScope get() = model.store.studyScope
+
+    fun openMap() {
+        showingMap = true
+        version++
+    }
+
+    fun closeMap() {
+        showingMap = false
+        version++
+    }
+
+    fun applyStudyScope(scope: StudyScope) = mutate { model.store.studyScope = scope }
 
     /** 正在查看设置页 */
     var showingSettings by mutableStateOf(false)

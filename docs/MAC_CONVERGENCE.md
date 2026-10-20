@@ -33,7 +33,7 @@
 | 音效 | `AudioEffectManager` | ✅ 接缝 `PlatformSounds` | Android 用合成音；桌面 no-op（**桌面未设计音效**，属可接受的端差） |
 | 全局搜索 | `GlobalSearchModalView` 610 | ✅ `SearchSheet` | 检索引擎与历史都在共享层，桌面端可用 |
 | 知识图谱 | `KnowledgeGraphView` 727 | ❌ | 引擎 `graph/*` 已在 `:domain`，但渲染用 `android.graphics.Paint` 在 Canvas 上量文字——**要迁移得先改写绘制层**（`TextMeasurer`/`DrawScope`） |
-| 学习地图 | `LearningMapView` 333 | ❌ | `StudyScope` 已共享，**地图 UI 未迁** |
+| 学习地图 | `LearningMapView` 333 | ✅ `LearningMapScreen` | `StudyScope`/`StudyMap` 与范围状态都在共享层，桌面端可用 |
 | 局域网同步 | `SyncSheetView` 528 + `SyncClient/Server/Protocol` | ❌ | 见 ADR 待决 2：四端之后是否沿用同一协议需单独设计，**不要为每端各写一套同步** |
 | 网页剪藏 | `WebClipModalView` 371 + `WebClipFetcher` | ⚠️ | 引擎 `WebClipEngine` 已共享；`WebClipFetcher`（114 行）已可搬；**剪藏面板 UI 未迁** |
 | 笔记导入 | `ImportNotesModalView` 633 | ⚠️ | 归档导入共享（`ArchiveImportManager`）；**「笔记 → 卡片」流程 UI 未迁** |
@@ -45,13 +45,13 @@
 | 帮助 | `HelpView` | ❌ | 纯文案页，**最容易补的一行** |
 | 凭据存储 | `KeychainHelper` | 🔒 | 各端各写：Android Keystore / 桌面 0600 明文文件（**未接 OS 钥匙串**，单列技术债） |
 
-**统计**：22 项能力里 **9 项已对等**、6 项部分对等、5 项未对等、2 项属平台能力。
+**统计**：22 项能力里 **10 项已对等**、6 项部分对等、4 项未对等、2 项属平台能力。
 
 ## 3. 退役前置条件（exit criteria）
 
 按 ADR 的口径，**四项全满足**才谈退役；当前进度如下：
 
-1. **用户可见能力对等** —— 9/22 对等，还差图谱、地图、同步、剪藏/笔记/导出三个面板、聊天 UI、帮助（见上表）。
+1. **用户可见能力对等** —— 10/22 对等，还差图谱、同步、剪藏/笔记/导出三个面板、聊天 UI、帮助（见上表）。
 2. **数据兼容可往返** —— ✅ 已验：两端数据目录结构一致（`cards.json` + 备份轮转），桌面端导入 `.zip`/`.json` 走的是与 Android 同一份 `ArchiveImportManager`；mac 侧卡库格式与共享端同为 `cards.json`。
    仍需补：**mac → 桌面端的一次真实迁移演练**（拿 mac 端产出的库文件在桌面端打开并核对卡片数与学习进度）。
 3. **三系统发布通道可用** —— ✅ 构建与打包已验证（`desktop.yml` 三台 runner 各出安装包，产物已内嵌图标）；

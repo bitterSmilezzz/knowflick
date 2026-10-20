@@ -22,6 +22,7 @@ import com.knowflick.app.ui.DeckScreen
 import com.knowflick.app.ui.DetailScreen
 import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.LibraryScreen
+import com.knowflick.app.ui.map.LearningMapScreen
 import com.knowflick.app.ui.PaperTheme
 import com.knowflick.app.ui.QuizScreen
 import com.knowflick.app.ui.SearchSheet
@@ -44,6 +45,7 @@ fun main() = application {
                 Item("收藏阁", onClick = { state.openLibrary() })
                 Item("学习统计", onClick = { state.openStats() })
                 Item("全局搜索…", onClick = { state.openSearch() })
+                Item("学习地图…", onClick = { state.openMap() })
                 Item("设置…", onClick = { state.openSettings() })
                 Separator()
                 Item("知识测验（10 张）", onClick = { state.startQuiz() })
@@ -122,6 +124,16 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     relatedCards = RelatedCards.pick(detailCard, model.store.cards),
                     onSelectRelatedCard = { related -> state.openDetail(related.id) },
                     onOpenChat = { state.showNotice("卡片追问尚未在桌面端接线") },
+                )
+            }
+
+            state.showingMap -> key(state.version) {
+                // 学习地图：与 Android 端同一份 LearningMapScreen（范围状态也在共享 CardStore 里）
+                LearningMapScreen(
+                    cards = model.store.cards,
+                    scope = state.studyScope,
+                    onBack = state::closeMap,
+                    onApplyScope = state::applyStudyScope,
                 )
             }
 
@@ -227,7 +239,8 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onOpenSearch = state::openSearch,
                     onOpenSettings = state::openSettings,
                     onOpenGraph = { state.showNotice("知识图谱尚未迁入共享模块") },
-                    onOpenMap = { state.showNotice("学习地图尚未迁入共享模块") },
+                    onOpenMap = state::openMap,
+                    studyScopeLabel = state.studyScope.describe(),
                     onOpenSync = { state.showNotice("局域网同步尚未在桌面端接线") },
                     onOpenClip = { state.showNotice("网页剪藏尚未在桌面端接线") },
                     // AI 生成：与 Android 端同一份 :domain `AiService`，密钥来自桌面凭据文件
@@ -242,7 +255,7 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
 
         // 刷卡页自带 notice 区域（DeckScreen 的 notice 参数），宿主不再重复弹一条
         val onDeck = quizSession == null && detailCard == null && !state.showingSettings &&
-            !state.showingStats && !state.showingLibrary && !state.showingSearch
+            !state.showingStats && !state.showingLibrary && !state.showingSearch && !state.showingMap
         state.notice?.takeIf { !onDeck }?.let { message ->
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp),
