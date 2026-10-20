@@ -164,9 +164,11 @@ class ChatStateHolder(
                         list[index] = msg.copy(isStreaming = false)
                         val finalSession = current.copy(messages = list, updatedAt = System.currentTimeMillis())
                         currentSession = finalSession
-                        scope.launch(Dispatchers.IO) {
-                            storage.saveSession(finalSession)
-                        }
+                        // 先落盘再宣告结束：saveSession 是阻塞调用（非 suspend），
+                        // 放在这里同步执行，保证 isStreaming 变 false 时文件已经写好。
+                        // 原先写成 scope.launch 即发即忘，导致「流式已结束」不等于「已保存」，
+                        // 紧接着读取的调用方（含测试）会读到 null。
+                        runCatching { storage.saveSession(finalSession) }
                     }
                     isStreaming = false
                 }
@@ -187,9 +189,11 @@ class ChatStateHolder(
                         }
                         val finalSession = current.copy(messages = list, updatedAt = System.currentTimeMillis())
                         currentSession = finalSession
-                        scope.launch(Dispatchers.IO) {
-                            storage.saveSession(finalSession)
-                        }
+                        // 先落盘再宣告结束：saveSession 是阻塞调用（非 suspend），
+                        // 放在这里同步执行，保证 isStreaming 变 false 时文件已经写好。
+                        // 原先写成 scope.launch 即发即忘，导致「流式已结束」不等于「已保存」，
+                        // 紧接着读取的调用方（含测试）会读到 null。
+                        runCatching { storage.saveSession(finalSession) }
                     }
                 }
             }
