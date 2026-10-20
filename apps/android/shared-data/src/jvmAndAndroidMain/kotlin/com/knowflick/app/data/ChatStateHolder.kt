@@ -15,6 +15,9 @@ import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -47,6 +50,20 @@ class ChatStateHolder(
         internal set
     var currentSession: CardChatSession? by mutableStateOf(null)
         internal set
+    /**
+     * 会话消息的读-改-写互斥锁。
+     *
+     * **为什么需要**：流式增量原先用 `scope.launch(stateDispatcher)` 逐条起协程，
+     * 在多线程调度器（桌面端注入 `Dispatchers.Default`）上彼此并行、
+     * 与「流结束」块之间也没有先后保证——「完成」可能插在两条增量中间跑，
+     * 先把 `isStreaming` 置 false，最后一条增量随后才拼上，表现为「答案被截断」，
+     * 且是否触发完全取决于线程调度，是典型的 flaky。
+     *
+     * 修法：所有消息突变都在这把锁里做；增量在回调里**就地**落锁执行，
+     * 保证 `streamCardChat` 返回时全部增量已经拼完，「完成」块天然排在最后。
+     */
+    private val sessionMutex = Mutex()
+
     var isStreaming: Boolean by mutableStateOf(false)
         internal set
     var errorMessage: String? by mutableStateOf(null)
@@ -129,23 +146,19 @@ class ChatStateHolder(
                     settings = settingsProvider(),
                     apiKey = key,
                     onDelta = { delta ->
-                        scope.launch(stateDispatcher) {
-                            val current = currentSession ?: return@launch
-                            val index = current.messages.indexOfFirst { it.id == assistantMsgId }
-                            if (index >= 0) {
-                                val msg = current.messages[index]
-                                val newMsg = msg.copy(content = msg.content + delta)
-                                val list = current.messages.toMutableList()
-                                list[index] = newMsg
-                                currentSession = current.copy(messages = list)
+                        // 就地落锁：streamCardChat 的回调是顺序调用的，
+                        // 在回调里同步完成突变，返回时增量必然全部就位。
+                        runBlocking {
+                            sessionMutex.withLock {
+                                appendDelta(assistantMsgId, delta)
                             }
                         }
                     },
                 )
-                withContext(stateDispatcher) {
-                    val current = currentSession ?: return@withContext
-                    val index = current.messages.indexOfFirst { it.id == assistantMsgId }
-                    if (index >= 0) {
+                sessionMutex.withLock {
+                    val current = currentSession
+                    val index = current?.messages?.indexOfFirst { it.id == assistantMsgId } ?: -1
+                    if (current != null && index >= 0) {
                         val msg = current.messages[index]
                         val list = current.messages.toMutableList()
                         list[index] = msg.copy(isStreaming = false)
@@ -160,12 +173,12 @@ class ChatStateHolder(
             } catch (_: CancellationException) {
                 // 协程取消正常终止，保留已产出片段
             } catch (e: Throwable) {
-                withContext(stateDispatcher) {
+                sessionMutex.withLock {
                     isStreaming = false
                     errorMessage = e.message ?: "AI 追问失败，请重试"
-                    val current = currentSession ?: return@withContext
-                    val index = current.messages.indexOfFirst { it.id == assistantMsgId }
-                    if (index >= 0) {
+                    val current = currentSession
+                    val index = current?.messages?.indexOfFirst { it.id == assistantMsgId } ?: -1
+                    if (current != null && index >= 0) {
                         val list = current.messages.toMutableList()
                         if (list[index].content.isEmpty()) {
                             list.removeAt(index)
@@ -181,6 +194,17 @@ class ChatStateHolder(
                 }
             }
         }
+    }
+
+    /** 在锁内把一条增量拼到指定助手消息上（仅 sessionMutex 持有者可调用）。 */
+    private fun appendDelta(assistantMsgId: String, delta: String) {
+        val current = currentSession ?: return
+        val index = current.messages.indexOfFirst { it.id == assistantMsgId }
+        if (index < 0) return
+        val msg = current.messages[index]
+        val list = current.messages.toMutableList()
+        list[index] = msg.copy(content = msg.content + delta)
+        currentSession = current.copy(messages = list)
     }
 
     /** 终止当前流式生成（保留已生成的部分回复） */
