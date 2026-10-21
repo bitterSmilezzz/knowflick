@@ -192,7 +192,8 @@ interface BrainDrawerProps {
 interface Message {
   role: "user" | "assistant";
   content: string;
-  cited?: KnowledgeCard[];
+  /** 引用：只留卡片 id 与当时的标题。整张卡存进来会在卡片被删后指向不存在的条目。 */
+  cited?: Array<{ id: string; headline: string }>;
 }
 
 const CHAT_STORE_KEY = "knowflick.workspace.chat";
@@ -221,7 +222,17 @@ function loadChat(): Message[] {
       const row = item as Record<string, unknown>;
       const role = row.role === "user" || row.role === "assistant" ? row.role : null;
       if (!role || typeof row.content !== "string" || !row.content.trim()) return [];
-      return [{ role, content: row.content, cited: Array.isArray(row.cited) ? (row.cited as KnowledgeCard[]) : undefined }];
+      const cited = Array.isArray(row.cited)
+        ? row.cited.flatMap((item): Array<{ id: string; headline: string }> => {
+          if (!item || typeof item !== "object") return [];
+          const cite = item as Record<string, unknown>;
+          if (typeof cite.id !== "string" || !cite.id) return [];
+          return [{ id: cite.id, headline: typeof cite.headline === "string" ? cite.headline : "未命名卡片" }];
+        })
+        : undefined;
+      // 旧版本存的是整张卡片对象；按 id/headline 取出来即可，
+      // 不能因为格式升级就让用户看不到历史引用。
+      return [{ role, content: row.content, cited }];
     });
     return messages.length ? messages : [greetingMessage];
   } catch {
@@ -333,7 +344,7 @@ export function BrainAssistantDrawer({
           content: `检索到 ${matched.length} 张相关知识卡（在桌面客户端连接大模型可获得智能合成回答）：\n\n${matched
             .map((c, i) => `【卡片 ${i + 1}】${c.headline}\n${c.details.slice(0, 100)}...`)
             .join("\n\n")}`,
-          cited: matched,
+          cited: matched.map((card) => ({ id: card.id, headline: card.headline })),
         },
       ]);
       setLoading(false);
@@ -385,7 +396,7 @@ export function BrainAssistantDrawer({
         {
           role: "assistant",
           content: resp,
-          cited: matched,
+          cited: matched.map((card) => ({ id: card.id, headline: card.headline })),
         },
       ]);
     } catch (err) {
@@ -444,16 +455,28 @@ export function BrainAssistantDrawer({
                 {m.cited && m.cited.length > 0 ? (
                   <div className="ws-chat-citations">
                     <span className="ws-cite-title">参考卡片：</span>
-                    {m.cited.map((c, i) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="ws-cite-chip"
-                        onClick={() => onOpenCard(c.id)}
-                      >
-                        [{i + 1}] {c.headline}
-                      </button>
-                    ))}
+                    {m.cited.map((c, i) => {
+                      // 卡片可能已被删除。点击不存在的 id 会静默跳到别的卡片，
+                      // 比报错更糟——所以这里标出来并禁用。
+                      const alive = cards.find((card) => card.id === c.id);
+                      if (!alive) {
+                        return (
+                          <span key={c.id} className="ws-cite-chip ws-cite-gone" aria-disabled="true">
+                            [{i + 1}] {c.headline}（已删除）
+                          </span>
+                        );
+                      }
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className="ws-cite-chip"
+                          onClick={() => onOpenCard(c.id)}
+                        >
+                          [{i + 1}] {alive.headline}
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : null}
               </div>

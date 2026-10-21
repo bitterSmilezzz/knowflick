@@ -96,7 +96,67 @@ try {
   await check("!document.body.innerText.includes('我记录过哪些 SQLite 索引的要点？')", "清空后不再显示旧问题");
   await check("document.body.innerText.includes('我是你的知识库助手')", "清空后回到问候语");
 
-  // 3. 认知简报：不依赖模型也能出结构化内容
+  // 3. 旧格式（整张卡片对象）也能读出来，升级不该让历史引用消失
+  await b("eval", `(() => {
+    const alive = { id: "legacy-cite", category: "计算机", headline: "旧格式引用", summary: "s", details: "d",
+      links: [], tags: [], source: "imported", createdAt: Date.now(), editedAt: null, seenAt: Date.now(),
+      swiped: null, isFavorite: false, favoritedAt: null, reviewCount: 0, masteryLevel: 0,
+      lastReviewedAt: null, repetition: 0, intervalDays: 0, easeFactor: 2.5, stability: 0, difficulty: 0,
+      subject: null, branch: null, level: null, track: null, orderKey: null, prereq: [] };
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    raw.cards = [alive];
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    localStorage.setItem('knowflick.workspace.chat', JSON.stringify([
+      { role: "assistant", content: "你好！我是你的知识库助手。我会基于你收集的卡片检索事实，回答你的提问并指出引用来源。" },
+      { role: "assistant", content: "旧格式的回答。", cited: [alive] },
+    ]));
+    return true;
+  })()`);
+  await b("open", url);
+  await new Promise(r => setTimeout(r, 900));
+  await goTo("知识问答");
+  await check("document.body.innerText.includes('旧格式引用')", "旧格式的整卡引用仍能显示");
+  await check("!document.body.innerText.includes('已删除')", "旧格式里仍存在的卡片不该标成已删除");
+
+  // 4. 引用指向已删除的卡片：不能静默跳到别的卡
+  await b("eval", `(() => {
+    const now = Date.now();
+    const alive = { id: "cite-alive", category: "计算机", headline: "还在的卡", summary: "s", details: "d",
+      links: [], tags: [], source: "imported", createdAt: now, editedAt: null, seenAt: now, swiped: null,
+      isFavorite: false, favoritedAt: null, reviewCount: 0, masteryLevel: 0, lastReviewedAt: null,
+      repetition: 0, intervalDays: 0, easeFactor: 2.5, stability: 0, difficulty: 0, subject: null,
+      branch: null, level: null, track: null, orderKey: null, prereq: [] };
+    const gone = { ...alive, id: "cite-gone", headline: "已被删除的卡" };
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    raw.cards = [alive];
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    localStorage.setItem('knowflick.workspace.chat', JSON.stringify([
+      { role: "assistant", content: "你好！我是你的知识库助手。我会基于你收集的卡片检索事实，回答你的提问并指出引用来源。" },
+      { role: "user", content: "之前问过的问题" },
+      { role: "assistant", content: "依据你之前的记录。", cited: [gone, alive] },
+    ]));
+    return true;
+  })()`);
+  await b("open", url);
+  await new Promise(r => setTimeout(r, 900));
+  await goTo("知识问答");
+  await check("document.querySelectorAll('.ws-cite-chip').length === 2", "引用列表保留两条");
+  await check(
+    "document.body.innerText.includes('已被删除')",
+    "已删除的引用要标出来"
+  );
+  await ev("(() => { const chip = [...document.querySelectorAll('.ws-cite-chip')].find(c => c.textContent.includes('已被删除')); if (chip) chip.click(); return !!chip; })()");
+  await new Promise(r => setTimeout(r, 800));
+  await check(
+    "document.querySelector('.ws-reader h1')?.textContent !== '还在的卡'",
+    "点已删除的引用不会静默跳到别的卡片"
+  );
+  await check(
+    "document.body.innerText.includes('已删除')",
+    "点已删除的引用有明确说明"
+  );
+
+  // 4. 认知简报：不依赖模型也能出结构化内容
   await seed(false);
   await goTo("认知简报");
   await check("document.body.innerText.includes('认知洞察简报')", "简报页有标题");

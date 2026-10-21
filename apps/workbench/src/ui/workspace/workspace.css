@@ -1013,6 +1013,15 @@ select {
 }
 .ws-danger-text { font-size: var(--text-meta); font-weight: 600; }
 
+/* 引用卡片已被删除：标出来且不可点，避免点进去静默跳到别的卡。 */
+.ws-cite-gone {
+  opacity: .7;
+  text-decoration: line-through;
+  cursor: default;
+  background: transparent;
+  border-style: dashed;
+}
+
 /* 对话操作行：说明持久化行为，并给出清空入口。 */
 .ws-brain-chat-actions {
   display: flex;
