@@ -162,6 +162,38 @@ trap 兜底卸载 → 确认进程真的起来。
 - 只留最近 **40 轮**；写入失败（存储满）只放弃持久化，对话仍在内存里。
 - 有对话时提供「清空对话」，并说明「对话会保存在本机」——有持久化就必须有清空的出口。
 
+### 跨端契约 `cards.json` 实际是断的
+
+扫未引用符号时本来打算清死代码，查文档发现 `save_cards` / `export_archive` 在
+CHANGELOG 与文档里被提到，是 ADR-0002 §3 的跨端契约，**不能删**。顺着查下去
+发现了真问题。
+
+[ADR-0002 §3](../../docs/adr/0002-desktop-web-split-from-android.md) 承诺：「两套共享
+同一份 `cards.json`、拷过去就能打开，中间不经转换」。
+
+| 事实 | 后果 |
+| --- | --- |
+| Android 端仍在用 `cards.json`（原子写 + 备份轮转），导入也支持 | 契约在安卓侧是活的 |
+| 工作台早已把卡片搬进 SQLite，**不再写那个文件** | 契约在桌面侧断了 |
+| `export_cards_json` 只读磁盘上的 `cards.json`，而该文件不存在（库里只有 `knowflick.db`） | **导出的永远是 `[]`** |
+| 命令在 bridge 里存在，**界面上没有任何入口** | 用户根本拿不到这份文件 |
+
+**这条契约断了两层**：读不到数据 + 没有出口。
+
+修法：
+
+- 新增 `read_cards_json_text`：优先从 SQLite 导出与安卓同格式的裸数组；库里没有
+  卡片时退回旧 `cards.json`（未迁移的库仍能导出）。`export_archive` 同源。
+- 设置页「数据主权与开放导出」新增「导出 cards.json（给安卓用）」；桌面端可导出，
+  浏览器体验没有本地文件系统，改为**说明原因**而不是让按钮凭空消失。
+- 导出后回执指明用途：「把它放到安卓端的数据目录即可打开」。
+
+Rust 单测锁住契约：SQLite 里的卡能被导出且是裸数组线格式；未迁移的库仍能从旧
+`cards.json` 导出。
+
+**教训**：扫「未引用符号」本来是要清死代码的，结果查文档才发现它们是活的契约。
+删之前先查文档与历史——「没人调用」不等于「该删」。
+
 ### 「统计」是 ADR 承诺过、命令早就在的功能，界面却没有
 
 [ADR-0002](../../docs/adr/0002-desktop-web-split-from-android.md) 把「统计」列进第一版
@@ -418,7 +450,7 @@ grep 只用来读摘要，判断"是否通过"必须看 `exit=`。
 ## 十二、验证
 
 ```
-./tools/verify_workbench.sh          前端 262 项 + Rust 74 项 + shell lint
+./tools/verify_workbench.sh          前端 262 项 + Rust 76 项 + shell lint
 node tools/import_ui_smoke.mjs       17 项（坏文件隔离 / 图片 / PPT / 去重 / 跳过说明）
 node tools/taste_usability_gate.mjs  16 项（含搜索命中摘要与第二条链接）
 node tools/review_ui_smoke.mjs      9 项（复习计划 / 空态出口 / 评分写回）
