@@ -27,6 +27,8 @@ export interface WorkspaceSettingsProps {
   onRestoreKfBackup?: () => void;
   /** 导出与安卓同格式的 cards.json（跨端契约）。 */
   onExportCardsJson?: () => void;
+  /** 导出 Anki TSV（与安卓端同格式，可直接导入 Anki）。 */
+  onExportAnkiTsv?: () => void;
 }
 
 export function WorkspaceSettings({
@@ -41,6 +43,7 @@ export function WorkspaceSettings({
   onExportKfBackup,
   onRestoreKfBackup,
   onExportCardsJson,
+  onExportAnkiTsv,
 }: WorkspaceSettingsProps) {
   const [draftSettings, setDraftSettings] = useState<AiSettings>(file.settings);
   const [draftKey, setDraftKey] = useState(apiKey);
@@ -492,6 +495,14 @@ export function WorkspaceSettings({
                   <button
                     type="button"
                     className="ws-bordered"
+                    data-action="export-anki-tsv"
+                    onClick={onExportAnkiTsv}
+                  >
+                    导出 Anki 词表 (.tsv)
+                  </button>
+                  <button
+                    type="button"
+                    className="ws-bordered"
                     data-action="export-kfbackup"
                     onClick={onExportKfBackup}
                   >
@@ -523,7 +534,8 @@ export function WorkspaceSettings({
                 <p className="ws-hint" style={{ margin: 0 }}>
                   Markdown 归档带 YAML Frontmatter，按分类与收件箱分目录，可直接在 Obsidian 打开；
                   `.kfbackup` 是含清单、校验和与全部层级（素材 / 卡片 / 设置 / 认知产物）的完整备份，可无损还原；
-                  `cards.json` 是与安卓端同一份线格式，拷过去就能打开。
+                  `cards.json` 是与安卓端同一份线格式，拷过去就能打开；
+                  `.tsv` 是 Anki 可直接导入的词表（正面主张 / 背面解析 / 分类）。
                 </p>
               </div>
             </section>

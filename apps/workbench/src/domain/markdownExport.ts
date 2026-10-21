@@ -276,6 +276,35 @@ export function createZipArchive(
 /**
  * 触发下载带 YAML Frontmatter 的 Markdown 知识库压缩包
  */
+/**
+ * 导出 Anki TSV：正面核心主张，背面机理解析。
+ *
+ * 格式与 Android 端的 `CardExportEngine.exportAnkiTSV` **逐字段一致**
+ * （front / back / category 三列，制表符与换行替换成空格）——
+ * 两端产出的文件能互相导入，同一份卡在哪边导出的都能在另一边用。
+ */
+export function exportAnkiTsv(cards: KnowledgeCard[]): string {
+  const lines = ["front\tback\tcategory"];
+  for (const card of cards) {
+    const front = card.headline.replace(/\t/g, " ").replace(/\n/g, " ");
+    // 背面也要换掉换行：Android 端原来只换制表符，多行正文会把 TSV 撑成多行。
+    const back = card.details.replace(/\t/g, " ").replace(/\n/g, " ");
+    lines.push(`${front}\t${back}\t${card.category || "未分类"}`);
+  }
+  return lines.join("\n");
+}
+
+/** 触发浏览器下载 Anki TSV。 */
+export function downloadAnkiTsv(cards: KnowledgeCard[]): void {
+  const blob = new Blob([exportAnkiTsv(cards)], { type: "text/tab-separated-values;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `knowflick-anki-${new Date().toISOString().slice(0, 10)}.tsv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function downloadMarkdownVault(
   materials: RawMaterial[],
   cards: KnowledgeCard[]

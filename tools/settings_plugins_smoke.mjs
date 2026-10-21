@@ -63,6 +63,15 @@ try {
     "document.body.innerText.includes('安卓')",
     "说明这个文件是给安卓端用的"
   );
+  // Anki 词表：安卓端早就有，桌面端补上——同一份卡能带去别的复习工具
+  await check(
+    '!!document.querySelector(\'[data-action="export-anki-tsv"]\')',
+    "设置页有导出 Anki 词表的入口"
+  );
+  await check(
+    "document.body.innerText.includes('Anki')",
+    "说明这是给 Anki 用的"
+  );
 
   // 官方插件矩阵
   await check('document.querySelectorAll("[data-plugin-toggle]").length === 6', "六个官方插件都渲染出开关");

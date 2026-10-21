@@ -46,7 +46,7 @@ import {
   storeMaterial,
   storePreferences,
 } from "./repository";
-import { downloadMarkdownVault } from "../../domain/markdownExport";
+import { downloadAnkiTsv, downloadMarkdownVault } from "../../domain/markdownExport";
 import { downloadKfBackup, restoreKfBackup } from "../../domain/systemBackup";
 import { highlightText, extractSnippet } from "./HighlightText";
 import { Icon, sourceLabel, useSystemAppearance } from "./Icon";
@@ -1927,6 +1927,11 @@ export function Workspace() {
                   }}
                   onRestoreKfBackup={() => restoreRef.current?.click()}
                   onExportCardsJson={inShell() ? () => void exportCardsJsonForAndroid(dir) : undefined}
+                  onExportAnkiTsv={() => {
+                    // Anki 词表是纯文本，浏览器里也能直接下载。
+                    downloadAnkiTsv(cards);
+                    setNotice(`已导出 ${cards.length} 张卡片的 Anki 词表 (.tsv)`);
+                  }}
                   onSave={async (next, key, enabled) => {
                     const updated = {
                       ...next,

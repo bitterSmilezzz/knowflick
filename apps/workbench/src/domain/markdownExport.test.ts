@@ -4,6 +4,7 @@ import {
   markdownToCardPartial,
   generateMarkdownVault,
   createZipArchive,
+  exportAnkiTsv,
 } from "./markdownExport";
 import { extractFileFromZip } from "./documentParser";
 import { cardFromJson } from "./card";
@@ -140,5 +141,35 @@ describe("导出选中的子集", () => {
 
   it("选中为空时产出空集，不误导出全库", () => {
     expect(generateMarkdownVault([], [])).toHaveLength(0);
+  });
+});
+
+describe("导出 Anki TSV（与安卓端同一格式）", () => {
+  const card = (id: string, headline: string, details: string, category = "计算机") => cardFromJson({
+    id, headline, summary: "摘要", details, category, createdAt: 1,
+  });
+
+  it("表头是 front / back / category", () => {
+    const tsv = exportAnkiTsv([card("c1", "标题", "正文")]);
+    expect(tsv.split("\n")[0]).toBe("front\tback\tcategory");
+  });
+
+  it("一张卡一行：正面标题、背面正文、分类", () => {
+    const tsv = exportAnkiTsv([card("c1", "复购率更重要", "获取成本更高", "商业")]);
+    const lines = tsv.split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("复购率更重要\t获取成本更高\t商业");
+  });
+
+  it("制表符与换行被替换成空格——否则会破坏 TSV 列结构", () => {
+    const tsv = exportAnkiTsv([card("c1", "有\t制表符", "第一行\n第二行")]);
+    const lines = tsv.split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain("有 制表符");
+    expect(lines[1]).toContain("第一行 第二行");
+  });
+
+  it("空卡片列表只有表头", () => {
+    expect(exportAnkiTsv([])).toBe("front\tback\tcategory");
   });
 });
