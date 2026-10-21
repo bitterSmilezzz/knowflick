@@ -1823,9 +1823,14 @@ export function Workspace() {
               onArchive={() =>
                 act(async () => {
                   const m = selected.original as RawMaterial;
+                  // 归档是「处理完了」，状态写 processed。
+                  // 原先写的是 dismissed——而 dismissed 是用户**明确忽略**的语义，
+                  // 来源洞察会据此给这个来源降权：用户只是归档了一份材料，
+                  // 并不表示讨厌它的来源。而且提示写「已归档」、状态却是
+                  // 「已忽略」，两处自相矛盾。
                   await updateMaterial({
                     ...m,
-                    inboxStatus: m.inboxStatus === "inbox" ? "dismissed" : "inbox",
+                    inboxStatus: m.inboxStatus === "inbox" ? "processed" : "inbox",
                     updatedAt: Date.now(),
                   });
                   setNotice(

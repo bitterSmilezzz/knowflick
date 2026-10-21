@@ -148,7 +148,19 @@ try {
   assert.equal(inSettings, false, "返回按钮应回到知识库主页");
   pass(12, "离开设置页顺利返回");
 
-  console.log("\nUsability journey smoke: 12 checks passed.");
+  // 13. 空库时每个页面都要说清「这是什么、接下来做什么」——空白页是最差的空态
+  await browser("eval", "(()=>{localStorage.clear();sessionStorage.clear();return 1})()");
+  await browser("open", url);
+  await new Promise((r) => setTimeout(r, 1200));
+  for (const [nav, keyword] of [["认知简报", "简报"], ["产物库", "产物"], ["统计", "统计"]]) {
+    await browser("eval", `(()=>{const el=[...document.querySelectorAll('.ws-nav-row')].find(x=>x.textContent.includes(${JSON.stringify(nav)}));if(el)el.click();return 1})()`);
+    await new Promise((r) => setTimeout(r, 700));
+    const text = await evaluate("document.body.innerText");
+    assert.ok(text.includes(keyword), `${nav} 空库时应说明自己是什么（期望出现「${keyword}」）`);
+  }
+  pass(13, "空库时各页面都有说明而不是空白");
+
+  console.log("\nUsability journey smoke: 13 checks passed.");
 } finally {
   await browser("close").catch(() => {});
 }

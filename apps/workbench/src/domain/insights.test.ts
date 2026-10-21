@@ -99,3 +99,29 @@ describe("来源洞察", () => {
     expect(sourceKeyOf(broken)).toBe("email");
   });
 });
+
+describe("归档不等于讨厌来源", () => {
+  it("归档（processed）不会给来源降权", () => {
+    const now = Date.now();
+    const archived: RawMaterial = { id: "m1", sourceType: "email", title: "标题", sourceUrl: null,
+      rawText: "正文", contentHash: "", mediaPath: null, mediaSizeBytes: 0,
+      metadataJson: JSON.stringify({ from: "sender@example.test" }), inboxStatus: "processed",
+      createdAt: now, updatedAt: now };
+    const { ranked } = sourceInsights({ materials: [archived], cards: [], now });
+    const sender = ranked.find(profile => profile.key === "sender:sender@example.test");
+    expect(sender?.ignored ?? 0).toBe(0);
+    expect(sender?.score ?? 0).toBeGreaterThan(0);
+  });
+
+  it("明确忽略（dismissed）才会给来源降权", () => {
+    const now = Date.now();
+    const ignored: RawMaterial = { id: "m1", sourceType: "email", title: "标题", sourceUrl: null,
+      rawText: "正文", contentHash: "", mediaPath: null, mediaSizeBytes: 0,
+      metadataJson: JSON.stringify({ from: "sender@example.test" }), inboxStatus: "dismissed",
+      createdAt: now, updatedAt: now };
+    const { ranked } = sourceInsights({ materials: [ignored], cards: [], now });
+    const sender = ranked.find(profile => profile.key === "sender:sender@example.test");
+    expect(sender?.ignored).toBe(1);
+    expect(sender?.score).toBe(0);
+  });
+});

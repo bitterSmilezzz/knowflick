@@ -177,6 +177,20 @@ try {
   await browser("press", "Escape");
   await browser("set", "viewport", "1040", "760");
 
+  // 归档的语义：处理完了 ≠ 讨厌这个来源。
+  // 归档曾被写成 dismissed，而来源洞察把 dismissed 当负面信号降权——
+  // 于是用户只是归档了一份邮件，这个发件人就被降权了。
+  await check(
+    `(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1'));
+      const m = (raw.materials || []).find(x => x.inboxStatus !== 'inbox');
+      return !!m && m.inboxStatus === 'processed'; })()`,
+    "归档用 processed 而不是 dismissed（处理完 ≠ 讨厌来源）"
+  );
+  await check(
+    "!document.body.innerText.includes('素材已归档')",
+    "归档后不谎称状态名（归档≠忽略）"
+  );
+
   // 订阅来源在收件箱里要认得出来（否则「来源」只是入口，不是可用的维度）
   await browser("eval", `(() => {
     const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
