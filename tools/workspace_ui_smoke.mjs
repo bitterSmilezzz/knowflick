@@ -164,6 +164,77 @@ try {
   await browser("press", "Escape");
   await browser("set", "viewport", "1040", "760");
 
+  // 批量操作：⌘/Ctrl 多选后可一次打标
+  // 先补第二张卡——只靠前面流程产出一张，带条件的分支会永远不执行，
+  // 断言就成了摆设。
+  await browser("eval", `(() => {
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    const cards = raw.cards || [];
+    if (cards.length < 2) {
+      const base = cards[0] || {};
+      cards.push(JSON.parse(JSON.stringify({
+        ...base, id: 'batch-seed-2', headline: '批量回归用卡片',
+        summary: 's', details: '用于验证批量操作', isFavorite: false,
+        favoritedAt: null, seenAt: null, lastReviewedAt: null, reviewCount: 0,
+      })));
+    }
+    raw.cards = cards;
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    return cards.length;
+  })()`);
+  await browser("open", url);
+  await new Promise((r) => setTimeout(r, 800));
+  await clickButton("全部知识");
+  await browser("eval", `(() => {
+    const tab = [...document.querySelectorAll('.ws-filter-tabs button')].find(b => b.textContent.trim() === '知识卡');
+    if (tab) tab.click();
+    return !!tab;
+  })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  await check('document.querySelectorAll(".ws-entry").length >= 2', "至少有两张卡片可选");
+  // 两次点击分开发：选中态变化会让列表重渲染，连着 dispatch 会打到同一批旧节点。
+  await browser("eval", `(() => {
+    const rows = [...document.querySelectorAll('.ws-entry')];
+    rows[0].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 350));
+  await browser("eval", `(() => {
+    const rows = [...document.querySelectorAll('.ws-entry')];
+    rows[1].dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  await check('!!document.querySelector(\'[aria-label="批量操作"]\')', "多选后出现批量操作栏");
+  await check(
+    "document.querySelectorAll('.ws-entry[data-picked=\"true\"]').length === 2",
+    "被勾选的行有可见标记"
+  );
+  await check(
+    'document.querySelector(\'[data-batch-count]\')?.textContent.includes("2")',
+    "批量栏显示已选数量"
+  );
+  // 多选不能妨碍单选阅读：读区应仍然显示最后点的那张
+  await check(
+    '!!document.querySelector(".ws-reader h1")',
+    "多选时阅读区仍显示内容"
+  );
+  await browser("eval", "(document.querySelector('[aria-label=\"标记为已复习\"]')||{}).click?.(); true");
+  await new Promise((r) => setTimeout(r, 700));
+  await check(
+    `((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').cards)||[]).filter(c => (c.seenAt||null) !== null).length >= 2`,
+    "批量打标写回所有选中卡片"
+  );
+
+  // 普通点击应退出多选，不留看不见的待处理选择
+  await browser("eval", `(() => {
+    const row = document.querySelector('.ws-entry');
+    if (row) row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 350));
+  await check('!document.querySelector(\'[aria-label="批量操作"]\')', "普通点击退出批量选择");
+
   // 知识卡删除：两步确认（第一下只提示，第二下才删），且素材不受影响
   await clickButton("全部知识");
   // 按卡片标题定位，避免选到素材（素材只有归档，没有删除）

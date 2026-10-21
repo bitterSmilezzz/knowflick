@@ -957,6 +957,37 @@ select {
 .ws-attachment-audio { width: 100%; }
 .ws-attachment figcaption { font-size: var(--text-meta); color: var(--muted); }
 
+/* 被勾选的行：左侧一条强调色竖条 + 淡底，别只靠颜色区分。 */
+.ws-entry-picked {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* 批量操作栏：只在多选知识卡时出现，贴着列表顶部，不遮阅读区。 */
+.ws-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.ws-batch-count {
+  font-size: var(--text-meta);
+  font-weight: 600;
+  color: var(--ink);
+}
+.ws-batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 /* 删除是两步确认：第一下变红并提示"再点一次"，四秒后自动收回。 */
 .ws-icon-button.ws-danger {
   color: var(--danger, #b3261e);

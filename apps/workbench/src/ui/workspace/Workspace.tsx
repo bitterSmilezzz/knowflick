@@ -129,6 +129,9 @@ export function Workspace() {
   const [mailDigest, setMailDigest] = useState<{ text: string; sources: MailDigestSource[]; saved: boolean } | null>(null);
   const [mailDigestTitle, setMailDigestTitle] = useState("邮件整理摘要");
   const [personalizationOn, setPersonalizationOn] = useState(() => personalizationEnabled(file.raw));
+  // 批量选择：⌘/Ctrl 点击追加或取消，普通点击仍是单选。
+  // 用 Set 而不是数组，是为了让「是否已选」判断不随选中项数量变慢。
+  const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
   const layout = usePaneLayout();
   const readerRef = useRef<HTMLElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -291,8 +294,12 @@ export function Workspace() {
   );
 
   useEffect(() => setVisibleCount(60), [page, query, tag, source]);
+  // 换筛选后旧选择多半已经不可见，直接清掉，避免误操作看不见的条目。
+  useEffect(() => { setBatchIds(new Set()); }, [page, query, tag, source]);
 
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0];
+  /** 批量栏只对知识卡开放：素材归到收件箱的归档语义里，不在这里批量处理。 */
+  const batchCards = cards.filter((card) => batchIds.has(card.id));
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -403,8 +410,27 @@ export function Workspace() {
       setBusyLabel("");
     }
   };
+  /**
+   * 对多选的知识卡执行一次操作。
+   *
+   * 只作用于卡片：素材是原始记录，归档走收件箱语义，不能在这里批量抹掉。
+   * 素材被选中时批量栏不出现，避免给一个「删素材」的假入口。
+   */
+  const runOnSelectedCards = async (label: string, apply: (card: KnowledgeCard) => KnowledgeCard) => {
+    const ids = new Set(batchIds);
+    if (ids.size === 0) return;
+    await act(async () => {
+      const next = cards.map((card) => (ids.has(card.id) ? apply(card) : card));
+      await storeCardList(next, dir);
+      setCards(next);
+      setBatchIds(new Set());
+      setNotice(`${label}：已处理 ${ids.size} 张卡片`);
+    });
+  };
+
   const navigate = (next: Page) => {
     setNotice("");
+    setBatchIds(new Set());
     setPage(next);
     setTag("");
     setQuery("");
@@ -1366,6 +1392,58 @@ export function Workspace() {
               <span>最近更新</span>
             </div>
 
+            {batchCards.length > 0 ? (
+              <div className="ws-batch-bar" role="group" aria-label="批量操作">
+                <span className="ws-batch-count" data-batch-count>
+                  已选 {batchCards.length} 张卡片
+                </span>
+                <div className="ws-batch-actions">
+                  <button
+                    className="ws-bordered"
+                    aria-label="标记为已复习"
+                    disabled={loading || busy}
+                    onClick={() => void runOnSelectedCards("标记为已复习", (card) => ({
+                      ...card, seenAt: card.seenAt ?? Date.now(),
+                    }))}
+                  >
+                    标记已复习
+                  </button>
+                  <button
+                    className="ws-bordered"
+                    aria-label="收藏选中卡片"
+                    disabled={loading || busy}
+                    onClick={() => void runOnSelectedCards("收藏", (card) => ({
+                      ...card, isFavorite: true, favoritedAt: card.favoritedAt ?? Date.now(),
+                    }))}
+                  >
+                    收藏
+                  </button>
+                  <button
+                    className="ws-bordered"
+                    aria-label="设置统一分类"
+                    disabled={loading || busy}
+                    onClick={() => {
+                      const value = window.prompt("把选中的卡片归到哪个分类？", batchCards[0]?.category || "");
+                      const category = (value ?? "").trim();
+                      if (!category) return;
+                      void runOnSelectedCards(`归类到「${category}」`, (card) => ({ ...card, category }));
+                    }}
+                  >
+                    设分类
+                  </button>
+                  <button
+                    className="ws-icon-button"
+                    aria-label="退出批量选择"
+                    title="退出批量选择"
+                    disabled={loading || busy}
+                    onClick={() => setBatchIds(new Set())}
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="ws-entries" role="listbox" aria-label="内容列表">
               {loading ? (
                 <div className="ws-list-empty" role="status">
@@ -1408,8 +1486,19 @@ export function Workspace() {
                         tabIndex={isSelected ? 0 : -1}
                         role="option"
                         aria-selected={isSelected}
-                        className="ws-entry"
-                        onClick={() => setSelectedId(e.id)}
+                        className={batchIds.has(e.id) ? "ws-entry ws-entry-picked" : "ws-entry"}
+                        data-picked={batchIds.has(e.id) ? "true" : undefined}
+                        onClick={(event) => {
+                          if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                            const next = new Set(batchIds);
+                            if (next.has(e.id)) next.delete(e.id); else next.add(e.id);
+                            setBatchIds(next);
+                            setSelectedId(e.id);
+                            return;
+                          }
+                          setBatchIds(new Set());
+                          setSelectedId(e.id);
+                        }}
                       >
                         <span className="ws-entry-top">
                           <span className="ws-entry-title">
