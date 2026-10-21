@@ -1266,7 +1266,7 @@ export function Workspace() {
                 <input
                   ref={searchRef}
                   aria-label="搜索知识库"
-                  placeholder="搜索标题、正文或标签"
+                  placeholder="搜索标题、正文、发件人、附件或标签"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />

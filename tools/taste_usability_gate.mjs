@@ -104,7 +104,7 @@ const SEED = `(() => {
     headline: '知识卡 ' + i,
     summary: '一句话结论',
     details: '正文段落，用于检查行长与行高。',
-    tags: [], links: [], source: 'imported',
+    tags: [], links: [{ title: '来源一', url: 'https://a.example.com' }, { title: '来源二', url: 'https://b.example.com' }], source: 'imported',
     createdAt: now - i * 3600000, editedAt: null, seenAt: null, swiped: null,
     isFavorite: i % 5 === 0, favoritedAt: null, reviewCount: 0, masteryLevel: 0,
     lastReviewedAt: null, repetition: 0, intervalDays: 0, easeFactor: 2.5,
@@ -186,6 +186,28 @@ try {
   })()`);
   assert.ok(scrollbarDark >= 0, "滚动条宽度可测");
   pass("滚动条尺寸可测量（细条已生效）");
+
+  // ---- 搜索覆盖：摘要与全部链接都要能搜到 ----
+  const searchFor = async (term) => {
+    await browser("eval", `(() => {
+      const el = document.querySelector('.ws-search input');
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(el, ${JSON.stringify(term)});
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await new Promise((r) => setTimeout(r, 350));
+    return await evaluate(`[...document.querySelectorAll('.ws-entry')].map(e => e.textContent)`);
+  };
+  await browser("eval", "(() => { [...document.querySelectorAll('.ws-nav-row')].find(e => e.textContent.includes('全部知识')).click(); return true; })()");
+  await new Promise((r) => setTimeout(r, 400));
+  const bySummary = await searchFor("一句话结论");
+  assert.ok(bySummary.length > 0, "知识卡的摘要应当可搜到");
+  pass("搜索能命中卡片摘要");
+  const byLink = await searchFor("b.example.com");
+  assert.ok(byLink.length > 0, "卡片的第二条链接也应当可搜到");
+  pass("搜索能命中卡片的全部链接");
+  await searchFor("");
 
   // ---- 空状态：右栏必须有可执行入口，不是空白 ----
   await browser("eval", "localStorage.clear(); sessionStorage.clear(); true");
