@@ -205,6 +205,13 @@ try {
     "[...document.querySelectorAll('button')].some(b => b.textContent.includes('归档'))",
     "订阅素材可批量归档"
   );
+  await check('!!document.querySelector(\'[aria-label="导出选中内容"]\')', "多选后可导出选中内容");
+  // 导出走浏览器下载，这里只验证点击不抛错并有回执
+  await browser("eval", "window.__kfExportError = null; window.addEventListener('error', e => { window.__kfExportError = String(e.message); }); true");
+  await browser("eval", "(document.querySelector('[aria-label=\"导出选中内容\"]')||{}).click?.(); true");
+  await new Promise((r) => setTimeout(r, 700));
+  await check("window.__kfExportError === null", "导出选中不抛错");
+  await check("document.body.innerText.includes('已导出')", "导出选中给出回执");
   const inboxBefore = await evaluate(
     "((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').materials)||[]).filter(m=>m.inboxStatus==='inbox').length"
   );
@@ -262,6 +269,7 @@ try {
   })()`);
   await new Promise((r) => setTimeout(r, 400));
   await check('!!document.querySelector(\'[aria-label="批量操作"]\')', "多选后出现批量操作栏");
+  await check('!!document.querySelector(\'[aria-label="导出选中内容"]\')', "选卡片时也能导出选中");
   await check(
     "document.querySelectorAll('.ws-entry[data-picked=\"true\"]').length === 2",
     "被勾选的行有可见标记"

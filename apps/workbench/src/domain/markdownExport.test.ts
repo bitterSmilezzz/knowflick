@@ -6,6 +6,7 @@ import {
   createZipArchive,
 } from "./markdownExport";
 import { extractFileFromZip } from "./documentParser";
+import { cardFromJson } from "./card";
 import type { KnowledgeCard } from "./card";
 import type { RawMaterial } from "../shell/store";
 
@@ -113,5 +114,31 @@ describe("Markdown 标准化导出与往返恢复测试 (M4 数据主权)", () =
 
     const extracted2 = await extractFileFromZip(zipBytes, "second.txt");
     expect(extracted2).toBe("纯文本第二项内容。");
+  });
+});
+
+describe("导出选中的子集", () => {
+  const material = (id: string): RawMaterial => ({
+    id, sourceType: "web", title: `素材 ${id}`, sourceUrl: `https://example.com/${id}`,
+    rawText: `正文 ${id}`, contentHash: "", mediaPath: null, mediaSizeBytes: 0,
+    metadataJson: "{}", inboxStatus: "inbox", createdAt: 1, updatedAt: 1,
+  });
+  const card = (id: string) => cardFromJson({
+    id, headline: `卡片 ${id}`, summary: "s", details: `正文 ${id}`,
+    category: "计算机", createdAt: 1,
+  });
+
+  it("只导出传入的条目，不把整个库带上", () => {
+    const all = { materials: [material("a"), material("b")], cards: [card("x"), card("y")] };
+    const subset = generateMarkdownVault([all.materials[0]], [all.cards[1]]);
+    const paths = subset.map((item) => item.path);
+    expect(paths.some((p) => p.includes("素材 a"))).toBe(true);
+    expect(paths.some((p) => p.includes("卡片 y"))).toBe(true);
+    expect(paths.some((p) => p.includes("素材 b"))).toBe(false);
+    expect(paths.some((p) => p.includes("卡片 x"))).toBe(false);
+  });
+
+  it("选中为空时产出空集，不误导出全库", () => {
+    expect(generateMarkdownVault([], [])).toHaveLength(0);
   });
 });

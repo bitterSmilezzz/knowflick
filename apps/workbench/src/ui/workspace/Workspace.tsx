@@ -1476,9 +1476,22 @@ export function Workspace() {
                       disabled={loading || busy}
                       onClick={() => void archiveSelectedMaterials()}
                     >
-                      归档
+                          归档
                     </button>
                   ) : null}
+                  <button
+                    className="ws-bordered"
+                    aria-label="导出选中内容"
+                    disabled={loading || busy}
+                    onClick={() => {
+                      // 复用整库导出的同一套生成逻辑，只是把范围收窄到选中项，
+                      // 避免出现第二套导出格式。
+                      downloadMarkdownVault(batchMaterials, batchCards);
+                      setNotice(`已导出 ${batchMaterials.length + batchCards.length} 条选中内容（Markdown）`);
+                    }}
+                  >
+                    导出选中
+                  </button>
                   <button
                     className="ws-bordered"
                     aria-label="标记为已复习"
