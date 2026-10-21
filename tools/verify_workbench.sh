@@ -14,3 +14,6 @@ cargo test --locked
 # 本仓库的脚本里中文很多，顺手在本地门禁里挡一道。
 cd "$ROOT"
 ./tools/lint_shell_vars.sh
+
+# MCP 是外部 agent 读写这个库的入口，坏掉不会有界面报错——纳入门禁。
+node tools/mcp_smoke.mjs
