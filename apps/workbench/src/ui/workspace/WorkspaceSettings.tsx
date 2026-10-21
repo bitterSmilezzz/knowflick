@@ -25,6 +25,8 @@ export interface WorkspaceSettingsProps {
   onExportMarkdown?: () => void;
   onExportKfBackup?: () => void;
   onRestoreKfBackup?: () => void;
+  /** 导出与安卓同格式的 cards.json（跨端契约）。 */
+  onExportCardsJson?: () => void;
 }
 
 export function WorkspaceSettings({
@@ -38,6 +40,7 @@ export function WorkspaceSettings({
   onExportMarkdown,
   onExportKfBackup,
   onRestoreKfBackup,
+  onExportCardsJson,
 }: WorkspaceSettingsProps) {
   const [draftSettings, setDraftSettings] = useState<AiSettings>(file.settings);
   const [draftKey, setDraftKey] = useState(apiKey);
@@ -502,10 +505,25 @@ export function WorkspaceSettings({
                   >
                     从备份包恢复…
                   </button>
+                  {onExportCardsJson ? (
+                    <button
+                      type="button"
+                      className="ws-bordered"
+                      data-action="export-cards-json"
+                      onClick={onExportCardsJson}
+                    >
+                      导出 cards.json（给安卓用）
+                    </button>
+                  ) : (
+                    // 浏览器体验没有本地文件系统，导不出文件——说清楚原因，
+                    // 好过让这个按钮凭空消失。
+                    <span className="ws-hint">导出 cards.json 需要桌面客户端（浏览器体验没有本地文件系统）。</span>
+                  )}
                 </div>
                 <p className="ws-hint" style={{ margin: 0 }}>
                   Markdown 归档带 YAML Frontmatter，按分类与收件箱分目录，可直接在 Obsidian 打开；
-                  `.kfbackup` 是含清单、校验和与全部层级（素材 / 卡片 / 设置 / 认知产物）的完整备份，可无损还原。
+                  `.kfbackup` 是含清单、校验和与全部层级（素材 / 卡片 / 设置 / 认知产物）的完整备份，可无损还原；
+                  `cards.json` 是与安卓端同一份线格式，拷过去就能打开。
                 </p>
               </div>
             </section>

@@ -168,7 +168,7 @@ pub fn write_api_key(dir: &Path, value: &str) -> Result<(), String> {
 }
 
 pub fn export_archive(dir: &Path, dest: &Path) -> Result<(), String> {
-    let cards = read_optional(&dir.join("cards.json"))?.unwrap_or_else(|| "[]".to_string());
+    let cards = read_cards_json_text(dir)?;
     let settings = read_optional(&dir.join("settings.json"))?.unwrap_or_else(|| "{}".to_string());
     let bytes = zip_store(&[
         ("cards.json", cards.as_bytes()),
@@ -184,11 +184,29 @@ pub fn export_archive(dir: &Path, dest: &Path) -> Result<(), String> {
 /// 与 `export_archive` 并列而非替代——ZIP 备份包带 settings（合并恢复学习进度用），
 /// JSON 只带卡；ADR-0002 §3 那条「拷过去就能打开」的契约说的正是这份 `cards.json`。
 pub fn export_cards_json(dir: &Path, dest: &Path) -> Result<(), String> {
-    let cards = read_optional(&dir.join("cards.json"))?.unwrap_or_else(|| "[]".to_string());
+    let cards = read_cards_json_text(dir)?;
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     atomic_write(dest, cards.as_bytes())
+}
+
+/// 读出与 Android `cards.json` 同一份线格式的卡片正文。
+///
+/// 卡片现在存在 SQLite 里，`cards.json` 只是迁移前的旧文件。所以优先从
+/// SQLite 导出；库里没有卡片时再退回旧文件（未迁移的库仍能导出）。
+/// 之前这里只读 `cards.json`，而工作台早已不写那个文件——导出的永远是 `[]`，
+/// ADR-0002 §3「两套共享同一份 cards.json，拷过去就能打开」在桌面端是断的。
+pub fn read_cards_json_text(dir: &Path) -> Result<String, String> {
+    let db_path = dir.join("knowflick.db");
+    if db_path.exists() {
+        let conn = crate::db::open_db(&db_path).map_err(|e| e.to_string())?;
+        let cards = crate::db::list_cards(&conn, 100_000, 0).map_err(|e| e.to_string())?;
+        if !cards.is_empty() {
+            return serde_json::to_string(&cards).map_err(|e| e.to_string());
+        }
+    }
+    Ok(read_optional(&dir.join("cards.json"))?.unwrap_or_else(|| "[]".to_string()))
 }
 
 fn zip_store(files: &[(&str, &[u8])]) -> Vec<u8> {
@@ -287,6 +305,60 @@ fn restrict_to_owner(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_cards_json_reads_from_sqlite_not_only_the_legacy_file() {
+        // 卡片现在存在 SQLite 里，`cards.json` 只是迁移前的旧文件。
+        // 导出若只读那个文件，工作台用户拿到的永远是空数组——
+        // ADR-0002 §3「两套共享同一份 cards.json，拷过去就能打开」在桌面端是断的。
+        let dir = temp_dir("export-from-sqlite");
+        let db_path = dir.join("knowflick.db");
+        let conn = crate::db::open_db(&db_path).unwrap();
+        let card = crate::db::KnowledgeCardDto {
+            id: "card-x".to_string(),
+            material_id: None,
+            category: "计算机".to_string(),
+            headline: "跨端契约卡".to_string(),
+            summary: "摘要".to_string(),
+            details: "正文".to_string(),
+            links: vec![],
+            tags: vec![],
+            source: "imported".to_string(),
+            created_at: 1,
+            edited_at: None,
+            seen_at: None,
+            swiped: None,
+            is_favorite: false,
+            favorited_at: None,
+            review_count: 0,
+            mastery_level: 0,
+            last_reviewed_at: None,
+            repetition: 0,
+            interval_days: 0.0,
+            ease_factor: 2.5,
+            stability: 0.0,
+            difficulty: 0.0,
+            subject: None,
+            branch: None,
+            level: None,
+            track: None,
+            order_key: None,
+            prereq: vec![],
+        };
+        crate::db::upsert_card(&conn, &card).unwrap();
+
+        let text = read_cards_json_text(&dir).unwrap();
+        assert!(text.contains("跨端契约卡"), "导出应包含 SQLite 里的卡片：{text}");
+        assert!(text.trim_start().starts_with('['), "应是裸数组线格式：{text}");
+    }
+
+    #[test]
+    fn export_cards_json_falls_back_to_legacy_file() {
+        let dir = temp_dir("export-legacy");
+        fs::write(dir.join("cards.json"), "[{\"id\":\"legacy\"}]").unwrap();
+        let text = read_cards_json_text(&dir).unwrap();
+        assert!(text.contains("legacy"), "未迁移的库仍应能从旧文件导出：{text}");
+    }
 
     fn temp_dir(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!("knowflick-{name}-{}", std::process::id()));

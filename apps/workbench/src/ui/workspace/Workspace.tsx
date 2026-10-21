@@ -9,6 +9,7 @@ import {
   dbBackfillMaterialFts,
   dbGetStats,
   dbListArtifacts,
+  exportCardsJson,
   dbListSubscriptions,
   dbDeleteSubscription,
   dbMarkSubscriptionPolled,
@@ -22,6 +23,7 @@ import {
   readMedia,
   saveMedia,
   pickAudioFile,
+  pickExportPath,
   type Artifact,
   type DbStats,
   type RawMaterial,
@@ -197,6 +199,23 @@ export function Workspace() {
   const previewRef = useRef<HTMLDialogElement>(null);
   const revision = useRef(0);
   const systemAppearance = useSystemAppearance();
+
+  /**
+   * 导出与安卓端同格式的 cards.json。
+   *
+   * ADR-0002 §3 承诺「两套共享同一份 cards.json，拷过去就能打开」。
+   * 命令与导出逻辑都早就有了，但界面上没有入口——用户根本拿不到这份文件。
+   */
+  const exportCardsJsonForAndroid = async (libraryDir: string) => {
+    try {
+      const dest = await pickExportPath("cards.json");
+      if (!dest) return;
+      await exportCardsJson(libraryDir, dest);
+      setNotice(`已导出 cards.json：${dest}。把它放到安卓端的数据目录即可打开。`);
+    } catch (err) {
+      setError(`导出 cards.json 失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
 
   /** 产物供产物库与问答共用；读取失败不阻塞主界面。 */
   useEffect(() => {
@@ -1907,6 +1926,7 @@ export function Workspace() {
                     })();
                   }}
                   onRestoreKfBackup={() => restoreRef.current?.click()}
+                  onExportCardsJson={inShell() ? () => void exportCardsJsonForAndroid(dir) : undefined}
                   onSave={async (next, key, enabled) => {
                     const updated = {
                       ...next,

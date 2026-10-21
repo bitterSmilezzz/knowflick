@@ -54,6 +54,16 @@ try {
   await clickButton("设置");
   await check('!!document.querySelector(\'[data-page="settings"]\')', "settings page renders");
 
+  // 跨端契约：导出与安卓同格式的 cards.json
+  await check(
+    "document.body.innerText.includes('cards.json')",
+    "设置页提到 cards.json 跨端导出"
+  );
+  await check(
+    "document.body.innerText.includes('安卓')",
+    "说明这个文件是给安卓端用的"
+  );
+
   // 官方插件矩阵
   await check('document.querySelectorAll("[data-plugin-toggle]").length === 6', "六个官方插件都渲染出开关");
   await check(

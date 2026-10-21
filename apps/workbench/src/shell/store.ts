@@ -165,10 +165,10 @@ export async function openExternalUrl(url: string): Promise<void> {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-export async function pickExportPath(): Promise<string | null> {
+export async function pickExportPath(defaultName = "knowflick-backup.zip"): Promise<string | null> {
   const { save } = await import("@tauri-apps/plugin-dialog");
   const selected = await save({
-    defaultPath: "knowflick-backup.zip",
+    defaultPath: defaultName,
     filters: [
       { name: "ZIP 备份包（卡片 + 设置）", extensions: ["zip"] },
       { name: "JSON 卡片数据", extensions: ["json"] },
