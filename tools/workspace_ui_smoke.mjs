@@ -189,6 +189,36 @@ try {
     "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === '订阅')",
     "能按订阅来源筛选"
   );
+  // 筛出来还要能处理：订阅会持续进货，不能只筛不整理
+  await browser("eval", `(() => {
+    const tab = [...document.querySelectorAll('.ws-filter-tabs button')].find(b => b.textContent.trim() === '订阅');
+    if (tab) tab.click();
+    return !!tab;
+  })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  await browser("eval", "(() => { const r = [...document.querySelectorAll('.ws-entry')][0]; if (r) r.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })); return true; })()");
+  await new Promise((r) => setTimeout(r, 350));
+  await browser("eval", "(() => { const r = [...document.querySelectorAll('.ws-entry')][1]; if (r) r.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true })); return true; })()");
+  await new Promise((r) => setTimeout(r, 400));
+  await check("!!document.querySelector('[aria-label=\"批量操作\"]')", "多选订阅素材也出现批量栏");
+  await check(
+    "[...document.querySelectorAll('button')].some(b => b.textContent.includes('归档'))",
+    "订阅素材可批量归档"
+  );
+  const inboxBefore = await evaluate(
+    "((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').materials)||[]).filter(m=>m.inboxStatus==='inbox').length"
+  );
+  await browser("eval", "(document.querySelector('[aria-label=\"批量归档素材\"]')||{}).click?.(); true");
+  await new Promise((r) => setTimeout(r, 700));
+  await check(
+    `((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').materials)||[]).filter(m=>m.inboxStatus==='inbox').length < ${inboxBefore}`,
+    "批量归档真的改了状态"
+  );
+  await check("document.body.innerText.includes('已归档')", "批量归档有回执");
+  await check(
+    "!document.querySelector('[aria-label=\"批量操作\"]')",
+    "归档后批量栏收起"
+  );
 
   // 批量操作：⌘/Ctrl 多选后可一次打标
   // 先补第二张卡——只靠前面流程产出一张，带条件的分支会永远不执行，

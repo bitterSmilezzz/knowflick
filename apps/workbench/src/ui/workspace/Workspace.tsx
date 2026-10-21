@@ -305,6 +305,7 @@ export function Workspace() {
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0];
   /** 批量栏只对知识卡开放：素材归到收件箱的归档语义里，不在这里批量处理。 */
   const batchCards = cards.filter((card) => batchIds.has(card.id));
+  const batchMaterials = materials.filter((material) => batchIds.has(material.id));
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -444,6 +445,27 @@ export function Workspace() {
       setBatchIds(new Set());
       setBatchCategory(null);
       setNotice(`${label}：已处理 ${ids.size} 张卡片`);
+    });
+  };
+
+  /**
+   * 对多选的素材批量归档。
+   *
+   * 素材是原始记录，不提供硬删除——归档（processed）已经是"处理过了"的语义，
+   * 删掉原始记录等于把知识卡的回溯链断掉。
+   */
+  const archiveSelectedMaterials = async () => {
+    const ids = new Set(batchIds);
+    if (ids.size === 0) return;
+    await act(async () => {
+      const now = Date.now();
+      for (const material of materials) {
+        if (!ids.has(material.id)) continue;
+        if (material.inboxStatus !== "inbox") continue;
+        await updateMaterial({ ...material, inboxStatus: "processed", updatedAt: now });
+      }
+      setBatchIds(new Set());
+      setNotice(`已归档 ${ids.size} 条素材`);
     });
   };
 
@@ -1420,12 +1442,24 @@ export function Workspace() {
               <span>最近更新</span>
             </div>
 
-            {batchCards.length > 0 ? (
+            {batchCards.length > 0 || batchMaterials.length > 0 ? (
               <div className="ws-batch-bar" role="group" aria-label="批量操作">
                 <span className="ws-batch-count" data-batch-count>
-                  已选 {batchCards.length} 张卡片
+                  {batchCards.length > 0
+                    ? `已选 ${batchCards.length} 张卡片`
+                    : `已选 ${batchMaterials.length} 条素材`}
                 </span>
                 <div className="ws-batch-actions">
+                  {batchMaterials.length > 0 && batchCards.length === 0 ? (
+                    <button
+                      className="ws-bordered"
+                      aria-label="批量归档素材"
+                      disabled={loading || busy}
+                      onClick={() => void archiveSelectedMaterials()}
+                    >
+                      归档
+                    </button>
+                  ) : null}
                   <button
                     className="ws-bordered"
                     aria-label="标记为已复习"
@@ -1446,7 +1480,7 @@ export function Workspace() {
                   >
                     收藏
                   </button>
-                  {batchCategory === null ? (
+                  {batchCards.length === 0 ? null : batchCategory === null ? (
                     <button
                       className="ws-bordered"
                       aria-label="设置统一分类"
