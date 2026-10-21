@@ -78,8 +78,11 @@ const META: Record<string, { label: string; icon: string }> = {
   card: { label: "知识卡", icon: "card" },
 };
 
-export function sourceLabel(source: string, url: string): { label: string; icon: string } {
+export function sourceLabel(source: string, url: string, subscriptionId?: string | null): { label: string; icon: string } {
   if (source === "email" || source === "email-digest") return META[source];
+  // 订阅抓来的内容也是网页，只按域名看就分不出来自哪个来源。
+  // 标出来用户才知道这批条目是「订阅自动收的」。
+  if (subscriptionId) return { label: "订阅", icon: "inbox" };
   if (url) {
     try {
       const host = new URL(url).hostname.replace(/^www\./, "");

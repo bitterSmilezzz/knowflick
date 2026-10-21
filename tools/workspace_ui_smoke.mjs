@@ -164,6 +164,32 @@ try {
   await browser("press", "Escape");
   await browser("set", "viewport", "1040", "760");
 
+  // 订阅来源在收件箱里要认得出来（否则「来源」只是入口，不是可用的维度）
+  await browser("eval", `(() => {
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    const now = Date.now();
+    raw.materials = (raw.materials || []).concat([1, 2].map(i => ({
+      id: 'sub-src-' + i, sourceType: 'web', title: '订阅文章 ' + i,
+      sourceUrl: 'https://feed.example.com/p' + i, rawText: '订阅正文 ' + i,
+      contentHash: '', metadataJson: JSON.stringify({ subscriptionId: 'sub-1' }),
+      inboxStatus: 'inbox', createdAt: now - i * 1000, updatedAt: now - i * 1000,
+    })));
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    return true;
+  })()`);
+  await browser("open", url);
+  await new Promise((r) => setTimeout(r, 800));
+  await clickButton("收件箱");
+  await new Promise((r) => setTimeout(r, 500));
+  await check(
+    "[...document.querySelectorAll('.ws-entry-source')].some(e => e.textContent.includes('订阅'))",
+    "收件箱能认出订阅来源"
+  );
+  await check(
+    "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === '订阅')",
+    "能按订阅来源筛选"
+  );
+
   // 批量操作：⌘/Ctrl 多选后可一次打标
   // 先补第二张卡——只靠前面流程产出一张，带条件的分支会永远不执行，
   // 断言就成了摆设。

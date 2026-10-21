@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { entriesFor, filterEntries } from "./model";
+import { entriesFor, filterEntries, subscriptionIdOf } from "./model";
 import type { RawMaterial } from "../../shell/store";
 import { cardFromJson } from "../../domain/card";
 
@@ -60,5 +60,28 @@ describe("搜索覆盖", () => {
   it("搜不到的内容就是不该出现", () => {
     const m = material({});
     expect(search([m], [], "完全不存在")).toHaveLength(0);
+  });
+});
+
+describe("订阅来源", () => {
+  const sub = material({ id: "s1", metadataJson: JSON.stringify({ subscriptionId: "sub-1" }) });
+  const web = material({ id: "w1", metadataJson: JSON.stringify({}) });
+  const broken = material({ id: "b1", metadataJson: "坏数据" });
+
+  it("能识别素材是否来自订阅", () => {
+    expect(subscriptionIdOf(sub)).toBe("sub-1");
+    expect(subscriptionIdOf(web)).toBeNull();
+    expect(subscriptionIdOf(broken)).toBeNull();
+  });
+
+  it("按订阅筛选只留订阅来源的素材", () => {
+    const entries = entriesFor([sub, web], [], "library");
+    const kept = filterEntries(entries, "", "", "subscription").map(e => e.id);
+    expect(kept).toEqual(["s1"]);
+  });
+
+  it("订阅筛选不会误留知识卡", () => {
+    const entries = entriesFor([sub], [card({})], "library");
+    expect(filterEntries(entries, "", "", "subscription").map(e => e.id)).toEqual(["s1"]);
   });
 });

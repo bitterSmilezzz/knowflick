@@ -30,6 +30,7 @@ import {
   makeMaterial,
   materialToCard,
   collectionNames,
+  subscriptionIdOf,
   type Collection,
   type Entry,
 } from "./model";
@@ -1408,6 +1409,8 @@ export function Workspace() {
                   ["all", "全部"],
                   ["material", "素材"],
                   ["card", "知识卡"],
+                  // 订阅是「来源」维度，不是内容类型；单独一项便于清理自动收进来的内容。
+                  ["subscription", "订阅"],
                 ].map(([id, label]) => (
                   <button key={id} aria-pressed={source === id} onClick={() => setSource(id)}>
                     {label}
@@ -1534,7 +1537,8 @@ export function Workspace() {
                   {filtered.slice(0, visibleCount).map((e) => {
                     const meta = sourceLabel(
                       e.kind === "card" ? "card" : (e.original as RawMaterial).sourceType,
-                      e.url
+                      e.url,
+                      e.kind === "material" ? subscriptionIdOf(e.original as RawMaterial) : null
                     );
                     const isSelected = selected?.id === e.id;
                     return (

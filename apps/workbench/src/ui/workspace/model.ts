@@ -11,6 +11,17 @@ export const collectionNames: Record<Collection, string> = { inbox: "收件箱",
  * 只搜 rawText 会漏掉用户真正会用来找它的东西：邮件的发件人、附件名，
  * 图片的文件名。这些都在 metadataJson 里，统一摊平进搜索文本。
  */
+/** 素材是否来自某个订阅源。 */
+export function subscriptionIdOf(m: RawMaterial): string | null {
+  if (!m.metadataJson || m.metadataJson === "{}") return null;
+  try {
+    const meta = JSON.parse(m.metadataJson) as { subscriptionId?: unknown };
+    return typeof meta.subscriptionId === "string" && meta.subscriptionId ? meta.subscriptionId : null;
+  } catch {
+    return null;
+  }
+}
+
 function materialSearchText(m: RawMaterial): string {
   const parts = [m.rawText];
   if (m.cleanedMarkdown) parts.push(m.cleanedMarkdown);
@@ -62,7 +73,13 @@ export function filterEntries(
   const useIndex = tokens.length > 0 && indexedIds.size > 0;
   return entries.filter(e => {
     if (tag && !(e.category === tag || e.tags.includes(tag))) return false;
-    if (source !== "all" && !(source === "card" ? e.kind === "card" : e.kind === "material")) return false;
+    if (source === "card" && e.kind !== "card") return false;
+    if (source === "material" && e.kind !== "material") return false;
+    if (source === "subscription") {
+      // 「订阅」不是一种 kind，而是素材的来源属性，所以要看 metadata。
+      if (e.kind !== "material") return false;
+      if (!subscriptionIdOf(e.original as RawMaterial)) return false;
+    }
     if (useIndex && e.kind === "material" && indexedIds.has(e.id)) return true;
     return tokens.every(t => `${e.title}\n${e.searchText ?? e.text}\n${e.category}\n${e.tags.join(" ")}\n${e.url}`.toLocaleLowerCase().includes(t));
   });
