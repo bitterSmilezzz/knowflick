@@ -127,5 +127,23 @@ try {
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).some(m=>m.title==='季度复盘')})()", "PPT 被解析成素材");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');const m=(raw.materials||[]).find(x=>x.title==='季度复盘');return m.rawText.includes('第 1 页')&&m.rawText.includes('下一步计划')})()", "PPT 按页提取文字");
 
+  // 只有素材、没有卡片的旧版备份：素材已落库就不能再报「导入失败」
+  await ev(`(() => {
+    const input = document.querySelector('input[type=file][multiple]');
+    const dt = new DataTransfer();
+    const payload = JSON.stringify({ format: "knowflick-workspace", version: 1, materials: [{
+      id: "legacy-m", sourceType: "web", title: "旧备份里的素材", sourceUrl: null,
+      rawText: "旧素材正文", contentHash: "", metadataJson: "{}", inboxStatus: "inbox",
+      createdAt: 1700000000000, updatedAt: 1700000000000,
+    }] });
+    dt.items.add(new File([payload], "legacy-backup.json", { type: "application/json" }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).some(m=>m.id==='legacy-m')})()", "素材型备份已落库");
+  await check("!document.body.innerText.includes('JSON 文件须包含卡片数组')", "不因缺少卡片数组而报失败");
+  await check("!document.body.innerText.includes('没有文件导入成功')", "素材型备份整体算成功");
+
   console.log(`Import UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }

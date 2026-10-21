@@ -623,7 +623,8 @@ export function Workspace() {
       const text = await f.text();
       const data = JSON.parse(text) as unknown;
       const root = data as { format?: string; materials?: RawMaterial[]; cards?: unknown[] };
-      if (root.format === "knowflick-workspace" && Array.isArray(root.materials)) {
+      const hasWorkspaceMaterials = root.format === "knowflick-workspace" && Array.isArray(root.materials);
+      if (hasWorkspaceMaterials) {
         for (const m of root.materials) {
           if (!m.id || typeof m.rawText !== "string" || !m.title) throw new Error("备份素材格式无效");
           await updateMaterial({ ...m, mediaSizeBytes: m.mediaSizeBytes || 0 });
@@ -631,7 +632,12 @@ export function Workspace() {
         }
       }
       const imported = Array.isArray(data) ? data : root.cards;
-      if (!Array.isArray(imported)) throw new Error("JSON 文件须包含卡片数组");
+      // 已经把素材落库的备份可以只有素材没有卡片；此时再抛「须包含卡片数组」，
+      // 会让同一份文件既报成功又报失败，而素材其实已经进去了。
+      if (!Array.isArray(imported)) {
+        if (hasWorkspaceMaterials) return;
+        throw new Error("JSON 文件须包含卡片数组");
+      }
       for (const item of imported) {
         const c = cardFromJson(item);
         if (!c.headline || !c.details) throw new Error("卡片缺少标题或正文");
