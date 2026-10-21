@@ -219,6 +219,42 @@ try {
     '!!document.querySelector(".ws-reader h1")',
     "多选时阅读区仍显示内容"
   );
+  // 设分类用界面内输入，不用原生 prompt（样式割裂且挡列表）
+  await check(
+    '!document.querySelector(\'input[aria-label="统一分类名称"]\')',
+    "批量栏默认不显示分类输入"
+  );
+  await browser("eval", "(document.querySelector('[aria-label=\"设置统一分类\"]')||{}).click?.(); true");
+  await new Promise((r) => setTimeout(r, 300));
+  await check(
+    '!!document.querySelector(\'input[aria-label="统一分类名称"]\')',
+    "点设分类后出现输入框"
+  );
+  await browser("fill", 'input[aria-label="统一分类名称"]', "批量归类");
+  await browser("press", "Enter");
+  await new Promise((r) => setTimeout(r, 700));
+  await check(
+    `((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').cards)||[]).filter(c => c.category === "批量归类").length >= 2`,
+    "回车即应用分类到所有选中卡片"
+  );
+
+  // 再多选一张，验证「标记已复习」作用于全部选中项
+  await browser("eval", `(() => {
+    const rows = [...document.querySelectorAll('.ws-entry')];
+    rows[0].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 350));
+  await browser("eval", `(() => {
+    const rows = [...document.querySelectorAll('.ws-entry')];
+    rows[1].dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 350));
+  await check(
+    'document.querySelector(\'[data-batch-count]\')?.textContent.includes("2")',
+    "重新多选两张以验证批量打标"
+  );
   await browser("eval", "(document.querySelector('[aria-label=\"标记为已复习\"]')||{}).click?.(); true");
   await new Promise((r) => setTimeout(r, 700));
   await check(

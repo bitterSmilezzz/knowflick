@@ -980,6 +980,21 @@ select {
   font-weight: 600;
   color: var(--ink);
 }
+.ws-batch-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ws-batch-input input {
+  height: var(--control-h);
+  min-width: 120px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-meta);
+}
 .ws-batch-actions {
   display: flex;
   align-items: center;

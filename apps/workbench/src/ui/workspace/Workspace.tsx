@@ -132,6 +132,9 @@ export function Workspace() {
   // 批量选择：⌘/Ctrl 点击追加或取消，普通点击仍是单选。
   // 用 Set 而不是数组，是为了让「是否已选」判断不随选中项数量变慢。
   const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
+  // 设分类用界面内输入，不用 window.prompt：原生弹窗样式与整套界面割裂，
+  // 还会挡住下面的列表。
+  const [batchCategory, setBatchCategory] = useState<string | null>(null);
   const layout = usePaneLayout();
   const readerRef = useRef<HTMLElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -424,6 +427,7 @@ export function Workspace() {
       await storeCardList(next, dir);
       setCards(next);
       setBatchIds(new Set());
+      setBatchCategory(null);
       setNotice(`${label}：已处理 ${ids.size} 张卡片`);
     });
   };
@@ -1418,25 +1422,58 @@ export function Workspace() {
                   >
                     收藏
                   </button>
-                  <button
-                    className="ws-bordered"
-                    aria-label="设置统一分类"
-                    disabled={loading || busy}
-                    onClick={() => {
-                      const value = window.prompt("把选中的卡片归到哪个分类？", batchCards[0]?.category || "");
-                      const category = (value ?? "").trim();
-                      if (!category) return;
-                      void runOnSelectedCards(`归类到「${category}」`, (card) => ({ ...card, category }));
-                    }}
-                  >
-                    设分类
-                  </button>
+                  {batchCategory === null ? (
+                    <button
+                      className="ws-bordered"
+                      aria-label="设置统一分类"
+                      disabled={loading || busy}
+                      onClick={() => setBatchCategory(batchCards[0]?.category || "")}
+                    >
+                      设分类
+                    </button>
+                  ) : (
+                    <span className="ws-batch-input">
+                      <input
+                        autoFocus
+                        aria-label="统一分类名称"
+                        placeholder="分类名称"
+                        value={batchCategory}
+                        onChange={(event) => setBatchCategory(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            const category = batchCategory.trim();
+                            if (category) void runOnSelectedCards(`归类到「${category}」`, (card) => ({ ...card, category }));
+                            else setBatchCategory(null);
+                          } else if (event.key === "Escape") {
+                            event.preventDefault();
+                            setBatchCategory(null);
+                          }
+                        }}
+                      />
+                      <button
+                        className="ws-primary"
+                        aria-label="确认设置分类"
+                        disabled={loading || busy || !batchCategory.trim()}
+                        onClick={() => {
+                          const category = batchCategory.trim();
+                          if (category) void runOnSelectedCards(`归类到「${category}」`, (card) => ({ ...card, category }));
+                          else setBatchCategory(null);
+                        }}
+                      >
+                        应用
+                      </button>
+                      <button className="ws-icon-button" aria-label="取消设置分类" disabled={loading || busy} onClick={() => setBatchCategory(null)}>
+                        <Icon name="close" size={14} />
+                      </button>
+                    </span>
+                  )}
                   <button
                     className="ws-icon-button"
                     aria-label="退出批量选择"
                     title="退出批量选择"
                     disabled={loading || busy}
-                    onClick={() => setBatchIds(new Set())}
+                    onClick={() => { setBatchIds(new Set()); setBatchCategory(null); }}
                   >
                     <Icon name="close" size={14} />
                   </button>
