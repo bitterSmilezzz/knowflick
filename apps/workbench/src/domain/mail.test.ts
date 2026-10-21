@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { emailBodyForAi, filterMail, groupMailThreads, mailCategory, mailMetadata, summarizeMail } from "./mail";
+import { emailBodyForAi, filterMail, groupMailThreads, mailCategory, mailDigestSources, mailMetadata, makeMailDigestMetadata, parseMailDigestSources, summarizeMail } from "./mail";
 import { completeChat } from "../shell/store";
 import { defaultSettings } from "./settings";
 import type { RawMaterial } from "../shell/store";
@@ -61,6 +61,31 @@ describe("邮件整理", () => {
     await expect(summarizeMail([message("1", "标题")], defaultSettings, "")).rejects.toThrow("API");
     await expect(summarizeMail([{ ...message("1", "标题"), rawText: "a".repeat(60001) }], defaultSettings, "x")).rejects.toThrow("分批");
     expect(completeChat).not.toHaveBeenCalled();
+  });
+  it("摘要来源按发送给模型的顺序固定，编号不会随选择变化漂移", () => {
+    const chosen = [message("1", "第一封"), message("2", "第二封")];
+    const sources = mailDigestSources(chosen);
+    expect(sources.map(s => s.materialId)).toEqual(["1", "2"]);
+    expect(sources[0]).toMatchObject({ subject: "第一封", from: "项目组 <team@example.com>", date: "2026-10-21" });
+    // Reordering the live selection must not renumber the saved mapping.
+    expect(mailDigestSources([...chosen].reverse()).map(s => s.materialId)).toEqual(["2", "1"]);
+  });
+  it("摘要元数据往返可读，且不写入邮件正文或凭据", () => {
+    const sources = mailDigestSources([message("1", "预算"), message("2", "方案")]);
+    const material = { ...message("1", "摘要"), sourceType: "email-digest", metadataJson: makeMailDigestMetadata(sources, 1234) };
+    expect(parseMailDigestSources(material)).toEqual(sources);
+    expect(material.metadataJson).not.toContain("请确认预算");
+    expect(material.metadataJson).toContain('"generatedAt":1234');
+  });
+  it("损坏或越界的来源映射整体拒绝，避免把引用错位到别的邮件", () => {
+    const base = { ...message("1", "摘要"), sourceType: "email-digest" };
+    expect(parseMailDigestSources({ ...base, metadataJson: "broken" })).toEqual([]);
+    expect(parseMailDigestSources({ ...base, metadataJson: JSON.stringify({ sources: "no" }) })).toEqual([]);
+    expect(parseMailDigestSources({ ...base, metadataJson: JSON.stringify({ sources: [{ materialId: "1" }] }) })).toEqual([]);
+    expect(parseMailDigestSources({ ...base, metadataJson: JSON.stringify({ sources: Array.from({ length: 31 }, (_, i) => ({ materialId: String(i), subject: "s", from: "", date: "" })) }) })).toEqual([]);
+    expect(parseMailDigestSources({ ...base, metadataJson: JSON.stringify({ sources: [{ materialId: "1", subject: "a", from: "", date: "" }, { materialId: "1", subject: "b", from: "", date: "" }] }) })).toEqual([]);
+    // 非摘要素材即使带同样结构也不认，避免把普通素材当来源清单。
+    expect(parseMailDigestSources({ ...base, sourceType: "email" })).toEqual([]);
   });
   it("空模型响应是失败，不落一个空摘要", async () => {
     vi.mocked(completeChat).mockResolvedValue(" ");

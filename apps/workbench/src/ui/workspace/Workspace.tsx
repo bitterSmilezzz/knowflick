@@ -48,7 +48,8 @@ import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import { MailboxView } from "./MailboxView";
-import { emailBodyForAi } from "../../domain/mail";
+import { emailBodyForAi, makeMailDigestMetadata, type MailDigestSource } from "../../domain/mail";
+import { mailSyncDueAccounts } from "../../shell/mail";
 import { DEFAULT_ASR_MODEL, realtimeFactor, titleFromTranscript } from "../../domain/asr";
 import { pluginEnabledIn } from "../../domain/pluginSettings";
 import {
@@ -114,6 +115,10 @@ export function Workspace() {
   const [visibleCount, setVisibleCount] = useState(60);
   const [indexedMaterialIds, setIndexedMaterialIds] = useState<ReadonlySet<string>>(new Set());
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  // The mail summary lives here so jumping to an original mail (which leaves the
+  // mailbox page) does not throw away an unsaved result.
+  const [mailDigest, setMailDigest] = useState<{ text: string; sources: MailDigestSource[]; saved: boolean } | null>(null);
+  const [mailDigestTitle, setMailDigestTitle] = useState("邮件整理摘要");
   const layout = usePaneLayout();
   const readerRef = useRef<HTMLElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -179,6 +184,27 @@ export function Workspace() {
       console.warn("卡片向量同步非阻塞跳过:", err);
     });
   }, [cards, file.settings.providerId, file.settings.baseURL, apiKey, dir]);
+
+  // Background mail polling while the app runs. The interval is decided in Rust
+  // (persisted last attempt + backoff), so this only wakes up occasionally and
+  // never performs network work for accounts that opted out.
+  useEffect(() => {
+    if (!inShell() || !dir) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled || document.hidden) return;
+      try {
+        const outcomes = await mailSyncDueAccounts(dir);
+        if (!cancelled && outcomes.length) {
+          window.dispatchEvent(new CustomEvent("knowflick:library-changed"));
+        }
+      } catch (err) {
+        console.warn("邮件定时同步跳过:", err);
+      }
+    };
+    const timer = window.setInterval(() => void tick(), 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [dir]);
 
   // Native menu events arrive as DOM CustomEvents (see src-tauri/src/lib.rs).
   useEffect(() => {
@@ -1308,11 +1334,18 @@ export function Workspace() {
                   onRefresh={() => load(true)}
                   onSettings={() => navigate("settings")}
                   onOpenMaterial={(id) => { navigate("library"); setSelectedId(id); }}
-                  onSaveDigest={async (title, markdown) => {
+                  digest={mailDigest}
+                  onDigestChange={setMailDigest}
+                  digestTitle={mailDigestTitle}
+                  onDigestTitleChange={setMailDigestTitle}
+                  onSaveDigest={async (title, markdown, sources) => {
                     const material = makeMaterial({ title, text: markdown, url: "" });
                     material.sourceType = "email-digest";
-                    material.metadataJson = JSON.stringify({ generatedBy: "mail-summary", generatedAt: Date.now() });
+                    // The source map is captured at request time, so a saved digest
+                    // still points at the right originals after the selection changes.
+                    material.metadataJson = makeMailDigestMetadata(sources);
                     await storeMaterial(material, dir);
+                    setMailDigest(current => current ? { ...current, saved: true } : null);
                     await load(true);
                   }}
                 />

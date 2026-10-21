@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { AiSettings } from "../../domain/settings";
-import { filterMail, groupMailThreads, mailCategory, mailMetadata, summarizeMail } from "../../domain/mail";
+import { filterMail, groupMailThreads, mailCategory, mailMetadata, mailDigestSources, summarizeMail, type MailDigestSource } from "../../domain/mail";
 import { inShell, type RawMaterial } from "../../shell/store";
-import { mailListAccounts, mailRemoveAccount, mailSaveAccount, mailSyncAccount, mailTestAccount, type MailAccount, type MailAccountConfig } from "../../shell/mail";
+import { mailListAccounts, mailRemoveAccount, mailSaveAccount, mailSyncAccount, mailSyncHistory, mailListRejected, mailRetryRejected, mailTestAccount, type MailAccount, type MailAccountConfig, type RejectedMail } from "../../shell/mail";
 import { storeMaterial } from "./repository";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { MailDigestSources } from "./MailDigestSources";
 import { Icon } from "./Icon";
 import "./mail.css";
 
@@ -16,7 +17,12 @@ interface Props {
   onRefresh: () => Promise<void>;
   onOpenMaterial: (id: string) => void;
   onSettings: () => void;
-  onSaveDigest: (title: string, markdown: string) => Promise<void>;
+  onSaveDigest: (title: string, markdown: string, sources: MailDigestSource[]) => Promise<void>;
+  /** Lifted so the unsaved summary survives jumping to an original mail and back. */
+  digest: { text: string; sources: MailDigestSource[]; saved: boolean } | null;
+  onDigestChange: (digest: { text: string; sources: MailDigestSource[]; saved: boolean } | null) => void;
+  digestTitle: string;
+  onDigestTitleChange: (title: string) => void;
 }
 const PRESETS = [
   { id: "qq", name: "QQ 邮箱", host: "imap.qq.com" },
@@ -45,7 +51,8 @@ function AccountForm({ account, available, busy, onClose, onAction }: {
   const [config, setConfig] = useState<MailAccountConfig>(() => account ? {
     id: account.id, name: account.name, email: account.email, host: account.host,
     port: account.port, username: account.username, folder: account.folder, syncLimit: account.syncLimit,
-  } : { id: crypto.randomUUID(), name: "", email: "", host: PRESETS[0].host, port: 993, username: "", folder: "INBOX", syncLimit: 50 });
+    syncIntervalMinutes: account.syncIntervalMinutes ?? 0,
+  } : { id: crypto.randomUUID(), name: "", email: "", host: PRESETS[0].host, port: 993, username: "", folder: "INBOX", syncLimit: 50, syncIntervalMinutes: 0 });
   const [provider, setProvider] = useState(() => PRESETS.find(p => p.host === config.host)?.id ?? "custom");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -99,6 +106,8 @@ function AccountForm({ account, available, busy, onClose, onAction }: {
         <label className="ws-field">授权码 / 应用专用密码<input aria-label="授权码或应用专用密码" type="password" autoComplete="new-password" value={password} required={!account?.hasPassword} placeholder={account?.hasPassword ? "留空沿用已保存凭据" : "由邮箱服务商生成"} onChange={e => { setPassword(e.target.value); setNotice(""); setError(""); }} /></label>
         <label className="ws-field">首次同步上限<select aria-label="首次同步上限" value={config.syncLimit} onChange={e => update("syncLimit", Number(e.target.value))}>{[20, 50, 100, 200].map(limit => <option key={limit} value={limit}>最近 {limit} 封</option>)}</select></label>
         <label className="ws-field">邮件文件夹<input aria-label="邮件文件夹" required value={config.folder} placeholder="INBOX" onChange={e => update("folder", e.target.value)} /></label>
+        <label className="ws-field">自动同步<select aria-label="自动同步间隔" value={config.syncIntervalMinutes ?? 0} onChange={e => update("syncIntervalMinutes", Number(e.target.value))}><option value={0}>关闭 · 手动同步</option>{[5, 15, 30, 60, 180, 1440].map(minutes => <option key={minutes} value={minutes}>每 {minutes === 1440 ? "天" : `${minutes} 分钟`}</option>)}</select></label>
+        <p className="ws-hint mail-form-note">自动同步仅在应用运行时收取新邮件；历史邮件按需加载，邮件归纳由你手动发起。</p>
       </div>
       <details className="mail-advanced" ref={advanced}><summary>高级连接设置 · {config.host}:{config.port}</summary><div className="mail-form-grid">
         <label className="ws-field">IMAP 主机<input aria-label="IMAP 主机" required value={config.host} autoCapitalize="none" onChange={e => update("host", e.target.value)} /></label>
@@ -135,7 +144,7 @@ function MailRow({ material, checked, busy, onSelect, onOpen }: {
   </article>;
 }
 
-export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpenMaterial, onSettings, onSaveDigest }: Props) {
+export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpenMaterial, onSettings, onSaveDigest, digest, onDigestChange, digestTitle, onDigestTitleChange }: Props) {
   const available = inShell();
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [loading, setLoading] = useState(available);
@@ -146,6 +155,8 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<MailAccount | null>(null);
   const [disconnect, setDisconnect] = useState("");
+  const [recoveryAccount, setRecoveryAccount] = useState("");
+  const [rejectedMails, setRejectedMails] = useState<RejectedMail[]>([]);
   const [query, setQuery] = useState("");
   const [accountId, setAccountId] = useState("");
   const [status, setStatus] = useState<MailStatus>("inbox");
@@ -155,8 +166,6 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
   const mailLock = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [digest, setDigest] = useState<{ text: string; count: number } | null>(null);
-  const [digestTitle, setDigestTitle] = useState("邮件整理摘要");
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     let ignored = false;
@@ -165,6 +174,15 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
       .catch(err => { if (!ignored) setAccountError(errorText(err)); })
       .finally(() => { if (!ignored) setLoading(false); });
     return () => { ignored = true; };
+  }, [available, dir]);
+  useEffect(() => {
+    if (!available || !dir) return;
+    let current = true;
+    const reload = () => {
+      void mailListAccounts(dir).then(next => { if (current) setAccounts(next); }).catch(() => {});
+    };
+    window.addEventListener("knowflick:mail-accounts-changed", reload);
+    return () => { current = false; window.removeEventListener("knowflick:mail-accounts-changed", reload); };
   }, [available, dir]);
   useEffect(() => { setSelected(previous => new Set([...previous].filter(id => materials.some(m => m.id === id && m.sourceType === "email")))); }, [materials]);
   const mails = useMemo(() => materials.filter(m => m.sourceType === "email"), [materials]);
@@ -183,16 +201,28 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
     try { const message = await action(); setAccountNotice(message); return message; }
     finally { accountLock.current = false; setAccountBusy(""); }
   };
-  const sync = async (account: MailAccount) => {
+  const sync = async (account: MailAccount, mode: "new" | "history" | "retry" = "new") => {
     try { await accountAction(account.id, async () => {
-      const result = await mailSyncAccount(dir, account.id);
-      setAccounts(await mailListAccounts(dir)); await onRefresh();
-      return `${account.name}：新增 ${result.imported} 封，跳过 ${result.skipped} 封重复邮件${result.rejected ? `，另有 ${result.rejected} 封无法读取已跳过` : ""}。`;
+      const result = mode === "history" ? await mailSyncHistory(dir, account.id)
+        : mode === "retry" ? await mailRetryRejected(dir, account.id) : await mailSyncAccount(dir, account.id);
+      setAccounts(await mailListAccounts(dir));
+      if (recoveryAccount === account.id) setRejectedMails(await mailListRejected(dir, account.id));
+      await onRefresh();
+      const label = mode === "history" ? "历史邮件" : mode === "retry" ? "重试隔离邮件" : "新邮件";
+      return `${account.name} · ${label}：新增 ${result.imported} 封，跳过 ${result.skipped} 封重复邮件${result.rejected ? `，另有 ${result.rejected} 封仍无法读取` : ""}${mode === "history" && result.historyComplete ? "，历史已加载完毕" : ""}。`;
     }); } catch (err) {
       setAccountError(errorText(err));
       await onRefresh().catch(() => {});
       if (available) void mailListAccounts(dir).then(setAccounts).catch(() => {});
     }
+  };
+  const showRecovery = async (account: MailAccount) => {
+    if (recoveryAccount === account.id) { setRecoveryAccount(""); return; }
+    try { await accountAction(account.id, async () => {
+      setRejectedMails(await mailListRejected(dir, account.id));
+      setRecoveryAccount(account.id);
+      return `${account.name}：已读取隔离记录；可重试，其他邮件继续正常同步。`;
+    }); } catch (err) { setAccountError(errorText(err)); }
   };
   const remove = async (account: MailAccount) => {
     try { await accountAction(account.id, async () => {
@@ -208,14 +238,20 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
     mailLock.current = true; setMailBusy(mode); setError(""); setNotice("");
     try {
       if (mode === "summary") {
+        // Capture source order before awaiting the model; selection and filters
+        // can change while a request is in flight.
+        const sources = mailDigestSources(chosen);
         const text = await summarizeMail(chosen, settings, apiKey);
         if (!text.trim()) throw new Error("AI 没有返回摘要，请重试或检查模型设置。");
-        setDigest({ text, count: chosen.length });
-        setDigestTitle(`邮件摘要 · ${new Date().toLocaleDateString("zh-CN")}`);
+        onDigestChange({ text, sources, saved: false });
+        onDigestTitleChange(`邮件摘要 · ${new Date().toLocaleDateString("zh-CN")}`);
         setNotice(`已完成 ${chosen.length} 封邮件的摘要，可检查后保存到素材库。`);
       } else if (mode === "save" && digest) {
         if (!digestTitle.trim()) throw new Error("请填写摘要标题。");
-        await onSaveDigest(digestTitle.trim(), digest.text); setNotice("邮件摘要已保存到素材库。");
+        if (digest.saved) return;
+        await onSaveDigest(digestTitle.trim(), digest.text, digest.sources);
+        onDigestChange(digest ? { ...digest, saved: true } : null);
+        setNotice("邮件摘要及来源已保存到素材库，可随时回看原邮件。");
       } else if (mode === "archive") {
         let completed = 0;
         try {
@@ -240,14 +276,28 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
       {!available && <p className="ws-hint">浏览器模式可整理已导入的邮件；连接和同步邮箱请使用桌面应用。</p>}
       {available && !loading && !accounts.length && <p className="ws-hint">还没有连接邮箱。通过 IMAP 导入最近的邮件，随时手动同步。</p>}
       {accounts.map(account => <div className="mail-account" key={account.id}>
-        <div className="mail-account-info"><strong>{account.name || account.email}</strong><span>{account.email} · {account.folder}</span><span>上次同步：{formatTime(account.lastSyncAt)}</span>{account.lastError && <span className="mail-account-error">同步失败：{account.lastError}</span>}</div>
-        <div className="mail-actions"><button className="ws-bordered" type="button" disabled={!!accountBusy || !available} onClick={() => void sync(account)}>{accountBusy === account.id ? "处理中…" : "立即同步"}</button><button type="button" disabled={!!accountBusy} onClick={() => { setEditing(account); setFormOpen(true); setDisconnect(""); }}>编辑</button><button type="button" disabled={!!accountBusy} aria-expanded={disconnect === account.id} onClick={() => setDisconnect(disconnect === account.id ? "" : account.id)}>断开</button></div>
+        <div className="mail-account-info"><strong>{account.name || account.email}</strong><span>{account.email} · {account.folder}</span><span>上次同步：{formatTime(account.lastSyncAt)} · {(account.syncIntervalMinutes ?? 0) > 0 ? `每 ${account.syncIntervalMinutes} 分钟自动同步（应用运行时）` : "手动同步"}</span>{account.lastError && <span className="mail-account-error">同步失败：{account.lastError}。已导入的邮件仍保留，可立即重试。</span>}</div>
+        <div className="mail-actions">
+          <button className="ws-bordered" type="button" disabled={!!accountBusy || !available} onClick={() => void sync(account)}>{accountBusy === account.id ? "处理中…" : "立即同步"}</button>
+          <button className="ws-bordered" type="button" disabled={!!accountBusy || !available || account.historyComplete} onClick={() => void sync(account, "history")}>{account.historyComplete ? "历史已加载完毕" : "加载更早邮件"}</button>
+          {account.rejectedCount > 0 && <button className="ws-bordered" type="button" disabled={!!accountBusy} aria-expanded={recoveryAccount === account.id} onClick={() => void showRecovery(account)}>隔离邮件 {account.rejectedCount}</button>}
+          <button type="button" disabled={!!accountBusy} onClick={() => { setEditing(account); setFormOpen(true); setDisconnect(""); }}>编辑</button><button type="button" disabled={!!accountBusy} aria-expanded={disconnect === account.id} onClick={() => setDisconnect(disconnect === account.id ? "" : account.id)}>断开</button>
+        </div>
+        {recoveryAccount === account.id && <div className="mail-recovery" aria-label={`${account.name}隔离邮件`}>
+          <p>以下邮件未能导入。重试只处理这些记录，已导入邮件与新邮件游标保持不变。</p>
+          <ul>{rejectedMails.map(mail => <li key={`${mail.folder}-${mail.uid}`}><strong>{mail.folder} · UID {mail.uid}</strong><span>{mail.reason}</span><time>{formatTime(mail.rejectedAt)}</time></li>)}</ul>
+          <button type="button" className="ws-bordered" disabled={!!accountBusy || !rejectedMails.length} onClick={() => void sync(account, "retry")}>重试隔离邮件</button>
+          {!rejectedMails.length && <p role="status">没有待重试的隔离邮件。</p>}
+        </div>}
         {disconnect === account.id && <div className="mail-disconnect" role="group" aria-label={`确认断开 ${account.name}`}><span>断开 {account.email}？已导入邮件仍保留，之后不再同步。</span><button type="button" className="ws-bordered" disabled={!!accountBusy} onClick={() => void remove(account)}>确认断开</button><button type="button" disabled={!!accountBusy} onClick={() => setDisconnect("")}>取消</button></div>}
       </div>)}
       <div className="mail-form-feedback"><p role="alert" aria-live="assertive">{accountError}</p><p role="status" aria-live="polite">{accountNotice}</p></div>
       {formOpen && <div id="mail-account-editor"><AccountForm key={editing?.id ?? "new"} account={editing} available={available} busy={!!accountBusy} onClose={() => { setFormOpen(false); setEditing(null); }} onAction={(mode, config, password) => accountAction(mode, async () => {
         if (mode === "test") return errorText((await mailTestAccount(dir, config, password)).message, [password]);
-        await mailSaveAccount(dir, config, password); setAccounts(await mailListAccounts(dir)); return "邮箱配置已保存，可立即同步。";
+        await mailSaveAccount(dir, config, password);
+        setAccounts(await mailListAccounts(dir));
+        window.dispatchEvent(new CustomEvent("knowflick:mail-accounts-changed"));
+        return "邮箱配置已保存，可立即同步。";
       })} /></div>}
     </section>
     <section className="mail-library" aria-label="邮件整理">
@@ -256,7 +306,7 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
       <div className="mail-selection"><label><input type="checkbox" checked={allSelected} ref={element => { if (element) element.indeterminate = visibleSelected > 0 && !allSelected; }} disabled={!filtered.length || !!mailBusy} onChange={() => setSelected(previous => { const next = new Set(previous); for (const mail of filtered) { if (allSelected) next.delete(mail.id); else next.add(mail.id); } return next; })} />全选当前结果</label><span className="ws-hint">{filtered.length} 封 · {threads.length} 个主题 · 已选 {chosen.length}{hiddenSelected > 0 ? `（含筛选外 ${hiddenSelected} 封）` : ""}</span>{chosen.length > 0 && <button type="button" disabled={!!mailBusy} onClick={() => setSelected(new Set())}>清空选择</button>}<div className="mail-actions"><button type="button" className="ws-bordered" disabled={!chosen.length || !!mailBusy} onClick={() => void organize("archive")}><Icon name="archive" size={14} />{mailBusy === "archive" ? "归档中…" : "本地归档"}</button><button type="button" className="ws-primary" disabled={!chosen.length || chosen.length > 30 || !!mailBusy} onClick={() => void organize("summary")}>{mailBusy === "summary" ? "正在汇总…" : "汇总所选邮件"}</button></div></div>
       <p className="mail-ai-note">点击“汇总所选邮件”会将所选邮件内容发送给当前配置的 AI 服务，每次最多 30 封。{chosen.length > 30 && <strong>当前已选 {chosen.length} 封，请减少选择后汇总。</strong>}<button type="button" onClick={onSettings}>AI 设置</button></p>
       <div className="mail-form-feedback"><p role="alert" aria-live="assertive">{error}</p><p role="status" aria-live="polite">{notice}</p></div>
-      {digest && <section className="mail-digest" aria-label="邮件摘要结果"><div className="mail-section-heading"><h3>邮件摘要 · {digest.count} 封</h3><button type="button" className="ws-icon-button" aria-label="收起摘要" disabled={!!mailBusy} onClick={() => setDigest(null)}><Icon name="close" size={14} /></button></div><div className="mail-digest-body"><MarkdownRenderer text={digest.text} /></div><div className="mail-digest-save"><input aria-label="邮件摘要标题" value={digestTitle} maxLength={200} onChange={e => setDigestTitle(e.target.value)} /><button type="button" className="ws-bordered" disabled={!!mailBusy || !digestTitle.trim()} onClick={() => void organize("save")}>{mailBusy === "save" ? "保存中…" : "保存摘要到素材库"}</button></div></section>}
+      {digest && <section className="mail-digest" aria-label="邮件摘要结果"><div className="mail-section-heading"><h3>邮件摘要 · {digest.sources.length} 封</h3><button type="button" className="ws-icon-button" aria-label="收起摘要" disabled={!!mailBusy} onClick={() => onDigestChange(null)}><Icon name="close" size={14} /></button></div><div className="mail-digest-body"><MarkdownRenderer text={digest.text} /></div><MailDigestSources sources={digest.sources} materials={materials} onOpenMaterial={onOpenMaterial} /><div className="mail-digest-save"><input aria-label="邮件摘要标题" value={digestTitle} maxLength={200} disabled={digest.saved} onChange={e => onDigestTitleChange(e.target.value)} /><button type="button" className="ws-bordered" disabled={!!mailBusy || !digestTitle.trim() || digest.saved} onClick={() => void organize("save")}>{mailBusy === "save" ? "保存中…" : digest.saved ? "摘要已保存" : "保存摘要到素材库"}</button></div></section>}
       <div className="mail-thread-list" aria-busy={!!mailBusy}>
         {!filtered.length ? <div className="mail-empty"><Icon name="inbox" size={28} /><h3>{mails.length ? "没有符合条件的邮件" : "邮箱还没有邮件"}</h3><p>{mails.length ? "试试调整账号、状态、分类或搜索词。" : "连接账号后点击“立即同步”；已导入的邮件也会显示在这里。"}</p>{mails.length > 0 && <button type="button" className="ws-bordered" onClick={() => { setQuery(""); setAccountId(""); setStatus("all"); setCategory(""); }}>查看全部邮件</button>}</div> : threads.map(thread => <section className="mail-thread" key={thread.key}><h3 className="mail-thread-heading"><Icon name="layers" size={14} /><span>{thread.subject || "（无主题）"}</span><span className="mail-badge">{thread.messages.length} 封</span></h3>{thread.messages.map(material => <MailRow key={material.id} material={material} checked={selected.has(material.id)} busy={!!mailBusy} onSelect={() => toggle(material.id)} onOpen={() => onOpenMaterial(material.id)} />)}</section>)}
       </div>

@@ -117,6 +117,21 @@
 .mail-digest-body .ws-prose p { margin-bottom: 8px; }
 .mail-digest-save { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
 .mail-digest-save input { flex: 1 1 160px; }
+.mail-form-note { grid-column: 1 / -1; }
+.mail-recovery { flex-basis: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--sunken); font-size: var(--text-meta); line-height: 1.6; display: flex; flex-direction: column; gap: 8px; }
+.mail-recovery ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; }
+.mail-recovery li { display: flex; flex-wrap: wrap; gap: 4px 10px; overflow-wrap: anywhere; }
+.mail-recovery li > strong { font-weight: 600; }
+.mail-recovery li > span { color: var(--muted); }
+/* Sources stay outside the summary's scroll area: saving a digest must always
+   show which messages it came from, not hide them below the fold. */
+.mail-digest-sources { flex: 0 1 auto; min-height: 0; max-height: 128px; overflow-y: auto; scrollbar-width: thin; border-top: 1px solid var(--line); padding-top: 8px; font-size: var(--text-meta); }
+.mail-digest-sources h3 { margin-bottom: 6px; color: var(--muted); }
+.mail-digest-sources ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.mail-digest-source { display: flex; align-items: center; gap: 10px; }
+.mail-digest-source > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.mail-digest-source > div > span { color: var(--muted); }
+.mail-digest-source > button { flex-shrink: 0; }
 .mail-empty { display: flex; align-items: center; flex-direction: column; justify-content: center; min-height: 180px; padding: 24px 16px; text-align: center; gap: 10px; color: var(--muted); }
 .mail-empty h3 { color: var(--ink); }
 .mail-empty p { font-size: var(--text-meta); line-height: 1.6; max-width: 320px; }

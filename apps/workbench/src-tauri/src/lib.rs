@@ -190,6 +190,38 @@ async fn mail_sync_account(app: tauri::AppHandle, dir: Option<String>, id: Strin
 }
 
 #[tauri::command]
+async fn mail_sync_history(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<mail::MailSyncResult, String> {
+    let path = library_dir(dir);
+    let result = tauri::async_runtime::spawn_blocking(move || mail::sync_history(&path, &id)).await.map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    result
+}
+
+#[tauri::command]
+async fn mail_list_rejected(dir: Option<String>, id: String) -> Result<Vec<mail::RejectedMail>, String> {
+    let path = library_dir(dir);
+    tauri::async_runtime::spawn_blocking(move || mail::list_rejected(&path, &id)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn mail_retry_rejected(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<mail::MailSyncResult, String> {
+    let path = library_dir(dir);
+    let result = tauri::async_runtime::spawn_blocking(move || mail::retry_rejected(&path, &id)).await.map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    result
+}
+
+#[tauri::command]
+async fn mail_sync_due_accounts(app: tauri::AppHandle, dir: Option<String>) -> Result<Vec<mail::MailSyncOutcome>, String> {
+    let path = library_dir(dir);
+    let result = tauri::async_runtime::spawn_blocking(move || mail::sync_due_accounts(&path)).await.map_err(|e| e.to_string())?;
+    if result.as_ref().is_ok_and(|outcomes| !outcomes.is_empty()) {
+        notify_library_changed(&app);
+    }
+    result
+}
+
+#[tauri::command]
 fn db_load_cards(dir: Option<String>, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<db::KnowledgeCardDto>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
@@ -851,6 +883,10 @@ pub fn run() {
             mail_test_account,
             mail_remove_account,
             mail_sync_account,
+            mail_sync_history,
+            mail_list_rejected,
+            mail_retry_rejected,
+            mail_sync_due_accounts,
             save_cards,
             save_settings,
             save_search_history,

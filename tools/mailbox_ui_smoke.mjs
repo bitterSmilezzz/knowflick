@@ -43,6 +43,9 @@ try {
   await clickText("连接邮箱");
   await check("!!document.querySelector('input[type=password]')", "连接表单使用密码输入框");
   await check("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='测试连接').disabled", "浏览器不能伪造连接成功");
+  await check("[...document.querySelectorAll('[aria-label=\"自动同步间隔\"] option')].map(o=>o.value).join(',')==='0,5,15,30,60,180,1440'", "自动同步默认关闭且可选定区间");
+  await check("[...document.querySelectorAll('[aria-label=\"自动同步间隔\"] option')][0].selected", "自动同步默认是手动");
+  await check("document.querySelector('[data-page=mailbox]').textContent.includes('仅在应用运行时')", "自动同步范围如实说明");
   await b("click", '[aria-label="关闭账号表单"]');
   await b("fill", '[aria-label="搜索邮件主题、发件人与正文"]', "Newsletter");
   await check("document.querySelectorAll('.mail-row').length===1", "搜索邮件主题");
@@ -60,8 +63,21 @@ try {
   await check("!!document.querySelector('[aria-label=\"邮件摘要结果\"]')", "AI 归纳呈现真实结果面板");
   await check("window.__mailSummaryBody.messages[1].content.includes('发件人：')", "模型收到邮件来源头");
   await check("document.querySelectorAll('.mail-row').length===3", "归纳不会删除原邮件");
+  await check("document.querySelectorAll('[data-mail-source]').length===3", "摘要列出三封来源邮件");
+  await check("document.querySelector('[aria-label=\"摘要来源邮件\"]').textContent.includes('[邮件 1]')", "来源按模型收到的编号标注");
+  await b("eval", "(()=>{const el=[...document.querySelectorAll('[aria-label^=\"查看原邮件\"]')][0];el.click();return true})()");
+  await check("document.querySelector('.ws-reader h1')?.textContent.includes('项目计划')", "从摘要可跳回原邮件");
+  await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('邮箱')).click();return true})()");
+  await check("!!document.querySelector('[aria-label=\"邮件摘要结果\"]')", "回到邮箱仍保留摘要");
   await clickText("保存摘要到素材库");
   await check("JSON.parse(localStorage.getItem('knowflick.workspace.v1')).materials.some(m=>m.sourceType==='email-digest')", "摘要持久化为素材");
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));const d=raw.materials.find(m=>m.sourceType==='email-digest');const meta=JSON.parse(d.metadataJson);return meta.sources.length===3&&meta.sources[0].materialId==='mail-test-1'})()", "摘要素材持久保存来源映射");
+  await check("[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='摘要已保存'&&b.disabled)", "保存后按钮变已保存并禁用");
+  // Jumping to an original mail leaves the mailbox page; the selection is intentionally
+  // not preserved, so select again before a batch action (the digest itself survives).
+  await check("document.querySelectorAll('.mail-row[data-selected=true]').length===0", "离开邮箱后选择被清空");
+  await b("check", '.mail-selection input[type=checkbox]');
+  await check("document.querySelectorAll('.mail-row[data-selected=true]').length===3", "重新全选后可批量操作");
   await clickText("本地归档");
   await check("JSON.parse(localStorage.getItem('knowflick.workspace.v1')).materials.filter(m=>m.sourceType==='email'&&m.inboxStatus==='processed').length===3", "所选邮件本地归档保留内容");
   await check("document.querySelectorAll('.mail-row').length===0", "待整理列表更新");

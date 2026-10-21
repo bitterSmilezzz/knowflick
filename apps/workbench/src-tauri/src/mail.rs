@@ -58,6 +58,9 @@ pub struct MailAccountConfig {
     pub folder: String,
     #[serde(default = "default_limit")]
     pub sync_limit: u16,
+    /// Zero keeps synchronization manual; automatic sync is explicitly opted in.
+    #[serde(default)]
+    pub sync_interval_minutes: u16,
 }
 
 fn default_folder() -> String {
@@ -78,6 +81,9 @@ pub struct MailAccount {
     pub last_sync_at: Option<i64>,
     pub last_error: Option<String>,
     pub has_password: bool,
+    pub history_complete: bool,
+    pub rejected_count: usize,
+    pub last_attempt_at: Option<i64>,
 }
 
 /// Result of a connectivity check.
@@ -99,6 +105,25 @@ pub struct MailSyncResult {
     pub rejected: usize,
     pub account_id: String,
     pub last_sync_at: i64,
+    pub history_complete: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RejectedMail {
+    pub uid: u32,
+    pub reason: String,
+    pub rejected_at: i64,
+    pub folder: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailSyncOutcome {
+    pub account_id: String,
+    pub imported: usize,
+    pub rejected: usize,
+    pub error: Option<String>,
 }
 
 fn now() -> i64 {
@@ -155,6 +180,9 @@ fn validate(mut config: MailAccountConfig) -> MailResult<MailAccountConfig> {
     }
     if !(1..=200).contains(&config.sync_limit) {
         return Err("Sync limit must be between 1 and 200".into());
+    }
+    if config.sync_interval_minutes != 0 && !(5..=1440).contains(&config.sync_interval_minutes) {
+        return Err("自动同步间隔须为 5 至 1440 分钟，或设为 0 关闭".into());
     }
     if !config.host.is_ascii()
         || config
@@ -295,7 +323,10 @@ fn ensure_schema(conn: &Connection) -> MailResult<()> {
             PRIMARY KEY (account_id, folder, uid_validity, uid)
         );
 
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_imports_message
+        -- A Message-ID may have several processed UIDs after UIDVALIDITY rolls
+        -- over. Keep each UID in the ledger while sharing its material.
+        DROP INDEX IF EXISTS idx_mail_imports_message;
+        CREATE INDEX IF NOT EXISTS idx_mail_imports_message_lookup
             ON mail_imports(account_id, folder, message_id)
             WHERE message_id <> '';
 
@@ -311,6 +342,22 @@ fn ensure_schema(conn: &Connection) -> MailResult<()> {
             rejected_at  INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (account_id, folder, uid_validity, uid)
         );
+        CREATE TABLE IF NOT EXISTS mail_sync_state (
+            account_id       TEXT PRIMARY KEY,
+            history_before   INTEGER,
+            history_complete INTEGER NOT NULL DEFAULT 0,
+            last_attempt_at  INTEGER
+        );
+        -- Legacy cursors have already handled everything from their last UID
+        -- forward; the ledger's smallest UID is the next history boundary.
+        INSERT OR IGNORE INTO mail_sync_state(account_id,history_before)
+            SELECT a.id, CASE WHEN a.uid_validity IS NULL THEN NULL ELSE
+                COALESCE((SELECT MIN(uid) FROM (
+                    SELECT uid FROM mail_imports WHERE account_id=a.id AND uid_validity=a.uid_validity
+                    UNION ALL
+                    SELECT uid FROM mail_rejected WHERE account_id=a.id AND uid_validity=a.uid_validity
+                )), NULLIF(a.last_uid,0)) END
+            FROM mail_accounts a;
         "#,
     )
     .map_err(sql_error)
@@ -326,6 +373,9 @@ fn account_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MailAccount> {
         last_sync_at: row.get(1)?,
         last_error: row.get(2)?,
         has_password: false,
+        history_complete: row.get(3)?,
+        rejected_count: row.get(4)?,
+        last_attempt_at: row.get(5)?,
     })
 }
 
@@ -333,7 +383,9 @@ fn account(conn: &Connection, dir: &Path, id: &str) -> MailResult<MailAccount> {
     valid_id(id)?;
     let mut found = conn
         .query_row(
-            "SELECT config_json,last_sync_at,last_error FROM mail_accounts WHERE id=?1",
+            "SELECT a.config_json,a.last_sync_at,a.last_error,COALESCE(s.history_complete,0),
+                (SELECT COUNT(*) FROM mail_rejected r WHERE r.account_id=a.id AND r.uid_validity=a.uid_validity),
+                s.last_attempt_at FROM mail_accounts a LEFT JOIN mail_sync_state s ON s.account_id=a.id WHERE a.id=?1",
             [id],
             account_row,
         )
@@ -351,7 +403,9 @@ pub fn list_accounts(dir: &Path) -> MailResult<Vec<MailAccount>> {
     let _guard = ACCOUNT_LOCK.lock().map_err(|_| "Mail account lock failed")?;
     let conn = open(dir)?;
     let mut stmt = conn
-        .prepare("SELECT config_json,last_sync_at,last_error FROM mail_accounts ORDER BY created_at,id")
+        .prepare("SELECT a.config_json,a.last_sync_at,a.last_error,COALESCE(s.history_complete,0),
+            (SELECT COUNT(*) FROM mail_rejected r WHERE r.account_id=a.id AND r.uid_validity=a.uid_validity),
+            s.last_attempt_at FROM mail_accounts a LEFT JOIN mail_sync_state s ON s.account_id=a.id ORDER BY a.created_at,a.id")
         .map_err(sql_error)?;
     let rows = stmt.query_map([], account_row).map_err(sql_error)?;
     let mut out = Vec::new();
@@ -399,7 +453,6 @@ pub fn save_account(
         write_password(dir, &config.id, password)?;
     }
     let json = serde_json::to_string(&config).map_err(|_| "Cannot encode mail account")?;
-    let changed = stored.as_ref().map(|old| old != &json).unwrap_or(false);
     // IMAP UIDs are only meaningful inside one server, folder generation. When
     // the account is re-pointed at a different host/username/folder, the old
     // dedupe ledger must not be reused: a different mailbox can reuse the same
@@ -408,29 +461,32 @@ pub fn save_account(
         .as_deref()
         .and_then(|old| serde_json::from_str::<MailAccountConfig>(old).ok())
         .is_some_and(|old| {
-            old.host != config.host || old.username != config.username || old.folder != config.folder
+            old.host != config.host || old.port != config.port
+                || old.username != config.username || old.folder != config.folder
         });
+    let transaction = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sql_error)?;
     if identity_changed {
-        let transaction = conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(sql_error)?;
-        for table in ["mail_imports", "mail_rejected"] {
+        for table in ["mail_imports", "mail_rejected", "mail_sync_state"] {
             transaction
                 .execute(&format!("DELETE FROM {table} WHERE account_id=?1"), [&config.id])
                 .map_err(sql_error)?;
         }
-        transaction.commit().map_err(sql_error)?;
     }
-    conn.execute(
+    transaction.execute(
         "INSERT INTO mail_accounts(id,config_json,created_at) VALUES(?1,?2,?3)
          ON CONFLICT(id) DO UPDATE SET
             config_json = excluded.config_json,
             last_error = NULL,
+            last_sync_at = CASE WHEN ?4 THEN NULL ELSE mail_accounts.last_sync_at END,
             uid_validity = CASE WHEN ?4 THEN NULL ELSE mail_accounts.uid_validity END,
             last_uid = CASE WHEN ?4 THEN 0 ELSE mail_accounts.last_uid END",
-        params![config.id, json, now(), changed],
-    )
-    .map_err(sql_error)?;
+        params![config.id, json, now(), identity_changed],
+    ).map_err(sql_error)?;
+    transaction.execute("INSERT OR IGNORE INTO mail_sync_state(account_id) VALUES(?1)", [&config.id])
+        .map_err(sql_error)?;
+    transaction.commit().map_err(sql_error)?;
     account(&conn, dir, &config.id)
 }
 
@@ -496,175 +552,228 @@ pub fn sync_account(dir: &Path, id: &str) -> MailResult<MailSyncResult> {
     sync_using(dir, id, connect_production)
 }
 
-fn sync_using(dir: &Path, id: &str, connect: Connector) -> MailResult<MailSyncResult> {
+/// Imports the next bounded batch older than the initial recent-mail batch.
+pub fn sync_history(dir: &Path, id: &str) -> MailResult<MailSyncResult> {
+    sync_mode_using(dir, id, SyncMode::History, connect_production)
+}
+
+/// Retries up to sync_limit quarantined messages, including UIDs below highwater.
+pub fn retry_rejected(dir: &Path, id: &str) -> MailResult<MailSyncResult> {
+    sync_mode_using(dir, id, SyncMode::Retry, connect_production)
+}
+
+pub fn list_rejected(dir: &Path, id: &str) -> MailResult<Vec<RejectedMail>> {
     let _guard = ACCOUNT_LOCK.lock().map_err(|_| "Mail account lock failed")?;
-    valid_id(id)?;
+    let conn = open(dir)?;
+    account(&conn, dir, id)?;
+    // Old-generation UIDs cannot safely be fetched after UIDVALIDITY changes.
+    let mut stmt = conn.prepare(
+        "SELECT r.uid,r.reason,r.rejected_at,r.folder FROM mail_rejected r
+         JOIN mail_accounts a ON a.id=r.account_id AND a.uid_validity=r.uid_validity
+         WHERE r.account_id=?1 ORDER BY r.rejected_at,r.uid"
+    ).map_err(sql_error)?;
+    let rows = stmt.query_map([id], |row| Ok(RejectedMail {
+        uid: row.get(0)?, reason: row.get(1)?, rejected_at: row.get(2)?, folder: row.get(3)?,
+    })).map_err(sql_error)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)
+}
+
+/// Called by the shell timer. Only opted-in accounts whose persistent attempt
+/// time is due may touch the network. The same mutex covers manual and timer runs.
+pub fn sync_due_accounts(dir: &Path) -> MailResult<Vec<MailSyncOutcome>> {
+    sync_due_using(dir, connect_production)
+}
+
+fn sync_due_using(dir: &Path, connect: Connector) -> MailResult<Vec<MailSyncOutcome>> {
+    let _guard = ACCOUNT_LOCK.lock().map_err(|_| "Mail account lock failed")?;
     let mut conn = open(dir)?;
-    let saved = account(&conn, dir, id)?;
-    let config = validate(saved.config)?;
-    let outcome = sync_inner(&mut conn, dir, id, &config, connect);
+    let ids = {
+        let mut stmt = conn.prepare("SELECT id FROM mail_accounts ORDER BY created_at,id").map_err(sql_error)?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0)).map_err(sql_error)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)?
+    };
+    let mut out = Vec::new();
+    for id in ids {
+        let saved = account(&conn, dir, &id)?;
+        let interval = saved.config.sync_interval_minutes;
+        if interval == 0 || saved.last_attempt_at.is_some_and(|time|
+            now().saturating_sub(time) < i64::from(interval) * 60_000) {
+            continue;
+        }
+        let mut counts = SyncCounts::default();
+        let result = sync_attempt(&mut conn, dir, &id, SyncMode::New, connect, &mut counts);
+        out.push(MailSyncOutcome {
+            account_id: id, imported: counts.imported, rejected: counts.rejected,
+            error: result.err(),
+        });
+    }
+    Ok(out)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum SyncMode { New, History, Retry }
+
+#[derive(Default)]
+struct SyncCounts { imported: usize, skipped: usize, rejected: usize }
+
+fn sync_using(dir: &Path, id: &str, connect: Connector) -> MailResult<MailSyncResult> {
+    sync_mode_using(dir, id, SyncMode::New, connect)
+}
+
+fn sync_mode_using(dir: &Path, id: &str, mode: SyncMode, connect: Connector) -> MailResult<MailSyncResult> {
+    let _guard = ACCOUNT_LOCK.lock().map_err(|_| "Mail account lock failed")?;
+    let mut conn = open(dir)?;
+    sync_attempt(&mut conn, dir, id, mode, connect, &mut SyncCounts::default())
+}
+
+// Unlocked: public entry points acquire ACCOUNT_LOCK exactly once.
+fn sync_attempt(
+    conn: &mut Connection, dir: &Path, id: &str, mode: SyncMode,
+    connect: Connector, counts: &mut SyncCounts,
+) -> MailResult<MailSyncResult> {
+    let saved = account(conn, dir, id)?;
+    conn.execute("UPDATE mail_sync_state SET last_attempt_at=?1 WHERE account_id=?2", params![now(), id])
+        .map_err(sql_error)?;
+    let outcome = validate(saved.config).and_then(|config|
+        sync_inner(conn, dir, id, &config, mode, connect, counts));
     if let Err(error) = &outcome {
-        let _ = conn.execute(
-            "UPDATE mail_accounts SET last_error=?1 WHERE id=?2",
-            params![error, id],
-        );
+        conn.execute("UPDATE mail_accounts SET last_error=?1 WHERE id=?2", params![error, id])
+            .map_err(sql_error)?;
     }
     outcome
 }
 
 fn sync_inner(
-    conn: &mut Connection,
-    dir: &Path,
-    id: &str,
-    config: &MailAccountConfig,
-    connect: Connector,
+    conn: &mut Connection, dir: &Path, id: &str, config: &MailAccountConfig,
+    mode: SyncMode, connect: Connector, counts: &mut SyncCounts,
 ) -> MailResult<MailSyncResult> {
     let password = read_password(dir, id)?;
     let mut client = connect(config)?;
     let (validity, _) = client.login_examine(config, &password)?;
-    let (stored_validity, cursor): (Option<u32>, u32) = conn
-        .query_row(
-            "SELECT uid_validity,last_uid FROM mail_accounts WHERE id=?1",
-            [id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(sql_error)?;
-    // A new UIDVALIDITY means the server renumbered the mailbox: the old cursor
-    // is meaningless, so the scan restarts from the beginning. The Message-ID
-    // ledger keeps already imported mail from being imported twice.
-    let after = if stored_validity == Some(validity) {
-        cursor
-    } else {
-        0
-    };
-    // The first run of an account takes the newest messages, matching the UI
-    // label 「最近 N 封」. Later runs continue from the cursor and pick up the
-    // mail that arrived since, oldest first.
-    let first_run = stored_validity != Some(validity) || cursor == 0;
-    let uids = client.search(after, config.sync_limit as usize, first_run)?;
-    let mut imported = 0usize;
-    let mut skipped = 0usize;
-    let mut rejected = 0usize;
-    for uid in uids {
-        let known: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM mail_imports WHERE account_id=?1 AND folder=?2 AND uid_validity=?3 AND uid=?4)
-                        OR EXISTS(SELECT 1 FROM mail_rejected WHERE account_id=?1 AND folder=?2 AND uid_validity=?3 AND uid=?4)",
-                params![id, config.folder, validity, uid],
-                |row| row.get(0),
-            )
+    let (stored_validity, cursor, before): (Option<u32>, u32, Option<u32>) = conn.query_row(
+        "SELECT a.uid_validity,a.last_uid,s.history_before FROM mail_accounts a
+         JOIN mail_sync_state s ON s.account_id=a.id WHERE a.id=?1", [id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).map_err(sql_error)?;
+    let bootstrap = stored_validity != Some(validity) || before.is_none();
+    let mut uids;
+    let effective_mode;
+    if bootstrap {
+        uids = client.search_range(0, None, config.sync_limit as usize, true)?;
+        let boundary = uids.first().copied().unwrap_or(1);
+        let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
+        transaction.execute("UPDATE mail_accounts SET uid_validity=?1,last_uid=?2 WHERE id=?3", params![validity,boundary - 1,id])
             .map_err(sql_error)?;
-        if known {
-            skipped += 1;
-            conn.execute(
-                "UPDATE mail_accounts SET uid_validity=?1,last_uid=?2 WHERE id=?3",
-                params![validity, uid, id],
-            )
-            .map_err(sql_error)?;
-            continue;
-        }
-        // The body is fetched outside the database transaction: a slow server
-        // must not hold a write lock on the library. A transport error still
-        // aborts the run, because the connection itself is suspect.
-        let Some(bytes) = client.fetch(uid)? else {
-            rejected += 1;
-            quarantine(conn, id, config, validity, uid, "message size exceeds the import limit")?;
-            continue;
-        };
-        let Some(material) = material_from_mail(config, validity, uid, &bytes)? else {
-            rejected += 1;
-            quarantine(conn, id, config, validity, uid, "message text or MIME structure cannot be read")?;
-            continue;
-        };
-        let transaction = conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(sql_error)?;
-        let duplicate = if material_message_id(&material.metadata_json).is_empty() {
-            false
-        } else {
-            transaction
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM mail_imports WHERE account_id=?1 AND folder=?2 AND message_id=?3)",
-                    params![id, config.folder, material_message_id(&material.metadata_json)],
-                    |row| row.get(0),
-                )
-                .map_err(sql_error)?
-        };
-        if duplicate {
-            skipped += 1;
-        } else {
-            db::save_material(&transaction, &material).map_err(sql_error)?;
-            transaction
-                .execute(
-                    "INSERT INTO mail_imports(account_id,folder,uid_validity,uid,message_id,material_id) VALUES(?1,?2,?3,?4,?5,?6)",
-                    params![
-                        id,
-                        config.folder,
-                        validity,
-                        uid,
-                        material_message_id(&material.metadata_json),
-                        material.id
-                    ],
-                )
-                .map_err(sql_error)?;
-            imported += 1;
-        }
-        // The cursor only advances over rows that are safely stored.
-        transaction
-            .execute(
-                "UPDATE mail_accounts SET uid_validity=?1,last_uid=?2 WHERE id=?3",
-                params![validity, uid, id],
-            )
-            .map_err(sql_error)?;
+        transaction.execute("UPDATE mail_sync_state SET history_before=?1,history_complete=?2 WHERE account_id=?3",
+            params![boundary, uids.is_empty(), id]).map_err(sql_error)?;
         transaction.commit().map_err(sql_error)?;
+        effective_mode = SyncMode::New;
+    } else {
+        effective_mode = mode;
+        uids = match mode {
+            SyncMode::New => client.search_range(cursor, None, config.sync_limit as usize, false)?,
+            SyncMode::History => {
+                let boundary = before.unwrap_or(1);
+                if boundary <= 1 { Vec::new() } else {
+                    client.search_range(0, Some(boundary - 1), config.sync_limit as usize, true)?
+                }
+            }
+            SyncMode::Retry => {
+                let mut stmt = conn.prepare("SELECT uid FROM mail_rejected WHERE account_id=?1 AND folder=?2
+                    AND uid_validity=?3 ORDER BY rejected_at,uid LIMIT ?4").map_err(sql_error)?;
+                let rows = stmt.query_map(params![id,config.folder,validity,config.sync_limit], |row| row.get(0))
+                    .map_err(sql_error)?;
+                rows.collect::<Result<Vec<u32>, _>>().map_err(sql_error)?
+            }
+        };
     }
+    // History descends so each committed UID safely lowers its independent
+    // boundary. New mail ascends so each commit safely raises highwater.
+    if effective_mode == SyncMode::History { uids.reverse(); }
+    for uid in uids {
+        process_uid(conn, &mut client, id, config, validity, uid, effective_mode, counts)?;
+    }
+    let boundary: u32 = conn.query_row("SELECT history_before FROM mail_sync_state WHERE account_id=?1", [id],
+        |row| row.get(0)).map_err(sql_error)?;
+    // One small search also recognizes gaps / deleted UIDs without downloading
+    // an extra message or requiring another history click for an empty batch.
+    let complete = boundary <= 1 || client.search_range(0, Some(boundary - 1), 1, true)?.is_empty();
     let time = now();
-    conn.execute(
-        "UPDATE mail_accounts SET last_sync_at=?1,last_error=NULL,uid_validity=?2,
-            last_uid=CASE WHEN uid_validity IS NULL OR uid_validity<>?2 THEN 0 ELSE last_uid END
-         WHERE id=?3",
-        params![time, validity, id],
-    )
-    .map_err(sql_error)?;
+    let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
+    transaction.execute("UPDATE mail_sync_state SET history_complete=?1 WHERE account_id=?2", params![complete,id])
+        .map_err(sql_error)?;
+    transaction.execute("UPDATE mail_accounts SET last_sync_at=?1,last_error=NULL WHERE id=?2", params![time,id])
+        .map_err(sql_error)?;
+    transaction.commit().map_err(sql_error)?;
     Ok(MailSyncResult {
-        imported,
-        skipped,
-        rejected,
-        account_id: id.to_string(),
-        last_sync_at: time,
+        imported: counts.imported, skipped: counts.skipped, rejected: counts.rejected,
+        account_id: id.to_string(), last_sync_at: time, history_complete: complete,
     })
 }
 
-/// Records a message this account cannot read, and moves the cursor past it.
-///
-/// Without this record the same message would be retried on every sync and,
-/// because the cursor only advances over handled messages, it would block every
-/// message behind it forever.
-fn quarantine(
-    conn: &mut Connection,
-    id: &str,
-    config: &MailAccountConfig,
-    validity: u32,
-    uid: u32,
-    reason: &str,
+fn process_uid(
+    conn: &mut Connection, client: &mut Imap, id: &str, config: &MailAccountConfig,
+    validity: u32, uid: u32, mode: SyncMode, counts: &mut SyncCounts,
 ) -> MailResult<()> {
-    let transaction = conn
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(sql_error)?;
-    transaction
-        .execute(
-            "INSERT OR REPLACE INTO mail_rejected(account_id,folder,uid_validity,uid,reason,rejected_at)
-             VALUES(?1,?2,?3,?4,?5,?6)",
-            params![id, config.folder, validity, uid, reason, now()],
-        )
-        .map_err(sql_error)?;
-    transaction
-        .execute(
-            "UPDATE mail_accounts SET uid_validity=?1,last_uid=?2 WHERE id=?3",
-            params![validity, uid, id],
-        )
-        .map_err(sql_error)?;
-    transaction.commit().map_err(sql_error)
+    let (known_import, known_rejection): (bool, bool) = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM mail_imports WHERE account_id=?1 AND folder=?2 AND uid_validity=?3 AND uid=?4),
+            EXISTS(SELECT 1 FROM mail_rejected WHERE account_id=?1 AND folder=?2 AND uid_validity=?3 AND uid=?4)",
+        params![id,config.folder,validity,uid], |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(sql_error)?;
+    let known = known_import || (known_rejection && mode != SyncMode::Retry);
+    // Never hold a database transaction while waiting for the server.
+    let (material, rejection) = if known { (None, None) } else {
+        match client.fetch(uid)? {
+            None => (None, Some("邮件大小超过导入上限")),
+            Some(bytes) => match material_from_mail(config, validity, uid, &bytes)? {
+                Some(material) => (Some(material), None),
+                None => (None, Some("无法读取邮件正文或 MIME 结构")),
+            },
+        }
+    };
+    let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
+    let mut imported = false;
+    if let Some(reason) = rejection {
+        transaction.execute("INSERT OR REPLACE INTO mail_rejected(account_id,folder,uid_validity,uid,reason,rejected_at)
+            VALUES(?1,?2,?3,?4,?5,?6)", params![id,config.folder,validity,uid,reason,now()]).map_err(sql_error)?;
+    } else {
+        if let Some(material) = material {
+            let message_id = material_message_id(&material.metadata_json);
+            let duplicate: Option<String> = if message_id.is_empty() { None } else {
+                transaction.query_row("SELECT material_id FROM mail_imports WHERE account_id=?1 AND folder=?2 AND message_id=?3 LIMIT 1",
+                    params![id,config.folder,message_id], |row| row.get(0)).optional().map_err(sql_error)?
+            };
+            let material_id = if let Some(existing) = duplicate { existing } else {
+                db::save_material(&transaction, &material).map_err(sql_error)?;
+                imported = true;
+                material.id
+            };
+            // Also record duplicate UIDs so a rollover does not make history
+            // repeatedly download the same already-processed message.
+            transaction.execute("INSERT OR IGNORE INTO mail_imports(account_id,folder,uid_validity,uid,message_id,material_id)
+                VALUES(?1,?2,?3,?4,?5,?6)", params![id,config.folder,validity,uid,message_id,material_id]).map_err(sql_error)?;
+        }
+        if !known || known_import {
+            transaction.execute("DELETE FROM mail_rejected WHERE account_id=?1 AND folder=?2 AND uid_validity=?3 AND uid=?4",
+                params![id,config.folder,validity,uid]).map_err(sql_error)?;
+        }
+    }
+    match mode {
+        SyncMode::New => {
+            transaction.execute("UPDATE mail_accounts SET last_uid=MAX(last_uid,?1) WHERE id=?2", params![uid,id])
+                .map_err(sql_error)?;
+        }
+        SyncMode::History => {
+            transaction.execute("UPDATE mail_sync_state SET history_before=MIN(history_before,?1) WHERE account_id=?2", params![uid,id])
+                .map_err(sql_error)?;
+        }
+        SyncMode::Retry => {}
+    }
+    transaction.commit().map_err(sql_error)?;
+    if imported { counts.imported += 1; }
+    else if rejection.is_some() { counts.rejected += 1; }
+    else { counts.skipped += 1; }
+    Ok(())
 }
 
 fn material_message_id(metadata_json: &str) -> String {
@@ -933,11 +1042,13 @@ impl Imap {
     /// the first sync). The list stays ascending even then: the caller advances
     /// the cursor per row, so a descending list would move the cursor backwards
     /// and a failure could leave a newer UID unretried.
-    fn search(&mut self, after: u32, limit: usize, newest_first: bool) -> MailResult<Vec<u32>> {
+    fn search_range(&mut self, after: u32, through: Option<u32>, limit: usize, newest_first: bool) -> MailResult<Vec<u32>> {
         if after == u32::MAX {
             return Ok(Vec::new());
         }
-        let response = self.command(&format!("UID SEARCH UID {}:*", after + 1), false)?;
+        if through.is_some_and(|last| last <= after) { return Ok(Vec::new()); }
+        let end = through.map(|uid| uid.to_string()).unwrap_or_else(|| "*".into());
+        let response = self.command(&format!("UID SEARCH UID {}:{end}", after + 1), false)?;
         let mut found = false;
         let mut uids: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
         for line in response.lines {
@@ -951,7 +1062,7 @@ impl Imap {
                     .map_err(|_| "Invalid mail UID".to_string())?;
                 // A range such as `100:*` also returns the last UID of the
                 // mailbox when 100 is beyond it; that UID is not newer.
-                if uid > after {
+                if uid > after && through.is_none_or(|last| uid <= last) {
                     uids.insert(uid);
                     while uids.len() > limit {
                         if newest_first {
@@ -1171,6 +1282,16 @@ fn material_from_mail(
     let subject = header(&parsed, "Subject");
     let message_id = header(&parsed, "Message-ID");
     let time = now();
+    let mail_date = header(&parsed, "Date");
+    let created_at = if mail_date.is_empty() {
+        time
+    } else {
+        mailparse::dateparse(&mail_date)
+            .ok()
+            .filter(|seconds| *seconds > 0)
+            .and_then(|seconds| seconds.checked_mul(1000))
+            .unwrap_or(time)
+    };
     let metadata = serde_json::json!({
         "mailAccountId": config.id,
         "accountEmail": config.email,
@@ -1181,17 +1302,19 @@ fn material_from_mail(
         "from": header(&parsed, "From"),
         "to": header(&parsed, "To"),
         "cc": header(&parsed, "Cc"),
-        "date": header(&parsed, "Date"),
+        "date": mail_date,
+        "importAt": time,
         "attachmentFilenames": attachments,
         "originalSizeBytes": bytes.len(),
         "textTruncated": body.len() >= MAX_TEXT,
     });
     // Identity: Message-ID when the message has one, otherwise the UID triple.
     // IMAP UIDs are only unique inside one mailbox generation.
+    let namespace = format!("{}\n{}\n{}\n{}\n{}", config.id, config.host, config.port, config.username, config.folder);
     let identity = if message_id.trim().is_empty() {
-        format!("{}\n{}\nuid:{validity}:{uid}", config.id, config.folder)
+        format!("{namespace}\nuid:{validity}:{uid}")
     } else {
-        format!("{}\n{}\n{}", config.id, config.folder, message_id.trim())
+        format!("{namespace}\n{}", message_id.trim())
     };
     Ok(Some(RawMaterialDto {
         id: format!("mail-{}", db::calculate_hash(&identity)),
@@ -1213,7 +1336,7 @@ fn material_from_mail(
         media_size_bytes: 0,
         metadata_json: metadata.to_string(),
         inbox_status: "inbox".into(),
-        created_at: time,
+        created_at,
         updated_at: time,
     }))
 }
@@ -1346,18 +1469,17 @@ mod tests {
                     .as_bytes(),
                 )?;
             } else if upper.contains("UID SEARCH") {
-                let after: u32 = command
-                    .split_whitespace()
-                    .nth(3)
-                    .and_then(|value| value.trim_end_matches(":*").parse().ok())
-                    .unwrap_or(1);
+                let range = command.split_whitespace().nth(4).unwrap_or("1:*");
+                let (start, end) = range.split_once(':').unwrap_or((range, range));
+                let after: u32 = start.parse().unwrap_or(1);
+                let through: u32 = end.parse().unwrap_or(u32::MAX);
                 let uids: Vec<u32> = {
                     let guard = state.lock().unwrap();
                     guard
                         .messages
                         .iter()
                         .map(|(uid, _)| *uid)
-                        .filter(|uid| *uid >= after)
+                        .filter(|uid| *uid >= after && *uid <= through)
                         .collect()
                 };
                 let reply = if uids.is_empty() {
@@ -1456,6 +1578,7 @@ mod tests {
             username: "fixture-user".into(),
             folder: "INBOX".into(),
             sync_limit: 50,
+            sync_interval_minutes: 0,
         }
     }
 
@@ -1763,6 +1886,7 @@ AAAA\r\n\
             username: "fixture-user".into(),
             folder: "INBOX".into(),
             sync_limit: 50,
+            sync_interval_minutes: 0,
         };
         let material =
             material_from_mail(&config, 100, 5, raw.as_bytes()).expect("transport").expect("readable");
@@ -1787,6 +1911,7 @@ AAAA\r\n\
             username: "fixture-user".into(),
             folder: "INBOX".into(),
             sync_limit: 50,
+            sync_interval_minutes: 0,
         };
         let material = material_from_mail(&config, 100, 6, raw.as_bytes()).expect("transport").expect("readable");
         println!("HTML_OUTPUT={:?}", material.raw_text);
@@ -1810,6 +1935,7 @@ AAAA\r\n\
             username: "fixture-user".into(),
             folder: "INBOX".into(),
             sync_limit: 50,
+            sync_interval_minutes: 0,
         };
         // An over-long message is refused for this run, not a sync failure.
         let outcome = material_from_mail(&config, 100, 7, raw.as_bytes()).expect("transport");
@@ -1904,6 +2030,193 @@ AAAA\r\n\
         for forbidden in ["STORE", "DELETE", "EXPUNGE", "APPEND", "COPY", "RENAME", "SELECT"] {
             assert!(!verbs.contains(forbidden), "the session used {forbidden}");
         }
+    }
+
+    fn cursor_state(dir: &Path, id: &str) -> (u32, u32, bool) {
+        open(dir).unwrap().query_row(
+            "SELECT a.last_uid,s.history_before,s.history_complete FROM mail_accounts a
+             JOIN mail_sync_state s ON a.id=s.account_id WHERE a.id=?1", [id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).unwrap()
+    }
+
+    #[test]
+    fn newest_history_and_new_arrivals_use_independent_cursors() {
+        let server = FakeServer::start(100, (1..=7).map(|uid|
+            (uid, plain_message(&format!("M{uid}"), "body"))).collect());
+        let dir = temp_dir("history");
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut cfg = config(&id, server.port);
+        cfg.sync_limit = 2;
+        save_account(&dir, cfg, PASSWORD).unwrap();
+        let recent = sync_using(&dir, &id, connect_plaintext).unwrap();
+        assert_eq!(recent.imported, 2);
+        assert!(!recent.history_complete);
+        assert_eq!(cursor_state(&dir, &id), (7, 6, false));
+        assert!(material_rows(&dir).iter().all(|row| row.title == "M6" || row.title == "M7"));
+        let history = sync_mode_using(&dir, &id, SyncMode::History, connect_plaintext).unwrap();
+        assert_eq!(history.imported, 2);
+        assert_eq!(cursor_state(&dir, &id), (7, 4, false));
+        server.state.lock().unwrap().messages.push((8, plain_message("M8", "arrival")));
+        assert_eq!(sync_using(&dir, &id, connect_plaintext).unwrap().imported, 1);
+        assert_eq!(cursor_state(&dir, &id), (8, 4, false));
+        sync_mode_using(&dir, &id, SyncMode::History, connect_plaintext).unwrap();
+        let final_history = sync_mode_using(&dir, &id, SyncMode::History, connect_plaintext).unwrap();
+        assert_eq!(final_history.imported, 1);
+        assert!(final_history.history_complete);
+        assert_eq!(cursor_state(&dir, &id), (8, 1, true));
+        assert_eq!(sync_using(&dir, &id, connect_plaintext).unwrap().imported, 0);
+        assert_eq!(sync_mode_using(&dir, &id, SyncMode::History, connect_plaintext).unwrap().imported, 0);
+        assert_eq!(material_count(&dir), 8);
+    }
+
+    #[test]
+    fn a_history_transport_failure_resumes_after_each_committed_message() {
+        let server = FakeServer::start(100, (1..=6).map(|uid|
+            (uid, plain_message(&format!("M{uid}"), "body"))).collect());
+        let dir = temp_dir("history-fault");
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut cfg = config(&id, server.port);
+        cfg.sync_limit = 3;
+        save_account(&dir, cfg, PASSWORD).unwrap();
+        sync_using(&dir, &id, connect_plaintext).unwrap();
+        server.set_fail_fetch(Some(2));
+        assert!(sync_mode_using(&dir, &id, SyncMode::History, connect_plaintext).is_err());
+        assert_eq!(cursor_state(&dir, &id), (6, 3, false));
+        assert_eq!(material_count(&dir), 4);
+        server.set_fail_fetch(None);
+        let retry = sync_mode_using(&dir, &id, SyncMode::History, connect_plaintext).unwrap();
+        assert_eq!(retry.imported, 2);
+        assert!(retry.history_complete);
+        assert_eq!(material_count(&dir), 6);
+    }
+
+    #[test]
+    fn quarantine_lists_and_retries_below_highwater_until_content_is_readable() {
+        let server = FakeServer::start(100, vec![
+            (1, plain_message("Huge", &"x".repeat(MAX_MESSAGE + 1))),
+            (2, plain_message("Good", "body")),
+        ]);
+        let dir = temp_dir("retry-rejected");
+        let id = uuid::Uuid::new_v4().to_string();
+        save_account(&dir, config(&id, server.port), PASSWORD).unwrap();
+        assert_eq!(sync_using(&dir, &id, connect_plaintext).unwrap().rejected, 1);
+        let rejected = list_rejected(&dir, &id).unwrap();
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(rejected[0].uid, 1);
+        assert_eq!(rejected[0].folder, "INBOX");
+        assert!(rejected[0].rejected_at > 0);
+        assert!(rejected[0].reason.contains("上限"));
+        assert_eq!(sync_mode_using(&dir, &id, SyncMode::Retry, connect_plaintext).unwrap().rejected, 1);
+        assert_eq!(list_accounts(&dir).unwrap()[0].rejected_count, 1);
+        // Normal scans of already processed quarantine entries must retain them.
+        open(&dir).unwrap().execute("UPDATE mail_accounts SET last_uid=0 WHERE id=?1", [&id]).unwrap();
+        sync_using(&dir, &id, connect_plaintext).unwrap();
+        assert_eq!(list_rejected(&dir, &id).unwrap().len(), 1);
+        server.state.lock().unwrap().messages[0].1 = plain_message("Huge", "fixed");
+        let retried = sync_mode_using(&dir, &id, SyncMode::Retry, connect_plaintext).unwrap();
+        assert_eq!(retried.imported, 1);
+        assert!(list_rejected(&dir, &id).unwrap().is_empty());
+        assert_eq!(material_count(&dir), 2);
+        assert_eq!(cursor_state(&dir, &id).0, 2);
+    }
+
+    #[test]
+    fn legacy_config_and_cosmetic_edits_preserve_sync_progress() {
+        let server = FakeServer::start(100, (1..=4).map(|uid|
+            (uid, plain_message(&format!("M{uid}"), "body"))).collect());
+        let dir = temp_dir("config-progress");
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut json = serde_json::to_value(config(&id, server.port)).unwrap();
+        json.as_object_mut().unwrap().remove("syncIntervalMinutes");
+        let mut cfg: MailAccountConfig = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(cfg.sync_interval_minutes, 0);
+        cfg.sync_limit = 2;
+        save_account(&dir, cfg.clone(), PASSWORD).unwrap();
+        sync_using(&dir, &id, connect_plaintext).unwrap();
+        let before = cursor_state(&dir, &id);
+        cfg.name = "Renamed".into(); cfg.sync_limit = 3; cfg.sync_interval_minutes = 5;
+        save_account(&dir, cfg.clone(), "").unwrap();
+        assert_eq!(cursor_state(&dir, &id), before);
+        assert_eq!(sync_using(&dir, &id, connect_plaintext).unwrap().imported, 0);
+        for interval in [1, 4, 1441] {
+            cfg.sync_interval_minutes = interval;
+            assert!(save_account(&dir, cfg.clone(), "").is_err());
+        }
+        // Exercise the schema migration against a legacy account and ledger.
+        let conn = open(&dir).unwrap();
+        conn.execute("UPDATE mail_accounts SET config_json=?1 WHERE id=?2", params![json.to_string(),id]).unwrap();
+        conn.execute("DROP TABLE mail_sync_state", []).unwrap();
+        drop(conn);
+        let migrated = list_accounts(&dir).unwrap();
+        assert_eq!(migrated[0].config.sync_interval_minutes, 0);
+        assert_eq!(cursor_state(&dir, &id).1, 3);
+    }
+
+    #[test]
+    fn due_sync_requires_opt_in_and_backs_off_after_partial_failure() {
+        let server = FakeServer::start(100, vec![
+            (1, plain_message("One", "body")), (2, plain_message("Two", "body")),
+        ]);
+        let dir = temp_dir("due");
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut cfg = config(&id, server.port);
+        save_account(&dir, cfg.clone(), PASSWORD).unwrap();
+        assert!(sync_due_using(&dir, connect_plaintext).unwrap().is_empty());
+        assert!(server.commands().is_empty(), "manual-only accounts never connect");
+        cfg.sync_interval_minutes = 5;
+        save_account(&dir, cfg, "").unwrap();
+        server.set_fail_fetch(Some(2));
+        let outcomes = sync_due_using(&dir, connect_plaintext).unwrap();
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].imported, 1, "partial commits are reported on failure");
+        assert!(outcomes[0].error.is_some());
+        let commands = server.commands().len();
+        assert!(list_accounts(&dir).unwrap()[0].last_attempt_at.is_some());
+        assert!(sync_due_using(&dir, connect_plaintext).unwrap().is_empty());
+        assert_eq!(server.commands().len(), commands, "error backoff survives another call");
+        open(&dir).unwrap().execute("UPDATE mail_sync_state SET last_attempt_at=?1 WHERE account_id=?2",
+            params![now() - 300_001,id]).unwrap();
+        server.set_fail_fetch(None);
+        let outcomes = sync_due_using(&dir, connect_plaintext).unwrap();
+        assert_eq!(outcomes[0].imported, 1);
+        assert!(outcomes[0].error.is_none());
+    }
+
+    #[test]
+    fn an_empty_mailbox_still_receives_future_messages() {
+        let server = FakeServer::start(100, vec![]);
+        let dir = temp_dir("empty");
+        let id = uuid::Uuid::new_v4().to_string();
+        save_account(&dir, config(&id, server.port), PASSWORD).unwrap();
+        assert!(sync_using(&dir, &id, connect_plaintext).unwrap().history_complete);
+        server.state.lock().unwrap().messages.push((5, plain_message("Arrival", "body")));
+        assert_eq!(sync_using(&dir, &id, connect_plaintext).unwrap().imported, 1);
+    }
+
+    #[test]
+    fn changing_only_the_port_keeps_same_message_id_materials_distinct() {
+        let first = FakeServer::start(100, vec![(1, plain_message("Same", "first server"))]);
+        let second = FakeServer::start(100, vec![(1, plain_message("Same", "second server"))]);
+        let dir = temp_dir("port-identity");
+        let id = uuid::Uuid::new_v4().to_string();
+        save_account(&dir, config(&id, first.port), PASSWORD).unwrap();
+        sync_using(&dir, &id, connect_plaintext).unwrap();
+        save_account(&dir, config(&id, second.port), PASSWORD).unwrap();
+        assert_eq!(sync_using(&dir, &id, connect_plaintext).unwrap().imported, 1);
+        assert_eq!(material_count(&dir), 2);
+    }
+
+    #[test]
+    fn mail_date_sets_creation_time_and_import_time_stays_in_metadata() {
+        let cfg = config(&uuid::Uuid::new_v4().to_string(), 993);
+        let raw = "Date: Tue, 01 Jul 2025 12:00:00 +0000\r\nSubject: Dated\r\n\r\nbody";
+        let material = material_from_mail(&cfg, 1, 1, raw.as_bytes()).unwrap().unwrap();
+        assert_eq!(material.created_at, mailparse::dateparse("Tue, 01 Jul 2025 12:00:00 +0000").unwrap() * 1000);
+        let metadata: serde_json::Value = serde_json::from_str(&material.metadata_json).unwrap();
+        assert_eq!(metadata["importAt"], material.updated_at);
+        let fallback = material_from_mail(&cfg, 1, 2, b"Date: invalid\r\n\r\nbody").unwrap().unwrap();
+        assert_eq!(fallback.created_at, fallback.updated_at);
     }
 
     #[test]
