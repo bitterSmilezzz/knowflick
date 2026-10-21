@@ -5,6 +5,7 @@ import { openExternalUrl, type RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { estimateTokenCount } from "../../domain/ingest";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { mailMetadata } from "../../domain/mail";
 
 interface Props {
   entry: Entry;
@@ -64,6 +65,7 @@ export function EntryInspector({
   const isCard = entry.kind === "card";
   const card = isCard ? (entry.original as KnowledgeCard) : null;
   const material = !isCard ? (entry.original as RawMaterial) : null;
+  const mail = material ? mailMetadata(material) : null;
   const archived = material ? material.inboxStatus !== "inbox" : false;
   const meta = sourceLabel(isCard ? "card" : material?.sourceType ?? "", entry.url);
 
@@ -164,7 +166,17 @@ export function EntryInspector({
                 ))}
               </div>
             )}
-            <MarkdownRenderer text={entry.text} />
+            {mail ? (
+              <>
+                <dl className="mail-inspector-headers">
+                  <dt>发件人</dt><dd>{mail.from || "未提供"}</dd>
+                  <dt>收件人</dt><dd>{mail.to || "未提供"}</dd>
+                  {mail.date ? <><dt>邮件时间</dt><dd>{mail.date}</dd></> : null}
+                  {mail.attachments.length ? <><dt>附件名称</dt><dd>{mail.attachments.join("、")}（仅名称，未导入附件）</dd></> : null}
+                </dl>
+                <div className="ws-prose" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{entry.text}</div>
+              </>
+            ) : <MarkdownRenderer text={entry.text} />}
             {entry.url ? (
               <button
                 className="ws-source-link"

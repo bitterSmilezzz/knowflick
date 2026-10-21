@@ -2,6 +2,7 @@ mod asr;
 pub mod db;
 mod embed;
 mod http;
+mod mail;
 mod store;
 
 use std::path::PathBuf;
@@ -135,6 +136,44 @@ fn http_url_for_open(raw: &str) -> Result<&str, String> {
 fn open_url(url: String) -> Result<(), String> {
     let trimmed = http_url_for_open(&url)?;
     open::that(trimmed).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn mail_list_accounts(dir: Option<String>) -> Result<Vec<mail::MailAccount>, String> {
+    let path = library_dir(dir);
+    tauri::async_runtime::spawn_blocking(move || mail::list_accounts(&path)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn mail_save_account(dir: Option<String>, config: mail::MailAccountConfig, password: String) -> Result<mail::MailAccount, String> {
+    let path = library_dir(dir);
+    tauri::async_runtime::spawn_blocking(move || mail::save_account(&path, config, &password)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn mail_test_account(dir: Option<String>, config: mail::MailAccountConfig, password: String) -> Result<serde_json::Value, String> {
+    let path = library_dir(dir);
+    tauri::async_runtime::spawn_blocking(move || {
+        let summary = mail::test_account(&path, config, &password)?;
+        Ok(serde_json::json!({ "message": format!("连接成功：{}，共 {} 封邮件", summary.folder, summary.message_count) }))
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn mail_remove_account(dir: Option<String>, id: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    tauri::async_runtime::spawn_blocking(move || mail::remove_account(&path, &id)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn mail_sync_account(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<mail::MailSyncResult, String> {
+    let path = library_dir(dir);
+    let result = tauri::async_runtime::spawn_blocking(move || mail::sync_account(&path, &id)).await.map_err(|e| e.to_string())?;
+    // A later message can fail after earlier messages committed. Always notify
+    // the view so successfully imported mail is visible even on partial failure.
+    use tauri::Emitter;
+    let _ = app.emit("knowflick:library-changed", ());
+    result
 }
 
 #[tauri::command]
@@ -800,6 +839,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             load_store,
+            mail_list_accounts,
+            mail_save_account,
+            mail_test_account,
+            mail_remove_account,
+            mail_sync_account,
             save_cards,
             save_settings,
             save_search_history,

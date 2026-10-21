@@ -47,6 +47,8 @@ import { CaptureDialog } from "./CaptureDialog";
 import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
+import { MailboxView } from "./MailboxView";
+import { emailBodyForAi } from "../../domain/mail";
 import { DEFAULT_ASR_MODEL, realtimeFactor, titleFromTranscript } from "../../domain/asr";
 import { pluginEnabledIn } from "../../domain/pluginSettings";
 import {
@@ -72,7 +74,7 @@ const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.B
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "briefing" | "brain" | "review" | "subscriptions";
+type Page = Collection | "settings" | "briefing" | "brain" | "review" | "subscriptions" | "mail";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
@@ -80,6 +82,7 @@ const PAGE_TITLES: Record<string, string> = {
   brain: "知识问答",
   review: "温故复习",
   subscriptions: "订阅源",
+  mail: "邮箱",
 };
 
 const PAGE_HINTS: Record<Collection, string> = {
@@ -413,7 +416,7 @@ export function Workspace() {
   const aiTransform = async (entry: Entry) =>
     act(async () => {
       const m = entry.original as RawMaterial;
-      const result = await askModel(m.rawText, file.settings, apiKey);
+      const result = await askModel(m.sourceType === "email" ? emailBodyForAi(m) : m.rawText, file.settings, apiKey);
       if (!result.length) throw new Error("没有生成有效卡片，素材未改动，请稍后重试");
       const mapped = result.map((c) => ({
         ...c,
@@ -898,6 +901,10 @@ export function Workspace() {
                 <span className="ws-count">{counts[id]}</span>
               </button>
             ))}
+            <button className="ws-nav-row" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigate("mail")}>
+              <Icon name="mail" /><span>邮箱</span>
+              <span className="ws-count">{materials.filter(m => m.sourceType === "email" && m.inboxStatus === "inbox").length}</span>
+            </button>
           </nav>
 
           <p className="ws-group-label">分类</p>
@@ -1292,6 +1299,21 @@ export function Workspace() {
                     await storePreferences(updated, key, dir);
                     setFile(updated);
                     setApiKey(key);
+                  }}
+                />
+              ) : null}
+              {page === "mail" ? (
+                <MailboxView
+                  dir={dir} materials={materials} settings={file.settings} apiKey={apiKey}
+                  onRefresh={() => load(true)}
+                  onSettings={() => navigate("settings")}
+                  onOpenMaterial={(id) => { navigate("library"); setSelectedId(id); }}
+                  onSaveDigest={async (title, markdown) => {
+                    const material = makeMaterial({ title, text: markdown, url: "" });
+                    material.sourceType = "email-digest";
+                    material.metadataJson = JSON.stringify({ generatedBy: "mail-summary", generatedAt: Date.now() });
+                    await storeMaterial(material, dir);
+                    await load(true);
                   }}
                 />
               ) : null}

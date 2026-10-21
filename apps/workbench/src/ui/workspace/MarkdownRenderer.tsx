@@ -17,6 +17,11 @@ function renderInline(text: string): React.ReactNode {
     }
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
+      // Imported mail and AI summaries can contain arbitrary Markdown links.
+      // Render unsupported schemes as text instead of executable navigation.
+      try {
+        if (!["https:", "http:"].includes(new URL(linkMatch[2]).protocol)) return <span key={idx}>{linkMatch[1]}</span>;
+      } catch { return <span key={idx}>{linkMatch[1]}</span>; }
       return (
         <a key={idx} href={linkMatch[2]} target="_blank" rel="noreferrer">
           {linkMatch[1]}
@@ -63,26 +68,16 @@ export function MarkdownRenderer({ text }: { text: string }): React.ReactElement
       continue;
     }
 
-    // 2. 标题 #, ##, ###
-    const h1Match = line.match(/^#\s+(.+)$/);
-    if (h1Match) {
-      elements.push(<h2 key={`h1-${i}`}>{renderInline(h1Match[1])}</h2>);
+    // Consume all Markdown heading levels (including indented headings), so
+    // unsupported '#' lines cannot stall the paragraph parser at the same index.
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      elements.push(heading[1].length <= 2
+        ? <h2 key={`heading-${i}`}>{renderInline(heading[2])}</h2>
+        : <h3 key={`heading-${i}`}>{renderInline(heading[2])}</h3>);
       i++;
       continue;
     }
-    const h2Match = line.match(/^##\s+(.+)$/);
-    if (h2Match) {
-      elements.push(<h2 key={`h2-${i}`}>{renderInline(h2Match[1])}</h2>);
-      i++;
-      continue;
-    }
-    const h3Match = line.match(/^###\s+(.+)$/);
-    if (h3Match) {
-      elements.push(<h3 key={`h3-${i}`}>{renderInline(h3Match[1])}</h3>);
-      i++;
-      continue;
-    }
-
     // 3. 引用块 >
     if (trimmed.startsWith(">")) {
       const quoteLines: string[] = [];
@@ -137,7 +132,7 @@ export function MarkdownRenderer({ text }: { text: string }): React.ReactElement
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !lines[i].trim().startsWith("#") &&
+      !/^#{1,6}\s+\S/.test(lines[i].trim()) &&
       !lines[i].trim().startsWith(">") &&
       !lines[i].trim().startsWith("```") &&
       !/^[-*]\s+/.test(lines[i].trim()) &&

@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 
 const paths: Record<string, string> = {
   inbox: "M4 5h16v14H4z M4 12h4l2 3h4l2-3h4",
+  mail: "M3 5h18v14H3z M3 6l9 7 9-7",
   library: "M4 5h6v14H4z M14 5h6v14h-6z M7 9v6 M17 9v6",
   star: "m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z",
   archive: "M3 5h18v4H3z M5 9v10h14V9 M10 13h4",
@@ -67,6 +68,8 @@ export function Icon({
 
 const META: Record<string, { label: string; icon: string }> = {
   manual: { label: "随手灵感", icon: "edit" },
+  email: { label: "邮件", icon: "mail" },
+  "email-digest": { label: "邮件归纳", icon: "brief" },
   web: { label: "网页剪藏", icon: "note" },
   document: { label: "文档", icon: "library" },
   audio: { label: "语音", icon: "note" },
@@ -75,6 +78,7 @@ const META: Record<string, { label: string; icon: string }> = {
 };
 
 export function sourceLabel(source: string, url: string): { label: string; icon: string } {
+  if (source === "email" || source === "email-digest") return META[source];
   if (url) {
     try {
       const host = new URL(url).hostname.replace(/^www\./, "");

@@ -82,6 +82,17 @@ select {
   scrollbar-color: var(--line) transparent;
 }
 
+.mail-inspector-headers {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px 10px;
+  padding: 12px 0;
+  border-block: 1px solid var(--line);
+  font-size: var(--text-meta);
+}
+.mail-inspector-headers dt { color: var(--muted); }
+.mail-inspector-headers dd { margin: 0; overflow-wrap: anywhere; }
+
 /* ---------- toolbar (Overlay titlebar) ---------- */
 
 .ws-header {

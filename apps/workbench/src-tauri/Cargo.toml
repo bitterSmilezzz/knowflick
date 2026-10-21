@@ -15,6 +15,9 @@ tauri-build = { version = "2", features = [] }
 encoding_rs = "0.8"
 fastembed = "7"
 open = "5"
+mailparse = "0.16"
+html2text = "0.17"
+native-tls = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "http2", "rustls-tls", "stream"] }
 rusqlite = { version = "0.32", features = ["bundled", "bundled-full"] }
 serde = { version = "1", features = ["derive"] }

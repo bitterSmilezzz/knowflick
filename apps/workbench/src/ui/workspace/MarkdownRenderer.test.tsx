@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
 import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 describe("MarkdownRenderer", () => {
+  it("renders all heading depths, indentation and plain hash without stalling", () => {
+    const html = renderToStaticMarkup(<MarkdownRenderer text={"#### 待办\n\n  ## 缩进标题\n\n#标签\n\n#\n\n正常段落"} />);
+    expect(html).toContain("待办");
+    expect(html).toContain("缩进标题");
+    expect(html).toContain("#标签");
+    expect(html).toContain("正常段落");
+  });
+  it("renders non-web links as plain text", () => {
+    const html = renderToStaticMarkup(<MarkdownRenderer text={"[危险](javascript:alert) [文件](file:///etc/passwd) [网页](https://example.com)"} />);
+    expect(html).not.toContain('href="javascript:');
+    expect(html).not.toContain('href="file:');
+    expect(html).toContain('href="https://example.com"');
+  });
   it("renders empty div for empty text", () => {
     const el = MarkdownRenderer({ text: "" });
     expect(React.isValidElement(el)).toBe(true);
