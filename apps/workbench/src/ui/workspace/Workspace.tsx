@@ -57,6 +57,7 @@ import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
 import { StatsView } from "./StatsView";
 import { setSoundEffectsEnabled } from "../../shell/sounds";
+import { parseNotesFile } from "../../domain/notes";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
 import { existingKeys } from "../../domain/contentHash";
@@ -189,6 +190,9 @@ export function Workspace() {
   const searchRef = useRef<HTMLInputElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  // 「笔记转知识卡」与「导入文件」是两种意图：前者把攒下的笔记变成可复习的卡，
+  // 后者把文件收进收件箱。分开入口，用户不必猜。
+  const notesRef = useRef<HTMLInputElement>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDialogElement>(null);
   const revision = useRef(0);
@@ -674,6 +678,48 @@ export function Workspace() {
    * 收集每个文件的结果，最后给一条「成功 / 跳过 / 失败」的汇总，
    * 失败项逐条说明原因。
    */
+  /**
+   * 把笔记文件（Markdown / JSON）转成知识卡。
+   *
+   * 与「导入文件」的区别：导入文件把内容收进收件箱当素材；这里直接把
+   * 攒下的笔记拆成可复习的原子卡——笔记软件最该有的能力。
+   */
+  const importNotesToCards = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    const ok: string[] = [];
+    const failed: Array<{ name: string; reason: string }> = [];
+    try {
+      await act(async () => {
+        for (const [index, f] of list.entries()) {
+          setNotice(`正在转换 ${index + 1}/${list.length}：${f.name}`);
+          try {
+            const text = await f.text();
+            const cards = parseNotesFile(text, f.name);
+            if (cards.length === 0) throw new Error("这个文件里没有能转成知识卡的内容");
+            for (const card of cards) await updateCard(card);
+            ok.push(`${f.name}（${cards.length} 张）`);
+          } catch (err) {
+            failed.push({ name: f.name, reason: err instanceof Error ? err.message : String(err) });
+          }
+        }
+        if (ok.length) {
+          navigate("library");
+          setSource("card");
+        }
+        if (!ok.length && failed.length) {
+          setError(`没有转成知识卡：${failed.map(f => `${f.name}（${f.reason}）`).join("；")}`);
+        } else if (failed.length) {
+          setNotice(`已转换 ${ok.length} 个文件；${failed.length} 个失败：${failed.map(f => f.name).join("、")}`);
+          setError(`以下文件没有转换：${failed.map(f => `${f.name}（${f.reason}）`).join("；")}`);
+        } else {
+          setNotice(`已转换 ${ok.length} 个文件：${ok.join("、")}`);
+        }
+      });
+    } catch (e) {
+      setError(`转换中断，已完成的保留：${String(e)}`);
+    }
+  };
+
   const importFiles = async (files: FileList | File[]) => {
     const list = Array.from(files);
     const ok: string[] = [];
@@ -1265,6 +1311,9 @@ export function Workspace() {
           </button>
           <button type="button" className="ws-capture-mode" aria-label="导入音频转写" disabled={loading || busy || !asrEnabled} title={asrEnabled ? "导入已有音频并转写" : "语音转写插件未启用"} onClick={() => void transcribeAudio()}>
             <Icon name="upload" size={14} /><span>转写</span>
+          </button>
+          <button type="button" className="ws-capture-mode" aria-label="笔记转知识卡" disabled={loading || busy} title="把 Markdown 笔记拆成可复习的知识卡" onClick={() => notesRef.current?.click()}>
+            <Icon name="card" size={14} /><span>笔记</span>
           </button>
         </div>
         <div className="ws-nav-scroll">
@@ -1958,9 +2007,23 @@ export function Workspace() {
 
       <input
         hidden
+        ref={notesRef}
+        type="file"
+        multiple
+        data-role="notes-to-cards"
+        accept=".md,.markdown,.txt,.json"
+        onChange={(e) => {
+          if (e.target.files) void importNotesToCards(e.target.files);
+          e.target.value = "";
+        }}
+      />
+
+      <input
+        hidden
         ref={importRef}
         type="file"
         multiple
+        data-role="import-files"
         accept=".md,.markdown,.txt,.json,.docx,.pptx,.pdf,.png,.jpg,.jpeg,.webp,.gif,.heic"
         onChange={(e) => {
           if (e.target.files) void importFiles(e.target.files);

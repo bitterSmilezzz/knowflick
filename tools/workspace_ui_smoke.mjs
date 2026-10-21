@@ -426,6 +426,31 @@ try {
   await check('document.body.innerText.includes("已删除知识卡")', "delete reports what happened");
   await browser("fill", '[aria-label="搜索知识库"]', "");
 
+  // 笔记转知识卡：解析器早就有，却一直没有入口——笔记软件最该有的能力
+  await check('!!document.querySelector(\'[aria-label="笔记转知识卡"]\')', "有「笔记转知识卡」入口");
+  await browser("eval", `(() => {
+    const input = document.querySelector('input[data-role=notes-to-cards]');
+    if (!input) return 'NO_INPUT';
+    const dt = new DataTransfer();
+    dt.items.add(new File(['## 复购率比拉新重要\\n\\n获取成本远高于维护成本。\\n\\n## 小团队更要自动化\\n\\n人手少时浪费被放大。'], '笔记.md', { type: 'text/markdown' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 900));
+  await check(
+    "((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').cards)||[]).length >= 2",
+    "笔记被拆成多张知识卡"
+  );
+  await check(
+    "((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').cards)||[]).some(c => c.headline.includes('复购率'))",
+    "卡片标题来自笔记小节"
+  );
+  await check(
+    "((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').cards)||[]).every(c => c.source === 'imported')",
+    "转出的卡片是可复习的导入卡"
+  );
+
   // 统计：ADR-0002 把「统计」列进第一版交付物，命令早就在，但没有界面
   await check(
     "[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('统计'))",

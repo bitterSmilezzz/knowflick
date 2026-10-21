@@ -31,7 +31,14 @@ try {
   await check("!!document.querySelector('.ws')", "工作台就绪");
 
   // 三种记法并列在记录入口下
-  await check("[...document.querySelectorAll('.ws-capture-mode')].map(e=>e.getAttribute('aria-label')).join(',')==='手写笔记,语音笔记,导入音频转写'", "记录入口并列手写/语音/转写");
+  // 记录入口并列多种记法：手写、语音、转写、笔记转卡。
+  // 这里查「包含」而不是相等——以后再加一种记法，不该让这条断言失效。
+  const captureLabels = await ev("[...document.querySelectorAll('.ws-capture-mode')].map(e=>e.getAttribute('aria-label')).join(',')");
+  for (const label of ["手写笔记", "语音笔记", "导入音频转写", "笔记转知识卡"]) {
+    assert.ok(captureLabels.includes(label), `记录入口应包含「${label}」，实际：${captureLabels}`);
+  }
+  count++;
+  console.log("PASS 记录入口并列手写/语音/转写/笔记转卡");
 
   // 手写
   await b("click", '[aria-label="手写笔记"]');

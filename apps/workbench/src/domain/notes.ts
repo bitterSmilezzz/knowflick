@@ -86,11 +86,47 @@ function splitByHeadings(text: string): string[] {
   return sections;
 }
 
+interface FileFrontmatter {
+  category?: string;
+  tags: string[];
+}
+
+/** 取文件开头的 frontmatter（如果有）。 */
+function extractFileFrontmatter(text: string): FileFrontmatter {
+  const lines = text.split("\n");
+  if (lines[0]?.trim() !== "---") return { tags: [] };
+  const meta: FileFrontmatter = { tags: [] };
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === "---") break;
+    if (line.startsWith("category:")) meta.category = metadataValue(line, "category:");
+    if (line.startsWith("tags:")) {
+      const raw = metadataValue(line, "tags:");
+      meta.tags = raw.replace(/^\[|\]$/g, "").split(/[,，]/).map((t) => t.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    }
+  }
+  return meta;
+}
+
+/** 把文件级 frontmatter 补到某一段的前面，好让 parseSection 能读到。 */
+function applyFileMeta(section: string, meta: FileFrontmatter): string {
+  if (!meta.category && meta.tags.length === 0) return section;
+  const lines = [
+    "---",
+    ...(meta.category ? [`category: ${meta.category}`] : []),
+    ...(meta.tags.length ? [`tags: [${meta.tags.join(", ")}]`] : []),
+    "---",
+    "",
+  ];
+  return lines.join("\n") + section;
+}
+
 function parseSection(sectionText: string, defaultCategory: string, now: number): KnowledgeCard | null {
   const lines = sectionText.split("\n");
   let category = defaultCategory;
   let headline = "";
   let summary = "";
+  let sectionTags: string[] = [];
   const detailLines: string[] = [];
   const links: ScienceLink[] = [];
   let inFrontmatter = false;
@@ -116,6 +152,11 @@ function parseSection(sectionText: string, defaultCategory: string, now: number)
     }
     if (inFrontmatter) {
       if (line.startsWith("category:")) category = metadataValue(line, "category:");
+      if (line.startsWith("tags:")) {
+        // frontmatter 里的标签原本被静默丢弃——写了却没生效。
+        const raw = metadataValue(line, "tags:");
+        sectionTags = raw.replace(/^\[|\]$/g, "").split(/[,，]/).map((t) => t.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+      }
       if (line.startsWith("title:") || line.startsWith("headline:")) {
         headline = metadataValue(line, line.startsWith("title:") ? "title:" : "headline:");
       }
@@ -163,6 +204,7 @@ function parseSection(sectionText: string, defaultCategory: string, now: number)
     summary,
     details: details || summary,
     links,
+    tags: sectionTags,
     source: "imported",
     createdAt: now,
     editedAt: null,
@@ -231,9 +273,20 @@ export function parseMarkdownNotes(text: string, defaultCategory = "随手笔记
         return byHeadings.length > 1 ? byHeadings : cardSections;
       })()
     : cardSections;
-  return sections.flatMap((section) => {
-    const card = parseSection(section, defaultCategory, now);
-    return card ? [card] : [];
+
+  // 文件级 frontmatter（分类/标签）只写在文件开头那一段里。拆成多张卡时，
+  // 后面那些段就丢了分类与标签——同一篇笔记拆出来的卡应当属于同一类。
+  const fileMeta = extractFileFrontmatter(trimmed);
+  return sections.flatMap((section, index) => {
+    const card = parseSection(index === 0 ? section : applyFileMeta(section, fileMeta), defaultCategory, now);
+    if (!card) return [];
+    if (index === 0) return [card];
+    // frontmatter 里显式写过的分类/标签优先，没写才用文件级的。
+    return [{
+      ...card,
+      category: card.category === defaultCategory && fileMeta.category ? fileMeta.category : card.category,
+      tags: (card.tags ?? []).length ? (card.tags ?? []) : fileMeta.tags,
+    }];
   });
 }
 

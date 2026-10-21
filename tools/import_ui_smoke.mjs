@@ -32,7 +32,7 @@ try {
   // 四个文件：两个好的 Markdown、一个不支持的 .xyz、一个 0 字节的 txt（可解析但内容为空）
   // eval 不等待 Promise，所以只做「挂文件 + 触发 change」，结果用断言轮询。
   await ev(`(() => {
-    const input = document.querySelector('input[type=file][multiple]');
+    const input = document.querySelector('input[data-role=import-files]');
     const dt = new DataTransfer();
     dt.items.add(new File(['# 第一份\\n\\n正文一'], 'note-a.md', { type: 'text/markdown' }));
     dt.items.add(new File(['不支持的类型'], 'weird.xyz', { type: 'application/octet-stream' }));
@@ -50,7 +50,7 @@ try {
 
   // 全部失败时仍给出明确结论，而不是静默
   await ev(`(() => {
-    const input = document.querySelector('input[type=file][multiple]');
+    const input = document.querySelector('input[data-role=import-files]');
     const dt = new DataTransfer();
     dt.items.add(new File(['x'], 'bad1.xyz', { type: 'application/octet-stream' }));
     dt.items.add(new File(['y'], 'bad2.xyz', { type: 'application/octet-stream' }));
@@ -62,7 +62,7 @@ try {
 
   // 图片作为独立来源：不再是「不支持的格式」
   await ev(`(() => {
-    const input = document.querySelector('input[type=file][multiple]');
+    const input = document.querySelector('input[data-role=import-files]');
     const dt = new DataTransfer();
     const png = new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
     dt.items.add(new File([png], 'screenshot.png', { type: 'image/png' }));
@@ -72,11 +72,11 @@ try {
   })()`);
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).some(m=>m.sourceType==='image')})()", "图片导入为独立素材类型");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');const m=(raw.materials||[]).find(x=>x.sourceType==='image');return m.title==='screenshot'})()", "图片用文件名作标题");
-  await check("document.querySelector('input[type=file][multiple]').accept.includes('.png')", "文件选择器接受图片");
+  await check("document.querySelector('input[data-role=import-files]').accept.includes('.png')", "文件选择器接受图片");
 
   // 同一个文件导入两次不该变成两份
   const importSame = async () => ev(`(() => {
-    const input = document.querySelector('input[type=file][multiple]');
+    const input = document.querySelector('input[data-role=import-files]');
     const dt = new DataTransfer();
     dt.items.add(new File(['# 重复内容\\n\\n同一份正文'], 'dup.md', { type: 'text/markdown' }));
     input.files = dt.files;
@@ -91,7 +91,7 @@ try {
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');const m=(raw.materials||[]).find(x=>x.title==='重复内容');return typeof m.contentHash==='string'&&m.contentHash.length>0})()", "素材记录了内容指纹");
 
   // PPT 是用户明确列出的来源之一，之前根本不在支持列表
-  await check("document.querySelector('input[type=file][multiple]').accept.includes('.pptx')", "文件选择器接受 PPT");
+  await check("document.querySelector('input[data-role=import-files]').accept.includes('.pptx')", "文件选择器接受 PPT");
   await ev(`(() => {
     // 手工构造一个 stored ZIP 当成最小 PPTX
     const enc = new TextEncoder();
@@ -117,7 +117,7 @@ try {
     const out = new Uint8Array(total);
     let offset = 0;
     for (const c of chunks) { out.set(c, offset); offset += c.length; }
-    const input = document.querySelector('input[type=file][multiple]');
+    const input = document.querySelector('input[data-role=import-files]');
     const dt = new DataTransfer();
     dt.items.add(new File([out], 'deck.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }));
     input.files = dt.files;
@@ -129,7 +129,7 @@ try {
 
   // 只有素材、没有卡片的旧版备份：素材已落库就不能再报「导入失败」
   await ev(`(() => {
-    const input = document.querySelector('input[type=file][multiple]');
+    const input = document.querySelector('input[data-role=import-files]');
     const dt = new DataTransfer();
     const payload = JSON.stringify({ format: "knowflick-workspace", version: 1, materials: [{
       id: "legacy-m", sourceType: "web", title: "旧备份里的素材", sourceUrl: null,
@@ -147,7 +147,7 @@ try {
 
   // 浏览器体验里大图会把唯一的 localStorage key 撑爆，必须明确拒绝
   await ev(`(() => {
-    const input = document.querySelector('input[type=file][multiple]');
+    const input = document.querySelector('input[data-role=import-files]');
     const dt = new DataTransfer();
     dt.items.add(new File([new Uint8Array(1536 * 1024)], 'huge.png', { type: 'image/png' }));
     input.files = dt.files;
