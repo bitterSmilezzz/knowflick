@@ -19,6 +19,8 @@ interface Props {
   onAi: () => Promise<void>;
   onFetch: () => Promise<void>;
   onFavorite: () => Promise<void>;
+  /** 删除知识卡；素材走归档，不提供删除。 */
+  onDelete?: () => Promise<void>;
   busy: boolean;
   onSettings: () => void;
   aiReady: boolean;
@@ -34,6 +36,7 @@ export function EntryInspector({
   onAi,
   onFetch,
   onFavorite,
+  onDelete,
   busy,
   onSettings,
   aiReady,
@@ -44,6 +47,13 @@ export function EntryInspector({
   const [category, setCategory] = useState(entry.category);
   const [tags, setTags] = useState(entry.tags.join(", "));
   const [error, setError] = useState("");
+  // 删除是不可撤销的：第一下只是"请再点一次确认"，四秒后自动收回。
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const timer = window.setTimeout(() => setConfirmDelete(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmDelete]);
   const titleRef = useRef<HTMLInputElement>(null);
   const resetDraft = () => {
     setTitle(entry.title); setText(entry.text); setCategory(entry.category); setTags(entry.tags.join(", "));
@@ -299,6 +309,22 @@ export function EntryInspector({
               disabled={busy}
             >
               <Icon name="star" />
+            </button>
+          ) : null}
+          {card && onDelete ? (
+            <button
+              className={confirmDelete ? "ws-icon-button ws-danger" : "ws-icon-button"}
+              aria-label={confirmDelete ? "确认删除这张卡片" : "删除这张卡片"}
+              title={confirmDelete ? "再点一次即删除，无法撤销" : "删除"}
+              disabled={busy || editing}
+              onClick={() => {
+                if (!confirmDelete) { setConfirmDelete(true); return; }
+                setConfirmDelete(false);
+                void run(onDelete);
+              }}
+            >
+              <Icon name="trash" />
+              {confirmDelete ? <span className="ws-danger-text">确认</span> : null}
             </button>
           ) : null}
           {!isCard ? (

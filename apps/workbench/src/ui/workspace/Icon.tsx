@@ -6,6 +6,7 @@ const paths: Record<string, string> = {
   library: "M4 5h6v14H4z M14 5h6v14h-6z M7 9v6 M17 9v6",
   star: "m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z",
   archive: "M3 5h18v4H3z M5 9v10h14V9 M10 13h4",
+  trash: "M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6",
   folder: "M3 6h6l2 2h10v11H3z",
   settings: "M4 6h16 M4 12h16 M4 18h16 M9 3v6 M16 9v6 M8 15v6",
   search: "M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13 M16 16l5 5",

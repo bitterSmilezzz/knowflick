@@ -957,6 +957,16 @@ select {
 .ws-attachment-audio { width: 100%; }
 .ws-attachment figcaption { font-size: var(--text-meta); color: var(--muted); }
 
+/* 删除是两步确认：第一下变红并提示"再点一次"，四秒后自动收回。 */
+.ws-icon-button.ws-danger {
+  color: var(--danger, #b3261e);
+  background: color-mix(in srgb, var(--danger, #b3261e) 10%, transparent);
+  width: auto;
+  padding: 0 8px;
+  gap: 4px;
+}
+.ws-danger-text { font-size: var(--text-meta); font-weight: 600; }
+
 /* ---------- status bar ---------- */
 
 .ws-status {

@@ -164,6 +164,42 @@ try {
   await browser("press", "Escape");
   await browser("set", "viewport", "1040", "760");
 
+  // 知识卡删除：两步确认（第一下只提示，第二下才删），且素材不受影响
+  await clickButton("全部知识");
+  // 按卡片标题定位，避免选到素材（素材只有归档，没有删除）
+  // 用「知识卡」筛选把素材排除掉，确保选中的是卡片
+  await browser("eval", `(() => {
+    const tab = [...document.querySelectorAll('.ws-filter-tabs button')].find(b => b.textContent.trim() === '知识卡');
+    if (tab) tab.click();
+    return !!tab;
+  })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  await browser("eval", "(document.querySelector('.ws-entry')||{}).click?.(); true");
+  await new Promise((r) => setTimeout(r, 400));
+  await check('!!document.querySelector(\'[aria-label="删除这张卡片"]\')', "card reader offers a delete action");
+  // 基线用持久化的卡片条数：DOM 行数受筛选与提示重渲染影响，两者口径不同。
+  const storedCardsBefore = await evaluate(
+    "((JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}').cards) || []).length"
+  );
+  assert.ok(storedCardsBefore > 0, "库里应当有卡片可删");
+  await browser("eval", "(() => { const b = document.querySelector('[aria-label=\"删除这张卡片\"]'); if (b) b.click(); return !!b; })()");
+  await check('!!document.querySelector(\'[aria-label="确认删除这张卡片"]\')', "deleting a card asks for confirmation");
+  await check(
+    `((JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}').cards) || []).length === ${storedCardsBefore}`,
+    "first click does not delete anything"
+  );
+  await new Promise((r) => setTimeout(r, 250));
+  // 用 DOM 直接触发：按钮会因 label 变化重渲染，自动化点击容易落到旧节点上。
+  await browser("eval", "(() => { const b = document.querySelector('[aria-label=\"确认删除这张卡片\"]'); if (b) b.click(); return !!b; })()");
+  await new Promise((r) => setTimeout(r, 600));
+  await check(
+    `(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+      return (raw.cards || []).length === ${storedCardsBefore - 1}; })()`,
+    "confirmed delete removes exactly one card"
+  );
+  await check('document.body.innerText.includes("已删除知识卡")', "delete reports what happened");
+  await browser("fill", '[aria-label="搜索知识库"]', "");
+
   console.log("UI smoke complete. Desktop SQLite behaviour is covered by cargo tests and the native-window check.");
 } finally {
   await browser("close").catch(() => {});

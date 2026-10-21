@@ -1508,6 +1508,18 @@ export function Workspace() {
                   });
                 })
               }
+              onDelete={() =>
+                act(async () => {
+                  // 卡片删除是硬删除：素材保留，从素材转出的关系由 materialId 记录，
+                  // 所以删卡不会丢原始记录。
+                  const card = selected.original as KnowledgeCard;
+                  const next = cards.filter((item) => item.id !== card.id);
+                  await storeCardList(next, dir);
+                  setCards(next);
+                  setSelectedId("");
+                  setNotice(`已删除知识卡「${card.headline}」。素材与归档内容不受影响。`);
+                })
+              }
             />
           ) : (
             <article className="ws-reader" data-workspace-pane="inspector" aria-label="阅读区">
