@@ -207,6 +207,8 @@ export function BrainAssistantDrawer({
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // 用户已知「没配密钥」并选择继续时置真，避免每次提交都被拦。
+  const [proceededWithoutKey, setProceededWithoutKey] = useState(false);
 
   let needsKey = false;
   try {
@@ -219,8 +221,13 @@ export function BrainAssistantDrawer({
     const q = (textToAsk || question).trim();
     if (!q || loading) return;
 
-    if (needsKey && inShell()) {
-      setError("请先在设置中配置大模型 API 密钥。");
+    // 没配密钥时先拦一次并说明原因。原先只在桌面端拦截，浏览器模式下会
+    // 直接发出一个注定失败的请求，界面要转到超时才报错——用户看到的就是
+    // 「点了提问没反应」。这里两种模式都先提示；若服务端本来就不需要密钥，
+    // 再点一次即可继续。
+    if (needsKey && !proceededWithoutKey) {
+      setProceededWithoutKey(true);
+      setError("尚未配置大模型 API 密钥。若你的服务端不需要密钥，再点一次「提问」即可继续。");
       return;
     }
 
