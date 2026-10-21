@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { quizSessionView } from "../domain/quizSession";
+import { playSwipeTone } from "../shell/sounds";
 import {
   applyReview,
   buildQuiz,
@@ -110,6 +111,8 @@ export function QuizView({
       setRevealed(true);
       return;
     }
+    // 评分给一声轻提示；开关在设置里（跨端共享的 soundEffectsEnabled）。
+    playSwipeTone(rating === "again" ? "left" : rating === "hard" ? "skip" : "right");
     const { card } = session;
     const next = cards.map((item) =>
       item.id === card.id

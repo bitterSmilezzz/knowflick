@@ -53,6 +53,7 @@ import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
+import { setSoundEffectsEnabled } from "../../shell/sounds";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
 import { existingKeys } from "../../domain/contentHash";
@@ -137,6 +138,10 @@ export function Workspace() {
   const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
   // 产物在多个页面都要用（产物库、问答作为回答依据），状态提到这里统一加载。
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  // 音效开关是跨端共享设置；工作台此前只解析不使用，等于开关失效。
+  useEffect(() => {
+    setSoundEffectsEnabled(file.settings.soundEffectsEnabled !== false);
+  }, [file.settings.soundEffectsEnabled]);
   // 设分类用界面内输入，不用 window.prompt：原生弹窗样式与整套界面割裂，
   // 还会挡住下面的列表。
   const [batchCategory, setBatchCategory] = useState<string | null>(null);

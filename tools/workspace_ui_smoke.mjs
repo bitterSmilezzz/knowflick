@@ -124,11 +124,24 @@ try {
   );
   assert.deepEqual(options, ["跟随系统", "浅色", "深色"], "appearance has exactly three options");
   console.log("PASS appearance offers exactly three options");
+  // 操作音效开关：跨端共享设置，工作台此前只存不用、也没有入口
+  await check('!!document.querySelector(\'[aria-label="操作音效"]\')', "设置页有操作音效开关");
+  await browser("eval", "(() => { const el = document.querySelector('[aria-label=\"操作音效\"]'); if (el) el.click(); return !!el; })()");
+  await new Promise((r) => setTimeout(r, 250));
+  await check(
+    "document.querySelector('[aria-label=\"操作音效\"]').checked === false",
+    "音效开关可以关掉"
+  );
   await browser("select", '[data-group="appearance"] select', "DARK");
   // 温故复习现在是 official-review-fsrs 插件，用它的稳定选择器点名，别落到插件矩阵第一行
   await browser("check", '[data-plugin-toggle="official-review-fsrs"]');
   await browser("click", ".ws-settings-foot button[type=submit]");
   await check('document.body.innerText.includes("设置已成功保存")', "settings save is reachable and reports success");
+  // 开关必须真的落盘，只改界面不改设置等于没接
+  await check(
+    "JSON.parse(JSON.parse(localStorage.getItem('knowflick.workspace.v1')).settings).soundEffectsEnabled === false",
+    "音效开关写入设置"
+  );
   await check('document.querySelector(".ws").dataset.appearance === "dark"', "dark theme applies immediately");
   await browser("open", url);
   await check(

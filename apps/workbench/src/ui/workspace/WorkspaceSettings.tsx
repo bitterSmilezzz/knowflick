@@ -231,6 +231,27 @@ export function WorkspaceSettings({
                   </select>
                 </div>
               </div>
+
+              <div className="ws-settings-row">
+                <div className="ws-settings-label">
+                  <strong>操作音效</strong>
+                  <span>复习评分时的轻提示音。与 Android 端共用同一个设置项</span>
+                </div>
+                <div className="ws-settings-control">
+                  <label className="ws-switch-label">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-label="操作音效"
+                      aria-checked={draftSettings.soundEffectsEnabled}
+                      className="ws-switch-input"
+                      checked={draftSettings.soundEffectsEnabled}
+                      onChange={(e) => setDraftSettings((prev) => ({ ...prev, soundEffectsEnabled: e.target.checked }))}
+                    />
+                    <span className="ws-switch-slider" />
+                  </label>
+                </div>
+              </div>
             </section>
 
             <section className="ws-settings-card" data-group="capture">

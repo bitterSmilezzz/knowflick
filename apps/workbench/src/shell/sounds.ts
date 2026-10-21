@@ -1,9 +1,30 @@
 let ctx: AudioContext | null = null;
+/**
+ * 音效总开关。
+ *
+ * settings.json 里的 soundEffectsEnabled 是跨端共享字段（Android 端已经接了
+ * AudioEffectHelper），但工作台此前只把它解析进模型、从不使用——用户在安卓上
+ * 关掉音效，换到桌面照样会响（或者根本关不掉，因为这里连开关都没有）。
+ */
+let enabled = true;
+
+export function setSoundEffectsEnabled(value: boolean): void {
+  enabled = value;
+  if (value) return;
+  // 关掉时把上下文也释放，避免留一个静默的 AudioContext 占资源。
+  void ctx?.close().catch(() => {});
+  ctx = null;
+}
 
 function audio(): AudioContext | null {
-  if (typeof window === "undefined") return null;
-  if (!ctx) ctx = new AudioContext();
-  return ctx;
+  if (typeof window === "undefined" || !enabled) return null;
+  try {
+    if (!ctx) ctx = new AudioContext();
+    return ctx;
+  } catch {
+    // 浏览器可能因自动播放策略拒绝创建；音效失败不该影响任何操作。
+    return null;
+  }
 }
 
 export function playPaperSlide(): void {
