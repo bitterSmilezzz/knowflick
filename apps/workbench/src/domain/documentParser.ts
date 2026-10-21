@@ -34,7 +34,15 @@ export async function parseDocumentFile(
     return parsePdfBuffer(baseTitle, buffer);
   }
 
-  throw new Error(`不支持的文件格式: .${ext}，当前支持 .md, .txt, .docx, .pdf`);
+  if (ext === "pptx") {
+    return parsePptxBuffer(baseTitle, buffer);
+  }
+
+  if (ext === "doc" || ext === "ppt" || ext === "xls") {
+    throw new Error(`.${ext} 是旧版二进制格式，请另存为 .${ext}x 后再导入`);
+  }
+
+  throw new Error(`不支持的文件格式: .${ext}，当前支持 .md, .txt, .docx, .pptx, .pdf 与图片`);
 }
 
 /**
@@ -150,6 +158,86 @@ export async function extractFileFromZip(
   }
 
   return null;
+}
+
+/**
+ * 列出 ZIP 里所有条目名（只读本地文件头，够用于 pptx 的 slide 枚举）。
+ *
+ * 单独写一个而不是复用 extractFileFromZip：后者只找一个固定路径，
+ * pptx 的幻灯片文件名是 slide1.xml / slide2.xml … 需要先知道有哪些。
+ */
+export function listZipEntries(bytes: Uint8Array): string[] {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const names: string[] = [];
+  let offset = 0;
+  while (offset + 30 <= bytes.byteLength) {
+    const sig = view.getUint32(offset, true);
+    if (sig !== 0x04034b50) {
+      if (sig === 0x02014b50 || sig === 0x06054b50) break;
+      offset++;
+      continue;
+    }
+    const compressedSize = view.getUint32(offset + 18, true);
+    const fileNameLen = view.getUint16(offset + 26, true);
+    const extraFieldLen = view.getUint16(offset + 28, true);
+    const name = new TextDecoder("utf-8").decode(bytes.subarray(offset + 30, offset + 30 + fileNameLen));
+    names.push(name);
+    offset += 30 + fileNameLen + extraFieldLen + compressedSize;
+  }
+  return names;
+}
+
+/**
+ * 解析 PPTX：按页码取每页的文本，拼成带页标题的 Markdown。
+ *
+ * 只取文字（`<a:t>` 里的 run），不还原版式、图形与备注——
+ * 目标是「能搜到、能被 AI 提炼」，不是还原幻灯片。
+ */
+export async function parsePptxBuffer(
+  fallbackTitle: string,
+  buffer: ArrayBuffer
+): Promise<ParsedDocument> {
+  const bytes = new Uint8Array(buffer);
+  const entries = listZipEntries(bytes);
+  const slides = entries
+    .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => {
+      const na = Number(a.match(/slide(\d+)\.xml$/)?.[1] ?? 0);
+      const nb = Number(b.match(/slide(\d+)\.xml$/)?.[1] ?? 0);
+      return na - nb;
+    });
+  if (slides.length === 0) {
+    throw new Error("无法读取 PPTX 内容：压缩包中找不到幻灯片");
+  }
+
+  const sections: Array<{ title: string; content: string }> = [];
+  for (const [index, path] of slides.entries()) {
+    const xml = await extractFileFromZip(bytes, path);
+    if (!xml) continue;
+    const text = Array.from(xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g))
+      .map(match => decodeXmlEntities(match[1]).trim())
+      .filter(Boolean)
+      .join("\n");
+    if (!text) continue;
+    sections.push({ title: `第 ${index + 1} 页`, content: text });
+  }
+  if (sections.length === 0) {
+    throw new Error("这份 PPTX 里没有可提取的文字（可能全是图片）");
+  }
+  const title = sections[0].content.split("\n")[0]?.slice(0, 80) || fallbackTitle;
+  const markdown = sections.map(section => `## ${section.title}\n\n${section.content}`).join("\n\n");
+  return { title, markdown, wordCount: countWords(markdown), sections };
+}
+
+/** 还原 XML 文本里的常见实体，避免把 &amp; 原样显示给用户。 */
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&amp;/g, "&");
 }
 
 /**

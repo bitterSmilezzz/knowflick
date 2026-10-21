@@ -90,5 +90,42 @@ try {
   await check("document.body.innerText.includes('与库里内容相同已跳过')", "跳过时说明原因");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');const m=(raw.materials||[]).find(x=>x.title==='重复内容');return typeof m.contentHash==='string'&&m.contentHash.length>0})()", "素材记录了内容指纹");
 
+  // PPT 是用户明确列出的来源之一，之前根本不在支持列表
+  await check("document.querySelector('input[type=file][multiple]').accept.includes('.pptx')", "文件选择器接受 PPT");
+  await ev(`(() => {
+    // 手工构造一个 stored ZIP 当成最小 PPTX
+    const enc = new TextEncoder();
+    const entries = [
+      ['ppt/slides/slide1.xml', '<p:sld><a:t>季度复盘</a:t></p:sld>'],
+      ['ppt/slides/slide2.xml', '<p:sld><a:t>下一步计划</a:t></p:sld>'],
+    ];
+    const chunks = [];
+    for (const [name, content] of entries) {
+      const nameBytes = enc.encode(name);
+      const data = enc.encode(content);
+      const header = new Uint8Array(30 + nameBytes.length);
+      const view = new DataView(header.buffer);
+      view.setUint32(0, 0x04034b50, true);
+      view.setUint16(8, 0, true);
+      view.setUint32(18, data.length, true);
+      view.setUint32(22, data.length, true);
+      view.setUint16(26, nameBytes.length, true);
+      header.set(nameBytes, 30);
+      chunks.push(header, data);
+    }
+    const total = chunks.reduce((sum, c) => sum + c.length, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const c of chunks) { out.set(c, offset); offset += c.length; }
+    const input = document.querySelector('input[type=file][multiple]');
+    const dt = new DataTransfer();
+    dt.items.add(new File([out], 'deck.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).some(m=>m.title==='季度复盘')})()", "PPT 被解析成素材");
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');const m=(raw.materials||[]).find(x=>x.title==='季度复盘');return m.rawText.includes('第 1 页')&&m.rawText.includes('下一步计划')})()", "PPT 按页提取文字");
+
   console.log(`Import UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }

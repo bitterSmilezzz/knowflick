@@ -604,8 +604,8 @@ export function Workspace() {
       ok.push(f.name);
       return;
     }
-    if (!/\.(md|markdown|txt|json|docx|pdf)$/i.test(f.name)) {
-      throw new Error("暂不支持这种格式（支持 Markdown、TXT、JSON、Word、PDF、图片）");
+    if (!/\.(md|markdown|txt|json|docx|pptx|pdf)$/i.test(f.name)) {
+      throw new Error("暂不支持这种格式（支持 Markdown、TXT、JSON、Word、PPT、PDF、图片）");
     }
     if (/\.json$/i.test(f.name)) {
       const text = await f.text();
@@ -1590,7 +1590,7 @@ export function Workspace() {
         ref={importRef}
         type="file"
         multiple
-        accept=".md,.markdown,.txt,.json,.docx,.pdf,.png,.jpg,.jpeg,.webp,.gif,.heic"
+        accept=".md,.markdown,.txt,.json,.docx,.pptx,.pdf,.png,.jpg,.jpeg,.webp,.gif,.heic"
         onChange={(e) => {
           if (e.target.files) void importFiles(e.target.files);
           e.target.value = "";
