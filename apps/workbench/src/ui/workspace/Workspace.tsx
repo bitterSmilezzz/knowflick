@@ -1885,7 +1885,20 @@ export function Workspace() {
                     </span>
                     {/* 不再放「记录」按钮：中栏空状态已经有「记录第一条」，
                         同一动作同一屏出现两次是重复 CTA。这里补的是用户还没看到的入口。 */}
-                    {!(query.trim() || tag) ? (
+                    {query.trim() || tag ? (
+                      // 文案里写着「清空筛选看看全部内容」，那就得有个能点的入口——
+                      // 否则用户要自己回到搜索框手动删词，还得记得把标签也点掉。
+                      <div className="ws-empty-actions">
+                        <button
+                          className="ws-bordered"
+                          type="button"
+                          data-action="clear-search"
+                          onClick={() => { setQuery(""); setTag(""); }}
+                        >
+                          清空搜索
+                        </button>
+                      </div>
+                    ) : (
                       <div className="ws-empty-actions">
                         <button className="ws-bordered" type="button" onClick={() => navigate("mail")}>
                           连接邮箱
@@ -1894,7 +1907,7 @@ export function Workspace() {
                           添加订阅
                         </button>
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 )}
               </div>

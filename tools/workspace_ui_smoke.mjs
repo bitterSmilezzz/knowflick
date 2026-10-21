@@ -465,6 +465,21 @@ try {
     "转出的卡片是可复习的导入卡"
   );
 
+  // 搜索无结果时：文案说「清空筛选」，就必须有能点的入口
+  await browser("eval", `(() => {
+    const el = document.querySelector('.ws-search input');
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    set.call(el, '绝对搜不到的词xyz');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 600));
+  await check('document.querySelectorAll(".ws-entry").length === 0', "搜不到时列表为空");
+  await check('!!document.querySelector(\'[data-action="clear-search"]\')', "无结果时有「清空搜索」入口");
+  await browser("eval", "(document.querySelector('[data-action=\"clear-search\"]')||{}).click?.(); true");
+  await new Promise((r) => setTimeout(r, 600));
+  await check('document.querySelectorAll(".ws-entry").length > 0', "点「清空搜索」后列表恢复");
+
   // 统计：ADR-0002 把「统计」列进第一版交付物，命令早就在，但没有界面
   await check(
     "[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('统计'))",
