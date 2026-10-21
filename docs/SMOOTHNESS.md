@@ -22,6 +22,29 @@
 阅读区直接显示图片。CSP 相应放开 `img-src` / `media-src` 的 `blob:`，
 其余仍锁在 `'self'`。
 
+## 二·补：PPT 终于能导入
+
+**症状**：用户把 `ppt` 列在来源里，导入只认 Word/PDF，遇到 PPT 直接报「暂不支持这种格式」。
+
+**现在**：`parsePptxBuffer` 复用已有的纯 JS ZIP 解压器（不引入依赖），
+取 `ppt/slides/slideN.xml`，按**编号**排序（按字符串排会让 `slide10` 跑到 `slide2` 前面），
+提取 `<a:t>` 文本并按页拼成 Markdown。只取文字，不还原版式/图形/备注——
+目标是能搜到、能被 AI 提炼。XML 实体会还原，纯图片 PPT 与「根本不是 PPTX」
+分别给出可读原因。旧版 `.doc/.ppt/.xls` 明确提示「请另存为 .docx 等」。
+
+**当前支持的来源**：
+
+| 类型 | 状态 |
+| --- | --- |
+| Markdown / TXT / JSON | ✅ |
+| Word (.docx) | ✅ |
+| PowerPoint (.pptx) | ✅ |
+| PDF | ✅ |
+| 图片 (.png/.jpg/.webp/.gif/.heic) | ✅ 作为素材，不做 OCR |
+| 旧版 .doc/.ppt/.xls | ❌ 提示另存为新格式 |
+| Excel (.xlsx) | ❌ 尚未支持 |
+| 邮箱 / 订阅源 / 剪藏 / 手写 / 语音 | ✅ 各自独立入口 |
+
 ## 三、已修：长操作有具体反馈，且有出口
 
 **症状**：AI 归纳、转写、抓取订阅、恢复备份期间，界面只是按钮变灰，
@@ -64,8 +87,8 @@
 ## 七、验证
 
 ```
-./tools/verify_workbench.sh          前端 242 项 + Rust 74 项
-node tools/import_ui_smoke.mjs       14 项（坏文件隔离 / 图片 / 去重 / 跳过说明）
+./tools/verify_workbench.sh          前端 248 项 + Rust 74 项
+node tools/import_ui_smoke.mjs       17 项（坏文件隔离 / 图片 / PPT / 去重 / 跳过说明）
 node tools/notes_ui_smoke.mjs        21 项（手写与语音）
 node tools/taste_usability_gate.mjs  14 项（含长列表分页）
 node tools/usability_journey_smoke.mjs 12 项
