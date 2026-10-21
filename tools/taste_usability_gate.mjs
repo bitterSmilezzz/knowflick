@@ -271,6 +271,19 @@ try {
   assert.ok(nav.collapsible.some(label => label.includes("筛选")), `收藏/归档应折叠为知识库筛选：${nav.collapsible}`);
   pass("收藏/归档折叠为知识库筛选");
 
+  // ---- 长列表不会一次渲染完，也不会静默截断 ----
+  const list = await evaluate(`(() => {
+    const rows = document.querySelectorAll('.ws-entry').length;
+    const more = [...document.querySelectorAll('button')].find(e => e.textContent.includes('加载更多'));
+    return { rows, hasMore: !!more, label: more?.textContent.trim() ?? "" };
+  })()`);
+  assert.ok(list.rows <= 120, `首屏不该一次渲染几百行：${list.rows}`);
+  // 只有真的被截断时才需要「加载更多」；条数不够时没有按钮才是对的。
+  assert.ok(list.rows < 60 || list.hasMore, "被截断时必须有「加载更多」入口，不能静默少显示");
+  pass(list.hasMore
+    ? `长列表分页可用（首屏 ${list.rows} 行，可继续加载）`
+    : `条目未达单屏上限（${list.rows} 行），无需分页入口`);
+
   // ---- 无横向溢出 ----
   const overflow = await evaluate("document.documentElement.scrollWidth - window.innerWidth");
   assert.ok(overflow <= 0, `出现横向溢出 ${overflow}px`);
