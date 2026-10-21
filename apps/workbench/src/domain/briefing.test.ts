@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { generateCognitiveBriefing } from "./briefing";
 import type { KnowledgeCard } from "./card";
 
-describe("周期性认知简报算法测试 (固定三板块)", () => {
+// Windows CI runner 明显更慢：这条在 macOS 上数百毫秒、在 Windows 上超过 5 秒
+// 默认上限（实测 7.4 秒）。这不是被测逻辑的问题，慢的是 runner——给足超时，
+// 否则 release 工作流会因超时红掉。
+describe("周期性认知简报算法测试 (固定三板块)", { timeout: 30_000 }, () => {
   const now = 1700000000000;
   const dayMs = 86400 * 1000;
 

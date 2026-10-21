@@ -25,7 +25,9 @@ function entry(extra: Partial<Entry>): Entry {
   };
 }
 
-describe("阅读区附件", () => {
+// 服务端渲染这三条在 Windows runner 上要 8 秒以上（macOS 上不到 1 秒），
+// 默认 5 秒上限会把一个慢 runner 误判成功能坏了。
+describe("阅读区附件", { timeout: 30_000 }, () => {
   it("手写笔记重开时重绘笔迹，而不是摆一个播放器", () => {
     const html = renderToStaticMarkup(<EntryInspector
       entry={entry({})}
