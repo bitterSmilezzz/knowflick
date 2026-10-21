@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Entry } from "./model";
 import { Icon, sourceLabel } from "./Icon";
 import { openExternalUrl, readMedia, type RawMaterial } from "../../shell/store";
@@ -6,6 +6,7 @@ import type { KnowledgeCard } from "../../domain/card";
 import { estimateTokenCount } from "../../domain/ingest";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { mailMetadata } from "../../domain/mail";
+import { parseInk, type InkDocument } from "../../domain/ink";
 
 interface Props {
   entry: Entry;
@@ -71,7 +72,14 @@ export function EntryInspector({
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   useEffect(() => {
     const path = material?.mediaPath;
-    if (!path || !material) { setMediaUrl(null); return; }
+    if (!material) { setMediaUrl(null); return; }
+    // 浏览器体验里图片以内嵌 data URL 存放，没有可读的 media/ 文件。
+    if (!path) {
+      let inline: string | null = null;
+      try { inline = JSON.parse(material.metadataJson).dataUrl ?? null; } catch { inline = null; }
+      setMediaUrl(typeof inline === "string" && inline.startsWith("data:image/") ? inline : null);
+      return;
+    }
     let disposed = false;
     let created: string | null = null;
     void readMedia(path)
@@ -87,6 +95,12 @@ export function EntryInspector({
       .catch(() => { if (!disposed) setMediaUrl(null); });
     return () => { disposed = true; if (created) URL.revokeObjectURL(created); };
   }, [material?.id, material?.mediaPath, material?.sourceType, material?.metadataJson]);
+  /** 手写笔记的笔迹（存盘时内嵌一份），用于只读重绘，不做回写。 */
+  const inkDoc: InkDocument | null = useMemo(() => {
+    if (!material || material.sourceType !== "ink") return null;
+    try { return parseInk(JSON.parse(material.metadataJson).ink); } catch { return null; }
+  }, [material]);
+
   const archived = material ? material.inboxStatus !== "inbox" : false;
   const meta = sourceLabel(isCard ? "card" : material?.sourceType ?? "", entry.url);
 
@@ -198,11 +212,16 @@ export function EntryInspector({
                 <div className="ws-prose" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{entry.text}</div>
               </>
             ) : <MarkdownRenderer text={entry.text} />}
-            {material?.mediaPath && mediaUrl ? (
+            {inkDoc ? (
+              <figure className="ws-attachment" data-attachment="ink">
+                <InkPreview doc={inkDoc} />
+                <figcaption className="ws-hint">手写笔记 · {inkDoc.strokes.length} 笔 · 保存在本机</figcaption>
+              </figure>
+            ) : material?.mediaPath && mediaUrl ? (
               <figure className="ws-attachment" data-attachment={material.sourceType}>
                 {material.sourceType === "image" ? (
                   <img src={mediaUrl} alt={material.title} className="ws-attachment-image" />
-                ) : (
+                ) : material?.sourceType === "ink" ? null : (
                   <audio controls src={mediaUrl} className="ws-attachment-audio" aria-label="录音回放" />
                 )}
                 <figcaption className="ws-hint">
@@ -287,4 +306,42 @@ export function EntryInspector({
       </footer>
     </article>
   );
+}
+
+/** 只读手写预览：坐标已归一化，换尺寸重绘不会变形。 */
+export function InkPreview({ doc, height = 240 }: { doc: InkDocument; height?: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(rect.width * ratio));
+    canvas.height = Math.round(height * ratio);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(ratio, ratio);
+    ctx.clearRect(0, 0, rect.width, height);
+    const styles = getComputedStyle(canvas);
+    const palette: Record<string, string> = {
+      ink: styles.getPropertyValue("--ink").trim() || "#1c1e20",
+      accent: styles.getPropertyValue("--accent").trim() || "#315e8b",
+      muted: styles.getPropertyValue("--muted").trim() || "#596168",
+    };
+    for (const stroke of doc.strokes) {
+      if (stroke.points.length < 2) continue;
+      ctx.beginPath();
+      ctx.lineWidth = Math.max(1, stroke.width * Math.min(rect.width, height));
+      ctx.strokeStyle = palette[stroke.color] ?? palette.ink;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      stroke.points.forEach((point, i) => {
+        const x = point.x * rect.width;
+        const y = point.y * height;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+  }, [doc, height]);
+  return <canvas ref={ref} className="ws-attachment-image" style={{ height }} role="img" aria-label={`手写笔记，${doc.strokes.length} 笔`} />;
 }

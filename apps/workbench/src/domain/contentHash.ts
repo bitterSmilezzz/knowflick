@@ -27,3 +27,24 @@ export function existingHashes(materials: Array<{ contentHash?: string | null }>
   }
   return set;
 }
+
+/**
+ * 一批已有素材的「已存在」判定键。
+ *
+ * 除了正文指纹，还要包含图片的 `文件名 + 字节数`：图片内容不进文本指纹，
+ * 否则第二次拖同一个文件会因为库里只留了 contentHash 而再进来一份。
+ * 键格式 `image:<fileName>:<bytes>` 与导入时保持一致。
+ */
+export function existingKeys(materials: Array<{ sourceType?: string; contentHash?: string | null; mediaSizeBytes?: number; metadataJson?: string }>): Set<string> {
+  const keys = existingHashes(materials);
+  for (const material of materials) {
+    if (material.sourceType !== "image") continue;
+    try {
+      const meta = JSON.parse(material.metadataJson ?? "{}") as { fileName?: unknown };
+      if (typeof meta.fileName === "string" && meta.fileName) {
+        keys.add(`image:${meta.fileName}:${material.mediaSizeBytes ?? 0}`);
+      }
+    } catch { /* 坏元数据时只是跳过图片判重，不影响正文指纹 */ }
+  }
+  return keys;
+}

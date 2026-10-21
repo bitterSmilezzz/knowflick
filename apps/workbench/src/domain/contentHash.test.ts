@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentHashOf, existingHashes } from "./contentHash";
+import { contentHashOf, existingHashes, existingKeys } from "./contentHash";
 
 describe("内容指纹", () => {
   it("同样内容得到同样指纹", () => {
@@ -32,5 +32,19 @@ describe("内容指纹", () => {
   it("收集已有指纹时忽略空值", () => {
     const set = existingHashes([{ contentHash: "x" }, { contentHash: "" }, {}, { contentHash: null }]);
     expect([...set]).toEqual(["x"]);
+  });
+});
+
+describe("已存在判定键", () => {
+  it("图片按文件名与字节数判重，与正文指纹并列", () => {
+    const m = { sourceType: "image", contentHash: "abc", mediaSizeBytes: 123,
+      metadataJson: JSON.stringify({ fileName: "shot.png" }) };
+    expect(existingKeys([m]).has("abc")).toBe(true);
+    expect(existingKeys([m]).has("image:shot.png:123")).toBe(true);
+  });
+
+  it("坏元数据只影响图片判重，不影响正文指纹", () => {
+    const m = { sourceType: "image", contentHash: "abc", mediaSizeBytes: 1, metadataJson: "broken" };
+    expect(existingKeys([m]).has("abc")).toBe(true);
   });
 });

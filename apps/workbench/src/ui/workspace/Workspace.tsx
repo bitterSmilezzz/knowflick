@@ -51,7 +51,7 @@ import { SubscriptionsView } from "./SubscriptionsView";
 import { MailboxView } from "./MailboxView";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
-import { existingHashes } from "../../domain/contentHash";
+import { existingKeys } from "../../domain/contentHash";
 import { emailBodyForAi, makeMailDigestMetadata, type MailDigestSource } from "../../domain/mail";
 import { sourceInsights } from "../../domain/insights";
 import { mailSyncDueAccounts } from "../../shell/mail";
@@ -550,7 +550,9 @@ export function Workspace() {
     const skipped: string[] = [];
     const failed: Array<{ name: string; reason: string }> = [];
     // 库里已有的指纹：同一个文件导入两次不该变成两份。
-    const seen = existingHashes(materials);
+    // 图片按「文件名 + 字节数」判重（见 existingKeys），否则第二次拖同一个
+    // 文件会因为库里只留了 contentHash 而再进来一份。
+    const seen = existingKeys(materials);
     try {
       await act(async () => {
         for (const [index, f] of list.entries()) {
@@ -587,14 +589,23 @@ export function Workspace() {
     if (IMAGE.test(f.name)) {
       const mime = f.type && f.type.startsWith("image/") ? f.type : "image/png";
       const bytes = new Uint8Array(await f.arrayBuffer());
+      // 浏览器没有可写的库目录，但图片不大：用 data URL 内嵌，随素材一起进
+      // localStorage，重开还能看。桌面端才落到 media/ 文件，避免把大文件塞进库行。
       let mediaPath: string | null = null;
-      if (inShell()) mediaPath = await saveMedia("image", mime, bytes);
+      let dataUrl: string | null = null;
+      if (inShell()) {
+        mediaPath = await saveMedia("image", mime, bytes);
+      } else {
+        let binary = "";
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        dataUrl = `data:${mime};base64,${btoa(binary)}`;
+      }
       const m = {
         ...makeMaterial({ title: f.name.replace(/\.[^/.]+$/, ""), text: `（图片素材：${f.name}）`, url: "" }),
         sourceType: "image",
         mediaPath,
         mediaSizeBytes: bytes.byteLength,
-        metadataJson: JSON.stringify({ mime, fileName: f.name }),
+        metadataJson: JSON.stringify({ mime, fileName: f.name, ...(dataUrl ? { dataUrl } : {}) }),
       };
       // 图片按「同名 + 同大小」判重：只比文本指纹会把不同的截图当成同一张。
       const imageKey = `image:${f.name}:${bytes.byteLength}`;
@@ -785,12 +796,15 @@ export function Workspace() {
 
   /** 语音笔记：先存音频，再尝试本地转写；转写失败不影响笔记本身。 */
   const saveVoiceNote = async (blob: Blob, durationMs: number) => {
+    if (!inShell()) {
+      // 浏览器体验没有可写库目录：音频字节只在内存里，落不了盘。
+      // 这里直接失败，不产出一条「已保存」的空壳笔记。
+      throw new Error("浏览器体验不保存录音，请在桌面客户端使用语音笔记");
+    }
     const bytes = new Uint8Array(await blob.arrayBuffer());
     let mediaPath: string | null = null;
-    if (inShell()) {
-      try { mediaPath = await saveMedia("audio", blob.type || "audio/webm", bytes); }
-      catch (err) { throw new Error(`录音没能存到本机：${err instanceof Error ? err.message : String(err)}`); }
-    }
+    try { mediaPath = await saveMedia("audio", blob.type || "audio/webm", bytes); }
+    catch (err) { throw new Error(`录音没能存到本机：${err instanceof Error ? err.message : String(err)}`); }
     let transcript = "";
     let transcriptNote = "";
     if (inShell() && asrEnabled && mediaPath) {
@@ -810,8 +824,6 @@ export function Workspace() {
       } catch (err) {
         transcriptNote = `录音已保存，但转写失败：${err instanceof Error ? err.message : String(err)}`;
       }
-    } else if (!inShell()) {
-      transcriptNote = "浏览器体验不转写；录音仅保存在本页存储。";
     } else if (!asrEnabled) {
       transcriptNote = "语音转写插件未启用，录音已保存。";
     }

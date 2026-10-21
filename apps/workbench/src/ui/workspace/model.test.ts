@@ -16,6 +16,24 @@ const card = (extra: Record<string, unknown>) => cardFromJson({
 const search = (materials: RawMaterial[], cards: any[], query: string) =>
   filterEntries(entriesFor(materials, cards, "library"), query).map(entry => entry.id);
 
+describe("正文与搜索字段", () => {
+  it("邮件搜索元数据不会写进阅读和编辑用的正文", () => {
+    const m = material({ sourceType: "email", metadataJson: JSON.stringify({
+      from: "sender@example.test", attachmentFilenames: ["budget.pdf"],
+    }), cleanedMarkdown: "另一份清洗正文" });
+    const [entry] = entriesFor([m], [], "library");
+    expect(filterEntries([entry], "sender@example.test")).toHaveLength(1);
+    expect(entry.text).toBe(m.rawText);
+  });
+
+  it("卡片搜索摘要和链接时，编辑正文仍保持 details 原样", () => {
+    const c = card({ summary: "仅在摘要中出现的词", links: [{ title: "引用", url: "https://ref.example.test" }] });
+    const [entry] = entriesFor([], [c], "library");
+    expect(filterEntries([entry], "仅在摘要中出现的词")).toHaveLength(1);
+    expect(entry.text).toBe(c.details);
+  });
+});
+
 describe("搜索覆盖", () => {
   it("能搜到知识卡的摘要（一句话结论常常才是用户记住的东西）", () => {
     const c = card({ summary: "复购率比拉新更重要" });

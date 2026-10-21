@@ -3,7 +3,7 @@ import { contentHashOf } from "../../domain/contentHash";
 import type { RawMaterial } from "../../shell/store";
 
 export type Collection = "inbox" | "library" | "favorites" | "archive";
-export type Entry = { id: string; kind: "material" | "card"; title: string; text: string; category: string; tags: string[]; date: number; url: string; original: RawMaterial | KnowledgeCard };
+export type Entry = { id: string; kind: "material" | "card"; title: string; text: string; searchText?: string; category: string; tags: string[]; date: number; url: string; original: RawMaterial | KnowledgeCard };
 export const collectionNames: Record<Collection, string> = { inbox: "收件箱", library: "全部知识", favorites: "收藏", archive: "已归档" };
 /**
  * 素材的可搜索文本。
@@ -39,8 +39,8 @@ function cardSearchText(c: KnowledgeCard): string {
 }
 
 export function entriesFor(materials: RawMaterial[], cards: KnowledgeCard[], collection: Collection): Entry[] {
-  const materialEntries: Entry[] = materials.filter(m => collection === "inbox" ? m.inboxStatus === "inbox" : collection === "archive" ? m.inboxStatus !== "inbox" : true).map(m => ({ id: m.id, kind: "material", title: m.title, text: materialSearchText(m), category: m.sourceType === "email" ? "邮件" : m.sourceType === "email-digest" ? "邮件归纳" : m.sourceType === "web" ? "网页剪藏" : m.sourceType === "document" ? "导入文档" : m.sourceType === "image" ? "图片" : m.sourceType === "audio" ? "语音笔记" : m.sourceType === "ink" ? "手写笔记" : "闪念", tags: [], date: m.updatedAt, url: m.sourceUrl || "", original: m }));
-  const cardEntries: Entry[] = cards.filter(c => collection !== "favorites" || c.isFavorite).map(c => ({ id: c.id, kind: "card", title: c.headline, text: cardSearchText(c), category: c.category || "未分类", tags: c.tags || [], date: c.editedAt || c.createdAt, url: c.links[0]?.url || "", original: c }));
+  const materialEntries: Entry[] = materials.filter(m => collection === "inbox" ? m.inboxStatus === "inbox" : collection === "archive" ? m.inboxStatus !== "inbox" : true).map(m => ({ id: m.id, kind: "material", title: m.title, text: m.rawText, searchText: materialSearchText(m), category: m.sourceType === "email" ? "邮件" : m.sourceType === "email-digest" ? "邮件归纳" : m.sourceType === "web" ? "网页剪藏" : m.sourceType === "document" ? "导入文档" : m.sourceType === "image" ? "图片" : m.sourceType === "audio" ? "语音笔记" : m.sourceType === "ink" ? "手写笔记" : "闪念", tags: [], date: m.updatedAt, url: m.sourceUrl || "", original: m }));
+  const cardEntries: Entry[] = cards.filter(c => collection !== "favorites" || c.isFavorite).map(c => ({ id: c.id, kind: "card", title: c.headline, text: c.details, searchText: cardSearchText(c), category: c.category || "未分类", tags: c.tags || [], date: c.editedAt || c.createdAt, url: c.links[0]?.url || "", original: c }));
   return (collection === "favorites" ? cardEntries : collection === "inbox" || collection === "archive" ? materialEntries : [...materialEntries, ...cardEntries]).sort((a, b) => b.date - a.date || a.id.localeCompare(b.id));
 }
 /**
@@ -64,7 +64,7 @@ export function filterEntries(
     if (tag && !(e.category === tag || e.tags.includes(tag))) return false;
     if (source !== "all" && !(source === "card" ? e.kind === "card" : e.kind === "material")) return false;
     if (useIndex && e.kind === "material" && indexedIds.has(e.id)) return true;
-    return tokens.every(t => `${e.title}\n${e.text}\n${e.category}\n${e.tags.join(" ")}\n${e.url}`.toLocaleLowerCase().includes(t));
+    return tokens.every(t => `${e.title}\n${e.searchText ?? e.text}\n${e.category}\n${e.tags.join(" ")}\n${e.url}`.toLocaleLowerCase().includes(t));
   });
 }
 export function makeMaterial(input: { title: string; text: string; url: string }): RawMaterial {
