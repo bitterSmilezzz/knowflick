@@ -1808,7 +1808,12 @@ export function Workspace() {
                 />
               ) : null}
               {page === "artifacts" ? (
-                <ArtifactsView dir={dir} onBack={() => navigate("briefing")} />
+                <ArtifactsView
+                  dir={dir}
+                  cards={cards}
+                  onOpenCard={(cardId) => { navigate("library"); setSelectedId(cardId); setSource("card"); }}
+                  onBack={() => navigate("briefing")}
+                />
               ) : null}
               {page === "mail" ? (
                 <MailboxView

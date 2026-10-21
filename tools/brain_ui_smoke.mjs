@@ -214,7 +214,41 @@ try {
     "产物标题或结论出现在回答依据里"
   );
 
-  // 7. 产物可展开读全文，可删除（删除不可撤销，故走确认）
+  // 7. 产物要能回溯到依据的卡片——只显示数量等于回溯链断在最后一跳
+  await b("eval", `(() => {
+    const now = Date.now();
+    const card = { id: "art-src-1", category: "计算机", headline: "被简报引用的卡",
+      summary: "s", details: "正文", links: [], tags: [], source: "imported", createdAt: now,
+      editedAt: null, seenAt: now, swiped: null, isFavorite: false, favoritedAt: null, reviewCount: 0,
+      masteryLevel: 0, lastReviewedAt: null, repetition: 0, intervalDays: 0, easeFactor: 2.5,
+      stability: 0, difficulty: 0, subject: null, branch: null, level: null, track: null, orderKey: null, prereq: [] };
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    raw.cards = [card];
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    localStorage.setItem("knowflick.workspace.artifacts", JSON.stringify([{
+      id: "art-src", artifactType: "briefing", title: "依据可回溯的简报",
+      contentMarkdown: "# 简报\\n\\n这一份产物的正文足够长，用来验证展开后确实能看到内容。",
+      sourceCardIds: ["art-src-1"],
+      createdAt: now, updatedAt: now, isDeleted: false,
+    }]));
+    return true;
+  })()`);
+  await b("open", url);
+  await new Promise(r => setTimeout(r, 800));
+  await goTo("产物");
+  await check("document.body.innerText.includes('依据 1 张卡片')", "产物显示依据了几张卡片");
+  await check(
+    "[...document.querySelectorAll('[data-artifact] button')].some(b => b.textContent.includes('被简报引用的卡'))",
+    "能看见依据的具体卡片"
+  );
+  await ev("(() => { const b=[...document.querySelectorAll('[data-artifact] button')].find(x=>x.textContent.includes('被简报引用的卡')); if(b){b.click();return true} return false })()");
+  await new Promise(r => setTimeout(r, 700));
+  await check(
+    "document.querySelector('.ws-reader h1')?.textContent === '被简报引用的卡'",
+    "点依据卡片能跳到那张卡"
+  );
+
+  // 8. 产物可展开读全文，可删除（删除不可撤销，故走确认）
   // 上一段跳到问答页了，这里先回到产物库（第 6 段重新写过产物存储，列表里有条目）。
   await b("open", url);
   await new Promise(r => setTimeout(r, 800));

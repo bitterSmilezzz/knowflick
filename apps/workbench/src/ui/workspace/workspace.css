@@ -1076,6 +1076,15 @@ select {
   overflow-wrap: anywhere;
 }
 
+/* 产物依据的卡片：可点回原卡，已删除的标出来且不可点。 */
+.ws-artifact-sources {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
 /* 对话操作行：说明持久化行为，并给出清空入口。 */
 .ws-brain-chat-actions {
   display: flex;

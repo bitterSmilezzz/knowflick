@@ -9,7 +9,13 @@ import { dbListArtifacts, inShell, type Artifact } from "../../shell/store";
  * 界面上没有入口——存进去的东西只有导出备份才看得见。现在它是应用阶段
  * 的一等页面，能列出、查看、复制、删除。
  */
-export function ArtifactsView({ dir, onBack }: { dir: string; onBack: () => void }) {
+export function ArtifactsView({ dir, cards, onOpenCard, onBack }: {
+  dir: string;
+  /** 当前卡片库：用来把 sourceCardIds 解析成可点的标题。 */
+  cards: Array<{ id: string; headline: string }>;
+  onOpenCard: (cardId: string) => void;
+  onBack: () => void;
+}) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -131,6 +137,28 @@ export function ArtifactsView({ dir, onBack }: { dir: string; onBack: () => void
                 </button>
               </div>
             </div>
+            {artifact.sourceCardIds.length ? (
+              <div className="ws-artifact-sources">
+                <span className="ws-hint">依据卡片：</span>
+                {artifact.sourceCardIds.map((id) => {
+                  // 卡片可能已被删除：标出来且不可点，避免点进去静默跳到别的卡。
+                  const alive = cards.find((card) => card.id === id);
+                  if (!alive) {
+                    return <span key={id} className="ws-cite-chip ws-cite-gone" aria-disabled="true">（已删除的卡片）</span>;
+                  }
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className="ws-cite-chip"
+                      onClick={() => onOpenCard(id)}
+                    >
+                      {alive.headline}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             {openId === artifact.id ? (
               <pre className="ws-artifact-body">{artifact.contentMarkdown}</pre>
             ) : null}
