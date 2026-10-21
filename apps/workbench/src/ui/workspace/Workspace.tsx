@@ -588,6 +588,9 @@ export function Workspace() {
     const IMAGE = /\.(png|jpe?g|webp|gif|heic)$/i;
     if (f.size > 32 * 1024 * 1024) throw new Error("超过 32 MB");
     if (IMAGE.test(f.name)) {
+      // 后端 media 的图片上限是 16 MB，先在这里用中文说清楚，
+      // 免得用户等到写入阶段才收到一句英文报错。
+      if (f.size > 16 * 1024 * 1024) throw new Error("图片超过 16 MB 上限");
       const mime = f.type && f.type.startsWith("image/") ? f.type : "image/png";
       const bytes = new Uint8Array(await f.arrayBuffer());
       // 浏览器没有可写的库目录，但图片不大：用 data URL 内嵌，随素材一起进
@@ -623,9 +626,12 @@ export function Workspace() {
       const text = await f.text();
       const data = JSON.parse(text) as unknown;
       const root = data as { format?: string; materials?: RawMaterial[]; cards?: unknown[] };
-      const hasWorkspaceMaterials = root.format === "knowflick-workspace" && Array.isArray(root.materials);
-      if (hasWorkspaceMaterials) {
-        for (const m of root.materials) {
+      // 走一遍窄化判断，否则下面 for 里的 root.materials TS 视为可能 undefined。
+      const workspaceMaterials = root.format === "knowflick-workspace" && Array.isArray(root.materials)
+        ? root.materials
+        : null;
+      if (workspaceMaterials) {
+        for (const m of workspaceMaterials) {
           if (!m.id || typeof m.rawText !== "string" || !m.title) throw new Error("备份素材格式无效");
           await updateMaterial({ ...m, mediaSizeBytes: m.mediaSizeBytes || 0 });
           ok.push(m.title);
@@ -635,7 +641,7 @@ export function Workspace() {
       // 已经把素材落库的备份可以只有素材没有卡片；此时再抛「须包含卡片数组」，
       // 会让同一份文件既报成功又报失败，而素材其实已经进去了。
       if (!Array.isArray(imported)) {
-        if (hasWorkspaceMaterials) return;
+        if (workspaceMaterials) return;
         throw new Error("JSON 文件须包含卡片数组");
       }
       for (const item of imported) {

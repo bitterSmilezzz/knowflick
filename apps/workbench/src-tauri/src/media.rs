@@ -23,7 +23,7 @@ fn kind_dir(dir: &Path, kind: &str) -> Result<PathBuf, String> {
         "audio" => "audio",
         "ink" => "ink",
         "image" => "image",
-        _ => return Err("Unsupported media kind".into()),
+        _ => return Err("不支持的附件类型".into()),
     };
     Ok(dir.join("media").join(folder))
 }
@@ -54,10 +54,10 @@ pub fn save_media(dir: &Path, kind: &str, mime: &str, bytes: &[u8]) -> Result<St
         _ => MAX_INK,
     };
     if bytes.is_empty() {
-        return Err("Nothing to save: the recording or ink is empty".into());
+        return Err("没有内容可保存：录音或笔迹是空的".into());
     }
     if bytes.len() > limit {
-        return Err(format!("Attachment exceeds the {} MiB limit", limit / 1024 / 1024));
+        return Err(format!("附件超过 {} MB 上限", limit / 1024 / 1024));
     }
     let folder = kind_dir(dir, kind)?;
     fs::create_dir_all(&folder).map_err(|_| "Cannot create the media folder".to_string())?;
@@ -72,13 +72,13 @@ pub fn save_media(dir: &Path, kind: &str, mime: &str, bytes: &[u8]) -> Result<St
     })();
     if outcome.is_err() {
         let _ = fs::remove_file(&temp);
-        return Err("Cannot write the attachment".into());
+        return Err("无法写入附件".into());
     }
     // Read back the exact size: a truncated write must not be referenced.
     let written = fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
     if written != bytes.len() as u64 {
         let _ = fs::remove_file(&target);
-        return Err("Attachment was not fully written".into());
+        return Err("附件没有写完整，已丢弃这次写入".into());
     }
     Ok(format!("media/{}/{name}", kind_dir(dir, kind)?
         .file_name()
@@ -91,7 +91,7 @@ pub fn read_media(dir: &Path, relative: &str) -> Result<Vec<u8>, String> {
     let path = safe_media_path(dir, relative)?;
     let meta = fs::metadata(&path).map_err(|_| "Attachment not found".to_string())?;
     if meta.len() > MAX_AUDIO as u64 {
-        return Err("Attachment is too large to read".into());
+        return Err("附件过大，无法读取".into());
     }
     fs::read(&path).map_err(|_| "Cannot read the attachment".to_string())
 }
@@ -99,19 +99,19 @@ pub fn read_media(dir: &Path, relative: &str) -> Result<Vec<u8>, String> {
 /// Resolves a stored relative path and rejects traversal or absolute paths.
 fn safe_media_path(dir: &Path, relative: &str) -> Result<PathBuf, String> {
     if relative.is_empty() || relative.starts_with('/') || relative.contains('\\') {
-        return Err("Invalid attachment path".into());
+        return Err("附件路径无效".into());
     }
     let mut resolved = dir.to_path_buf();
     for part in relative.split('/') {
         if part.is_empty() || part == "." || part == ".." {
-            return Err("Invalid attachment path".into());
+            return Err("附件路径无效".into());
         }
         resolved.push(part);
     }
     // The final component must stay inside <library>/media.
     let media_root = dir.join("media");
     if !resolved.starts_with(&media_root) {
-        return Err("Invalid attachment path".into());
+        return Err("附件路径无效".into());
     }
     Ok(resolved)
 }
