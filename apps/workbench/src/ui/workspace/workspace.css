@@ -1022,6 +1022,45 @@ select {
   border-style: dashed;
 }
 
+/* 统计：把库的状态摆在明处。 */
+.ws-stats {
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ws-stats-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ws-stats-head h1 { font-size: 20px; font-weight: 600; }
+.ws-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.ws-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+.ws-stat-value {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.ws-stat-label { font-size: 13px; font-weight: 600; color: var(--ink); }
+.ws-stats-foot { display: flex; align-items: center; gap: 6px; }
+
 /* 产物库：列出生成物，可展开、复制、删除。 */
 .ws-artifacts {
   padding: 16px 20px 24px;

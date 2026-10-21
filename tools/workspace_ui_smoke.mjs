@@ -426,6 +426,26 @@ try {
   await check('document.body.innerText.includes("已删除知识卡")', "delete reports what happened");
   await browser("fill", '[aria-label="搜索知识库"]', "");
 
+  // 统计：ADR-0002 把「统计」列进第一版交付物，命令早就在，但没有界面
+  await check(
+    "[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('统计'))",
+    "侧栏有统计入口"
+  );
+  await clickButton("统计");
+  await check('!!document.querySelector(\'[data-page="stats"]\')', "统计页渲染");
+  await check(
+    "document.body.innerText.includes('知识卡') && document.body.innerText.includes('素材')",
+    "统计页展示卡片与素材的数量"
+  );
+  await check(
+    "document.body.innerText.includes('待复习') || document.body.innerText.includes('到期')",
+    "统计页展示待复习情况"
+  );
+  await check(
+    "document.querySelectorAll('[data-stat]').length >= 4",
+    "统计页至少四个指标块"
+  );
+
   console.log("UI smoke complete. Desktop SQLite behaviour is covered by cargo tests and the native-window check.");
 } finally {
   await browser("close").catch(() => {});

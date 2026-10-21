@@ -7,6 +7,7 @@ import { requiresKey } from "../../domain/ingest";
 import { digest } from "../../domain/clipEngine";
 import {
   dbBackfillMaterialFts,
+  dbGetStats,
   dbListArtifacts,
   dbListSubscriptions,
   dbDeleteSubscription,
@@ -22,6 +23,7 @@ import {
   saveMedia,
   pickAudioFile,
   type Artifact,
+  type DbStats,
   type RawMaterial,
   type SubscriptionRow,
 } from "../../shell/store";
@@ -53,6 +55,7 @@ import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
+import { StatsView } from "./StatsView";
 import { setSoundEffectsEnabled } from "../../shell/sounds";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
@@ -85,7 +88,7 @@ const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.B
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "briefing" | "brain" | "review" | "subscriptions" | "mail" | "artifacts";
+type Page = Collection | "settings" | "briefing" | "brain" | "review" | "subscriptions" | "mail" | "artifacts" | "stats";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
@@ -138,6 +141,41 @@ export function Workspace() {
   const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
   // 产物在多个页面都要用（产物库、问答作为回答依据），状态提到这里统一加载。
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  // 统计：桌面端走 SQLite 的 db_get_stats；浏览器体验没有这层表，用内存数据算同样的指标。
+  const [stats, setStats] = useState<DbStats | null>(null);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        if (inShell()) {
+          const result = await dbGetStats(dir);
+          if (active) setStats(result);
+        } else {
+          const now = Date.now();
+          const cardList = cards;
+          const materialList = materials;
+          const due = cardList.filter((card) => {
+            if (card.lastReviewedAt === null) return card.seenAt !== null;
+            const days = card.intervalDays > 1 ? card.intervalDays : card.masteryLevel >= 2 ? 7 : card.masteryLevel === 1 ? 3 : 1;
+            return now - card.lastReviewedAt >= days * 86400000;
+          }).length;
+          if (active) {
+            setStats({
+              totalCards: cardList.length,
+              totalMaterials: materialList.length,
+              inboxMaterials: materialList.filter((m) => m.inboxStatus === "inbox").length,
+              favoriteCards: cardList.filter((c) => c.isFavorite).length,
+              seenCards: cardList.filter((c) => c.seenAt !== null).length,
+              dueCards: due,
+            });
+          }
+        }
+      } catch {
+        if (active) setStats(null);
+      }
+    })();
+    return () => { active = false; };
+  }, [dir, cards, materials]);
   // 音效开关是跨端共享设置；工作台此前只解析不使用，等于开关失效。
   useEffect(() => {
     setSoundEffectsEnabled(file.settings.soundEffectsEnabled !== false);
@@ -1342,6 +1380,13 @@ export function Workspace() {
             >
               <Icon name="layers" /><span>产物库</span>
             </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "stats" ? "page" : undefined}
+              onClick={() => navigate("stats")}
+            >
+              <Icon name="brief" /><span>统计</span>
+            </button>
             {reviewEnabled ? (
               <button
                 className="ws-nav-row"
@@ -1824,6 +1869,9 @@ export function Workspace() {
                     setPersonalizationOn(personalizationEnabled(updated.raw));
                   }}
                 />
+              ) : null}
+              {page === "stats" ? (
+                <StatsView stats={stats} onBack={() => navigate("library")} />
               ) : null}
               {page === "artifacts" ? (
                 <ArtifactsView
