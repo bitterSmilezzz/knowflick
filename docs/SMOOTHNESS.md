@@ -64,7 +64,31 @@
 **现在**：`contentHashOf` 用 FNV-1a 32 位 + 长度前缀（不是密码学哈希，只用于去重），
 忽略行尾与首尾空白，空内容不生成指纹。图片按「文件名 + 字节数」判重。
 
-## 五、实测后判定**不用动**的地方
+## 五、已修：搜索覆盖（「明明有却搜不到」）
+
+搜索是最常用的动作，覆盖不全就是最难受的卡点。**先写测试证明缺口，四条当场全失败**：
+
+| 缺口 | 现象 |
+| --- | --- |
+| 卡片只搜 `details`，**不搜 `summary`** | 用户记住的往往正是那句结论，却搜不到 |
+| 卡片只搜 `links[0]` | 从第二条链接起搜不到 |
+| 邮件标为 `tags: []`，正文里没有发件人 | **按发件人搜不到** |
+| 附件名不在任何搜索字段里 | 搜附件名搜不到 |
+
+修法：
+
+- 素材搜索文本摊平 `cleanedMarkdown` 与 `metadataJson` 里的
+  `from / to / subject / fileName / mime / attachmentFilenames`。
+  **坏元数据退回只搜正文**，不让整条素材从结果里消失。
+- 卡片搜索文本包含 `summary + details + 全部链接标题与地址`。
+- 顺带补上 `image / audio / ink` 三种来源的中文分类名（之前全显示「闪念」）。
+- 占位文案改为「搜索标题、正文、发件人、附件或标签」，与实际覆盖一致。
+
+**性能核对**：`entriesFor` 现在会解析 `metadataJson`，但它是按
+`[materials, cards, collection]` 记忆的，不会随每次击键重算。
+实测 200/1000/3000 条打开到可交互仍是 ~357 ms，与改动前一致，无回归。
+
+## 六、实测后判定**不用动**的地方
 
 避免拍脑袋优化，这两处是量过才下的结论：
 
@@ -76,7 +100,7 @@
 列表本来就有 `visibleCount` 分页，不是静默截断——这条也进了门禁断言
 （只有真被截断时才要求出现「加载更多」）。
 
-## 六、边界
+## 七、边界
 
 1. **去重是精确匹配**，不是模糊相似度：改一个字就是新内容。想合并相近内容得靠后续的整理功能。
 2. **图片不参与全文检索**：没有 OCR，图片素材按标题与文件名可搜。
@@ -84,13 +108,13 @@
 4. **首屏 60 行是写死的**，没有按窗口高度自适应。
 5. 真机（Tauri）里只确认了界面与命令存在，**录音与图片附件的真机链路尚未逐步点过**。
 
-## 七、验证
+## 八、验证
 
 ```
 ./tools/verify_workbench.sh          前端 248 项 + Rust 74 项
 node tools/import_ui_smoke.mjs       17 项（坏文件隔离 / 图片 / PPT / 去重 / 跳过说明）
+node tools/taste_usability_gate.mjs  16 项（含搜索命中摘要与第二条链接）
 node tools/notes_ui_smoke.mjs        21 项（手写与语音）
-node tools/taste_usability_gate.mjs  14 项（含长列表分页）
 node tools/usability_journey_smoke.mjs 12 项
 node tools/mailbox_ui_smoke.mjs      45 项
 node tools/workspace_ui_smoke.mjs    既有功能回归
