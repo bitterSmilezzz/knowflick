@@ -190,6 +190,48 @@ interface Message {
   cited?: KnowledgeCard[];
 }
 
+const CHAT_STORE_KEY = "knowflick.workspace.chat";
+/** 只留最近这些轮次：问答是即时应用，不需要把整部历史堆在浏览器存储里。 */
+const CHAT_STORE_LIMIT = 40;
+
+const greetingMessage: Message = {
+  role: "assistant",
+  content: "你好！我是你的知识库助手。我会基于你收集的卡片检索事实，回答你的提问并指出引用来源。",
+};
+
+/**
+ * 读回上一次的对话。
+ *
+ * 之前 messages 只是内存状态：问几句、切到别的页面再回来，整段对话就没了。
+ * 内容是纯文本 + 引用卡片 id，放在本地存储即可，不涉及隐私外发。
+ */
+function loadChat(): Message[] {
+  try {
+    const raw = localStorage.getItem(CHAT_STORE_KEY);
+    if (!raw) return [greetingMessage];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [greetingMessage];
+    const messages = parsed.flatMap((item): Message[] => {
+      if (!item || typeof item !== "object") return [];
+      const row = item as Record<string, unknown>;
+      const role = row.role === "user" || row.role === "assistant" ? row.role : null;
+      if (!role || typeof row.content !== "string" || !row.content.trim()) return [];
+      return [{ role, content: row.content, cited: Array.isArray(row.cited) ? (row.cited as KnowledgeCard[]) : undefined }];
+    });
+    return messages.length ? messages : [greetingMessage];
+  } catch {
+    return [greetingMessage];
+  }
+}
+
+function saveChat(messages: Message[]): void {
+  try {
+    localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(messages.slice(-CHAT_STORE_LIMIT)));
+  } catch {
+    // 存储满了就放弃持久化：对话仍在内存里，不该因此打断问答。
+  }
+}
+
 export function BrainAssistantDrawer({
   cards,
   settings,
@@ -198,15 +240,11 @@ export function BrainAssistantDrawer({
   onNavigateSettings,
 }: BrainDrawerProps) {
   const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "你好！我是你的知识库助手。我会基于你收集的卡片检索事实，回答你的提问并指出引用来源。",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(loadChat);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // 每次对话变化就落盘：切页、刷新、重启后都还能接着问。
+  useEffect(() => { saveChat(messages); }, [messages]);
   // 用户已知「没配密钥」并选择继续时置真，避免每次提交都被拦。
   const [proceededWithoutKey, setProceededWithoutKey] = useState(false);
 
@@ -436,6 +474,24 @@ export function BrainAssistantDrawer({
             </div>
           ) : null}
         </div>
+
+        {/* 有对话就要能清空：持久化之后历史会一直留着 */}
+        {messages.length > 1 ? (
+          <div className="ws-brain-chat-actions">
+            <span className="ws-hint" style={{ fontSize: 12 }}>
+              对话会保存在本机，切页或重启后仍在
+            </span>
+            <button
+              type="button"
+              className="ws-bordered"
+              aria-label="清空对话"
+              disabled={loading}
+              onClick={() => { setMessages([greetingMessage]); setError(""); }}
+            >
+              清空对话
+            </button>
+          </div>
+        ) : null}
 
         {/* Quick prompt suggestions */}
         {messages.length <= 2 ? (

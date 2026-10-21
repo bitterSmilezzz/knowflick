@@ -82,7 +82,21 @@ try {
   await ev("(() => { const btn = [...document.querySelectorAll('button')].find(x => /提问/.test(x.textContent)); if (btn) btn.click(); return !!btn; })()");
   await check("document.body.innerText.includes('我记录过哪些 SQLite 索引的要点？')", "再点一次即可继续发送");
 
-  // 2. 认知简报：不依赖模型也能出结构化内容
+  // 2. 对话要留得住：切页与刷新之后还能接着问
+  await goTo("全部知识");
+  await goTo("知识问答");
+  await check("document.body.innerText.includes('我记录过哪些 SQLite 索引的要点？')", "切页回来后对话仍在");
+  await b("open", url);
+  await new Promise(r => setTimeout(r, 1000));
+  await goTo("知识问答");
+  await check("document.body.innerText.includes('我记录过哪些 SQLite 索引的要点？')", "刷新后对话仍在");
+  await check("!!document.querySelector('[aria-label=\"清空对话\"]')", "有对话时提供清空入口");
+  await b("eval", "(document.querySelector('[aria-label=\"清空对话\"]')||{}).click?.(); true");
+  await new Promise(r => setTimeout(r, 600));
+  await check("!document.body.innerText.includes('我记录过哪些 SQLite 索引的要点？')", "清空后不再显示旧问题");
+  await check("document.body.innerText.includes('我是你的知识库助手')", "清空后回到问候语");
+
+  // 3. 认知简报：不依赖模型也能出结构化内容
   await seed(false);
   await goTo("认知简报");
   await check("document.body.innerText.includes('认知洞察简报')", "简报页有标题");

@@ -1013,6 +1013,16 @@ select {
 }
 .ws-danger-text { font-size: var(--text-meta); font-weight: 600; }
 
+/* 对话操作行：说明持久化行为，并给出清空入口。 */
+.ws-brain-chat-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 4px;
+  flex-wrap: wrap;
+}
+
 /* ---------- status bar ---------- */
 
 .ws-status {
