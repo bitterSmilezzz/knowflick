@@ -165,14 +165,27 @@ async fn mail_remove_account(dir: Option<String>, id: String) -> Result<(), Stri
     tauri::async_runtime::spawn_blocking(move || mail::remove_account(&path, &id)).await.map_err(|e| e.to_string())?
 }
 
+/// Tells the web layer that the library changed.
+///
+/// The UI listens to a DOM `CustomEvent` (see `Workspace`), so a Tauri event
+/// alone is not enough: `db_save_material` dispatches the DOM event too, and
+/// every new mutation path must do the same or the view silently goes stale.
+fn notify_library_changed(app: &tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
+    let _ = app.emit("knowflick:library-changed", ());
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.emit("knowflick:library-changed", ());
+        let _ = main_win.eval("window.dispatchEvent(new CustomEvent('knowflick:library-changed'))");
+    }
+}
+
 #[tauri::command]
 async fn mail_sync_account(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<mail::MailSyncResult, String> {
     let path = library_dir(dir);
     let result = tauri::async_runtime::spawn_blocking(move || mail::sync_account(&path, &id)).await.map_err(|e| e.to_string())?;
-    // A later message can fail after earlier messages committed. Always notify
-    // the view so successfully imported mail is visible even on partial failure.
-    use tauri::Emitter;
-    let _ = app.emit("knowflick:library-changed", ());
+    // A later message can fail after earlier messages committed. Nothing else
+    // refreshes the view on failure, so notify regardless of the outcome.
+    notify_library_changed(&app);
     result
 }
 
@@ -237,13 +250,7 @@ fn db_save_material(app: tauri::AppHandle, dir: Option<String>, material: db::Ra
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
     db::save_material(&conn, &material).map_err(|e| e.to_string())?;
 
-    use tauri::{Emitter, Manager};
-    let _ = app.emit("knowflick:library-changed", ());
-    if let Some(main_win) = app.get_webview_window("main") {
-        let _ = main_win.emit("knowflick:library-changed", ());
-        let _ = main_win.eval("window.dispatchEvent(new CustomEvent('knowflick:library-changed'))");
-    }
-
+    notify_library_changed(&app);
     Ok(())
 }
 
