@@ -191,7 +191,34 @@ try {
     "产物条目能看出是什么"
   );
 
-  // 6. 产物可展开读全文，可删除（删除不可撤销，故走确认）
+  // 6. 产物里的结论要能被问答用上——存了却不能作为回答依据等于没存
+  await b("eval", `(() => {
+    const artifacts = [{ id: "art-cite-1", artifactType: "briefing",
+      title: "第 9 周认知洞察", contentMarkdown: "# 认知洞察\\n\\n## 一、近期聚类\\n\\n【紫水晶】本周关注的晶体结构。",
+      sourceCardIds: [], createdAt: Date.now(), updatedAt: Date.now(), isDeleted: false }];
+    localStorage.setItem("knowflick.workspace.artifacts", JSON.stringify(artifacts));
+    return true;
+  })()`);
+  await b("open", url);
+  await new Promise(r => setTimeout(r, 900));
+  await goTo("知识问答");
+  // 未配密钥时第一次提交会被守卫拦下（上一轮的行为），所以要走完整的两次点击
+  await ask("紫水晶");
+  await ask("紫水晶");
+  await check(
+    "document.body.innerText.includes('产物') || document.body.innerText.includes('简报')",
+    "问答能检索到产物内容"
+  );
+  await check(
+    "document.body.innerText.includes('第 9 周认知洞察') || document.body.innerText.includes('紫水晶')",
+    "产物标题或结论出现在回答依据里"
+  );
+
+  // 7. 产物可展开读全文，可删除（删除不可撤销，故走确认）
+  // 上一段跳到问答页了，这里先回到产物库（第 6 段重新写过产物存储，列表里有条目）。
+  await b("open", url);
+  await new Promise(r => setTimeout(r, 800));
+  await goTo("产物");
   await ev("(() => { const b=[...document.querySelectorAll('[data-artifact] button')].find(x=>x.textContent.trim()==='查看'); if(b){b.click();return true} return false })()");
   await new Promise(r => setTimeout(r, 400));
   await check("!!document.querySelector('.ws-artifact-body')", "产物可展开查看全文");

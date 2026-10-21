@@ -21,6 +21,7 @@ import {
   readMedia,
   saveMedia,
   pickAudioFile,
+  type Artifact,
   type RawMaterial,
   type SubscriptionRow,
 } from "../../shell/store";
@@ -134,6 +135,8 @@ export function Workspace() {
   // 批量选择：⌘/Ctrl 点击追加或取消，普通点击仍是单选。
   // 用 Set 而不是数组，是为了让「是否已选」判断不随选中项数量变慢。
   const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
+  // 产物在多个页面都要用（产物库、问答作为回答依据），状态提到这里统一加载。
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   // 设分类用界面内输入，不用 window.prompt：原生弹窗样式与整套界面割裂，
   // 还会挡住下面的列表。
   const [batchCategory, setBatchCategory] = useState<string | null>(null);
@@ -147,6 +150,22 @@ export function Workspace() {
   const previewRef = useRef<HTMLDialogElement>(null);
   const revision = useRef(0);
   const systemAppearance = useSystemAppearance();
+
+  /** 产物供产物库与问答共用；读取失败不阻塞主界面。 */
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const list = inShell()
+          ? await dbListArtifacts(200, dir)
+          : JSON.parse(localStorage.getItem("knowflick.workspace.artifacts") || "[]") as Artifact[];
+        if (active) setArtifacts(list.filter((item) => !item.isDeleted));
+      } catch {
+        if (active) setArtifacts([]);
+      }
+    })();
+    return () => { active = false; };
+  }, [dir]);
 
   const load = useCallback(async (quiet = false) => {
     const current = ++revision.current;
@@ -1830,6 +1849,7 @@ export function Workspace() {
               {page === "brain" ? (
                 <Assistant
                   cards={cards}
+                  artifacts={artifacts}
                   settings={file.settings}
                   apiKey={apiKey}
                   onOpenCard={openCard}

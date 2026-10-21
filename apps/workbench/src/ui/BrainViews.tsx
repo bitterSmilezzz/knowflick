@@ -183,6 +183,8 @@ export function BriefingView({ cards, onOpenCard }: BriefingProps) {
 
 interface BrainDrawerProps {
   cards: KnowledgeCard[];
+  /** 产物（认知简报等）：存下来的结论也应当能作为回答依据。 */
+  artifacts?: Artifact[];
   settings: AiSettings;
   apiKey: string;
   onOpenCard: (cardId: string) => void;
@@ -250,6 +252,7 @@ function saveChat(messages: Message[]): void {
 
 export function BrainAssistantDrawer({
   cards,
+  artifacts = [],
   settings,
   apiKey,
   onOpenCard,
@@ -322,7 +325,16 @@ export function BrainAssistantDrawer({
       matched = ranked.slice(0, 4).map((r) => r.item);
     }
 
-    if (matched.length === 0) {
+    // 产物（简报等）也参与检索：只搜卡片的话，用户存下来的结论等于没存。
+    const tokensForMatch = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const matchedArtifacts = artifacts
+      .filter((artifact) => {
+        const text = `${artifact.title}\n${artifact.contentMarkdown}`.toLowerCase();
+        return tokensForMatch.some((token) => token.length > 0 && text.includes(token));
+      })
+      .slice(0, 2);
+
+    if (matched.length === 0 && matchedArtifacts.length === 0) {
       setMessages([
         ...newMessages,
         {
@@ -341,9 +353,14 @@ export function BrainAssistantDrawer({
         ...newMessages,
         {
           role: "assistant",
-          content: `检索到 ${matched.length} 张相关知识卡（在桌面客户端连接大模型可获得智能合成回答）：\n\n${matched
-            .map((c, i) => `【卡片 ${i + 1}】${c.headline}\n${c.details.slice(0, 100)}...`)
-            .join("\n\n")}`,
+          content:
+            `检索到 ${matched.length} 张相关知识卡` +
+            (matchedArtifacts.length ? `、${matchedArtifacts.length} 份产物` : "") +
+            `（在桌面客户端连接大模型可获得智能合成回答）：\n\n` +
+            [
+              ...matched.map((c, i) => `【卡片 ${i + 1}】${c.headline}\n${c.details.slice(0, 100)}...`),
+              ...matchedArtifacts.map((a, i) => `【产物 ${i + 1}】${a.title}\n${a.contentMarkdown.slice(0, 100)}...`),
+            ].join("\n\n"),
           cited: matched.map((card) => ({ id: card.id, headline: card.headline })),
         },
       ]);
@@ -368,7 +385,14 @@ export function BrainAssistantDrawer({
 2. 回答中如引用了某张卡片，请明确指出【卡片 1】、【卡片 2】等来源。
 3. 语言精炼、重点突出。`;
 
-      const userPrompt = `【知识库参考卡片】:\n${contextText || "暂无相关卡片"}\n\n【用户问题】: ${q}`;
+      const artifactContext = matchedArtifacts
+        .map((artifact, idx) => `[产物 ${idx + 1}] 标题: ${artifact.title}\n内容: ${artifact.contentMarkdown.slice(0, 1200)}\n`)
+        .join("\n---\n");
+
+      const userPrompt =
+        `【知识库参考卡片】:\n${contextText || "暂无相关卡片"}\n\n` +
+        (artifactContext ? `【已保存的产物（用户自己沉淀的结论）】:\n${artifactContext}\n\n` : "") +
+        `【用户问题】: ${q}`;
 
       // 附带最近会话历史（最多保留最近 4 轮），支持连续追问
       const historyTurns = messages
