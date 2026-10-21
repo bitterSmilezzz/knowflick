@@ -12,7 +12,28 @@ function browserData(): BrowserData {
   if (!Array.isArray(parsed.materials) || !Array.isArray(parsed.cards)) throw new Error("浏览器存储格式损坏，请先导出数据再处理");
   return parsed;
 }
-function browserWrite(data: BrowserData) { localStorage.setItem(browserKey, JSON.stringify(data)); }
+/**
+ * 写入浏览器体验库。
+ *
+ * 整个库只有一个 localStorage key，配额约 6 MB，超了 setItem 直接抛
+ * QuotaExceededError——用户看到的是一串英文异常，还可能以为内容存住了。
+ * 这里翻译成明确的中文提示，并带上「哪些内容没能存下」的线索。
+ */
+function browserWrite(data: BrowserData) {
+  const payload = JSON.stringify(data);
+  try {
+    localStorage.setItem(browserKey, payload);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "QuotaExceededError") {
+      const sizeMb = (payload.length / 1024 / 1024).toFixed(1);
+      throw new Error(
+        `浏览器存储已满（当前约 ${sizeMb} MB，上限约 6 MB），这次改动没能保存。` +
+          "导出备份后清理内容，或改用桌面客户端——那边有完整的本机数据库。"
+      );
+    }
+    throw err;
+  }
+}
 export interface WorkspaceSnapshot { dir: string; materials: RawMaterial[]; cards: KnowledgeCard[]; file: SettingsFile; apiKey: string }
 export async function readWorkspace(): Promise<WorkspaceSnapshot> {
   if (!inShell()) {

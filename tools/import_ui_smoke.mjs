@@ -145,5 +145,18 @@ try {
   await check("!document.body.innerText.includes('JSON 文件须包含卡片数组')", "不因缺少卡片数组而报失败");
   await check("!document.body.innerText.includes('没有文件导入成功')", "素材型备份整体算成功");
 
+  // 浏览器体验里大图会把唯一的 localStorage key 撑爆，必须明确拒绝
+  await ev(`(() => {
+    const input = document.querySelector('input[type=file][multiple]');
+    const dt = new DataTransfer();
+    dt.items.add(new File([new Uint8Array(1536 * 1024)], 'huge.png', { type: 'image/png' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await check("document.body.innerText.includes('1 MB 以内的图片')", "浏览器模式明确拒绝超大图片");
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return !(raw.materials||[]).some(m=>m.title==='huge')})()", "超大图片没有落库");
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).length>0})()", "拒绝大图不影响已有内容");
+
   console.log(`Import UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }

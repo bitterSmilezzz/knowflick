@@ -591,6 +591,12 @@ export function Workspace() {
       // 后端 media 的图片上限是 16 MB，先在这里用中文说清楚，
       // 免得用户等到写入阶段才收到一句英文报错。
       if (f.size > 16 * 1024 * 1024) throw new Error("图片超过 16 MB 上限");
+      // 浏览器体验把图片内嵌成 data URL，而整库只有一个 localStorage key（约 6 MB）。
+      // 一张大图会把配额吃满，之后连编辑都存不进去；这里按预算先拦，
+      // 与其写坏整个库，不如说明原因。
+      if (!inShell() && f.size > 1024 * 1024) {
+        throw new Error("浏览器体验只存得住 1 MB 以内的图片；请改用桌面客户端，那边存原图");
+      }
       const mime = f.type && f.type.startsWith("image/") ? f.type : "image/png";
       const bytes = new Uint8Array(await f.arrayBuffer());
       // 浏览器没有可写的库目录，但图片不大：用 data URL 内嵌，随素材一起进
