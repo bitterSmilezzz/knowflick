@@ -51,6 +51,7 @@ import { SubscriptionsView } from "./SubscriptionsView";
 import { MailboxView } from "./MailboxView";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
+import { existingHashes } from "../../domain/contentHash";
 import { emailBodyForAi, makeMailDigestMetadata, type MailDigestSource } from "../../domain/mail";
 import { sourceInsights } from "../../domain/insights";
 import { mailSyncDueAccounts } from "../../shell/mail";
@@ -546,25 +547,32 @@ export function Workspace() {
   const importFiles = async (files: FileList | File[]) => {
     const list = Array.from(files);
     const ok: string[] = [];
+    const skipped: string[] = [];
     const failed: Array<{ name: string; reason: string }> = [];
+    // 库里已有的指纹：同一个文件导入两次不该变成两份。
+    const seen = existingHashes(materials);
     try {
       await act(async () => {
         for (const [index, f] of list.entries()) {
           setNotice(`正在导入 ${index + 1}/${list.length}：${f.name}`);
           try {
-            await importOneFile(f, ok);
+            await importOneFile(f, ok, skipped, seen);
           } catch (err) {
             failed.push({ name: f.name, reason: err instanceof Error ? err.message : String(err) });
           }
         }
         if (ok.length) navigate("library");
-        if (!ok.length && failed.length) {
+        const parts: string[] = [];
+        if (ok.length) parts.push(`已导入 ${ok.length} 条`);
+        if (skipped.length) parts.push(`${skipped.length} 个与库里内容相同已跳过`);
+        if (failed.length) parts.push(`${failed.length} 个失败`);
+        if (!ok.length && !skipped.length && failed.length) {
           setError(`没有文件导入成功：${failed.map(f => `${f.name}（${f.reason}）`).join("；")}`);
-        } else if (failed.length) {
-          setNotice(`已导入 ${ok.length} 条；跳过 ${failed.length} 个：${failed.map(f => f.name).join("、")}`);
-          setError(`以下文件没有导入：${failed.map(f => `${f.name}（${f.reason}）`).join("；")}`);
         } else {
-          setNotice(`已导入 ${ok.length} 条内容`);
+          setNotice(parts.join("；") || "没有需要导入的文件");
+          if (failed.length) {
+            setError(`以下文件没有导入：${failed.map(f => `${f.name}（${f.reason}）`).join("；")}`);
+          }
         }
       });
     } catch (e) {
@@ -573,7 +581,7 @@ export function Workspace() {
   };
 
   /** 处理单个文件；成功时往 `ok` 里追加标题。失败由调用方收集。 */
-  const importOneFile = async (f: File, ok: string[]) => {
+  const importOneFile = async (f: File, ok: string[], skipped: string[], seen: Set<string>) => {
     const IMAGE = /\.(png|jpe?g|webp|gif|heic)$/i;
     if (f.size > 32 * 1024 * 1024) throw new Error("超过 32 MB");
     if (IMAGE.test(f.name)) {
@@ -588,6 +596,10 @@ export function Workspace() {
         mediaSizeBytes: bytes.byteLength,
         metadataJson: JSON.stringify({ mime, fileName: f.name }),
       };
+      // 图片按「同名 + 同大小」判重：只比文本指纹会把不同的截图当成同一张。
+      const imageKey = `image:${f.name}:${bytes.byteLength}`;
+      if (seen.has(imageKey)) { skipped.push(f.name); return; }
+      seen.add(imageKey);
       await updateMaterial(m);
       ok.push(f.name);
       return;
@@ -622,6 +634,8 @@ export function Workspace() {
       ...makeMaterial({ title: doc.title, text: doc.markdown, url: "" }),
       sourceType: "document",
     };
+    if (m.contentHash && seen.has(m.contentHash)) { skipped.push(f.name); return; }
+    if (m.contentHash) seen.add(m.contentHash);
     await updateMaterial(m);
     ok.push(doc.title);
   };

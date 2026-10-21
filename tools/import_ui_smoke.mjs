@@ -74,5 +74,21 @@ try {
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');const m=(raw.materials||[]).find(x=>x.sourceType==='image');return m.title==='screenshot'})()", "图片用文件名作标题");
   await check("document.querySelector('input[type=file][multiple]').accept.includes('.png')", "文件选择器接受图片");
 
+  // 同一个文件导入两次不该变成两份
+  const importSame = async () => ev(`(() => {
+    const input = document.querySelector('input[type=file][multiple]');
+    const dt = new DataTransfer();
+    dt.items.add(new File(['# 重复内容\\n\\n同一份正文'], 'dup.md', { type: 'text/markdown' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await importSame();
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).filter(m=>m.title==='重复内容').length===1})()", "首次导入该内容成功");
+  await importSame();
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).filter(m=>m.title==='重复内容').length===1})()", "重复导入不产生第二份");
+  await check("document.body.innerText.includes('与库里内容相同已跳过')", "跳过时说明原因");
+  await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');const m=(raw.materials||[]).find(x=>x.title==='重复内容');return typeof m.contentHash==='string'&&m.contentHash.length>0})()", "素材记录了内容指纹");
+
   console.log(`Import UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }

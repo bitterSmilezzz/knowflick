@@ -1,4 +1,5 @@
 import { cardFromJson, type KnowledgeCard } from "../../domain/card";
+import { contentHashOf } from "../../domain/contentHash";
 import type { RawMaterial } from "../../shell/store";
 
 export type Collection = "inbox" | "library" | "favorites" | "archive";
@@ -42,7 +43,7 @@ export function makeMaterial(input: { title: string; text: string; url: string }
     if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error("来源链接须为不含账号密码的 http/https 地址");
   }
   const now = Date.now();
-  return { id: crypto.randomUUID(), sourceType: url ? "web" : "manual", title: input.title.trim() || text.split("\n")[0].slice(0, 80), rawText: text, sourceUrl: url || null, cleanedMarkdown: null, contentHash: "", mediaPath: null, mediaSizeBytes: 0, metadataJson: "{}", inboxStatus: "inbox", createdAt: now, updatedAt: now };
+  return { id: crypto.randomUUID(), sourceType: url ? "web" : "manual", title: input.title.trim() || text.split("\n")[0].slice(0, 80), rawText: text, sourceUrl: url || null, cleanedMarkdown: null, contentHash: contentHashOf(text), mediaPath: null, mediaSizeBytes: 0, metadataJson: "{}", inboxStatus: "inbox", createdAt: now, updatedAt: now };
 }
 export function materialToCard(m: RawMaterial): KnowledgeCard {
   return { ...cardFromJson({ id: crypto.randomUUID(), headline: m.title, category: "随手笔记", summary: m.rawText.slice(0, 160), details: m.rawText, source: "imported", createdAt: Date.now(), links: m.sourceUrl ? [{ title: "原始来源", url: m.sourceUrl }] : [] }), materialId: m.id, tags: [] };
