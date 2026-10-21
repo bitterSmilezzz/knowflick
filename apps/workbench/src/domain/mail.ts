@@ -74,17 +74,44 @@ function subjectKey(title: string): string {
     text = next;
   }
 }
-export function groupMailThreads(materials: RawMaterial[]): MailThread[] {
+/**
+ * Groups mail into threads by account + subject.
+ *
+ * The caller's order is preserved both inside a thread and between threads:
+ * the caller may have sorted by personal relevance, and re-sorting by time here
+ * would silently undo that. `filterMail` is applied first, so this keeps the
+ * caller's ordering rather than re-deriving one.
+ */
+export function groupMailThreads(
+  materials: RawMaterial[],
+  weightOf?: (material: RawMaterial) => number
+): MailThread[] {
   const groups = new Map<string, MailThread>();
+  const order: string[] = [];
   for (const m of filterMail(materials)) {
     const meta = mailMetadata(m)!;
     // This is explicitly subject grouping within an account, not a fabricated RFC conversation graph.
     const key = JSON.stringify([meta.accountId, subjectKey(m.title) || m.id]);
     const group = groups.get(key);
     if (group) group.messages.push(m);
-    else groups.set(key, { key, subject: m.title, messages: [m], latestAt: m.createdAt });
+    else {
+      groups.set(key, { key, subject: m.title, messages: [m], latestAt: m.createdAt });
+      order.push(key);
+    }
   }
-  return [...groups.values()].sort((a, b) => b.latestAt - a.latestAt);
+  const threads = order.map(key => groups.get(key)!);
+  if (!weightOf) return threads;
+  // A thread is shown as one block, so the block must move as a whole: a thread
+  // that contains a valuable message is more useful than one that does not,
+  // even if the other thread is newer.
+  return [...threads].sort((a, b) => {
+    const weight = threadWeight(b, weightOf) - threadWeight(a, weightOf);
+    return weight !== 0 ? weight : b.latestAt - a.latestAt;
+  });
+}
+
+function threadWeight(thread: MailThread, weightOf: (material: RawMaterial) => number): number {
+  return thread.messages.reduce((best, material) => Math.max(best, weightOf(material)), 0);
 }
 
 export function emailBodyForAi(material: RawMaterial): string {

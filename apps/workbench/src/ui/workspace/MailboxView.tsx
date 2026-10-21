@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { AiSettings } from "../../domain/settings";
 import { filterMail, groupMailThreads, mailCategory, mailMetadata, mailDigestSources, summarizeMail, type MailDigestSource } from "../../domain/mail";
+import { senderWeight, type SourceProfile } from "../../domain/insights";
 import { inShell, type RawMaterial } from "../../shell/store";
 import { mailListAccounts, mailRemoveAccount, mailSaveAccount, mailSyncAccount, mailSyncHistory, mailListRejected, mailRetryRejected, mailTestAccount, type MailAccount, type MailAccountConfig, type RejectedMail } from "../../shell/mail";
 import { storeMaterial } from "./repository";
@@ -23,6 +24,9 @@ interface Props {
   onDigestChange: (digest: { text: string; sources: MailDigestSource[]; saved: boolean } | null) => void;
   digestTitle: string;
   onDigestTitleChange: (title: string) => void;
+  /** Source profiles derived from what the user did; empty when personalization is off. */
+  insights: SourceProfile[];
+  personalizationOn: boolean;
 }
 const PRESETS = [
   { id: "qq", name: "QQ 邮箱", host: "imap.qq.com" },
@@ -144,7 +148,7 @@ function MailRow({ material, checked, busy, onSelect, onOpen }: {
   </article>;
 }
 
-export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpenMaterial, onSettings, onSaveDigest, digest, onDigestChange, digestTitle, onDigestTitleChange }: Props) {
+export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpenMaterial, onSettings, onSaveDigest, digest, onDigestChange, digestTitle, onDigestTitleChange, insights, personalizationOn }: Props) {
   const available = inShell();
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [loading, setLoading] = useState(available);
@@ -186,8 +190,20 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
   }, [available, dir]);
   useEffect(() => { setSelected(previous => new Set([...previous].filter(id => materials.some(m => m.id === id && m.sourceType === "email")))); }, [materials]);
   const mails = useMemo(() => materials.filter(m => m.sourceType === "email"), [materials]);
-  const filtered = useMemo(() => filterMail(mails, { accountId: accountId || undefined, query, status, category: category || undefined }), [mails, accountId, query, status, category]);
-  const threads = useMemo(() => groupMailThreads(filtered), [filtered]);
+  const filtered = useMemo(() => {
+    const base = filterMail(mails, { accountId: accountId || undefined, query, status, category: category || undefined });
+    if (!personalizationOn || !insights.length) return base;
+    // Mail from a sender whose mail became knowledge comes first. The order is
+    // still newest-first inside each weight band, so recency never disappears.
+    return [...base].sort((a, b) => {
+      const weight = senderWeight(b, insights) - senderWeight(a, insights);
+      return weight !== 0 ? weight : b.createdAt - a.createdAt || a.id.localeCompare(b.id);
+    });
+  }, [mails, accountId, query, status, category, insights, personalizationOn]);
+  const threads = useMemo(
+    () => groupMailThreads(filtered, personalizationOn && insights.length ? material => senderWeight(material, insights) : undefined),
+    [filtered, insights, personalizationOn]
+  );
   const categories = useMemo(() => [...new Set(mails.map(mailCategory))].sort(), [mails]);
   const accountOptions = useMemo(() => [...new Set([...accounts.map(a => a.id), ...mails.map(m => mailMetadata(m)?.accountId).filter((id): id is string => !!id)])], [accounts, mails]);
   const chosen = mails.filter(m => selected.has(m.id));

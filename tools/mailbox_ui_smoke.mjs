@@ -31,9 +31,17 @@ try {
     ["3", "本周 Newsletter", "这是一封中文订阅周刊。", "周刊 <weekly@example.test>"],
   ].map(([id, title, rawText, from], i) => ({ id: `mail-test-${id}`, sourceType: "email", title, rawText,
     contentHash: "", metadataJson: JSON.stringify({ mailAccountId: "fixture", from, to: "me@example.test", date: "2026-10-21", messageId: `<${id}@example.test>`, attachmentFilenames: i === 0 ? ["方案.pdf"] : [] }),
-    inboxStatus: "inbox", createdAt: now - i * 1000, updatedAt: now - i * 1000,
+    // Index 0 is the newest, so mail-test-3 is the oldest. The card comes from
+    // that oldest mail, so a personalised order must differ from the time order.
+    inboxStatus: "inbox", createdAt: now - i * 60000, updatedAt: now - i * 60000,
   }));
-  await b("eval", `(()=>{localStorage.clear();sessionStorage.clear();localStorage.setItem('knowflick.workspace.v1',${JSON.stringify(JSON.stringify({ materials: messages, cards: [], settings: JSON.stringify({ providerId: "custom", baseURL: "https://mail-ai.example.test", model: "fixture", enableAI: true, paperTheme: "RICE_PAPER" }) }))});sessionStorage.setItem('knowflick.workspace.key','fixture-only');return true})()`);
+  // One mail is turned into a card, so the source panel has a real signal to show.
+  const derived = { id: "card-from-mail-1", headline: "项目计划（已沉淀）", category: "计算机", summary: "摘要",
+    details: "由邮件转成的知识卡。", links: [], tags: [], source: "imported", createdAt: now, editedAt: null,
+    seenAt: null, swiped: null, isFavorite: true, favoritedAt: now, reviewCount: 1, masteryLevel: 0,
+    lastReviewedAt: null, repetition: 0, intervalDays: 0, easeFactor: 2.5, stability: 0, difficulty: 0,
+    subject: null, branch: null, level: null, track: null, orderKey: null, prereq: [], materialId: "mail-test-3" };
+  await b("eval", `(()=>{localStorage.clear();sessionStorage.clear();localStorage.setItem('knowflick.workspace.v1',${JSON.stringify(JSON.stringify({ materials: messages, cards: [derived], settings: JSON.stringify({ providerId: "custom", baseURL: "https://mail-ai.example.test", model: "fixture", enableAI: true, paperTheme: "RICE_PAPER" }) }))});sessionStorage.setItem('knowflick.workspace.key','fixture-only');return true})()`);
   await b("open", url);
   await check("[...document.querySelectorAll('.ws-nav-row')].some(b=>b.textContent.includes('邮箱'))", "导航出现邮箱入口");
   await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('邮箱')).click();return true})()");
@@ -78,6 +86,38 @@ try {
   await check("document.querySelectorAll('.mail-row[data-selected=true]').length===0", "离开邮箱后选择被清空");
   await b("check", '.mail-selection input[type=checkbox]');
   await check("document.querySelectorAll('.mail-row[data-selected=true]').length===3", "重新全选后可批量操作");
+  // 个性化确实改变邮件排序：把「已沉淀」的邮件放到较新但无关的邮件之前。
+  // 必须在归档之前验证——归档后邮件状态变成 processed，默认筛选「待整理」就看不到它们。
+  await b("select", '[aria-label="筛选邮件状态"]', "all");
+  await new Promise(r => setTimeout(r, 400));
+  const orderPersonalised = await ev("[...document.querySelectorAll('.mail-row-heading strong')].map(e=>e.textContent)");
+  await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('设置')).click();return true})()");
+  await new Promise(r => setTimeout(r, 500));
+  await b("click", '[aria-label="按使用习惯个性化"]');
+  await new Promise(r => setTimeout(r, 300));
+  await b("click", ".ws-settings-foot button[type=submit]");
+  await new Promise(r => setTimeout(r, 800));
+  await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('邮箱')).click();return true})()");
+  await new Promise(r => setTimeout(r, 900));
+  const orderPlain = await ev("[...document.querySelectorAll('.mail-row-heading strong')].map(e=>e.textContent)");
+  await check("JSON.stringify(" + JSON.stringify(orderPersonalised) + ")!==JSON.stringify(" + JSON.stringify(orderPlain) + ")", "关闭个性化后邮件排序改变");
+  // 关闭个性化后应回到「最新在前」：种子数据里 mail-test-1 最新、mail-test-3 最旧。
+  await check("JSON.stringify(" + JSON.stringify(orderPlain) + ")===JSON.stringify([\"项目计划\",\"Re: 项目计划\",\"本周 Newsletter\"])", "关闭后按时间倒序排列（最新在前）");
+  // 恢复个性化，后续断言仍按开启状态
+  await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('设置')).click();return true})()");
+  await new Promise(r => setTimeout(r, 500));
+  await b("click", '[aria-label="按使用习惯个性化"]');
+  await new Promise(r => setTimeout(r, 300));
+  await b("click", ".ws-settings-foot button[type=submit]");
+  await new Promise(r => setTimeout(r, 600));
+  await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('邮箱')).click();return true})()");
+  await new Promise(r => setTimeout(r, 600));
+  await b("select", '[aria-label="筛选邮件状态"]', "inbox");
+  await new Promise(r => setTimeout(r, 400));
+  // 排序验证期间切换过页面，选择状态已重置；归档前重新全选。
+  await b("check", '.mail-selection input[type=checkbox]');
+  await check("document.querySelectorAll('.mail-row[data-selected=true]').length===3", "归档前已选中三封邮件");
+
   await clickText("本地归档");
   await check("JSON.parse(localStorage.getItem('knowflick.workspace.v1')).materials.filter(m=>m.sourceType==='email'&&m.inboxStatus==='processed').length===3", "所选邮件本地归档保留内容");
   await check("document.querySelectorAll('.mail-row').length===0", "待整理列表更新");
@@ -91,6 +131,27 @@ try {
   await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('邮箱')).click();return true})()");
   await b("select", '[aria-label="筛选邮件状态"]', "all");
   await check("document.querySelectorAll('.mail-row').length===3", "刷新后归档邮件仍可读");
+  // 个性化：设置页的「来源贡献」面板与开关
+  await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('设置')).click();return true})()");
+  await check("!!document.querySelector('[aria-label=\"来源贡献\"]')", "设置页有来源贡献面板");
+  // 前面已种下邮件与卡片，所以此处应有真实来源与可核对说明
+  await check("document.querySelectorAll('[data-insight-source]').length>0", "面板列出有信号的来源");
+  await check("document.querySelector('[aria-label=\"来源贡献\"]').textContent.includes('已沉淀为知识卡')", "来源说明对应用户真实动作");
+  await check("!!document.querySelector('[aria-label=\"按使用习惯个性化\"]')", "个性化开关可操作");
+  await check("document.querySelector('[aria-label=\"按使用习惯个性化\"]').checked===true", "个性化默认开启");
+  // 关闭后应说明排序退回时间顺序。
+  // 注意：agent-browser 的 check/uncheck 对已处于目标状态的元素是幂等的，不会
+  // 触发 change 事件；切换开关必须用 click。
+  await b("click", '[aria-label="按使用习惯个性化"]');
+  await check("document.querySelector('[aria-label=\"来源贡献\"]').textContent.includes('个性化已关闭')", "关闭后如实说明排序退回时间顺序");
+  await check("document.querySelector('[aria-label=\"按使用习惯个性化\"]').checked===false", "开关状态与面板文案一致");
+  await b("click", '[aria-label="按使用习惯个性化"]');
+  await check("document.querySelector('[aria-label=\"来源贡献\"]').textContent.includes('按你实际做过的事排序')", "重新开启后恢复说明");
+  // 开关随设置落盘
+  await b("click", ".ws-settings-foot button[type=submit]");
+  await new Promise(r => setTimeout(r, 600));
+  await check("JSON.parse(localStorage.getItem('knowflick.workspace.v1')).settings.includes('personalizationEnabled')", "个性化开关写入设置");
+
   const shot = process.env.KNOWFLICK_MAIL_SCREENSHOT;
   if (shot) await b("screenshot", shot);
   console.log(`Mailbox UI smoke: ${count} checks passed.`);

@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { normalizePaperTheme, type SettingsFile, type AiSettings } from "../../domain/settings";
+import { normalizePaperTheme, personalizationEnabled, setPersonalization, type SettingsFile, type AiSettings } from "../../domain/settings";
 import { AI_PROVIDER_PRESETS, findPresetById } from "../../domain/aiPresets";
 import { probeConnection } from "../../domain/aiChat";
 import { OFFICIAL_PLUGINS, PERMISSION_DESCRIPTIONS } from "../../domain/pluginRegistry";
@@ -8,7 +8,9 @@ import { generateMcpConfigSnippet } from "../../domain/mcpServer";
 import { DEFAULT_ASR_MODEL } from "../../domain/asr";
 import { AsrModelPanel } from "./AsrModelPanel";
 import { LocalEmbedPanel } from "./LocalEmbedPanel";
-import { inShell } from "../../shell/store";
+import { inShell, type RawMaterial } from "../../shell/store";
+import type { KnowledgeCard } from "../../domain/card";
+import { SourceInsightPanel } from "./SourceInsightPanel";
 import { Icon } from "./Icon";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -16,6 +18,8 @@ export interface WorkspaceSettingsProps {
   file: SettingsFile;
   apiKey: string;
   reviewEnabled: boolean;
+  materials: RawMaterial[];
+  cards: KnowledgeCard[];
   onSave: (file: SettingsFile, key: string, reviewEnabled: boolean) => Promise<void>;
   onBack: () => void;
   onExportMarkdown?: () => void;
@@ -27,6 +31,8 @@ export function WorkspaceSettings({
   file,
   apiKey,
   reviewEnabled,
+  materials,
+  cards,
   onSave,
   onBack,
   onExportMarkdown,
@@ -40,6 +46,8 @@ export function WorkspaceSettings({
     readPluginSettings(file.raw)
   );
   const [mcpCopied, setMcpCopied] = useState(false);
+  const [personalizationOn, setPersonalizationOnState] = useState(() => personalizationEnabled(file.raw));
+  const [draftRaw, setDraftRaw] = useState<Record<string, unknown>>(() => file.raw);
   const asrModel =
     (draftPlugins["official-speech-asr"]?.preferences?.model as string | undefined) ?? DEFAULT_ASR_MODEL;
   const mcpSnippet = generateMcpConfigSnippet("tools/mcp-server.mjs");
@@ -69,12 +77,20 @@ export function WorkspaceSettings({
   const [probeStatus, setProbeStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [probeMessage, setProbeMessage] = useState<string | null>(null);
 
+  // Re-seed the draft when the loaded settings change. The dependency is the
+  // stored text, not the object: `file` is a new object on every render, and
+  // depending on it would wipe the user's unsaved toggle immediately.
+  const fileSettingsText = file.settings ? JSON.stringify(file.settings) : "";
+  const fileRawText = JSON.stringify(file.raw);
   useEffect(() => {
     setDraftSettings(file.settings);
     setDraftKey(apiKey);
     setDraftReviewEnabled(reviewEnabled);
     setDraftPlugins(readPluginSettings(file.raw));
-  }, [file, apiKey, reviewEnabled]);
+    setDraftRaw(file.raw);
+    setPersonalizationOnState(personalizationEnabled(file.raw));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileSettingsText, fileRawText, apiKey, reviewEnabled]);
 
   const handleProbe = async () => {
     if (probeStatus === "testing") return;
@@ -90,6 +106,14 @@ export function WorkspaceSettings({
       const msg = err instanceof Error ? err.message : String(err) || "连接失败";
       setProbeMessage(msg);
     }
+  };
+
+  const togglePersonalization = (enabled: boolean) => {
+    setPersonalizationOnState(enabled);
+    // The flag lives in the settings draft, so it is written on save and never
+    // applied behind the user's back. Mutating `file.raw` in place would not
+    // re-render and would be lost on the next settings load.
+    setDraftRaw(previous => setPersonalization(previous, enabled));
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -113,11 +137,14 @@ export function WorkspaceSettings({
       settings: {
         ...draftSettings,
       },
-      raw: writePluginSettings(file.raw, pluginMap),
+      raw: writePluginSettings(draftRaw, pluginMap),
     };
 
     try {
       await onSave(updatedFile, draftKey, draftReviewEnabled);
+      // The parent now holds the saved settings; mirror it into the local state
+      // so the panel next to the switch shows the saved result immediately.
+      setPersonalizationOnState(personalizationEnabled(updatedFile.raw));
       setSaveStatus("success");
       setSaveMessage("设置已成功保存");
     } catch (err: unknown) {
@@ -221,6 +248,13 @@ export function WorkspaceSettings({
 
             {/* 第二组：AI 连接 */}
             <section data-group="ai" className="ws-settings-card">
+              <SourceInsightPanel
+                materials={materials}
+                cards={cards}
+                enabled={personalizationOn}
+                onToggle={togglePersonalization}
+              />
+
               <div className="ws-settings-card-head">
                 <Icon name="ask" size={15} />
                 <div>

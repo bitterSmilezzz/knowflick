@@ -52,6 +52,22 @@ export function encodePaperTheme(theme: PaperTheme): string {
   return WIRE_PAPER_THEMES[theme] ?? "SYSTEM";
 }
 
+/**
+ * 「越用越懂你」的总开关。
+ *
+ * 关闭时：来源洞察不计算，界面不做任何个性化排序，邮件仍按时间排列。
+ * 这是显式开关而不是隐含行为——用户必须能拿回完全朴素的界面。
+ */
+export const PERSONALIZATION_KEY = "personalizationEnabled";
+export const DEFAULT_PERSONALIZATION = true;
+
+export function personalizationEnabled(raw: Record<string, unknown>): boolean {
+  return typeof raw[PERSONALIZATION_KEY] === "boolean" ? raw[PERSONALIZATION_KEY] as boolean : DEFAULT_PERSONALIZATION;
+}
+export function setPersonalization(raw: Record<string, unknown>, enabled: boolean): Record<string, unknown> {
+  return { ...raw, [PERSONALIZATION_KEY]: enabled };
+}
+
 export const defaultSettings: AiSettings = {
   providerId: "deepseek",
   baseURL: "https://api.deepseek.com",

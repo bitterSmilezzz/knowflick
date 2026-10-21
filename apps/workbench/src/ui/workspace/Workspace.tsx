@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KnowledgeCard } from "../../domain/card";
 import { cardFromJson } from "../../domain/card";
-import { normalizePaperTheme, parseSettings, type SettingsFile } from "../../domain/settings";
+import { normalizePaperTheme, parseSettings, personalizationEnabled, type SettingsFile } from "../../domain/settings";
 import { askModel } from "../../domain/aiChat";
 import { requiresKey } from "../../domain/ingest";
 import { digest } from "../../domain/clipEngine";
@@ -49,6 +49,7 @@ import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import { MailboxView } from "./MailboxView";
 import { emailBodyForAi, makeMailDigestMetadata, type MailDigestSource } from "../../domain/mail";
+import { sourceInsights } from "../../domain/insights";
 import { mailSyncDueAccounts } from "../../shell/mail";
 import { DEFAULT_ASR_MODEL, realtimeFactor, titleFromTranscript } from "../../domain/asr";
 import { pluginEnabledIn } from "../../domain/pluginSettings";
@@ -119,6 +120,7 @@ export function Workspace() {
   // mailbox page) does not throw away an unsaved result.
   const [mailDigest, setMailDigest] = useState<{ text: string; sources: MailDigestSource[]; saved: boolean } | null>(null);
   const [mailDigestTitle, setMailDigestTitle] = useState("邮件整理摘要");
+  const [personalizationOn, setPersonalizationOn] = useState(() => personalizationEnabled(file.raw));
   const layout = usePaneLayout();
   const readerRef = useRef<HTMLElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -268,6 +270,11 @@ export function Workspace() {
       window.clearTimeout(timer);
     };
   }, [query, dir]);
+
+  const insights = useMemo(
+    () => (personalizationOn ? sourceInsights({ materials, cards }).ranked : []),
+    [materials, cards, personalizationOn]
+  );
 
   const entries = useMemo(() => entriesFor(materials, cards, collection), [materials, cards, collection]);
   const filtered = useMemo(
@@ -1304,6 +1311,8 @@ export function Workspace() {
                   file={file}
                   apiKey={apiKey}
                   reviewEnabled={reviewEnabled}
+                  materials={materials}
+                  cards={cards}
                   onBack={() => navigate("inbox")}
                   onExportMarkdown={() => downloadMarkdownVault(materials, cards)}
                   onExportKfBackup={() => {
@@ -1325,6 +1334,7 @@ export function Workspace() {
                     await storePreferences(updated, key, dir);
                     setFile(updated);
                     setApiKey(key);
+                    setPersonalizationOn(personalizationEnabled(updated.raw));
                   }}
                 />
               ) : null}
@@ -1338,6 +1348,8 @@ export function Workspace() {
                   onDigestChange={setMailDigest}
                   digestTitle={mailDigestTitle}
                   onDigestTitleChange={setMailDigestTitle}
+                  insights={insights}
+                  personalizationOn={personalizationOn}
                   onSaveDigest={async (title, markdown, sources) => {
                     const material = makeMaterial({ title, text: markdown, url: "" });
                     material.sourceType = "email-digest";
