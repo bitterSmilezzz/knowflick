@@ -44,8 +44,13 @@ export function BriefingView({ cards, onOpenCard }: BriefingProps) {
     };
   }, []);
 
+  // 重新分析是纯本地重算（不依赖模型），但卡片没变时结果一样——
+  // 没有反馈的话，按钮看起来就是「点了没反应」。
+  const [regenerated, setRegenerated] = useState(false);
   const handleRegenerate = () => {
     setBriefing(generateCognitiveBriefing(cards));
+    setRegenerated(true);
+    window.setTimeout(() => setRegenerated(false), 2400);
   };
 
   const handleCopyMarkdown = async () => {
@@ -106,7 +111,7 @@ export function BriefingView({ cards, onOpenCard }: BriefingProps) {
           </div>
           <div className="ws-editor-actions" style={{ flexWrap: "nowrap" }}>
             <button type="button" className="ws-bordered" onClick={handleRegenerate}>
-              <Icon name="brief" size={14} /> 重新分析
+              <Icon name="brief" size={14} /> {regenerated ? "已按当前卡片重算" : "重新分析"}
             </button>
             <button
               type="button"

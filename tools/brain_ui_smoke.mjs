@@ -105,6 +105,10 @@ try {
     "简报有结构化板块"
   );
   await check("[...document.querySelectorAll('button')].some(b=>/重新分析|存入产物库|复制/.test(b.textContent))", "简报有可执行动作");
+  await check("document.body.innerText.includes('重新分析')", "重新分析默认显示为「重新分析」");
+  await ev("(() => { const b=[...document.querySelectorAll('button')].find(x=>/重新分析/.test(x.textContent)); if(b){b.click();return true} return false })()");
+  await new Promise(r => setTimeout(r, 400));
+  await check("document.body.innerText.includes('已按当前卡片重算')", "重新分析后给出反馈而不是没反应");
 
   console.log(`Brain UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }
