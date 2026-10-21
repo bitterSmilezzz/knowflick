@@ -1022,6 +1022,60 @@ select {
   border-style: dashed;
 }
 
+/* 产物库：列出生成物，可展开、复制、删除。 */
+.ws-artifacts {
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ws-artifacts-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ws-artifacts-head h1 { font-size: 20px; font-weight: 600; }
+.ws-artifacts-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ws-artifact {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  padding: 10px 12px;
+}
+.ws-artifact-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ws-artifact-head strong { display: block; font-size: 13px; font-weight: 600; }
+.ws-artifact-head .ws-hint { display: block; margin-top: 2px; }
+.ws-artifact-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ws-artifact-body {
+  margin: 10px 0 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* 对话操作行：说明持久化行为，并给出清空入口。 */
 .ws-brain-chat-actions {
   display: flex;

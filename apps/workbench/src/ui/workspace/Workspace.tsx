@@ -50,6 +50,7 @@ import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import { MailboxView } from "./MailboxView";
+import { ArtifactsView } from "./ArtifactsView";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
 import { existingKeys } from "../../domain/contentHash";
@@ -81,7 +82,7 @@ const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.B
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "briefing" | "brain" | "review" | "subscriptions" | "mail";
+type Page = Collection | "settings" | "briefing" | "brain" | "review" | "subscriptions" | "mail" | "artifacts";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
@@ -1287,6 +1288,13 @@ export function Workspace() {
             >
               <Icon name="brief" /><span>认知简报</span>
             </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "artifacts" ? "page" : undefined}
+              onClick={() => navigate("artifacts")}
+            >
+              <Icon name="layers" /><span>产物库</span>
+            </button>
             {reviewEnabled ? (
               <button
                 className="ws-nav-row"
@@ -1741,6 +1749,9 @@ export function Workspace() {
                     setPersonalizationOn(personalizationEnabled(updated.raw));
                   }}
                 />
+              ) : null}
+              {page === "artifacts" ? (
+                <ArtifactsView dir={dir} onBack={() => navigate("briefing")} />
               ) : null}
               {page === "mail" ? (
                 <MailboxView

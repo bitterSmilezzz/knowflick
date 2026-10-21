@@ -170,5 +170,45 @@ try {
   await new Promise(r => setTimeout(r, 400));
   await check("document.body.innerText.includes('已按当前卡片重算')", "重新分析后给出反馈而不是没反应");
 
+  // 5. 存入产物库的简报必须能再看到——存进去却无处可读等于白存
+  await seed(false);
+  await goTo("认知简报");
+  await ev("(() => { const b=[...document.querySelectorAll('button')].find(x=>/存入产物库/.test(x.textContent)); if(b){b.click();return true} return false })()");
+  await new Promise(r => setTimeout(r, 900));
+  const stored = await ev(
+    "((JSON.parse(localStorage.getItem('knowflick.workspace.artifacts')||'[]')).length) + '|' + ((JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}').artifacts)||[]).length"
+  );
+  await check("Number(String('" + stored + "').split('|')[0]) + Number(String('" + stored + "').split('|')[1]) > 0",
+    "简报已存入产物库");
+  await check(
+    "[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('产物'))",
+    "侧栏有产物库入口"
+  );
+  await goTo("产物");
+  await check("document.querySelectorAll('[data-artifact]').length >= 1", "产物库列出已存简报");
+  await check(
+    "document.querySelector('[data-artifact]')?.textContent.includes('认知') || document.body.innerText.includes('简报')",
+    "产物条目能看出是什么"
+  );
+
+  // 6. 产物可展开读全文，可删除（删除不可撤销，故走确认）
+  await ev("(() => { const b=[...document.querySelectorAll('[data-artifact] button')].find(x=>x.textContent.trim()==='查看'); if(b){b.click();return true} return false })()");
+  await new Promise(r => setTimeout(r, 400));
+  await check("!!document.querySelector('.ws-artifact-body')", "产物可展开查看全文");
+  await check(
+    "document.querySelector('.ws-artifact-body').textContent.length > 20",
+    "展开后确有内容"
+  );
+  // 删除需要原生 confirm：先替换掉，再点删除
+  await b("eval", "window.__confirmCalls = 0; window.confirm = () => { window.__confirmCalls++; return true; }; true");
+  await check("!!document.querySelector('[aria-label=\"删除产物\"]')", "产物有删除入口");
+  await ev("(() => { const b=document.querySelector('[aria-label=\"删除产物\"]'); if(b){b.click();return true} return false })()");
+  await new Promise(r => setTimeout(r, 700));
+  await check("(window.__confirmCalls || 0) >= 1", "删除前会确认");
+  await check(
+    "!document.querySelector('[data-artifact]')",
+    "删除后产物从列表消失"
+  );
+
   console.log(`Brain UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }

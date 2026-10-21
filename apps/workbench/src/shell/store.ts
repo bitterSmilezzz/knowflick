@@ -222,6 +222,10 @@ export interface Artifact {
   isDeleted?: boolean;
 }
 
+export function dbDeleteArtifact(id: string, dir?: string): Promise<void> {
+  return invoke("db_delete_artifact", { dir: dir ?? null, id });
+}
+
 export function dbSaveArtifact(artifact: Artifact, dir?: string): Promise<void> {
   return invoke("db_save_artifact", { dir: dir ?? null, artifact });
 }

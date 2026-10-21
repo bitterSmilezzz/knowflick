@@ -332,6 +332,14 @@ fn db_save_artifact(dir: Option<String>, artifact: db::ArtifactDto) -> Result<()
 }
 
 #[tauri::command]
+fn db_delete_artifact(dir: Option<String>, id: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    let db_path = path.join("knowflick.db");
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::delete_artifact(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn db_list_artifacts(dir: Option<String>, limit: Option<i64>) -> Result<Vec<db::ArtifactDto>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
@@ -928,6 +936,7 @@ pub fn run() {
             get_shortcut_status,
             db_save_artifact,
             db_list_artifacts,
+            db_delete_artifact,
             db_save_card_embedding,
             db_search_cards_vector,
             db_search_cards_hybrid,

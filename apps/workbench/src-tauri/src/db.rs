@@ -1157,6 +1157,13 @@ pub fn save_artifact(conn: &Connection, artifact: &ArtifactDto) -> Result<()> {
     Ok(())
 }
 
+/// 软删除产物：表里已有 is_deleted 字段，与素材的归档语义一致。
+/// 硬删会让「依据这 N 张卡片生成的简报」凭空消失，保留标记更安全。
+pub fn delete_artifact(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("UPDATE artifacts SET is_deleted = 1, updated_at = ?2 WHERE id = ?1", params![id, chrono_or_epoch_now()])?;
+    Ok(())
+}
+
 pub fn list_artifacts(conn: &Connection, limit: i64) -> Result<Vec<ArtifactDto>> {
     let mut stmt = conn.prepare(
         "SELECT id, artifact_type, title, content_markdown, source_card_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted
@@ -2250,6 +2257,18 @@ mod tests {
         let list2 = list_artifacts(&conn, 10).unwrap();
         assert_eq!(list2.len(), 1);
         assert_eq!(list2[0].title, "认知简报 · 终稿");
+
+        // 软删除：列表里不再出现，但行还在（硬删会让历史凭空消失）
+        delete_artifact(&conn, "artifact-1").unwrap();
+        assert_eq!(list_artifacts(&conn, 10).unwrap().len(), 0);
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM artifacts WHERE id = 'artifact-1'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(remaining, 1, "软删只置标记，不物理移除");
+
+        // 再存一次能复活：重新生成的同一份简报不该被历史删除挡住
+        save_artifact(&conn, &artifact).unwrap();
+        assert_eq!(list_artifacts(&conn, 10).unwrap().len(), 1);
     }
 
     #[test]
