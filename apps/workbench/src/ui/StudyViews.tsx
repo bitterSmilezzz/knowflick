@@ -4,7 +4,7 @@ import {
   applyReview,
   buildQuiz,
   calculateReview,
-  dueCards,
+  reviewQueue,
   previewIntervals,
   todayStamp,
   type SpacedAlgorithm,
@@ -93,9 +93,13 @@ export function QuizView({
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState("");
+  // 默认按记忆算法的安排复习；「额外练习」必须由用户显式选择，
+  // 否则「今日待复习 0」下面紧接着出现一张待评分卡，用户会以为计数坏了。
+  const [extraPractice, setExtraPractice] = useState(false);
 
-  const defaultQueue = dueOnly
-    ? dueCards(cards, today).map((card) => card.id)
+  // 按计划复习 = 到期卡 + 从未过目的新卡；额外练习才用全库随机。
+  const defaultQueue = dueOnly && !extraPractice
+    ? reviewQueue(cards, today).map((card) => card.id)
     : buildQuiz(cards, today).map((card) => card.id);
   const queueIds = ids ?? defaultQueue;
   const session = quizSessionView(cards, queueIds, index);
@@ -147,12 +151,26 @@ export function QuizView({
   }, [session, revealed, ids, cards]);
 
   if (session.kind === "empty") {
+    const total = cards.length;
     return (
       <div className="ws-review-container">
         <div className="ws-review-done-card">
           <Icon name="check" size={32} style={{ color: "var(--accent)", marginBottom: 12 }} />
-          <h2>没有待复习的卡片</h2>
-          <p>知识库中目前没有需要复习的内容。多沉淀一些知识卡，记忆算法会自动安排温故节奏。</p>
+          <h2>今天没有到期的卡片</h2>
+          <p>
+            {total > 0
+              ? `记忆算法已把 ${total} 张卡排到之后的日期，按计划复习效果最好。想多练几张也可以。`
+              : "知识库中目前没有需要复习的内容。多沉淀一些知识卡，记忆算法会自动安排温故节奏。"}
+          </p>
+          {total > 0 ? (
+            <button
+              type="button"
+              className="ws-bordered"
+              onClick={() => { setExtraPractice(true); setIds(null); setIndex(0); setRevealed(false); }}
+            >
+              仍要复习全部（额外练习）
+            </button>
+          ) : null}
         </div>
       </div>
     );

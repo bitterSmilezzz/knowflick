@@ -191,6 +191,29 @@ export function dueCards(cards: KnowledgeCard[], today = todayStamp()): Knowledg
     .map((item) => item.card);
 }
 
+/**
+ * 从未看过、也没复习过的卡：它们需要第一次过目。
+ *
+ * 这些卡 `reviewDay` 返回 null（没有上次时间就无法排期），所以**不算到期**——
+ * 但如果复习队列只取到期卡，新卡就永远排不进来，库越攒越多却从来没被复习过。
+ */
+export function newCards(cards: KnowledgeCard[]): KnowledgeCard[] {
+  return cards.filter((card) => card.lastReviewedAt === null && card.seenAt === null);
+}
+
+/**
+ * 按计划复习的队列：先到期，再新卡。
+ *
+ * 两类分开而不是混在一起，是因为它们的含义不同——到期是「按算法该看了」，
+ * 新卡是「还从来没看过」。放在一个队列里能保证新卡也有第一次过目。
+ */
+export function reviewQueue(cards: KnowledgeCard[], today = todayStamp(), limit = 20): KnowledgeCard[] {
+  const due = dueCards(cards, today);
+  const dueIds = new Set(due.map((card) => card.id));
+  const fresh = newCards(cards).filter((card) => !dueIds.has(card.id));
+  return [...due, ...fresh].slice(0, Math.max(0, limit));
+}
+
 export function buildQuiz(cards: KnowledgeCard[], today = todayStamp(), limit = 10): KnowledgeCard[] {
   const due = dueCards(cards, today);
   const dueIds = new Set(due.map((card) => card.id));

@@ -1,5 +1,5 @@
 import { cardFromJson, type KnowledgeCard } from "./card";
-import { applyReview, buildQuiz, calculateSm2, dueCards, previewIntervals, reviewDay } from "./review";
+import { applyReview, buildQuiz, calculateSm2, dueCards, previewIntervals, reviewDay, reviewQueue } from "./review";
 import { describe, expect, it } from "vitest";
 
 const NOW = 1_700_000_100_000;
@@ -67,5 +67,29 @@ describe("SM-2", () => {
     const seen = card({ id: "due", seenAt: Date.parse("2026-10-12T10:00:00") });
     const fresh = card({ id: "new" });
     expect(buildQuiz([fresh, seen], "2026-10-13", 10).map((item) => item.id)).toEqual(["due", "new"]);
+  });
+});
+
+describe("复习队列（到期 + 新卡）", () => {
+  it("从未看过的新卡不算到期，但会进入复习队列", () => {
+    const fresh = card({ id: "new" });
+    expect(dueCards([fresh], "2026-10-20")).toEqual([]);
+    expect(reviewQueue([fresh], "2026-10-20").map((item) => item.id)).toEqual(["new"]);
+  });
+
+  it("到期的卡排在新卡之前", () => {
+    const due = card({ id: "due", seenAt: Date.parse("2026-10-12T10:00:00") });
+    const fresh = card({ id: "new" });
+    expect(reviewQueue([fresh, due], "2026-10-13").map((item) => item.id)).toEqual(["due", "new"]);
+  });
+
+  it("已复习且未到期的卡不会重复出现", () => {
+    const later = card({ id: "later", lastReviewedAt: Date.parse("2026-10-19T10:00:00"), intervalDays: 30, reviewCount: 2 });
+    expect(reviewQueue([later], "2026-10-20")).toEqual([]);
+  });
+
+  it("队列受上限约束，不会一次塞几百张", () => {
+    const many = Array.from({ length: 40 }, (_, i) => card({ id: `n${i}` }));
+    expect(reviewQueue(many, "2026-10-20", 20)).toHaveLength(20);
   });
 });

@@ -1563,6 +1563,7 @@ export function Workspace() {
                   <Quiz
                     cards={cards}
                     algorithm="fsrs"
+                    dueOnly
                     onChange={async (next) => {
                       await storeCardList(next, dir);
                       setCards(next);
