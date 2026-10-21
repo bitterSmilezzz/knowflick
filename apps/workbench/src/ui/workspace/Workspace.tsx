@@ -346,6 +346,19 @@ export function Workspace() {
         const down = e.key === "ArrowDown" || e.key === "j";
         const index = Math.max(0, Math.min(filtered.length - 1, (current < 0 ? 0 : current) + (down ? 1 : -1)));
         setVisibleCount(n => Math.max(n, index + 1));
+        // Shift+方向键 = 范围多选。没有这条，键盘用户完全无法进入批量模式
+        // ——多选只能靠 ⌘/Ctrl 鼠标点击。
+        if (e.shiftKey) {
+          setBatchIds(previous => {
+            const anchorId = [...(previous.size ? previous : [])][0] ?? selected?.id;
+            const anchor = Math.max(0, filtered.findIndex(it => it.id === anchorId));
+            const from = Math.min(anchor, index);
+            const to = Math.max(anchor, index);
+            return new Set(filtered.slice(from, to + 1).map(it => it.id));
+          });
+        } else {
+          setBatchIds(new Set());
+        }
         setSelectedId(filtered[index].id);
         requestAnimationFrame(() => {
           const row = workspaceRef.current?.querySelector<HTMLElement>(`.ws-entry[data-entry-id="${CSS.escape(filtered[index].id)}"]`);

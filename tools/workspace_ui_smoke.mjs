@@ -262,6 +262,48 @@ try {
     "批量打标写回所有选中卡片"
   );
 
+  // 键盘用户也能多选：Shift+方向键做范围选择（多选不能只靠鼠标）。
+  // 直接派发带 shiftKey 的 KeyboardEvent：agent-browser 对组合键的实现不稳定，
+  // 这里要验证的是应用自己的处理器。
+  // 先清状态：焦点若落在输入框，处理器会因「正在输入」提前返回；对话框开着也会整段忽略。
+  await browser("eval", `(() => {
+    const dialog = document.querySelector('dialog[open]');
+    if (dialog && typeof dialog.close === 'function') dialog.close();
+    const el = document.activeElement;
+    if (el && el !== document.body) el.blur();
+    document.querySelector('.ws-entry')?.focus();
+    return !document.querySelector('dialog[open]');
+  })()`);
+  await new Promise((r) => setTimeout(r, 250));
+  await browser("eval", `(() => {
+    const target = document.querySelector('.ws-entry');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
+    return true;
+  })()`);
+  // 已经在最后一行时 ArrowDown 无法再下移，范围起止会重合成一项（这是正确行为：
+  // 不能越过末尾扩展）。所以先回退到第一行，再用 Shift+方向键拉一个范围。
+  await browser("eval", `(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 300));
+  await browser("eval", `(() => {
+    const target = document.querySelector('.ws-entry');
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  await check(
+    'document.querySelectorAll(\'.ws-entry[data-picked="true"]\').length >= 2',
+    "Shift+方向键可选多行"
+  );
+  // 顺带锁住：在最后一行时 Shift+方向键不会扩展出范围（不能越过末尾）
+  await check(
+    'document.querySelectorAll(\'.ws-entry[data-picked="true"]\').length < 3',
+    "范围选择不会越过列表末尾"
+  );
+
   // 普通点击应退出多选，不留看不见的待处理选择
   await browser("eval", `(() => {
     const row = document.querySelector('.ws-entry');
