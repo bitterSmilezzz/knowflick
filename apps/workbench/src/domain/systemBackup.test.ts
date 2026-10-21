@@ -118,3 +118,47 @@ describe("系统级完整无损备份包 (.kfbackup)", () => {
     expect(() => restoreKfBackup(emptyZip)).toThrow("缺少 manifest.json");
   });
 });
+
+describe("备份带走附件", () => {
+  const settings: SettingsFile = { settings: { ...defaultSettings }, raw: {} };
+  const audio = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0xff, 0xfe]);
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  const material = (id: string, mediaPath: string): RawMaterial => ({
+    id, sourceType: mediaPath.includes("audio") ? "audio" : "image",
+    title: id, sourceUrl: null, rawText: "正文", contentHash: "", mediaPath,
+    mediaSizeBytes: 8, metadataJson: "{}", inboxStatus: "inbox",
+    createdAt: 1, updatedAt: 1,
+  });
+
+  it("附件字节原样往返，且不被文本解码搅坏", () => {
+    const media = new Map<string, Uint8Array>([
+      ["media/audio/a.webm", audio],
+      ["media/image/b.png", png],
+    ]);
+    const archive = createKfBackupArchive(
+      [material("m-audio", "media/audio/a.webm"), material("m-image", "media/image/b.png")],
+      [], settings, [], media,
+    );
+    const restored = restoreKfBackup(archive);
+    expect(restored.manifest.stats.media).toBe(2);
+    expect(Array.from(restored.media.get("media/audio/a.webm") ?? [])).toEqual(Array.from(audio));
+    expect(Array.from(restored.media.get("media/image/b.png") ?? [])).toEqual(Array.from(png));
+  });
+
+  it("拒绝备份包里的越界路径，不还原到 media 之外", () => {
+    const media = new Map<string, Uint8Array>([
+      ["media/audio/ok.webm", audio],
+      ["../../etc/passwd", new Uint8Array([1, 2, 3])],
+      ["notes/readme.txt", new Uint8Array([4, 5])],
+    ]);
+    const restored = restoreKfBackup(createKfBackupArchive([], [], settings, [], media));
+    expect([...restored.media.keys()]).toEqual(["media/audio/ok.webm"]);
+  });
+
+  it("旧备份没有附件时 media 为空而不是报错", () => {
+    const restored = restoreKfBackup(createKfBackupArchive([], [], settings, []));
+    expect(restored.media.size).toBe(0);
+    expect(restored.manifest.stats.media).toBe(0);
+  });
+});

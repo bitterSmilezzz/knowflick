@@ -10,6 +10,8 @@ import { parseInk, type InkDocument } from "../../domain/ink";
 
 interface Props {
   entry: Entry;
+  /** 当前库目录：附件按这个目录读写，避免自定义库时写到别处。 */
+  dir?: string;
   readerRef?: RefObject<HTMLElement | null>;
   onSave: (title: string, text: string, category: string, tags: string[]) => Promise<void>;
   onArchive: () => Promise<void>;
@@ -24,6 +26,7 @@ interface Props {
 
 export function EntryInspector({
   entry,
+  dir,
   readerRef,
   onSave,
   onArchive,
@@ -70,6 +73,7 @@ export function EntryInspector({
   // 附件（图片 / 录音）按需读出来再转 blob：库目录不在 webview 的可读范围内，
   // 只能由宿主读字节、前端自己造 URL。
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [mediaMissing, setMediaMissing] = useState(false);
   useEffect(() => {
     const path = material?.mediaPath;
     if (!material) { setMediaUrl(null); return; }
@@ -82,7 +86,8 @@ export function EntryInspector({
     }
     let disposed = false;
     let created: string | null = null;
-    void readMedia(path)
+    setMediaMissing(false);
+    void readMedia(path, dir)
       .then(bytes => {
         if (disposed) return;
         const mime = material.sourceType === "image"
@@ -92,7 +97,7 @@ export function EntryInspector({
         created = URL.createObjectURL(blob);
         setMediaUrl(created);
       })
-      .catch(() => { if (!disposed) setMediaUrl(null); });
+      .catch(() => { if (!disposed) { setMediaUrl(null); setMediaMissing(true); } });
     return () => { disposed = true; if (created) URL.revokeObjectURL(created); };
   }, [material?.id, material?.mediaPath, material?.sourceType, material?.metadataJson]);
   /** 手写笔记的笔迹（存盘时内嵌一份），用于只读重绘，不做回写。 */
@@ -212,6 +217,11 @@ export function EntryInspector({
                 <div className="ws-prose" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{entry.text}</div>
               </>
             ) : <MarkdownRenderer text={entry.text} />}
+            {material?.mediaPath && !mediaUrl && mediaMissing ? (
+              <p className="ws-hint ws-attachment-missing" role="status">
+                附件没能读取（可能已被移动或删除）。正文与知识卡不受影响。
+              </p>
+            ) : null}
             {inkDoc ? (
               <figure className="ws-attachment" data-attachment="ink">
                 <InkPreview doc={inkDoc} />

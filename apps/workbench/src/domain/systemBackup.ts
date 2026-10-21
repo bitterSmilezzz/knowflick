@@ -16,6 +16,7 @@ export interface BackupManifest {
     cards: number;
     materials: number;
     artifacts: number;
+    media: number;
   };
   checksums: Record<string, string>;
 }
@@ -26,6 +27,8 @@ export interface RestoredBackup {
   materials: RawMaterial[];
   settings: SettingsFile | null;
   artifacts: Artifact[];
+  /** 附件字节，键是库内相对路径（如 media/audio/x.webm）。旧备份里为空。 */
+  media: Map<string, Uint8Array>;
 }
 
 /** 简易快速确定性哈希校验和（基于 FNV-1a） */
@@ -45,7 +48,8 @@ export function createKfBackupArchive(
   materials: RawMaterial[],
   cards: KnowledgeCard[],
   settingsFile: SettingsFile,
-  artifacts: Artifact[] = []
+  artifacts: Artifact[] = [],
+  media: Map<string, Uint8Array> = new Map()
 ): Uint8Array {
   const now = Date.now();
   const cardsStr = JSON.stringify(cards, null, 2);
@@ -64,6 +68,7 @@ export function createKfBackupArchive(
       cards: cards.length,
       materials: materials.length,
       artifacts: artifacts.length,
+      media: media.size,
     },
     checksums: {
       "cards.json": computeChecksum(cardsStr),
@@ -81,6 +86,9 @@ export function createKfBackupArchive(
     { path: "materials.json", data: materialsStr },
     { path: "settings.json", data: settingsStr },
     { path: "artifacts.json", data: artifactsStr },
+    // 附件（录音 / 图片 / 手写笔迹）随包带走：只带 mediaPath 字符串不带字节，
+    // 恢复到另一台机器后就是一批指向空处的引用。
+    ...[...media].map(([path, bytes]) => ({ path, data: bytes })),
   ]);
 }
 
@@ -88,7 +96,21 @@ export function createKfBackupArchive(
  * 纯客户端解包标准 ZIP 文件 (Store 模式)
  */
 export function unpackZipStore(buffer: Uint8Array): Map<string, string> {
-  const result = new Map<string, string>();
+  const bytes = unpackZipStoreBinary(buffer);
+  const decoder = new TextDecoder("utf-8");
+  const text = new Map<string, string>();
+  for (const [name, data] of bytes) text.set(name, decoder.decode(data));
+  return text;
+}
+
+/**
+ * 解包并保留原始字节。
+ *
+ * 附件是二进制的，用文本解码会把音视频搅坏，所以字节版是主力，
+ * 文本版只是给 json 条目用的薄封装。
+ */
+export function unpackZipStoreBinary(buffer: Uint8Array): Map<string, Uint8Array> {
+  const result = new Map<string, Uint8Array>();
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   const decoder = new TextDecoder("utf-8");
   let pos = 0;
@@ -108,8 +130,7 @@ export function unpackZipStore(buffer: Uint8Array): Map<string, string> {
 
     if (compMethod === 0) {
       // Store 模式 (无压缩)
-      const content = decoder.decode(buffer.subarray(dataStart, dataStart + compSize));
-      result.set(filename, content);
+      result.set(filename, buffer.slice(dataStart, dataStart + compSize));
     }
     pos = dataStart + compSize;
   }
@@ -151,6 +172,8 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
           cards: cards.length,
           materials: materials.length,
           artifacts: artifacts.length,
+          // 旧版单一 JSON 格式没有附件位。
+          media: 0,
         },
         checksums: {},
       },
@@ -158,11 +181,13 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
       materials,
       settings,
       artifacts,
+      media: new Map(),
     };
   }
 
   // 二进制 .kfbackup (ZIP)
   const files = unpackZipStore(input);
+  const rawFiles = unpackZipStoreBinary(input);
   const manifestRaw = files.get("manifest.json");
   if (!manifestRaw) {
     throw new Error("备份包缺少 manifest.json 元数据文件，可能不是有效的 KnowFlick 备份包");
@@ -198,12 +223,20 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
   const rawArtifacts = JSON.parse(artifactsRaw) as unknown[];
   const artifacts = Array.isArray(rawArtifacts) ? (rawArtifacts as Artifact[]) : [];
 
+  // 附件只认 manifest 里声明的库内相对路径，避免备份包里夹带任意路径被还原。
+  const media = new Map<string, Uint8Array>();
+  for (const [name, data] of rawFiles) {
+    if (!/^media\/(audio|image|ink)\/[A-Za-z0-9._-]+$/.test(name)) continue;
+    media.set(name, data);
+  }
+
   return {
     manifest,
     cards,
     materials,
     settings,
     artifacts,
+    media,
   };
 }
 
@@ -212,9 +245,10 @@ export function downloadKfBackup(
   materials: RawMaterial[],
   cards: KnowledgeCard[],
   settingsFile: SettingsFile,
-  artifacts: Artifact[] = []
+  artifacts: Artifact[] = [],
+  media: Map<string, Uint8Array> = new Map()
 ): void {
-  const bytes = createKfBackupArchive(materials, cards, settingsFile, artifacts);
+  const bytes = createKfBackupArchive(materials, cards, settingsFile, artifacts, media);
   // 复制到独立的 ArrayBuffer：createZipArchive 返回的缓冲区类型是 ArrayBufferLike，
   // 在 TS 的 BlobPart 约束下不能直接当 BlobPart 用（SharedArrayBuffer 不兼容）。
   const copy = new Uint8Array(bytes.length);

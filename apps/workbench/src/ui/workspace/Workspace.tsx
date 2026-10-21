@@ -18,6 +18,7 @@ import {
   asrModelStatus,
   asrTranscribe,
   inShell,
+  readMedia,
   saveMedia,
   pickAudioFile,
   type RawMaterial,
@@ -594,7 +595,7 @@ export function Workspace() {
       let mediaPath: string | null = null;
       let dataUrl: string | null = null;
       if (inShell()) {
-        mediaPath = await saveMedia("image", mime, bytes);
+        mediaPath = await saveMedia("image", mime, bytes, dir);
       } else {
         let binary = "";
         for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -771,13 +772,30 @@ export function Workspace() {
    * 转写文本同时作为正文与标题来源；不在这里顺手调用大模型出卡——
    * 转写只是入口，要不要提炼由用户在素材页决定。
    */
+  /**
+   * 读出本机附件字节，供打包带走。
+   *
+   * 只在桌面端有读取能力；单条失败（文件被移动、权限）只跳过那一条，
+   * 不能让整份备份导不出来。
+   */
+  const collectBackupMedia = async (items: RawMaterial[]): Promise<Map<string, Uint8Array>> => {
+    const media = new Map<string, Uint8Array>();
+    if (!inShell()) return media;
+    for (const m of items) {
+      if (!m.mediaPath) continue;
+      if (media.has(m.mediaPath)) continue;
+      try { media.set(m.mediaPath, new Uint8Array(await readMedia(m.mediaPath, dir))); } catch { /* 跳过缺失附件 */ }
+    }
+    return media;
+  };
+
   /** 手写笔记：笔迹存成素材附件（JSON），标题自动生成，进收件箱等整理。 */
   const saveInkNote = async (doc: InkDocument) => {
     const json = JSON.stringify(doc);
     const bytes = new TextEncoder().encode(json);
     let mediaPath: string | null = null;
     if (inShell()) {
-      try { mediaPath = await saveMedia("ink", "application/json", bytes); }
+      try { mediaPath = await saveMedia("ink", "application/json", bytes, dir); }
       catch (err) { throw new Error(`笔迹没能存到本机：${err instanceof Error ? err.message : String(err)}`); }
     }
     const title = inkTitle(doc);
@@ -803,7 +821,7 @@ export function Workspace() {
     }
     const bytes = new Uint8Array(await blob.arrayBuffer());
     let mediaPath: string | null = null;
-    try { mediaPath = await saveMedia("audio", blob.type || "audio/webm", bytes); }
+    try { mediaPath = await saveMedia("audio", blob.type || "audio/webm", bytes, dir); }
     catch (err) { throw new Error(`录音没能存到本机：${err instanceof Error ? err.message : String(err)}`); }
     let transcript = "";
     let transcriptNote = "";
@@ -918,10 +936,29 @@ export function Workspace() {
         const buffer = new Uint8Array(await chosen.arrayBuffer());
         const isZip = /\.kfbackup$/i.test(chosen.name) || (buffer[0] === 0x50 && buffer[1] === 0x4b);
         const restored = restoreKfBackup(isZip ? buffer : new TextDecoder().decode(buffer));
+        // 附件先写回本机再落素材行：素材里的 mediaPath 是库内相对路径，
+        // 换一台机器后必须重新落盘，否则就是一批指向空处的引用。
+        const restoredMedia = new Map<string, string>();
+        for (const [rel, bytes] of restored.media) {
+          try {
+            // media 只接受白名单 MIME，必须按扩展名还原，否则每一条都会被判失败。
+            const ext = rel.split(".").pop()?.toLowerCase() ?? "";
+            const mime = ({
+              webm: "audio/webm", ogg: "audio/ogg", m4a: "audio/mp4", wav: "audio/wav",
+              png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
+              gif: "image/gif", heic: "image/heic", json: "application/json",
+            } as Record<string, string>)[ext];
+            const kind = rel.startsWith("media/image/") ? "image" : rel.startsWith("media/ink/") ? "ink" : "audio";
+            if (!mime) return;
+            const saved = await saveMedia(kind as "audio" | "ink" | "image", mime, bytes, dir);
+            restoredMedia.set(rel, saved);
+          } catch { /* 单个附件失败不阻断整份备份恢复 */ }
+        }
         let total = 0;
         for (const m of restored.materials) {
           if (!m.id || typeof m.rawText !== "string" || !m.title) continue;
-          await updateMaterial({ ...m, mediaSizeBytes: m.mediaSizeBytes || 0 });
+          const mediaPath = m.mediaPath ? restoredMedia.get(m.mediaPath) ?? null : m.mediaPath;
+          await updateMaterial({ ...m, mediaPath, mediaSizeBytes: m.mediaSizeBytes || 0 });
           total++;
         }
         for (const c of restored.cards) {
@@ -1031,22 +1068,27 @@ export function Workspace() {
               title="导出完整备份包 (.kfbackup)"
               disabled={loading || busy}
               onClick={() => {
-                if (!inShell()) {
-                  downloadKfBackup(materials, cards, file);
-                  setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片与设置，不含 API 密钥");
-                  return;
-                }
-                void dbListArtifacts(1000, dir)
-                  .then((arts) => {
-                    downloadKfBackup(materials, cards, file, arts);
+                // 附件字节必须随包带走，所以导出是异步的；取附件失败只丢附件，
+                // 不能让整份备份导不出来。
+                void (async () => {
+                  const media = await collectBackupMedia(materials);
+                  if (!inShell()) {
+                    downloadKfBackup(materials, cards, file, [], media);
+                    setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片、设置与附件，不含 API 密钥");
+                    return;
+                  }
+                  try {
+                    const arts = await dbListArtifacts(1000, dir);
+                    downloadKfBackup(materials, cards, file, arts, media);
                     setNotice(
-                      `已导出完整备份包 (.kfbackup)：${cards.length} 张卡片、${materials.length} 份素材、${arts.length} 条认知产物，不含 API 密钥`
+                      `已导出完整备份包 (.kfbackup)：${cards.length} 张卡片、${materials.length} 份素材、` +
+                        `${arts.length} 条认知产物、${media.size} 个附件，不含 API 密钥`
                     );
-                  })
-                  .catch(() => {
-                    downloadKfBackup(materials, cards, file);
-                    setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片与设置，不含 API 密钥");
-                  });
+                  } catch {
+                    downloadKfBackup(materials, cards, file, [], media);
+                    setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片、设置与附件，不含 API 密钥");
+                  }
+                })();
               }}
             >
               <Icon name="download" />
@@ -1413,6 +1455,7 @@ export function Workspace() {
           {selected && !loading ? (
             <EntryInspector
               key={`${selected.kind}:${selected.id}`}
+              dir={dir}
               entry={selected}
               readerRef={readerRef}
               busy={busy}
@@ -1503,13 +1546,19 @@ export function Workspace() {
                   onExportMarkdown={() => downloadMarkdownVault(materials, cards)}
                   onExportKfBackup={() => {
                     // 认知产物（Layer 3）只在桌面端的 SQLite 里有；浏览器体验模式跳过。
-                    if (!inShell()) {
-                      downloadKfBackup(materials, cards, file);
-                      return;
-                    }
-                    void dbListArtifacts(1000, dir)
-                      .then((arts) => downloadKfBackup(materials, cards, file, arts))
-                      .catch(() => downloadKfBackup(materials, cards, file));
+                    void (async () => {
+                      const media = await collectBackupMedia(materials);
+                      if (!inShell()) {
+                        downloadKfBackup(materials, cards, file, [], media);
+                        return;
+                      }
+                      try {
+                        const arts = await dbListArtifacts(1000, dir);
+                        downloadKfBackup(materials, cards, file, arts, media);
+                      } catch {
+                        downloadKfBackup(materials, cards, file, [], media);
+                      }
+                    })();
                   }}
                   onRestoreKfBackup={() => restoreRef.current?.click()}
                   onSave={async (next, key, enabled) => {
