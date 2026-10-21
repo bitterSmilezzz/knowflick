@@ -88,7 +88,36 @@
 `[materials, cards, collection]` 记忆的，不会随每次击键重算。
 实测 200/1000/3000 条打开到可交互仍是 ~357 ms，与改动前一致，无回归。
 
-## 六、实测后判定**不用动**的地方
+## 六、已修：温故复习的两处自相矛盾
+
+查复习页时发现两件事叠在一起：
+
+1. **`dueOnly` 默认 false**，复习页把所有卡都排进队列——「今日待复习 0」下面紧接着
+   出现一张待评分的卡，计数与界面自相矛盾，FSRS 排期也形同虚设。空态有文案，
+   但**没有任何出口**。
+2. 只把 `dueOnly` 打开会引入更严重的问题：`reviewDay` 对「从未看过」的卡返回 `null`，
+   新卡因此**永远不算到期**——新建的卡再也进不了复习队列，库越攒越多却一次都没复习过。
+
+修法：
+
+- 新增 `reviewQueue` = **到期卡在前、从未过目的新卡在后**（两类含义不同：到期是
+  「该看了」，新卡是「还没看过」），并受上限约束（默认 20）。
+- 复习页改用 `reviewQueue`；空态文案说明「记忆算法已把 N 张卡排到之后」，
+  并给显式出口「仍要复习全部（额外练习）」——只有额外练习才用全库队列。
+
+## 七、工具：打包安装一条链
+
+连续三次 `tauri build --bundles dmg` 都因上一次失败留下的 `/Volumes/dmg.*`
+残留挂载而失败。现在用 `./tools/install_workbench_macos.sh [--no-build]`
+一条命令做完：清理残留挂载 → 退掉运行中的实例 → 打包 → 拷到临时名再替换 →
+trap 兜底卸载 → 确认进程真的起来。
+
+写脚本时踩到仓库已有 linter 覆盖的坑：`$TARGET（` 里的全角括号会被 bash 并进
+变量名，报 `TARGET<0xEF>: unbound variable`，只在 UTF-8 locale 下复现。
+已改用 `${TARGET}`，并把 `tools/lint_shell_vars.sh` 加进 `verify_workbench.sh`
+（原来只有 android.yml 跑），本地就能挡住。
+
+## 八、实测后判定**不用动**的地方
 
 避免拍脑袋优化，这两处是量过才下的结论：
 
@@ -100,7 +129,7 @@
 列表本来就有 `visibleCount` 分页，不是静默截断——这条也进了门禁断言
 （只有真被截断时才要求出现「加载更多」）。
 
-## 七、边界
+## 九、边界
 
 1. **去重是精确匹配**，不是模糊相似度：改一个字就是新内容。想合并相近内容得靠后续的整理功能。
 2. **图片不参与全文检索**：没有 OCR，图片素材按标题与文件名可搜。
@@ -108,12 +137,13 @@
 4. **首屏 60 行是写死的**，没有按窗口高度自适应。
 5. 真机（Tauri）里只确认了界面与命令存在，**录音与图片附件的真机链路尚未逐步点过**。
 
-## 八、验证
+## 十、验证
 
 ```
-./tools/verify_workbench.sh          前端 248 项 + Rust 74 项
+./tools/verify_workbench.sh          前端 252 项 + Rust 74 项 + shell lint
 node tools/import_ui_smoke.mjs       17 项（坏文件隔离 / 图片 / PPT / 去重 / 跳过说明）
 node tools/taste_usability_gate.mjs  16 项（含搜索命中摘要与第二条链接）
+node tools/review_ui_smoke.mjs      9 项（复习计划 / 空态出口 / 评分写回）
 node tools/notes_ui_smoke.mjs        21 项（手写与语音）
 node tools/usability_journey_smoke.mjs 12 项
 node tools/mailbox_ui_smoke.mjs      45 项
