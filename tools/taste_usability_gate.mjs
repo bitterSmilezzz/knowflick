@@ -114,7 +114,11 @@ const SEED = `(() => {
   const settings = { providerId:'deepseek', baseURL:'https://api.deepseek.com', model:'deepseek-chat',
     autoGenerate:true, enableAI:true, showAIMark:true, preferredCategories:[],
     paperTheme:'RICE_PAPER', soundEffectsEnabled:true, reviewPluginEnabled:true };
-  localStorage.setItem('knowflick.workspace.v1', JSON.stringify({ materials: [], cards, settings: JSON.stringify(settings) }));
+  // One material so the reader (and its collapsed 提炼 entry) renders too.
+  const materials = [{ id: 'taste-m0', sourceType: 'manual', title: '一条待整理的素材',
+    sourceUrl: null, rawText: '素材正文，用于检查阅读区的行宽与提炼入口。', contentHash: '',
+    metadataJson: '{}', inboxStatus: 'inbox', createdAt: now, updatedAt: now }];
+  localStorage.setItem('knowflick.workspace.v1', JSON.stringify({ materials, cards, settings: JSON.stringify(settings) }));
   return 1;
 })()`;
 
@@ -125,6 +129,30 @@ try {
   await browser("eval", SEED);
   await browser("open", url);
   await new Promise((r) => setTimeout(r, 1200));
+
+  // ---- 阅读区默认只占一行，提炼入口可展开 ----
+  // 先选一条素材，阅读区才会渲染。
+  await browser("eval", "(() => { const row = document.querySelector('.ws-entry'); if (row) row.click(); return true; })()");
+  await new Promise((r) => setTimeout(r, 400));
+  const reader = await evaluate(`(() => {
+    const box = document.querySelector('[data-material-actions]');
+    if (!box) return { present: false };
+    const summary = box.querySelector('summary');
+    const actions = box.querySelector('.ws-material-box-actions');
+    return {
+      present: true,
+      collapsed: !box.open,
+      summaryVisible: !!summary && summary.getBoundingClientRect().height > 0,
+      summaryFocusable: summary?.tabIndex >= 0,
+      actionsHiddenWhenCollapsed: !!actions && actions.getBoundingClientRect().height === 0,
+    };
+  })()`);
+  assert.ok(reader.present, "选中素材后阅读区应有提炼入口");
+  assert.ok(reader.collapsed, "提炼入口默认收起，阅读时只占一行");
+  assert.ok(reader.summaryVisible, "收起的提炼入口仍然可见");
+  assert.ok(reader.summaryFocusable, "提炼入口可用键盘聚焦");
+  pass("提炼入口默认收成一行且键盘可达");
+
 
   // ---- 有数据：对比度与点击目标 ----
   const light = await evaluate(AUDIT_JS);
@@ -229,6 +257,19 @@ try {
   })()`);
   assert.ok(navClip.ok, `侧栏最后一行被裁切 ${navClip.over}px`);
   pass("侧栏滚到底时最后一行完整可见");
+
+  // ---- 侧栏只讲四段主线，子筛选折叠不抢层级 ----
+  const nav = await evaluate(`(() => ({
+    groups: [...document.querySelectorAll('.ws-group-label')].map(e => e.textContent.trim()),
+    topLevel: [...document.querySelectorAll('.ws-nav-group > .ws-nav-row:not(.ws-nav-details .ws-nav-row)')].map(e => e.textContent.trim()),
+    collapsible: [...document.querySelectorAll('.ws-nav-summary')].map(e => e.textContent.trim()),
+  }))()`);
+  assert.deepEqual(nav.groups, ["来源", "收件箱", "知识库", "应用"], `侧栏应按四段主线分组：${nav.groups}`);
+  pass("侧栏按四段主线分组");
+  assert.ok(nav.topLevel.length <= 6, `一级入口应收敛在六个以内：${nav.topLevel}`);
+  pass(`一级入口收敛为 ${nav.topLevel.length} 个`);
+  assert.ok(nav.collapsible.some(label => label.includes("筛选")), `收藏/归档应折叠为知识库筛选：${nav.collapsible}`);
+  pass("收藏/归档折叠为知识库筛选");
 
   // ---- 无横向溢出 ----
   const overflow = await evaluate("document.documentElement.scrollWidth - window.innerWidth");

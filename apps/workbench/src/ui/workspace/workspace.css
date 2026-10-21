@@ -57,6 +57,60 @@ select {
   grid-template-columns: 0 var(--list-w, 320px) minmax(0, 1fr);
 }
 
+/* ---------- collapsible nav sections ---------- */
+
+/* 收藏/归档/分类是「知识库」的筛选，不是并列的一级入口：折叠起来，
+   需要时展开，主线四段才看得清。 */
+.ws-nav-details {
+  display: flex;
+  flex-direction: column;
+}
+.ws-nav-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  height: 26px;
+  font-size: var(--text-meta);
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-control);
+}
+.ws-nav-summary::-webkit-details-marker { display: none; }
+.ws-nav-summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform var(--duration) var(--ease);
+}
+.ws-nav-details[open] > .ws-nav-summary::before { transform: rotate(90deg); }
+.ws-nav-summary:hover { background: var(--hover); color: var(--ink); }
+.ws-nav-summary .ws-count { margin-left: auto; }
+.ws-nav-details > .ws-nav-row { padding-left: 22px; }
+
+/* 来源段内的动作（导入文件）：与导航行区分开，一级入口只数目的地。 */
+.ws-nav-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  height: var(--control-h);
+  min-height: var(--control-h);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--duration) var(--ease), color var(--duration) var(--ease);
+}
+.ws-nav-action:hover { background: var(--hover); color: var(--ink); }
+
 /* ---------- scrollbars ---------- */
 /* WebKit 的默认滚动条在深色主题里是亮白的，一眼像渲染 bug；
    统一用 token 画细条，跟随主题。 */
@@ -829,37 +883,55 @@ select {
 }
 
 /* Material transformation card inside reader */
+/* 提炼入口默认收成一行：阅读时只占一条，需要时才展开成完整操作区。 */
 .ws-material-box {
-  margin-top: 28px;
-  padding: 16px;
+  margin-top: 24px;
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--sunken);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
 }
 
-.ws-material-box-info {
+.ws-material-summary {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  color: var(--ink);
-}
-
-.ws-material-box-info strong {
-  display: block;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  min-height: var(--control-h-lg);
   font-size: 13px;
   font-weight: 600;
-  line-height: 1.4;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
 }
-
-.ws-material-box-info p {
-  margin: 2px 0 0;
+.ws-material-summary::-webkit-details-marker { display: none; }
+.ws-material-summary::after {
+  content: "";
+  margin-left: auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid var(--muted);
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform var(--duration) var(--ease);
+}
+.ws-material-box[open] > .ws-material-summary::after { transform: rotate(90deg); }
+.ws-material-summary:hover { background: var(--hover); }
+.ws-material-summary > svg { color: var(--muted); flex-shrink: 0; }
+.ws-material-summary > em {
+  font-style: normal;
+  font-weight: 400;
   font-size: var(--text-meta);
   color: var(--muted);
-  line-height: 1.5;
+  margin-left: 6px;
 }
+.ws-material-box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+.ws-material-box-body p { margin: 0; }
 
 .ws-material-box-actions {
   display: flex;

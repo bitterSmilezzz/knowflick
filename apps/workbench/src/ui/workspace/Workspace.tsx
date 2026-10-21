@@ -872,15 +872,6 @@ export function Workspace() {
             </button>
             <button
               className="ws-icon-button"
-              aria-label="导入文件"
-              title="导入文件"
-              disabled={loading || busy}
-              onClick={() => importRef.current?.click()}
-            >
-              <Icon name="upload" />
-            </button>
-            <button
-              className="ws-icon-button"
               aria-label="导出备份"
               title="导出完整备份包 (.kfbackup)"
               disabled={loading || busy}
@@ -921,81 +912,110 @@ export function Workspace() {
           <kbd>⌘N</kbd>
         </button>
         <div className="ws-nav-scroll">
-          <nav className="ws-nav-group" aria-label="知识库栏目">
-            {(["inbox", "library", "favorites", "archive"] as Collection[]).map((id, i) => (
-              <button
-                key={id}
-                className="ws-nav-row"
-                aria-current={page === id ? "page" : undefined}
-                onClick={() => navigate(id)}
-              >
-                <Icon name={["inbox", "library", "star", "archive"][i]} />
-                <span>{collectionNames[id]}</span>
-                <span className="ws-count">{counts[id]}</span>
-              </button>
-            ))}
+          {/* 侧栏只回答一个问题：我在流水线的哪一段。
+              「来源 → 收件箱 → 知识库 → 应用」是产品主线；收藏/归档/分类是
+              库的筛选条件，折叠在知识库下面，不再和主线抢同一层。 */}
+          <nav className="ws-nav-group" aria-label="来源">
+            <p className="ws-group-label">来源</p>
             <button className="ws-nav-row" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigate("mail")}>
               <Icon name="mail" /><span>邮箱</span>
               <span className="ws-count">{materials.filter(m => m.sourceType === "email" && m.inboxStatus === "inbox").length}</span>
             </button>
+            <button className="ws-nav-row" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => navigate("subscriptions")}>
+              <Icon name="inbox" /><span>订阅源</span>
+              <span className="ws-count">{subscriptions.length}</span>
+            </button>
+            {/* 导入是「来源」段里的动作，不是又一个目的地；样式区别于导航行，
+               一级入口因此仍然只数目的地。 */}
+            <button className="ws-nav-action" onClick={() => importRef.current?.click()} disabled={loading || busy}>
+              <Icon name="upload" /><span>导入文件</span>
+            </button>
           </nav>
 
-          <p className="ws-group-label">分类</p>
-          <nav className="ws-nav-group" aria-label="分类">
-            {tags.slice(0, 8).map((t) => (
+          <nav className="ws-nav-group" aria-label="收件箱">
+            <p className="ws-group-label">收件箱</p>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "inbox" ? "page" : undefined}
+              onClick={() => navigate("inbox")}
+            >
+              <Icon name="inbox" /><span>收件箱</span>
+              <span className="ws-count">{counts.inbox}</span>
+            </button>
+          </nav>
+
+          <nav className="ws-nav-group" aria-label="知识库">
+            <p className="ws-group-label">知识库</p>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "library" ? "page" : undefined}
+              onClick={() => navigate("library")}
+            >
+              <Icon name="library" /><span>全部知识</span>
+              <span className="ws-count">{counts.library}</span>
+            </button>
+            {/* 收藏与归档是「库」的筛选，不是并列的一级目的地。 */}
+            <details className="ws-nav-details" open={page === "favorites" || page === "archive"}>
+              <summary className="ws-nav-summary">
+                筛选
+                <span className="ws-count">{counts.favorites + counts.archive}</span>
+              </summary>
               <button
-                key={t}
                 className="ws-nav-row"
-                aria-current={tag === t ? "page" : undefined}
-                onClick={() => {
-                  // 走 navigate 而不是只改 page/tag：否则从「收藏」等集合点进来时
-                  // selectedId 留着上一屏的条目，右栏面包屑会显示成「收藏 / 计算机」。
-                  navigate("library");
-                  setTag(tag === t ? "" : t);
-                }}
+                aria-current={page === "favorites" ? "page" : undefined}
+                onClick={() => navigate("favorites")}
               >
-                <Icon name="folder" size={14} />
-                <span
-                  style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                >
-                  {t}
-                </span>
-                <span className="ws-count">{tagCounts.get(t) ?? 0}</span>
+                <Icon name="star" /><span>收藏</span>
+                <span className="ws-count">{counts.favorites}</span>
               </button>
-            ))}
-            {tags.length === 0 ? (
-              <p className="ws-group-label" style={{ margin: "0 9px", lineHeight: 1.8 }}>
-                知识卡的分类会出现在这里
-              </p>
+              <button
+                className="ws-nav-row"
+                aria-current={page === "archive" ? "page" : undefined}
+                onClick={() => navigate("archive")}
+              >
+                <Icon name="archive" /><span>已归档</span>
+                <span className="ws-count">{counts.archive}</span>
+              </button>
+            </details>
+            {tags.length ? (
+              <details className="ws-nav-details">
+                <summary className="ws-nav-summary">分类<span className="ws-count">{tags.length}</span></summary>
+                {tags.slice(0, 8).map((t) => (
+                  <button
+                    key={t}
+                    className="ws-nav-row"
+                    aria-current={tag === t ? "page" : undefined}
+                    onClick={() => {
+                      // 走 navigate 而不是只改 page/tag：否则从「收藏」等集合点进来时
+                      // selectedId 留着上一屏的条目，右栏面包屑会显示成「收藏 / 计算机」。
+                      navigate("library");
+                      setTag(tag === t ? "" : t);
+                    }}
+                  >
+                    <Icon name="folder" size={14} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t}</span>
+                    <span className="ws-count">{tagCounts.get(t) ?? 0}</span>
+                  </button>
+                ))}
+              </details>
             ) : null}
           </nav>
 
-          <p className="ws-group-label">回顾</p>
-          <nav className="ws-nav-group" aria-label="回顾">
+          <nav className="ws-nav-group" aria-label="应用">
+            <p className="ws-group-label">应用</p>
             <button
               className="ws-nav-row"
               aria-current={page === "brain" ? "page" : undefined}
               onClick={() => navigate("brain")}
             >
-              <Icon name="ask" />
-              <span>知识问答</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "subscriptions" ? "page" : undefined}
-              onClick={() => navigate("subscriptions")}
-            >
-              <Icon name="inbox" />
-              <span>订阅源</span>
-              <span className="ws-count">{subscriptions.length}</span>
+              <Icon name="ask" /><span>知识问答</span>
             </button>
             <button
               className="ws-nav-row"
               aria-current={page === "briefing" ? "page" : undefined}
               onClick={() => navigate("briefing")}
             >
-              <Icon name="brief" />
-              <span>认知简报</span>
+              <Icon name="brief" /><span>认知简报</span>
             </button>
             {reviewEnabled ? (
               <button
@@ -1003,8 +1023,7 @@ export function Workspace() {
                 aria-current={page === "review" ? "page" : undefined}
                 onClick={() => navigate("review")}
               >
-                <Icon name="layers" />
-                <span>温故复习</span>
+                <Icon name="layers" /><span>温故复习</span>
               </button>
             ) : null}
           </nav>
@@ -1288,8 +1307,8 @@ export function Workspace() {
                         同一动作同一屏出现两次是重复 CTA。这里补的是用户还没看到的入口。 */}
                     {!(query.trim() || tag) ? (
                       <div className="ws-empty-actions">
-                        <button className="ws-bordered" type="button" onClick={() => importRef.current?.click()}>
-                          导入文件
+                        <button className="ws-bordered" type="button" onClick={() => navigate("mail")}>
+                          连接邮箱
                         </button>
                         <button className="ws-bordered" type="button" onClick={() => navigate("subscriptions")}>
                           添加订阅

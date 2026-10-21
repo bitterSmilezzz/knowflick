@@ -188,30 +188,33 @@ export function EntryInspector({
             ) : null}
 
             {!isCard ? (
-              <div className="ws-material-box">
-                <div className="ws-material-box-info">
-                  <Icon name="layers" size={16} />
-                  <div>
-                    <strong>从素材提炼知识</strong>
-                    <p>
-                      保留原始记录，将关键结论沉淀为原子知识卡（{estimateTokenCount(entry.text).summary}）。
-                    </p>
+              /* 提炼是「应用」阶段的事，读的时候不该一直占着一整块版面。
+                 默认收成一行动作条，需要时再展开说明与选项。 */
+              <details className="ws-material-box" data-material-actions="">
+                <summary className="ws-material-summary">
+                  <Icon name="layers" size={15} />
+                  <span>提炼成知识卡</span>
+                  <em>{estimateTokenCount(entry.text).summary}</em>
+                </summary>
+                <div className="ws-material-box-body">
+                  <p className="ws-hint">
+                    保留原始记录，把关键结论沉淀为原子知识卡。
+                  </p>
+                  <div className="ws-material-box-actions">
+                    <button className="ws-primary" disabled={busy} onClick={() => void run(onConvert)}>
+                      <Icon name="card" size={14} /> 保存为知识卡
+                    </button>
+                    <button className="ws-bordered" disabled={busy} onClick={() => (aiReady ? void run(onAi) : onSettings())}>
+                      <Icon name="ask" size={14} /> {aiReady ? "AI 提炼卡片" : "配置 AI"}
+                    </button>
+                    {entry.url ? (
+                      <button className="ws-bordered" disabled={busy} onClick={() => void run(onFetch)}>
+                        <Icon name="note" size={14} /> 抓取正文
+                      </button>
+                    ) : null}
                   </div>
                 </div>
-                <div className="ws-material-box-actions">
-                  <button className="ws-primary" disabled={busy} onClick={() => void run(onConvert)}>
-                    <Icon name="card" size={14} /> 保存为知识卡
-                  </button>
-                  <button className="ws-bordered" disabled={busy} onClick={() => (aiReady ? void run(onAi) : onSettings())}>
-                    <Icon name="ask" size={14} /> {aiReady ? "AI 提炼卡片" : "配置 AI"}
-                  </button>
-                  {entry.url ? (
-                    <button className="ws-bordered" disabled={busy} onClick={() => void run(onFetch)}>
-                      <Icon name="note" size={14} /> 抓取正文
-                    </button>
-                  ) : null}
-                </div>
-              </div>
+              </details>
             ) : null}
           </div>
         )}
