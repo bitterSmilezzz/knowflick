@@ -120,10 +120,20 @@ export async function completeChat(endpoint: string, apiKey: string, body: strin
   }
   let response: Response;
   try {
-    response = await fetch(endpoint, { method: "POST", headers, body });
+    // 没有超时的请求会让界面一直停在「处理中」——用户既看不出在等什么，
+    // 也没有退出的办法。桌面端 reqwest 已有 120 秒超时，这里对齐。
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body,
+      signal: AbortSignal.timeout(120_000),
+    });
   } catch (err) {
+    const timedOut = err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError");
     throw new Error(
-      `浏览器模式无法直接请求该服务商（跨域被拒绝）：${String(err)}。请在桌面客户端使用，或换一个允许跨域的服务商。`
+      timedOut
+        ? "模型 120 秒没有响应，已中止。可以先检查网络或换一个更小的模型，已保存的内容不受影响。"
+        : `浏览器模式无法直接请求该服务商（跨域被拒绝）：${String(err)}。请在桌面客户端使用，或换一个允许跨域的服务商。`
     );
   }
   const text = await response.text();
@@ -331,7 +341,7 @@ export function asrTranscribe(path: string, model?: string): Promise<Transcripti
  * 保存一条笔记附件（录音 / 手写），返回库内相对路径。
  * 文件名由宿主生成，前端只决定类型与内容。
  */
-export function saveMedia(kind: "audio" | "ink", mime: string, data: Uint8Array): Promise<string> {
+export function saveMedia(kind: "audio" | "ink" | "image", mime: string, data: Uint8Array): Promise<string> {
   return invoke("save_media", { dir: null, kind, mime, data: Array.from(data) });
 }
 

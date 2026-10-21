@@ -15,11 +15,14 @@ use std::path::{Path, PathBuf};
 pub const MAX_AUDIO: usize = 64 * 1024 * 1024;
 /// Ink strokes are vector JSON; this is generous but still bounded.
 pub const MAX_INK: usize = 8 * 1024 * 1024;
+/// Screenshots and photos pasted into the library.
+pub const MAX_IMAGE: usize = 16 * 1024 * 1024;
 
 fn kind_dir(dir: &Path, kind: &str) -> Result<PathBuf, String> {
     let folder = match kind {
         "audio" => "audio",
         "ink" => "ink",
+        "image" => "image",
         _ => return Err("Unsupported media kind".into()),
     };
     Ok(dir.join("media").join(folder))
@@ -33,6 +36,11 @@ fn extension(kind: &str, mime: &str) -> Result<&'static str, String> {
         ("audio", "audio/mp4") => Ok("m4a"),
         ("audio", "audio/wav") | ("audio", "audio/x-wav") => Ok("wav"),
         ("ink", "application/json") => Ok("json"),
+        ("image", "image/png") => Ok("png"),
+        ("image", "image/jpeg") => Ok("jpg"),
+        ("image", "image/webp") => Ok("webp"),
+        ("image", "image/gif") => Ok("gif"),
+        ("image", "image/heic") => Ok("heic"),
         _ => Err("Unsupported media type".into()),
     }
 }
@@ -40,7 +48,11 @@ fn extension(kind: &str, mime: &str) -> Result<&'static str, String> {
 /// Writes one note attachment and returns its path relative to the library.
 pub fn save_media(dir: &Path, kind: &str, mime: &str, bytes: &[u8]) -> Result<String, String> {
     let ext = extension(kind, mime)?;
-    let limit = if kind == "audio" { MAX_AUDIO } else { MAX_INK };
+    let limit = match kind {
+        "audio" => MAX_AUDIO,
+        "image" => MAX_IMAGE,
+        _ => MAX_INK,
+    };
     if bytes.is_empty() {
         return Err("Nothing to save: the recording or ink is empty".into());
     }
@@ -130,6 +142,16 @@ mod tests {
         let rel = save_media(&dir, "ink", "application/json", br#"{"strokes":[]}"#).expect("save");
         assert!(rel.starts_with("media/ink/") && rel.ends_with(".json"));
         assert_eq!(read_media(&dir, &rel).expect("read"), br#"{"strokes":[]}"#);
+    }
+
+    #[test]
+    fn saves_images_with_an_allowed_extension() {
+        let dir = temp_dir("image");
+        let rel = save_media(&dir, "image", "image/png", b"\x89PNG").expect("save");
+        assert!(rel.starts_with("media/image/") && rel.ends_with(".png"), "{rel}");
+        assert_eq!(read_media(&dir, &rel).expect("read"), b"\x89PNG");
+        // A non-image MIME under the image kind must still be refused.
+        assert!(save_media(&dir, "image", "application/pdf", b"x").is_err());
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { Entry } from "./model";
 import { Icon, sourceLabel } from "./Icon";
-import { openExternalUrl, type RawMaterial } from "../../shell/store";
+import { openExternalUrl, readMedia, type RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { estimateTokenCount } from "../../domain/ingest";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -66,6 +66,27 @@ export function EntryInspector({
   const card = isCard ? (entry.original as KnowledgeCard) : null;
   const material = !isCard ? (entry.original as RawMaterial) : null;
   const mail = material ? mailMetadata(material) : null;
+  // 附件（图片 / 录音）按需读出来再转 blob：库目录不在 webview 的可读范围内，
+  // 只能由宿主读字节、前端自己造 URL。
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const path = material?.mediaPath;
+    if (!path || !material) { setMediaUrl(null); return; }
+    let disposed = false;
+    let created: string | null = null;
+    void readMedia(path)
+      .then(bytes => {
+        if (disposed) return;
+        const mime = material.sourceType === "image"
+          ? (() => { try { return JSON.parse(material.metadataJson).mime as string; } catch { return "image/png"; } })()
+          : (() => { try { return JSON.parse(material.metadataJson).mime as string; } catch { return "audio/webm"; } })();
+        const blob = new Blob([new Uint8Array(bytes)], { type: mime || "application/octet-stream" });
+        created = URL.createObjectURL(blob);
+        setMediaUrl(created);
+      })
+      .catch(() => { if (!disposed) setMediaUrl(null); });
+    return () => { disposed = true; if (created) URL.revokeObjectURL(created); };
+  }, [material?.id, material?.mediaPath, material?.sourceType, material?.metadataJson]);
   const archived = material ? material.inboxStatus !== "inbox" : false;
   const meta = sourceLabel(isCard ? "card" : material?.sourceType ?? "", entry.url);
 
@@ -177,6 +198,18 @@ export function EntryInspector({
                 <div className="ws-prose" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{entry.text}</div>
               </>
             ) : <MarkdownRenderer text={entry.text} />}
+            {material?.mediaPath && mediaUrl ? (
+              <figure className="ws-attachment" data-attachment={material.sourceType}>
+                {material.sourceType === "image" ? (
+                  <img src={mediaUrl} alt={material.title} className="ws-attachment-image" />
+                ) : (
+                  <audio controls src={mediaUrl} className="ws-attachment-audio" aria-label="录音回放" />
+                )}
+                <figcaption className="ws-hint">
+                  {material.sourceType === "image" ? "图片素材" : "录音"} · 保存在本机
+                </figcaption>
+              </figure>
+            ) : null}
             {entry.url ? (
               <button
                 className="ws-source-link"

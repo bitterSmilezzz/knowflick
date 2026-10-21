@@ -112,6 +112,8 @@ export function Workspace() {
   const [notePad, setNotePad] = useState<"ink" | "voice" | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // 长操作（AI 归纳、转写、导入）要让用户看见「在做什么」，而不只是按钮变灰。
+  const [busyLabel, setBusyLabel] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<KnowledgeCard[]>([]);
@@ -386,15 +388,17 @@ export function Workspace() {
     await storeCard(c, dir);
     setCards((old) => [c, ...old.filter((x) => x.id !== c.id)]);
   };
-  const act = async (action: () => Promise<void>) => {
+  const act = async (action: () => Promise<void>, label = "正在处理…") => {
     if (busy) return;
     setBusy(true);
+    setBusyLabel(label);
     setError("");
     setNotice("");
     try {
       await action();
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   };
   const navigate = (next: Page) => {
@@ -531,53 +535,95 @@ export function Workspace() {
       setNotice("网页正文已抓取并保存，可编辑后再提炼");
     });
 
+  /**
+   * 批量导入：逐个文件处理，一个失败不影响其余。
+   *
+   * 之前任何一处 `throw` 都会中止整批——选十个文件、其中一个是 .png，
+   * 前面已经导入的留下、后面的全不处理，用户只看到一句错误。现在改成
+   * 收集每个文件的结果，最后给一条「成功 / 跳过 / 失败」的汇总，
+   * 失败项逐条说明原因。
+   */
   const importFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    const ok: string[] = [];
+    const failed: Array<{ name: string; reason: string }> = [];
     try {
       await act(async () => {
-        let total = 0;
-        for (const f of Array.from(files)) {
-          if (f.size > 32 * 1024 * 1024) throw new Error(`${f.name} 超过 32 MB`);
-          if (!/\.(md|markdown|txt|json|docx|pdf)$/i.test(f.name)) {
-            throw new Error(`当前支持 Markdown、TXT、JSON、Word (.docx)、PDF；${f.name} 尚不能解析`);
-          }
-          if (/\.json$/i.test(f.name)) {
-            const text = await f.text();
-            const data = JSON.parse(text) as unknown;
-            const root = data as { format?: string; materials?: RawMaterial[]; cards?: unknown[] };
-            if (root.format === "knowflick-workspace" && Array.isArray(root.materials)) {
-              for (const m of root.materials) {
-                if (!m.id || typeof m.rawText !== "string" || !m.title) {
-                  throw new Error("备份素材格式无效");
-                }
-                await updateMaterial({ ...m, mediaSizeBytes: m.mediaSizeBytes || 0 });
-                total++;
-              }
-            }
-            const imported = Array.isArray(data) ? data : root.cards;
-            if (!Array.isArray(imported)) throw new Error("JSON 文件须包含卡片数组");
-            for (const item of imported) {
-              const c = cardFromJson(item);
-              if (!c.headline || !c.details) throw new Error("卡片缺少标题或正文");
-              await updateCard(c);
-              total++;
-            }
-          } else {
-            const buffer = await f.arrayBuffer();
-            const doc = await parseDocumentFile(f.name, buffer);
-            const m = {
-              ...makeMaterial({ title: doc.title, text: doc.markdown, url: "" }),
-              sourceType: "document",
-            };
-            await updateMaterial(m);
-            total++;
+        for (const [index, f] of list.entries()) {
+          setNotice(`正在导入 ${index + 1}/${list.length}：${f.name}`);
+          try {
+            await importOneFile(f, ok);
+          } catch (err) {
+            failed.push({ name: f.name, reason: err instanceof Error ? err.message : String(err) });
           }
         }
-        navigate("library");
-        setNotice(`已导入 ${total} 条内容`);
+        if (ok.length) navigate("library");
+        if (!ok.length && failed.length) {
+          setError(`没有文件导入成功：${failed.map(f => `${f.name}（${f.reason}）`).join("；")}`);
+        } else if (failed.length) {
+          setNotice(`已导入 ${ok.length} 条；跳过 ${failed.length} 个：${failed.map(f => f.name).join("、")}`);
+          setError(`以下文件没有导入：${failed.map(f => `${f.name}（${f.reason}）`).join("；")}`);
+        } else {
+          setNotice(`已导入 ${ok.length} 条内容`);
+        }
       });
     } catch (e) {
-      setError(`导入未全部完成，已保存内容保留：${String(e)}`);
+      setError(`导入中断，已保存内容保留：${String(e)}`);
     }
+  };
+
+  /** 处理单个文件；成功时往 `ok` 里追加标题。失败由调用方收集。 */
+  const importOneFile = async (f: File, ok: string[]) => {
+    const IMAGE = /\.(png|jpe?g|webp|gif|heic)$/i;
+    if (f.size > 32 * 1024 * 1024) throw new Error("超过 32 MB");
+    if (IMAGE.test(f.name)) {
+      const mime = f.type && f.type.startsWith("image/") ? f.type : "image/png";
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      let mediaPath: string | null = null;
+      if (inShell()) mediaPath = await saveMedia("image", mime, bytes);
+      const m = {
+        ...makeMaterial({ title: f.name.replace(/\.[^/.]+$/, ""), text: `（图片素材：${f.name}）`, url: "" }),
+        sourceType: "image",
+        mediaPath,
+        mediaSizeBytes: bytes.byteLength,
+        metadataJson: JSON.stringify({ mime, fileName: f.name }),
+      };
+      await updateMaterial(m);
+      ok.push(f.name);
+      return;
+    }
+    if (!/\.(md|markdown|txt|json|docx|pdf)$/i.test(f.name)) {
+      throw new Error("暂不支持这种格式（支持 Markdown、TXT、JSON、Word、PDF、图片）");
+    }
+    if (/\.json$/i.test(f.name)) {
+      const text = await f.text();
+      const data = JSON.parse(text) as unknown;
+      const root = data as { format?: string; materials?: RawMaterial[]; cards?: unknown[] };
+      if (root.format === "knowflick-workspace" && Array.isArray(root.materials)) {
+        for (const m of root.materials) {
+          if (!m.id || typeof m.rawText !== "string" || !m.title) throw new Error("备份素材格式无效");
+          await updateMaterial({ ...m, mediaSizeBytes: m.mediaSizeBytes || 0 });
+          ok.push(m.title);
+        }
+      }
+      const imported = Array.isArray(data) ? data : root.cards;
+      if (!Array.isArray(imported)) throw new Error("JSON 文件须包含卡片数组");
+      for (const item of imported) {
+        const c = cardFromJson(item);
+        if (!c.headline || !c.details) throw new Error("卡片缺少标题或正文");
+        await updateCard(c);
+        ok.push(c.headline);
+      }
+      return;
+    }
+    const buffer = await f.arrayBuffer();
+    const doc = await parseDocumentFile(f.name, buffer);
+    const m = {
+      ...makeMaterial({ title: doc.title, text: doc.markdown, url: "" }),
+      sourceType: "document",
+    };
+    await updateMaterial(m);
+    ok.push(doc.title);
   };
 
   /**
@@ -663,6 +709,7 @@ export function Workspace() {
   const pollSubscription = async (sub: Subscription) => {
     await act(async () => {
       if (!inShell()) throw new Error("浏览器无法跨站抓取，订阅抓取请在桌面客户端进行");
+      setBusyLabel(`正在抓取「${sub.title}」…`);
       const url = requestUrlFor(sub);
       const response = await fetchClip(url);
       const items = parseSubscriptionPayload(sub, response.text);
@@ -778,6 +825,7 @@ export function Workspace() {
   const transcribeAudio = async () => {
     await act(async () => {
       if (!inShell()) throw new Error("语音转写只在桌面客户端可用");
+      setBusyLabel("正在转写语音…");
       if (!asrEnabled) throw new Error("语音转写插件未启用：在设置 →「功能模块与官方插件」里开启");
       const path = await pickAudioFile();
       if (!path) return;
@@ -840,6 +888,7 @@ export function Workspace() {
     if (!chosen) return;
     try {
       await act(async () => {
+        setBusyLabel("正在恢复备份…");
         const buffer = new Uint8Array(await chosen.arrayBuffer());
         const isZip = /\.kfbackup$/i.test(chosen.name) || (buffer[0] === 0x50 && buffer[1] === 0x4b);
         const restored = restoreKfBackup(isZip ? buffer : new TextDecoder().decode(buffer));
@@ -1515,7 +1564,7 @@ export function Workspace() {
       <footer className="ws-status">
         <span>
           <Icon name="check" size={13} />
-          {loading ? "正在读取…" : inShell() ? "已保存到本机" : "浏览器体验 · 内容存在本机"}
+          {loading ? "正在读取…" : busy ? busyLabel : inShell() ? "已保存到本机" : "浏览器体验 · 内容存在本机"}
         </span>
         <span>
           {selected && isCollection ? "已选中 1 条" : "未选中内容"}　{cards.length + materials.length} 条
@@ -1527,7 +1576,7 @@ export function Workspace() {
         ref={importRef}
         type="file"
         multiple
-        accept=".md,.markdown,.txt,.json,.docx,.pdf"
+        accept=".md,.markdown,.txt,.json,.docx,.pdf,.png,.jpg,.jpeg,.webp,.gif,.heic"
         onChange={(e) => {
           if (e.target.files) void importFiles(e.target.files);
           e.target.value = "";
