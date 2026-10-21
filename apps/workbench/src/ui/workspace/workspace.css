@@ -1826,6 +1826,104 @@ select {
   font-weight: 650;
 }
 
+/* ---------- 记录方式：手写 / 语音 ---------- */
+
+.ws-capture-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0 2px 8px;
+}
+.ws-capture-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: var(--control-h);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--text-meta);
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease), color var(--duration) var(--ease);
+}
+.ws-capture-mode:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.ws-capture-mode:disabled { opacity: .5; cursor: not-allowed; }
+
+.ws-note-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 32%);
+}
+.ws-note-panel {
+  width: min(760px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 28%);
+  overflow: auto;
+}
+.ws-note-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ws-note-head strong { font-size: 14px; font-weight: 600; }
+
+.ink-pad, .voice-recorder { display: flex; flex-direction: column; gap: 10px; }
+.ink-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ink-group { display: inline-flex; align-items: center; gap: 4px; }
+.ink-swatch {
+  width: 22px; height: 22px; padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.ink-swatch[data-color="ink"] { background: var(--ink); }
+.ink-swatch[data-color="accent"] { background: var(--accent); }
+.ink-swatch[data-color="muted"] { background: var(--muted); }
+/* 选中态用「外圈 + 间隙」表达：outline 贴着深色笔身时看不出来。 */
+.ink-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+.ink-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.ink-width {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--line); border-radius: var(--radius-control);
+  background: var(--surface); cursor: pointer;
+}
+.ink-width[aria-pressed="true"] { border-color: var(--accent); background: var(--selected); }
+.ink-width i { display: block; border-radius: 50%; background: var(--ink); }
+.ink-canvas {
+  width: 100%;
+  height: 360px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  touch-action: none;
+  cursor: crosshair;
+}
+.ink-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ink-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ink-actions > button { display: inline-flex; align-items: center; gap: 6px; }
+
+.voice-status { display: flex; align-items: center; gap: 8px; }
+.voice-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.voice-status[data-state="recording"] .voice-dot { background: #d33; animation: voice-pulse 1s ease-in-out infinite; }
+.voice-status[data-state="ready"] .voice-dot { background: var(--accent); }
+@keyframes voice-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .voice-status[data-state="recording"] .voice-dot { animation: none; } }
+.voice-audio { width: 100%; }
+.voice-error { color: var(--ink); }
+
 /* ---------- source insights (「越用越懂你」) ---------- */
 
 .ws-insight-panel {

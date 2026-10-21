@@ -3,6 +3,7 @@ pub mod db;
 mod embed;
 mod http;
 mod mail;
+mod media;
 mod store;
 
 use std::path::PathBuf;
@@ -136,6 +137,18 @@ fn http_url_for_open(raw: &str) -> Result<&str, String> {
 fn open_url(url: String) -> Result<(), String> {
     let trimmed = http_url_for_open(&url)?;
     open::that(trimmed).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn save_media(dir: Option<String>, kind: String, mime: String, data: Vec<u8>) -> Result<String, String> {
+    let path = library_dir(dir);
+    media::save_media(&path, &kind, &mime, &data)
+}
+
+#[tauri::command]
+fn read_media(dir: Option<String>, relative: String) -> Result<Vec<u8>, String> {
+    let path = library_dir(dir);
+    media::read_media(&path, &relative)
 }
 
 #[tauri::command]
@@ -878,6 +891,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             load_store,
+            save_media,
+            read_media,
             mail_list_accounts,
             mail_save_account,
             mail_test_account,

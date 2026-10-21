@@ -18,6 +18,7 @@ import {
   asrModelStatus,
   asrTranscribe,
   inShell,
+  saveMedia,
   pickAudioFile,
   type RawMaterial,
   type SubscriptionRow,
@@ -48,6 +49,8 @@ import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import { MailboxView } from "./MailboxView";
+import { InkPad, VoiceRecorder } from "./NotePads";
+import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
 import { emailBodyForAi, makeMailDigestMetadata, type MailDigestSource } from "../../domain/mail";
 import { sourceInsights } from "../../domain/insights";
 import { mailSyncDueAccounts } from "../../shell/mail";
@@ -106,6 +109,7 @@ export function Workspace() {
   const [tag, setTag] = useState("");
   const [source, setSource] = useState("all");
   const [capture, setCapture] = useState(false);
+  const [notePad, setNotePad] = useState<"ink" | "voice" | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -695,6 +699,82 @@ export function Workspace() {
    * 转写文本同时作为正文与标题来源；不在这里顺手调用大模型出卡——
    * 转写只是入口，要不要提炼由用户在素材页决定。
    */
+  /** 手写笔记：笔迹存成素材附件（JSON），标题自动生成，进收件箱等整理。 */
+  const saveInkNote = async (doc: InkDocument) => {
+    const json = JSON.stringify(doc);
+    const bytes = new TextEncoder().encode(json);
+    let mediaPath: string | null = null;
+    if (inShell()) {
+      try { mediaPath = await saveMedia("ink", "application/json", bytes); }
+      catch (err) { throw new Error(`笔迹没能存到本机：${err instanceof Error ? err.message : String(err)}`); }
+    }
+    const title = inkTitle(doc);
+    const material = {
+      ...makeMaterial({ title, text: `${title}\n\n（手写笔记，${doc.strokes.length} 笔；笔迹以附件保存，可在阅读区重看。）`, url: "" }),
+      sourceType: "ink",
+      mediaPath,
+      mediaSizeBytes: bytes.byteLength,
+      metadataJson: JSON.stringify({ ink: doc, savedInline: !inShell() }),
+    };
+    await updateMaterial(material);
+    setNotePad(null);
+    navigate("inbox");
+    setNotice(`手写笔记已存入收件箱：${doc.strokes.length} 笔${inShell() ? "，笔迹保存在本机" : "（浏览器体验仅保存在本页存储）"}`);
+  };
+
+  /** 语音笔记：先存音频，再尝试本地转写；转写失败不影响笔记本身。 */
+  const saveVoiceNote = async (blob: Blob, durationMs: number) => {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let mediaPath: string | null = null;
+    if (inShell()) {
+      try { mediaPath = await saveMedia("audio", blob.type || "audio/webm", bytes); }
+      catch (err) { throw new Error(`录音没能存到本机：${err instanceof Error ? err.message : String(err)}`); }
+    }
+    let transcript = "";
+    let transcriptNote = "";
+    if (inShell() && asrEnabled && mediaPath) {
+      try {
+        const model = (file.raw.plugins as Record<string, { preferences?: Record<string, unknown> }> | undefined)?.[
+          "official-speech-asr"
+        ]?.preferences?.model as string | undefined ?? DEFAULT_ASR_MODEL;
+        const status = await asrModelStatus(model);
+        if (!status.installed) {
+          transcriptNote = "语音模型尚未下载，录音已保存；到设置里下载模型后可再转写。";
+        } else {
+          const absolute = mediaPath.startsWith("/") ? mediaPath : `${dir}/${mediaPath}`;
+          const result = await asrTranscribe(absolute, model);
+          transcript = result.text.trim();
+          transcriptNote = transcript ? "已用本地 Whisper 转写，音频没有上传。" : "没有识别出文字，录音已保留。";
+        }
+      } catch (err) {
+        transcriptNote = `录音已保存，但转写失败：${err instanceof Error ? err.message : String(err)}`;
+      }
+    } else if (!inShell()) {
+      transcriptNote = "浏览器体验不转写；录音仅保存在本页存储。";
+    } else if (!asrEnabled) {
+      transcriptNote = "语音转写插件未启用，录音已保存。";
+    }
+    const stamp = new Date();
+    const title = transcript ? titleFromTranscript(transcript) : `语音笔记 · ${stamp.getMonth() + 1}月${stamp.getDate()}日`;
+    const body = transcript || `（语音笔记，${formatDuration(durationMs)}；音频以附件保存。）`;
+    const material = {
+      ...makeMaterial({ title, text: body, url: "" }),
+      sourceType: "audio",
+      mediaPath,
+      mediaSizeBytes: bytes.byteLength,
+      metadataJson: JSON.stringify({
+        durationMs,
+        mime: blob.type || "audio/webm",
+        transcript,
+        transcribed: !!transcript,
+      }),
+    };
+    await updateMaterial(material);
+    setNotePad(null);
+    navigate("inbox");
+    setNotice(`语音笔记已存入收件箱：${formatDuration(durationMs)}。${transcriptNote}`);
+  };
+
   const transcribeAudio = async () => {
     await act(async () => {
       if (!inShell()) throw new Error("语音转写只在桌面客户端可用");
@@ -911,6 +991,18 @@ export function Workspace() {
           记录
           <kbd>⌘N</kbd>
         </button>
+        {/* 笔记软件的三种记法并列：打字、手写、说话。都在同一层，随手就能选。 */}
+        <div className="ws-capture-modes" role="group" aria-label="记录方式">
+          <button type="button" className="ws-capture-mode" aria-label="手写笔记" disabled={loading || busy} onClick={() => setNotePad("ink")}>
+            <Icon name="edit" size={14} /><span>手写</span>
+          </button>
+          <button type="button" className="ws-capture-mode" aria-label="语音笔记" disabled={loading || busy} onClick={() => setNotePad("voice")}>
+            <Icon name="mic" size={14} /><span>语音</span>
+          </button>
+          <button type="button" className="ws-capture-mode" aria-label="导入音频转写" disabled={loading || busy || !asrEnabled} title={asrEnabled ? "导入已有音频并转写" : "语音转写插件未启用"} onClick={() => void transcribeAudio()}>
+            <Icon name="upload" size={14} /><span>转写</span>
+          </button>
+        </div>
         <div className="ws-nav-scroll">
           {/* 侧栏只回答一个问题：我在流水线的哪一段。
               「来源 → 收件箱 → 知识库 → 应用」是产品主线；收藏/归档/分类是
@@ -1465,6 +1557,23 @@ export function Workspace() {
             setNotice("已存入收件箱");
           }}
         />
+      ) : null}
+
+      {notePad ? (
+        <div className="ws-note-backdrop" role="dialog" aria-modal="true" aria-label={notePad === "ink" ? "手写笔记" : "语音笔记"}
+          onKeyDown={event => { if (event.key === "Escape") setNotePad(null); }}>
+          <div className="ws-note-panel">
+            <header className="ws-note-head">
+              <strong>{notePad === "ink" ? "手写笔记" : "语音笔记"}</strong>
+              <button type="button" className="ws-icon-button" aria-label="关闭" onClick={() => setNotePad(null)}>
+                <Icon name="close" size={14} />
+              </button>
+            </header>
+            {notePad === "ink"
+              ? <InkPad onCancel={() => setNotePad(null)} onSave={saveInkNote} />
+              : <VoiceRecorder onCancel={() => setNotePad(null)} onSave={saveVoiceNote} />}
+          </div>
+        </div>
       ) : null}
 
       {preview.length > 0 ? (

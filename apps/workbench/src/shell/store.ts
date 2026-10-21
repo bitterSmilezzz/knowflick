@@ -327,6 +327,18 @@ export function asrTranscribe(path: string, model?: string): Promise<Transcripti
   return invoke("asr_transcribe", { path, model: model ?? null });
 }
 
+/**
+ * 保存一条笔记附件（录音 / 手写），返回库内相对路径。
+ * 文件名由宿主生成，前端只决定类型与内容。
+ */
+export function saveMedia(kind: "audio" | "ink", mime: string, data: Uint8Array): Promise<string> {
+  return invoke("save_media", { dir: null, kind, mime, data: Array.from(data) });
+}
+
+export function readMedia(relative: string): Promise<number[]> {
+  return invoke("read_media", { dir: null, relative });
+}
+
 export async function pickAudioFile(): Promise<string | null> {
   const { open } = await import("@tauri-apps/plugin-dialog");
   const selected = await open({
