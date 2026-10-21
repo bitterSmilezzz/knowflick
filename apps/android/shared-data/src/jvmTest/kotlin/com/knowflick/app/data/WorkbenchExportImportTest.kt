@@ -29,6 +29,15 @@ class WorkbenchExportImportTest {
         assertEquals("\u6b63\u6587", card.details)
         assertEquals("\u6570\u5b66", card.category)
         assertEquals(1759000000000L, card.createdAt)
+        // 桌面端一直有 tags、安卓端此前没有，导入时标签被静默丢弃。
+        assertEquals("\u6807\u7b7e\u5e94\u4fdd\u771f", listOf("tag1"), card.tags)
+    }
+
+    @Test
+    fun tagsSurviveRoundTrip() {
+        val cards = CardFileIO.decodeListSalvaging(workbenchExport)
+        val again = CardFileIO.decodeListSalvaging(CardJson.encodeList(cards))
+        assertEquals(listOf("tag1"), again.first().tags)
     }
 
     @Test

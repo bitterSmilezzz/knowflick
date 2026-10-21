@@ -127,8 +127,8 @@ object CardJson {
             level = obj.intField("level")?.takeIf { it in 1..5 },
             track = obj.str("track")?.takeIf { it.isNotBlank() },
             orderKey = obj.str("orderKey")?.takeIf { it.isNotBlank() },
-            prereq = (obj["prereq"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
-                ?: emptyList(),
+            prereq = (obj["prereq"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList(),
+            tags = (obj["tags"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList(),
         )
     }
 
@@ -171,6 +171,11 @@ object CardJson {
         card.orderKey?.let { put("orderKey", it) }
         if (card.prereq.isNotEmpty()) {
             put("prereq", JsonArray(card.prereq.map { JsonPrimitive(it) }))
+        }
+        // 与前端 cardToJson 一致：空标签不写键（写空数组会让两端规范化输出不一致）。
+        // 有标签时才写，保证标签能跨端保真。
+        if (card.tags.isNotEmpty()) {
+            put("tags", JsonArray(card.tags.map { JsonPrimitive(it) }))
         }
     }
 
