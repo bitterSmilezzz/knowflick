@@ -20,6 +20,14 @@ describe("浏览器库配额", () => {
     const store: Record<string, string> = {
       [key]: JSON.stringify({ materials: [], cards: [], settings: "{}" }),
     };
+    // sessionStorage 在 Node 测试环境里不存在：readWorkspace 会读它，
+    // 不 stub 就会 ReferenceError——这不是被测行为，只是环境缺件。
+    vi.stubGlobal("sessionStorage", {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+      length: 0,
+    });
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => store[k] ?? null,
       setItem: (k: string, v: string) => {
@@ -40,6 +48,7 @@ describe("浏览器库配额", () => {
     await expect(storeMaterial(material, "")).rejects.toThrow(/浏览器存储已满.*没能保存/);
   });
 
+  // 本机 Node 有 sessionStorage、CI 的没有；这个 stub 让两种环境走同一条路。
   it("配额正常时照常保存", async () => {
     stubStorage(false);
     const { storeMaterial, readWorkspace } = await import("./repository");
