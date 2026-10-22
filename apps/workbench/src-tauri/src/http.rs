@@ -9,11 +9,11 @@ pub struct ClipPage {
 
 pub async fn fetch_clip(raw: &str) -> Result<ClipPage, String> {
     let url = validate_url(raw)?;
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .map_err(|err| err.to_string())?;
+    let client = client_for(
+        &url,
+        Duration::from_secs(15),
+        Some(reqwest::redirect::Policy::limited(5)),
+    )?;
     let response = client
         .get(url)
         .header("User-Agent", "KnowFlick/0.1")
@@ -114,10 +114,11 @@ fn prefixed_key_len(chars: &[char], at: usize) -> Option<usize> {
 
 pub async fn complete_chat(endpoint: &str, api_key: &str, body: String) -> Result<String, String> {
     validate_url(endpoint)?;
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|err| err.to_string())?;
+    let client = client_for(
+        &reqwest::Url::parse(endpoint).map_err(|_| "链接无效".to_string())?,
+        Duration::from_secs(120),
+        None,
+    )?;
     let mut request = client
         .post(endpoint)
         .header("Content-Type", "application/json")
@@ -165,10 +166,11 @@ pub async fn request_embeddings(
     input: Vec<String>,
 ) -> Result<Vec<Vec<f32>>, String> {
     validate_url(endpoint)?;
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|err| err.to_string())?;
+    let client = client_for(
+        &reqwest::Url::parse(endpoint).map_err(|_| "链接无效".to_string())?,
+        Duration::from_secs(60),
+        None,
+    )?;
 
     let body = serde_json::json!({
         "model": model,
@@ -227,6 +229,51 @@ pub async fn request_embeddings(
     Ok(embeddings)
 }
 
+/// 本机地址（回环）判定：这些地址永远**直连**，不走任何代理。
+///
+/// 为什么要单列：用户设了 `HTTP_PROXY` 时，reqwest 默认会把请求交给代理，
+/// 于是「本地模型」（`http://127.0.0.1:11434`、`http://[::1]:11434`）的请求
+/// 会被送到代理而不是本机服务——连接测试报「抓取失败」，而用户看不出原因。
+/// 只有回环走直连；外部站点仍按系统代理走，用户配的代理照常生效。
+fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    if host == "localhost" || host == "127.0.0.1" {
+        return true;
+    }
+    // IPv6 回环：规范化后是 ::1，但用户也可能写成 0:0:0:0:0:0:0:1。
+    // 交给地址解析器判断，不做字符串比较。
+    match host.parse::<std::net::Ipv6Addr>() {
+        Ok(address) => address.is_loopback(),
+        Err(_) => false,
+    }
+}
+
+/// 是否让这次请求**绕过代理**。
+///
+/// 只有回环地址绕过：本地模型就跑在本机，走代理只会失败。
+/// 外部地址保留系统代理——用户配的代理对剪藏外站必须照常生效。
+fn bypasses_proxy(url: &reqwest::Url) -> bool {
+    is_loopback_host(url.host_str().unwrap_or(""))
+}
+
+/// 按目标地址选客户端：回环直连，其余跟随系统代理。
+///
+/// `redirect` 只给剪藏用（跟随跳转后再校验最终地址）；模型请求不跟随跳转。
+fn client_for(
+    url: &reqwest::Url,
+    timeout: Duration,
+    redirect: Option<reqwest::redirect::Policy>,
+) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder().timeout(timeout);
+    if bypasses_proxy(url) {
+        builder = builder.no_proxy();
+    }
+    if let Some(policy) = redirect {
+        builder = builder.redirect(policy);
+    }
+    builder.build().map_err(|err| err.to_string())
+}
+
 fn validate_url(raw: &str) -> Result<reqwest::Url, String> {
     let url = reqwest::Url::parse(raw.trim()).map_err(|_| "链接无效".to_string())?;
     if !url.username().is_empty() || url.password().is_some() {
@@ -237,7 +284,7 @@ fn validate_url(raw: &str) -> Result<reqwest::Url, String> {
         "http" => {
             let host = url.host_str().unwrap_or("");
             // url::Url::host_str keeps IPv6 brackets and normalizes expanded ::1.
-            if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
+            if is_loopback_host(host) {
                 Ok(url)
             } else {
                 Err("只有本机地址可以用 HTTP".to_string())
@@ -299,6 +346,7 @@ fn charset_from_meta(bytes: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{charset_from_header, charset_from_meta, decode_body, redact_secrets, validate_url, META_SNIFF_BYTES};
+    use std::time::Duration;
 
     #[test]
     fn redacts_prefixed_api_keys() {
@@ -425,6 +473,91 @@ mod tests {
         assert!(requests[2].starts_with("GET /page "));
         for request in requests {
             assert!(!request.to_ascii_lowercase().contains("authorization:"));
+        }
+    }
+
+    #[test]
+    fn only_loopback_addresses_bypass_the_proxy() {
+        // 用户设了 HTTP_PROXY 时，reqwest 默认把请求交给代理——于是本地模型
+        // （http://127.0.0.1:11434）的请求会被送到代理而不是本机服务，
+        // 连接测试报「抓取失败」，而用户看不出原因。
+        //
+        // 绕过代理的**范围**必须精确：只有回环绕过。外部地址绕过的话，
+        // 用户配的代理对剪藏外站就失效了——那是更大的问题。
+        for raw in [
+            "http://127.0.0.1:11434/v1",
+            "http://localhost:11434/v1",
+            "http://[::1]:11434/v1",
+            "http://[0:0:0:0:0:0:0:1]:11434/v1",
+        ] {
+            let url = reqwest::Url::parse(raw).unwrap();
+            assert!(super::bypasses_proxy(&url), "回环该绕过代理：{raw}");
+        }
+        for raw in [
+            "https://api.example.test/v1",
+            "http://example.test/x",
+            "http://192.168.1.10:11434/v1",
+            "http://[2001:db8::1]:11434/v1",
+        ] {
+            let url = reqwest::Url::parse(raw).unwrap();
+            assert!(!super::bypasses_proxy(&url), "外部地址不该绕过代理：{raw}");
+        }
+    }
+
+    #[test]
+    fn loopback_requests_bypass_ambient_proxy_settings() {
+        // 本机服务在回环上监听；若客户端把请求交给代理，这个监听收不到。
+        // 用例不依赖环境是否设了代理变量：本机默认就有 HTTP_PROXY，
+        // 而显式清空 NO_PROXY 时更严格（回环也不再被排除）。
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || -> Option<String> {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        stream.set_nonblocking(false).ok();
+                        let mut buf = [0u8; 8192];
+                        use std::io::Read;
+                        let _ = stream.read(&mut buf);
+                        let body = r#"{"choices":[{"message":{"content":"direct"}}]}"#;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        use std::io::Write;
+                        let _ = stream.write_all(response.as_bytes());
+                        return Some(body.to_string());
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        if std::time::Instant::now() >= deadline {
+                            return None;
+                        }
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    Err(_) => return None,
+                }
+            }
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let url = format!("http://{address}/v1/chat/completions");
+        let result = runtime.block_on(async {
+            tokio::time::timeout(Duration::from_secs(5), super::complete_chat(&url, "", "{}".into())).await
+        });
+        let served = handle.join().unwrap();
+        assert!(served.is_some(), "本机监听没收到请求：回环请求被送去了代理");
+        assert_eq!(result.expect("不应超时").unwrap(), "direct");
+    }
+
+    #[test]
+    fn loopback_detection_covers_ipv4_and_ipv6_forms() {
+        for host in ["localhost", "127.0.0.1", "::1", "[::1]", "0:0:0:0:0:0:0:1"] {
+            assert!(super::is_loopback_host(host), "应算回环：{host}");
+        }
+        for host in ["example.com", "192.168.1.10", "[2001:db8::1]", "[::]", "10.0.0.1"] {
+            assert!(!super::is_loopback_host(host), "不该算回环：{host}");
         }
     }
 
