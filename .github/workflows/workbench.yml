@@ -12,6 +12,13 @@ on:
       - 'shared/assets/**'
       - 'tools/verify_workbench.sh'
       - 'tools/check_clip_parity.py'
+      # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
+      # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
+      - 'tools/check_doc_consistency.py'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/run_all_smokes.sh'
       - '.github/workflows/workbench.yml'
   pull_request:
     paths:
@@ -20,6 +27,13 @@ on:
       - 'shared/assets/**'
       - 'tools/verify_workbench.sh'
       - 'tools/check_clip_parity.py'
+      # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
+      # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
+      - 'tools/check_doc_consistency.py'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/run_all_smokes.sh'
       - '.github/workflows/workbench.yml'
 
 concurrency:
