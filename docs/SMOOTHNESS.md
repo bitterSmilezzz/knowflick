@@ -5,6 +5,13 @@
 
 ## 索引：按症状找
 
+> **环境提醒（2026-10-22 22:15）**：`gh` 的 token 失效过一次（keychain 里的
+> `gh:github.com` 取不到），表现是 **`gh workflow run` 报 403 / `gh auth status`
+> 说 token invalid**，而**未认证的只读接口仍能用**（公开仓库）。
+> 症状很像「push 没触发 CI」，但 push 走 SSH、不受影响——**先分清是认证问题
+> 还是路径过滤问题**。恢复办法：`gh auth login -h github.com`（需交互）。
+
+
 新修的缺陷多半在「七·补」及其后的段落里。按**用户会看到的症状**索引：
 
 | 症状 | 在哪 |
