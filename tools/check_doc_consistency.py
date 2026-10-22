@@ -154,6 +154,24 @@ EVIDENCE_MAP: list[tuple[str, str, str]] = [
     ("数据库损坏报错", "apps/workbench/src-tauri/src/db.rs", "数据库已损坏"),
     ("Anki TSV 两端同格式", "apps/android/shared-data/src/jvmTest/kotlin/com/knowflick/app/data/CardExportEngineTest.kt", "exportAnkiTSV"),
     ("来源矩阵", "apps/workbench/src/ui/workspace/sourceMatrix.test.ts", "来源矩阵"),
+    # —— 以下为第二批补齐的证据 ——
+    ("复习闭环：间隔算出来并存住", "tools/review_ui_smoke.mjs", "重载后复习间隔仍在"),
+    ("搜索无结果没有清空入口", "tools/workspace_ui_smoke.mjs", "clear-search"),
+    ("MCP 服务器没有回归", "tools/mcp_smoke.mjs", "MCP smoke"),
+    ("MCP 工具自身回归", "apps/workbench/src/domain/mcpServer.test.ts", "mcpServer"),
+    ("跨端导入丢精度（间隔被改写）", "apps/android/shared-data/src/jvmTest/kotlin/com/knowflick/app/data/WorkbenchExportImportTest.kt", "WorkbenchExportImport"),
+    ("跨端契约 cards.json", "apps/android/domain/src/jvmTest/kotlin/com/knowflick/app/domain/CardJsonCrossEndTest.kt", "CrossEnd"),
+    ("统计页没有入口", "apps/workbench/src/ui/workspace/StatsView.tsx", "StatsView"),
+    ("笔记转知识卡没有入口", "apps/workbench/src/domain/notes.test.ts", "parseNotesFile"),
+    ("操作音效开关只存不用", "apps/workbench/src/shell/sounds.test.ts", "setSoundEffectsEnabled"),
+    ("批量栏缺导出选中", "tools/workspace_ui_smoke.mjs", "导出选中"),
+    ("规模 4000 条下的交互", "tools/scale_ui_smoke.mjs", "逐字输入"),
+    ("产物看不到依据哪几张卡", "tools/brain_ui_smoke.mjs", "能看见依据的具体卡片"),
+    ("已保存的产物对问答不可见", "tools/brain_ui_smoke.mjs", "产物标题或结论出现在回答依据里"),
+    ("问答引用指向已删除的卡片", "tools/brain_ui_smoke.mjs", "已删除的引用要标出来"),
+    ("订阅来源在收件箱认不出来", "apps/workbench/src/domain/subscription.test.ts", "subscriptionId"),
+    ("两个隐藏 input 缺 data-role", "tools/import_ui_smoke.mjs", "data-role=import-files"),
+    ("数据库损坏时只甩英文错误", "apps/workbench/src-tauri/src/db.rs", "数据库已损坏"),
 ]
 
 
