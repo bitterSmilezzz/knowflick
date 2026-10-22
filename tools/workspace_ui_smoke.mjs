@@ -476,6 +476,12 @@ try {
   await new Promise((r) => setTimeout(r, 600));
   await check('document.querySelectorAll(".ws-entry").length === 0', "搜不到时列表为空");
   await check('!!document.querySelector(\'[data-action="clear-search"]\')', "无结果时有「清空搜索」入口");
+  // 这个按钮同时清掉**关键词和标签**，文案必须两样都说到——
+  // 只写「清空搜索」而实际把标签也清了，用户会以为标签还在。
+  await check(
+    '/搜索/.test(document.querySelector(\'[data-action="clear-search"]\').textContent) && /标签/.test(document.querySelector(\'[data-action="clear-search"]\').textContent)',
+    "清空按钮的文案说清了它清掉搜索与标签两样",
+  );
   await browser("eval", "(document.querySelector('[data-action=\"clear-search\"]')||{}).click?.(); true");
   await new Promise((r) => setTimeout(r, 600));
   await check('document.querySelectorAll(".ws-entry").length > 0', "点「清空搜索」后列表恢复");

@@ -1948,7 +1948,7 @@ export function Workspace() {
                           data-action="clear-search"
                           onClick={() => { setQuery(""); setTag(""); }}
                         >
-                          清空搜索
+                          清空搜索与标签
                         </button>
                       </div>
                     ) : (
