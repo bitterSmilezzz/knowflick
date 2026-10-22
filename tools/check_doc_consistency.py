@@ -104,12 +104,16 @@ def main() -> int:
                     problems.append(
                         f"{rel}:{lineno} 说「前端 {claimed} 项」，实际 {frontend} 项"
                     )
-            # 「Rust N 项」
+            # 「Rust N 项」**不核对**：Rust 测试里有 #[cfg(target_os = "macos")] /
+            # #[cfg(unix)] 这类平台门，三端跑出来的数量本来就不一样
+            # （实测 macOS 87 项 / Windows 84 项）。文档写一个数必然有一端对不上，
+            # 所以只提示、不报错。
             for match in re.finditer(r"Rust\s*(\d+)\s*项", line):
                 claimed = int(match.group(1))
                 if rust and claimed != rust:
-                    problems.append(
-                        f"{rel}:{lineno} 说「Rust {claimed} 项」，实际 {rust} 项"
+                    print(
+                        f"  提示 {rel}:{lineno} 的「Rust {claimed} 项」与本机 {rust} 项不同"
+                        "（三端数量本就不同，不算漂移）"
                     )
             # 「N 套浏览器冒烟」
             for match in re.finditer(r"(\d+)\s*套浏览器冒烟", line):
