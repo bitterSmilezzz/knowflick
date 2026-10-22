@@ -561,10 +561,36 @@ try {
   // 用户根本看不到「知识测验」这个功能。桌面窗口只有 728px 高。
   await browser("set", "viewport", "1040", "640");
   await new Promise((r) => setTimeout(r, 700));
+  // 库里已经有卡（前几步转的），测验会抽卡——所以要专门清空库才验得到空态。
+  await browser("eval", "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}'); raw.cards = []; localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw)); return true; })()");
+  await browser("open", url);
+  await new Promise((r) => setTimeout(r, 900));
+  await clickButton("知识测验");
+  // 等页面真正渲染完（重载后会先显示「正在加载…」）
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 300));
+    const t = await evaluate("document.body.innerText");
+    if (!t.includes("正在加载")) break;
+  }
+  const quizText = await evaluate("document.body.innerText");
+  check(
+    quizText.includes("还没有可以测验的知识卡"),
+    "测验页空态说「没有可以测验的卡」，不混用复习的措辞",
+  );
+  check(
+    !quizText.includes("今天没有到期的卡片"),
+    "测验页空态不显示复习的措辞",
+  );
+  await browser("set", "viewport", "1040", "640");
+  await new Promise((r) => setTimeout(r, 700));
   await check(
     "(() => { const q = [...document.querySelectorAll('.ws-nav-row')].find(r => r.textContent.includes('知识测验')); if (!q) return false; const b = q.getBoundingClientRect(); return b.bottom <= innerHeight && b.top >= 0; })()",
     "小窗口下「知识测验」仍然可见（主线入口不被滚动藏起来）"
   );
+  await browser("set", "viewport", "1040", "760");
+  await new Promise((r) => setTimeout(r, 500));
+  // 测验的空态不能说「今天没有到期的卡片」——那是复习的语义。
+  // 库里明明有卡，测验页这么写，用户会以为卡库是空的。
   await browser("set", "viewport", "1040", "760");
   await new Promise((r) => setTimeout(r, 500));
 

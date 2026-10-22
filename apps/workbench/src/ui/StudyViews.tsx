@@ -155,25 +155,41 @@ export function QuizView({
 
   if (session.kind === "empty") {
     const total = cards.length;
+    // 测验（dueOnly=false）与复习（dueOnly=true）的空态含义不同：
+    // 测验是「从全库随机抽」，库里没卡才叫空；复习是「按到期排」，
+    // 有卡但没到期也算空。之前两者共用一套文案，测验页会显示
+    // 「今天没有到期的卡片」——用户会以为卡库是空的。
     return (
       <div className="ws-review-container">
         <div className="ws-review-done-card">
           <Icon name="check" size={32} style={{ color: "var(--accent)", marginBottom: 12 }} />
-          <h2>今天没有到期的卡片</h2>
-          <p>
-            {total > 0
-              ? `记忆算法已把 ${total} 张卡排到之后的日期，按计划复习效果最好。想多练几张也可以。`
-              : "知识库中目前没有需要复习的内容。多沉淀一些知识卡，记忆算法会自动安排温故节奏。"}
-          </p>
-          {total > 0 ? (
-            <button
-              type="button"
-              className="ws-bordered"
-              onClick={() => { setExtraPractice(true); setIds(null); setIndex(0); setRevealed(false); }}
-            >
-              仍要复习全部（额外练习）
-            </button>
-          ) : null}
+          {dueOnly ? (
+            <>
+              <h2>今天没有到期的卡片</h2>
+              <p>
+                {total > 0
+                  ? `记忆算法已把 ${total} 张卡排到之后的日期，按计划复习效果最好。想多练几张也可以。`
+                  : "知识库中目前没有需要复习的内容。多沉淀一些知识卡，记忆算法会自动安排温故节奏。"}
+              </p>
+              {total > 0 ? (
+                <button
+                  type="button"
+                  className="ws-bordered"
+                  onClick={() => { setExtraPractice(true); setIds(null); setIndex(0); setRevealed(false); }}
+                >
+                  仍要复习全部（额外练习）
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <h2>还没有可以测验的知识卡</h2>
+              <p>
+                知识库里还没有卡。先记几条闪念，或把攒下的笔记转成知识卡，
+                就能在这里随机抽十张来答了。
+              </p>
+            </>
+          )}
         </div>
       </div>
     );
