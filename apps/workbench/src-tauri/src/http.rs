@@ -193,10 +193,12 @@ pub async fn request_embeddings(
     let text = read_capped(response, 10 * 1024 * 1024).await?;
     let text = String::from_utf8_lossy(&text).to_string();
     if !status.is_success() {
+        // 与 complete_chat 同理：服务端原文可能带着 API key，
+        // 而这条错误会被 console.warn 打出来（用户报 bug 时会把控制台贴出去）。
         return Err(format!(
             "Embedding API 返回 {}：{}",
             status.as_u16(),
-            text.chars().take(200).collect::<String>()
+            redact_secrets(&text).chars().take(200).collect::<String>()
         ));
     }
 
@@ -310,6 +312,40 @@ mod tests {
     fn redacts_bearer_tokens() {
         let out = redact_secrets("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9abcdefgh");
         assert!(!out.contains("eyJhbGciOiJIUzI1NiJ9"), "{out}");
+    }
+
+    #[test]
+    fn embeddings_api_error_path_does_not_leak_key() {
+        // 这条错误会被 console.warn 打出来（用户报 bug 时会把控制台贴出去），
+        // 所以和 complete_chat 一样不能带出服务端原文里的密钥。
+        // 走**真实调用链**：本地起一个回 401 且回显 key 的服务器。
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let body = r#"{"error":{"message":"Incorrect API key provided: {{API_KEY_1uv3bev0}}."}}"#;
+        let handle = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 8192];
+                let _ = std::io::Read::read(&mut stream, &mut buf);
+                let response = format!(
+                    "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+            }
+        });
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let url = format!("http://{addr}/v1/embeddings");
+        let result = runtime.block_on(super::request_embeddings(&url, "sk-key", "text-embedding-3-small", vec!["hi".to_string()]));
+        handle.join().unwrap();
+
+        let err = result.unwrap_err();
+        assert!(err.contains("401"), "应带状态码：{err}");
+        assert!(!err.contains("{{API_KEY_1uv3bev0}}"), "不该回显密钥：{err}");
     }
 
     #[test]
