@@ -480,6 +480,67 @@ try {
   await new Promise((r) => setTimeout(r, 600));
   await check('document.querySelectorAll(".ws-entry").length > 0', "点「清空搜索」后列表恢复");
 
+  // 剪藏 → 知识卡：这是「来源」到「知识库」的转换，也是回溯链的起点。
+  await browser("eval", `(() => {
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    const now = Date.now();
+    raw.materials = [...(raw.materials || []), {
+      id: 'clip-mat-1', sourceType: 'web', title: '剪藏来的文章',
+      sourceUrl: 'https://example.com/post', rawText: '这是从网页剪藏来的正文内容，用来验证转成知识卡。',
+      contentHash: '', mediaPath: null, mediaSizeBytes: 0, metadataJson: '{}',
+      inboxStatus: 'inbox', createdAt: now, updatedAt: now,
+    }];
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    return true;
+  })()`);
+  await browser("open", url);
+  await new Promise((r) => setTimeout(r, 900));
+  await browser("eval", "(() => { const el = [...document.querySelectorAll('.ws-nav-row')].find(e => e.textContent.includes('收件箱')); if (el) el.click(); return !!el; })()");
+  await new Promise((r) => setTimeout(r, 700));
+  await browser("eval", "(() => { const e = [...document.querySelectorAll('.ws-entry')].find(x => x.textContent.includes('剪藏来的文章')); if (e) e.click(); return !!e; })()");
+  await new Promise((r) => setTimeout(r, 700));
+  await browser("eval", "(() => { const d = document.querySelector('[data-material-actions]'); if (d) d.open = true; const b = [...document.querySelectorAll('button')].find(x => x.textContent.includes('保存为知识卡')); if (b) { b.click(); return true; } return false; })()");
+  await new Promise((r) => setTimeout(r, 1200));
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); const c = (raw.cards || []).find(x => x.materialId === 'clip-mat-1'); return !!c; })()",
+    "剪藏素材转成了知识卡"
+  );
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); const c = (raw.cards || []).find(x => x.materialId === 'clip-mat-1'); return !!c && c.links.some(l => l.url === 'https://example.com/post'); })()",
+    "卡片带回原始来源链接"
+  );
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); const m = (raw.materials || []).find(x => x.id === 'clip-mat-1'); return !!m && m.inboxStatus === 'processed'; })()",
+    "素材标记为已处理（离开收件箱）"
+  );
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); return (raw.materials || []).some(x => x.id === 'clip-mat-1'); })()",
+    "原始素材仍可回溯（没被转走就删掉）"
+  );
+  // 连点两次「保存为知识卡」：去重靠 cards state，state 还没更新时会生成两张。
+  await browser("eval", "(() => { const el = [...document.querySelectorAll('.ws-nav-row')].find(e => e.textContent.includes('收件箱')); if (el) el.click(); return !!el; })()");
+  await new Promise((r) => setTimeout(r, 700));
+  await browser("eval", "(() => { const e = [...document.querySelectorAll('.ws-entry')].find(x => x.textContent.includes('剪藏来的文章')); if (e) e.click(); return !!e; })()");
+  await new Promise((r) => setTimeout(r, 700));
+  await browser("eval", "(() => { const d = document.querySelector('[data-material-actions]'); if (d) d.open = true; const b = [...document.querySelectorAll('button')].find(x => x.textContent.includes('保存为知识卡')); if (b) { b.click(); b.click(); return true; } return false; })()");
+  await new Promise((r) => setTimeout(r, 1500));
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); return (raw.cards || []).filter(x => x.materialId === 'clip-mat-1').length === 1; })()",
+    "连点两次也不会多出一张卡"
+  );
+
+  // 同一素材再转一次：不该多出一张卡（去重靠 cards state，state 滞后时会失效）
+  await browser("eval", "(() => { const el = [...document.querySelectorAll('.ws-nav-row')].find(e => e.textContent.includes('收件箱')); if (el) el.click(); return !!el; })()");
+  await new Promise((r) => setTimeout(r, 700));
+  await browser("eval", "(() => { const e = [...document.querySelectorAll('.ws-entry')].find(x => x.textContent.includes('剪藏来的文章')); if (e) e.click(); return !!e; })()");
+  await new Promise((r) => setTimeout(r, 700));
+  await browser("eval", "(() => { const d = document.querySelector('[data-material-actions]'); if (d) d.open = true; const b = [...document.querySelectorAll('button')].find(x => x.textContent.includes('保存为知识卡')); if (b) { b.click(); return true; } return false; })()");
+  await new Promise((r) => setTimeout(r, 1200));
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); return (raw.cards || []).filter(x => x.materialId === 'clip-mat-1').length === 1; })()",
+    "同一素材重复转不会多出一张卡"
+  );
+
   // 统计：ADR-0002 把「统计」列进第一版交付物，命令早就在，但没有界面
   await check(
     "[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('统计'))",
