@@ -42,6 +42,12 @@ describe("来源矩阵：每种来源的搜索索引", () => {
     for (const source of SOURCES) {
       const hits = filterEntries(allEntries, source.text.slice(0, 6));
       expect(hits.length, `${source.kind} 应能被正文搜到`).toBeGreaterThan(0);
+      // 光有命中不够——还得是**对的那条**。只断言 >0 的话，
+      // 「什么都搜得到」也能通过。
+      expect(
+        hits.some((hit) => materialOf(hit)?.id === `src-${source.kind}`),
+        `${source.kind} 的正文应命中它自己那一条`,
+      ).toBe(true);
     }
   });
 

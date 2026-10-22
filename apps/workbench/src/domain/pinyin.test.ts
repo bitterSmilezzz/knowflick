@@ -13,7 +13,14 @@ describe("pinyin", () => {
 
   it("scores initials and full pinyin like the shared engine", () => {
     const headline = "新租赁准则下承租人不再区分经营融资租赁";
-    expect(pinyinMatchShortText(headline, "xzl", "initials")).toBeGreaterThan(0);
-    expect(pinyinMatchShortText(headline, "zulin", "pinyin_full")).toBeGreaterThan(0);
+    const initials = pinyinMatchShortText(headline, "xzl", "initials");
+    const full = pinyinMatchShortText(headline, "zulin", "pinyin_full");
+    expect(initials).toBeGreaterThan(0);
+    expect(full).toBeGreaterThan(0);
+    // 分数本身也要对：首字母缩写应高于全拼（更精确的匹配给更高分），
+    // 否则「随便给个正数」也能通过。
+    expect(initials).toBeGreaterThan(full);
+    // 不相关的查询不该有分
+    expect(pinyinMatchShortText(headline, "zzzz", "initials")).toBe(0);
   });
 });

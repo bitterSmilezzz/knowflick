@@ -228,34 +228,73 @@ def check_evidence_assertions(problems: list[str]) -> None:
     - `expect(x.length).toBeGreaterThan(0)`——「1 个」和「8 个」都算过；
     - for 循环里的断言——**数组为空时循环零次、直接通过**。
     """
-    for _label, rel, _needle in EVIDENCE_MAP:
-        if not rel.endswith((".test.ts", ".test.tsx")):
+    # 范围是**全仓**前端测试，不只证据表里那些——弱断言在任何地方都是问题。
+    targets = [
+        ROOT / rel
+        for _label, rel, _needle in EVIDENCE_MAP
+        if rel.endswith((".test.ts", ".test.tsx")) and (ROOT / rel).exists()
+    ]
+    targets += [p for p in (ROOT / "apps/workbench/src").rglob("*.test.ts*")]
+    seen_paths: set[Path] = set()
+    for path in targets:
+        if path in seen_paths:
             continue
-        path = ROOT / rel
-        if not path.exists():
-            continue
+        seen_paths.add(path)
+        rel = str(path.relative_to(ROOT))
         text = path.read_text(encoding="utf-8", errors="ignore")
-        for match in re.finditer(r'it\(\s*"([^"]+)"[^)]*\)\s*\{', text):
+        for match in re.finditer(r'it\(\s*"([^"]+)"', text):
             start = match.end()
             nxt = text.find("\n  it(", start)
             body = text[start: nxt if nxt > 0 else len(text)]
             if not body.strip():
                 continue
-            # 循环里的断言：空数组时不会执行 → 形同虚设
-            if re.search(r"for\s*\([^)]*\)\s*\{", body) and not re.search(
-                r"expect\(\s*\w+\.length", body
-            ):
-                problems.append(
-                    f"{rel} 的「{match.group(1)[:30]}」在 for 循环里断言，"
-                    "空数组时会直接通过"
+            # 循环里的断言：空数组时不会执行 → 形同虚设。
+            # 判定：循环体内有 expect，但**循环外**没有对容器长度的断言。
+            for_match = re.search(r"for\s*\(([^)]*)\)\s*\{", body)
+            if for_match:
+                loop_start = for_match.start()
+                # 找循环体（粗略取到下一个 it 或文件尾）
+                body_after = body[loop_start:]
+                depth = 0
+                loop_body = ""
+                for idx, ch in enumerate(body_after):
+                    if ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0:
+                            loop_body = body_after[: idx + 1]
+                            break
+                has_expect_in_loop = "expect(" in loop_body
+                before = body[:loop_start]
+                after = body_after[len(loop_body):]
+                has_length_assert_outside = bool(
+                    re.search(r"expect\(\s*\w+\.length", before + after)
                 )
-            # 存在性断言：只测 > 0 不够
-            if re.search(r"expect\([^)]*\.length\)\.toBeGreaterThan\(0\)", body):
-                if not re.search(r"\.toBe\(\d+\)|\.toEqual\(", body):
+                # 遍历的是**硬编码数组**或**模块级常量**时不可能为空——
+                # 那种循环是安全的，不算弱断言。
+                iterated = for_match.group(1).split(" of ")[-1].strip()
+                safe_iteration = bool(
+                    re.match(r"^[A-Z][A-Z0-9_]*$", iterated)  # 全大写常量
+                    or re.match(r"^(cases|list|items|values|samples)$", iterated)
+                )
+                if has_expect_in_loop and not has_length_assert_outside and not safe_iteration:
                     problems.append(
-                        f"{rel} 的「{match.group(1)[:30]}」只断言长度 > 0，"
-                        "换个数量也照样通过"
+                        f"{rel} 的「{match.group(1)[:30]}」在 for 循环里断言，"
+                        "空数组时会直接通过"
                     )
+            # 存在性断言：整个测试块里**只有** length > 0 这一种断言时才算弱。
+            # 只要还有别的精确断言（toBe 具体值 / toEqual / toContain…），
+            # 那个 > 0 就是「确实有东西」的兜底，不算弱。
+            # 参数里可能有嵌套括号（expect(senderKeyOf(x)).toBeNull()），
+            # 所以不能简单地 [^)]*。
+            # DOTALL：expect(...) 可能跨行（参数里带模板字符串或换行）
+            asserts = re.findall(r"expect\(.*?\)\.(\w+)", body, re.S)
+            if asserts and all(meth == "toBeGreaterThan" for meth in asserts):
+                problems.append(
+                    f"{rel} 的「{match.group(1)[:30]}」只断言长度 > 0，"
+                    "换个数量也照样通过"
+                )
 
 
 def main() -> int:
