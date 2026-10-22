@@ -17,6 +17,16 @@ const exec = promisify(execFile);
 const session = "knowflick-taste-gate";
 const url = process.env.KNOWFLICK_UI_URL || "http://localhost:1420";
 
+/** agent-browser 是否可用。 */
+async function hasAgentBrowser() {
+  try {
+    await execFile("which", ["agent-browser"], { timeout: 10_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function browser(...args) {
   const { stdout } = await exec("agent-browser", ["--session", session, ...args], { timeout: 30000 });
   return stdout.trim();
@@ -121,6 +131,13 @@ const SEED = `(() => {
   localStorage.setItem('knowflick.workspace.v1', JSON.stringify({ materials, cards, settings: JSON.stringify(settings) }));
   return 1;
 })()`;
+
+// 需要 agent-browser 与运行中的 Vite。CI 环境两者都没有——
+// 缺工具时要明确 SKIP，而不是让整个门禁红掉。
+if (!(await hasAgentBrowser())) {
+  console.log("SKIP 品味与可用性门禁需要 agent-browser（CI 环境没有）");
+  process.exit(0);
+}
 
 try {
   await browser("set", "viewport", "1040", "760");
