@@ -60,6 +60,27 @@ describe("AI 提炼：模型输出解析与校验", () => {
     expect(card.summary).toBe("只有标题和正文");
   });
 
+  it("标题为空但正文够长的卡片会被丢掉（标题是去重的键，没有它留不下）", () => {
+    // 真实模型偶尔会漏 headline 或给它空串。解析器按标题去重，
+    // 空标题没有键，只能丢弃——**但不能连累同一批里的其他卡片**。
+    const text = JSON.stringify([
+      { headline: "   ", details: longDetails },
+      { headline: "有标题", details: longDetails },
+    ]);
+    const cards = cardsFromModelText(text);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].headline).toBe("有标题");
+  });
+
+  it("searchKeywords / sources 不是数组时不报错，只是没有链接", () => {
+    const text = JSON.stringify([
+      { headline: "字段类型不对", details: longDetails, searchKeywords: "熵", sources: null },
+    ]);
+    const cards = cardsFromModelText(text);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].links).toEqual([]);
+  });
+
   // 下面几条针对**真实模型的实际输出习惯**。系统提示要求「仅输出 JSON 数组」，
   // 但真实模型常带解释、引用编号、markdown 围栏——用贪婪匹配取第一个 `[`
   // 到最后一个 `]` 会截错，用户收到「没有返回卡片数组」而模型其实给了卡。

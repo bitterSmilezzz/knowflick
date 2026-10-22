@@ -59,7 +59,7 @@
 | 文案不变 | 所有页面名保持原样，依赖文案的既有测试无需改写 |
 | 结构有断言 | 品味门禁新增三条：四段分组、一级入口 ≤ 6、收藏/归档折叠为筛选 |
 | 阅读区有断言 | 新增一条：提炼入口默认收起、仍可见、可键盘聚焦 |
-| 全量回归 | 前端 391 项 + Rust 测试（通过、忽略分开报告，不以声明数代替通过数）+ **13 套**浏览器冒烟；以当前门禁执行日志为准 |
+| 全量回归 | 前端 393 项 + Rust 测试（通过、忽略分开报告，不以声明数代替通过数）+ **13 套**浏览器冒烟；以当前门禁执行日志为准 |
 | 折叠真的生效 | 2026-10-22 修：`.ws-nav-details { display: flex }` 覆盖了 `<details>` 收起的默认隐藏行为，「筛选」收起了里面的「收藏/已归档」却照样显示，还撑破了侧栏。补 `.ws-nav-details:not([open]) > *:not(summary) { display: none; }` |
 
 ## 三、没做的事（如实说明）
@@ -76,7 +76,7 @@
 ## 四、验证
 
 ```
-./tools/verify_workbench.sh              门禁：前端 391 项 + Rust 测试 + 13 套浏览器冒烟
+./tools/verify_workbench.sh              门禁：前端 393 项 + Rust 测试 + 13 套浏览器冒烟
 ./tools/run_all_smokes.sh                只跑 13 套浏览器冒烟（要 agent-browser + 运行中的 Vite）
 node tools/taste_usability_gate.mjs      13 项（四段分组、一级入口数、折叠、阅读区可达性）
 node tools/real_app_pages.mjs            真实 macOS 窗口逐页验证（cliclick + 像素比对）

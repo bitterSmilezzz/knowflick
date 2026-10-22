@@ -93,9 +93,10 @@ try {
     "document.querySelector('.voice-status')?.dataset.state === 'recording'",
     "按下后进入录音状态",
   );
+  await new Promise((r) => setTimeout(r, 1200));
   await check(
-    "document.querySelector('.voice-status')?.textContent.includes('正在录音')",
-    "录音中显示状态与时长",
+    "/[1-9]\\d* 秒/.test(document.querySelector('.voice-status .ws-hint')?.textContent ?? '')",
+    "录音计时实际前进（不是一直 0 秒）",
   );
   await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('停止录音')).click();return true})()");
   await check(
@@ -103,6 +104,33 @@ try {
     "停止后进入可保存状态",
   );
   await check("!!document.querySelector('.voice-audio')", "录到的音频可回放");
+  // 光有播放控件不够——还要确认录到的**字节真的是音频**。
+  // 空 blob 也会渲染出 <audio>，用户点播放却什么也没有；
+  // 一段非零但损坏的字节同样如此。所以用浏览器自己的解码器去读它：
+  // 能解出时长与采样率，才说明录到的确实是一段音频。
+  //
+  // 注意：不能把 async IIFE 交给 check——`JSON.stringify(Promise)` 得到 "{}"，
+  // 那会**恒真**。所以先把结果写进 window 标志，再读它。
+  await b("eval", `(() => {
+    window.__voiceAudio = null;
+    const a = document.querySelector('.voice-audio');
+    if (!a) return true;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    fetch(a.src)
+      .then(res => res.arrayBuffer())
+      .then(async buf => {
+        const bytes = buf.byteLength;
+        const decoded = await ctx.decodeAudioData(buf);
+        window.__voiceAudio = { bytes, duration: decoded.duration, rate: decoded.sampleRate };
+      })
+      .catch(err => { window.__voiceAudio = { error: String(err && err.name || err) }; })
+      .finally(() => ctx.close().catch(() => {}));
+    return true;
+  })()`);
+  await check(
+    "!!window.__voiceAudio && window.__voiceAudio.duration > 0 && window.__voiceAudio.bytes > 0 && window.__voiceAudio.rate > 0",
+    "录到的字节能被解码成音频（有真实时长与采样率）",
+  );
   await check(
     "[...document.querySelectorAll('button')].find(e=>e.textContent.includes('保存语音笔记')).disabled===false",
     "录到声音后可以保存",
