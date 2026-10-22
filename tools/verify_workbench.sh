@@ -34,7 +34,7 @@ node tools/source_matrix_smoke.mjs
 # 输出走 UTF-8 字节：Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
 # 这轮手工核对时发现 README / UI_CONSOLIDATION 写的门禁内容已经差了好几轮——
 # 靠人查迟早会再犯，交给脚本。
-python3 tools/check_doc_consistency.py  # 跨平台：Windows 控制台是 cp1252，脚本内部按 UTF-8 写字节
+python3 tools/check_doc_consistency.py  # 也核对「在门禁里」的说法是否兑现 跨平台：Windows 控制台是 cp1252，脚本内部按 UTF-8 写字节
 
 # 全部浏览器冒烟：13 套界面级回归。
 # 它们要真实浏览器与运行中的 Vite，CI 环境两者都没有（脚本会 SKIP）；
