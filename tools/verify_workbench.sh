@@ -31,6 +31,7 @@ node tools/source_matrix_smoke.mjs
 
 # 文档一致性：描述「当前状态」的文档里的数字与命令要和实际相符。
 # （Rust 那项只提示不报错——三端测试数量因 #[cfg(target_os)] 平台门而不同。）
+# 输出走 UTF-8 字节：Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
 # 这轮手工核对时发现 README / UI_CONSOLIDATION 写的门禁内容已经差了好几轮——
 # 靠人查迟早会再犯，交给脚本。
 python3 tools/check_doc_consistency.py
