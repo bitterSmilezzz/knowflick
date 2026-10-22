@@ -93,7 +93,7 @@ const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.B
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "briefing" | "brain" | "review" | "subscriptions" | "mail" | "artifacts" | "stats";
+type Page = Collection | "settings" | "briefing" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
@@ -1489,6 +1489,13 @@ export function Workspace() {
             >
               <Icon name="brief" /><span>统计</span>
             </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "quiz" ? "page" : undefined}
+              onClick={() => navigate("quiz")}
+            >
+              <Icon name="ask" /><span>知识测验</span>
+            </button>
             {reviewEnabled ? (
               <button
                 className="ws-nav-row"
@@ -2052,6 +2059,24 @@ export function Workspace() {
                   onOpenCard={openCard}
                   onNavigateSettings={() => navigate("settings")}
                 />
+              ) : null}
+              {page === "quiz" ? (
+                <div className="ws-review-page-scroll" data-page="quiz">
+                  <div className="ws-quiz-head">
+                    <h1>知识测验</h1>
+                    <p className="ws-hint">
+                      从全库随机抽十张卡来答——这是「练手」，不影响温故复习的到期安排。
+                    </p>
+                  </div>
+                  <Quiz
+                    cards={cards}
+                    algorithm="fsrs"
+                    onChange={async (next) => {
+                      await storeCardList(next, dir);
+                      setCards(next);
+                    }}
+                  />
+                </div>
               ) : null}
               {page === "review" && reviewEnabled ? (
                 <div className="ws-review-page-scroll">

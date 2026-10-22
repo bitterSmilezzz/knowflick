@@ -541,6 +541,23 @@ try {
     "同一素材重复转不会多出一张卡"
   );
 
+  // 知识测验：ADR-0002 第一版交付物里有「测验」，工作台只有复习（按到期排队），
+  // 全库随机测验（buildQuiz）没有任何入口——安卓端 DeckScreen 里有「知识测验」。
+  await check(
+    "[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('知识测验'))",
+    "侧栏有「知识测验」入口"
+  );
+  await clickButton("知识测验");
+  await check('!!document.querySelector(\'[data-page="quiz"]\')', "知识测验页渲染");
+  await check(
+    "document.body.innerText.includes('测验') || document.body.innerText.includes('共')",
+    "测验页说明自己在做什么"
+  );
+  await check(
+    "document.body.innerText.includes('不影响温故复习') || document.body.innerText.includes('随机')",
+    "测验页说清它与复习的区别"
+  );
+
   // 统计：ADR-0002 把「统计」列进第一版交付物，命令早就在，但没有界面
   await check(
     "[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('统计'))",
