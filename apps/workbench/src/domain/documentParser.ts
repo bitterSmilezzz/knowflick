@@ -31,7 +31,7 @@ export async function parseDocumentFile(
   }
 
   if (ext === "pdf") {
-    return parsePdfBuffer(baseTitle, buffer);
+    return await parsePdfBuffer(baseTitle, buffer);
   }
 
   if (ext === "pptx") {
@@ -353,34 +353,58 @@ export function parseDocxXml(fallbackTitle: string, xml: string): ParsedDocument
 /**
  * 解析 PDF 二进制文本
  */
-export function parsePdfBuffer(fallbackTitle: string, buffer: ArrayBuffer): ParsedDocument {
+export async function parsePdfBuffer(fallbackTitle: string, buffer: ArrayBuffer): Promise<ParsedDocument> {
   const bytes = new Uint8Array(buffer);
   const textRaw = new TextDecoder("latin1").decode(bytes);
 
   // 提取 PDF stream 内容与文本字符
   const textChunks: string[] = [];
-  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-  let streamMatch: RegExpExecArray | null;
 
-  while ((streamMatch = streamRegex.exec(textRaw)) !== null) {
-    const rawStream = streamMatch[1];
-    // 提取纯文本字符串: (Text) Tj 或者 [(T) 10 (ext)] TJ
-    const tjRegex = /\(([^)]*)\)\s*Tj/g;
-    let match: RegExpExecArray | null;
-    while ((match = tjRegex.exec(rawStream)) !== null) {
-      textChunks.push(decodePdfString(match[1]));
-    }
+  // 流的位置必须**按字节**定位，不能用正则去"截取"——流里可能有任意字节，
+  // 正则的 \r?\n 会把流内的换行吃掉，解压就报 "incorrect header check"。
+  // PDF 的做法是用对象头里声明的 /Length 精确取字节。
+  const streamKeyword = "stream";
+  let searchFrom = 0;
+  while (true) {
+    const idx = textRaw.indexOf(streamKeyword, searchFrom);
+    if (idx < 0) break;
+    const objStart = textRaw.lastIndexOf("<<", idx);
+    const objHeader = objStart >= 0 ? textRaw.slice(objStart, idx) : "";
+    // 跳过 "stream" 后的行尾
+    let dataStart = idx + streamKeyword.length;
+    if (textRaw[dataStart] === "\r") dataStart += 1;
+    if (textRaw[dataStart] === "\n") dataStart += 1;
+    const lengthMatch = objHeader.match(/\/Length\s+(\d+)/);
+    const declared = lengthMatch ? Number(lengthMatch[1]) : -1;
+    const endMarker = textRaw.indexOf("endstream", dataStart);
+    // /Length 不可信时（有些生成器写错，或流里含 "endstream" 字样）退回按标记截取。
+    // 真实 PDF 的 /Length 是准确的，按字节取才不会把流内的换行吃掉。
+    const declaredEnd = declared >= 0 ? dataStart + declared : -1;
+    const endMarkerEnd = endMarker >= 0 ? endMarker : bytes.length;
+    let dataEnd: number;
+    // 只有当声明长度落在这个流自己的 endstream 之前、且不是明显过短时才采信。
+    // 有些生成器把 /Length 写错（偏小），照着取会截掉正文。
+    const trustworthy = declaredEnd > dataStart
+      && declaredEnd <= bytes.length
+      && declaredEnd <= endMarkerEnd
+      && endMarkerEnd - declaredEnd <= 2;
+    dataEnd = trustworthy ? declaredEnd : endMarkerEnd;
+    const rawBytes = bytes.slice(dataStart, Math.max(dataStart, dataEnd));
 
-    const arrayRegex = /\[([^\]]+)\]\s*TJ/g;
-    let arrMatch: RegExpExecArray | null;
-    while ((arrMatch = arrayRegex.exec(rawStream)) !== null) {
-      const inner = arrMatch[1];
-      const strParts = inner.match(/\(([^)]*)\)/g);
-      if (strParts) {
-        const joined = strParts.map(s => decodePdfString(s.slice(1, -1))).join("");
-        textChunks.push(joined);
+    if (/\/FlateDecode/.test(objHeader)) {
+      // 真实世界的 PDF 几乎都用 FlateDecode 压缩内容流。不解压的话，
+      // 抽出来的不是文档内容，而是 PDF 源码本身（"1.4 1 0 obj Type Catalog…"）。
+      try {
+        const inflated = await inflateBytes(rawBytes);
+        textChunks.push(...extractPdfText(inflated));
+      } catch {
+        // 解压失败就按原样继续（总比抛错好，后面还有全文兜底）。
+        textChunks.push(...extractPdfText(new TextDecoder("latin1").decode(rawBytes)));
       }
+    } else {
+      textChunks.push(...extractPdfText(new TextDecoder("latin1").decode(rawBytes)));
     }
+    searchFrom = dataStart + rawBytes.length + 1;
   }
 
   let extracted = textChunks.join(" ").replace(/\s+/g, " ").trim();
@@ -401,6 +425,39 @@ export function parsePdfBuffer(fallbackTitle: string, buffer: ArrayBuffer): Pars
     wordCount: countWords(markdown),
     sections: [{ title, content: markdown }],
   };
+}
+
+/**
+ * 解 zlib（带头）数据——PDF 的 /FlateDecode 用的是这个格式。
+ *
+ * 复用已有的 decompressDeflateRaw 助手：它先试 deflate-raw、失败再试 deflate，
+ * 两个格式都覆盖得到。
+ */
+async function inflateBytes(data: Uint8Array): Promise<string> {
+  return await decompressDeflateRaw(data);
+}
+
+/** 从一段 PDF 内容流里抽出文本片段。 */
+function extractPdfText(rawStream: string): string[] {
+  const textChunks: string[] = [];
+  // 提取纯文本字符串: (Text) Tj 或者 [(T) 10 (ext)] TJ
+  const tjRegex = /\(([^)]*)\)\s*Tj/g;
+  let match: RegExpExecArray | null;
+  while ((match = tjRegex.exec(rawStream)) !== null) {
+    textChunks.push(decodePdfString(match[1]));
+  }
+
+  const arrayRegex = /\[([^\]]+)\]\s*TJ/g;
+  let arrMatch: RegExpExecArray | null;
+  while ((arrMatch = arrayRegex.exec(rawStream)) !== null) {
+    const inner = arrMatch[1];
+    const strParts = inner.match(/\(([^)]*)\)/g);
+    if (strParts) {
+      const joined = strParts.map(s => decodePdfString(s.slice(1, -1))).join("");
+      textChunks.push(joined);
+    }
+  }
+  return textChunks;
 }
 
 function decodePdfString(str: string): string {

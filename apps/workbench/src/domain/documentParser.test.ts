@@ -55,7 +55,7 @@ describe("documentParser", () => {
     expect(doc.sections.length).toBe(2);
   });
 
-  it("parses PDF text streams and string escapes", () => {
+  it("parses PDF text streams and string escapes", async () => {
     const pdfData = `
 %PDF-1.4
 1 0 obj << /Length 50 >>
@@ -69,10 +69,34 @@ endstream
 endobj
 %%EOF`;
     const buffer = new TextEncoder().encode(pdfData).buffer;
-    const doc = parsePdfBuffer("系统设计", buffer);
+    const doc = await parsePdfBuffer("系统设计", buffer);
     expect(doc.title).toBe("系统设计");
     expect(doc.markdown).toContain("KnowFlick Architecture Overview");
     expect(doc.markdown).toContain("Local First Design");
+  });
+
+  it("parses FlateDecode compressed PDF streams（真实世界的 PDF 几乎都是压缩的）", async () => {
+    // 不解压的话，抽出来的不是文档内容，而是 PDF 源码本身
+    // （"1.4 1 0 obj Type Catalog…"）——用户导入绝大多数 PDF 会得到一堆乱码。
+    // 这份 fixture 是一个真实结构的压缩 PDF（带 xref、/Filter /FlateDecode）。
+    const base64 = [
+"JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2Jq",
+"CjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2Jq",
+"CjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIg",
+"NzkyXSAvQ29udGVudHMgNCAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA2MyAvRmls",
+"dGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeJxzClHQdzNUMDRSCElTMDdSMDcwUAhJUdDwzssv",
+"d8vJTM5WcM7PLShKLS5OTVEIcHHTVAjJUnANAQCSzA+RCmVuZHN0cmVhbQplbmRvYmoKeHJlZgow",
+"IDUKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAw",
+"MDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjAyIDAwMDAwIG4gCnRyYWlsZXIKPDwg",
+"L1NpemUgNSAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKMzM2CiUlRU9GCg=="
+    ].join("");
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const doc = await parsePdfBuffer("压缩文档", bytes.buffer as ArrayBuffer);
+    expect(doc.markdown).toContain("KnowFlick Compressed PDF");
+    expect(doc.markdown).not.toContain("obj");
+    expect(doc.markdown).not.toContain("endstream");
   });
 
   it("rejects unsupported file extensions with clean message", async () => {
