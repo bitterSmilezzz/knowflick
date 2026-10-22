@@ -162,6 +162,27 @@ trap 兜底卸载 → 确认进程真的起来。
 - 只留最近 **40 轮**；写入失败（存储满）只放弃持久化，对话仍在内存里。
 - 有对话时提供「清空对话」，并说明「对话会保存在本机」——有持久化就必须有清空的出口。
 
+### 一次系统扫描的**否定**结论（避免以后重复调查）
+
+扫「bridge 层实现了但没人调用」的 12 个函数，逐个查完，**都不是缺陷**。
+记在这里，省得下次再查一遍：
+
+| 函数 | 结论 |
+| --- | --- |
+| `saveCards` / `exportArchive` / `readArchive` | **契约保留**：`cards.json` 仍是跨端契约，`load_store` 会读它 |
+| `dbSaveCardEmbedding` / `dbSearchCardsVector` / `dbSearchCardsFts` | **被新版取代**：实际用的是 `dbSaveCardEmbeddingsBatch` / `dbSearchCardsHybrid`（后者在 `BrainViews` 的问答检索里） |
+| `pickImportArchive` / `pickNoteFile` / `readTextFile` / `pickLibraryDir` | 被浏览器文件输入取代（笔记转卡走 `<input type=file>`） |
+| `dbDeleteCard` / `dbUpdateMaterialStatus` | 被 `storeCardList` / `updateMaterial` 取代 |
+
+另外两处「看着像缺陷、查完不是」：
+
+- **`card.source`（seed / ai / imported）在界面上从不显示**：两端都不显示
+  （Android 的 `sourceLabel` 也是定义了没人调用）。文档没有承诺显示它——
+  它是**数据契约字段**（跨端必须往返），不是 UI 承诺。不擅自加界面。
+- **`assertFetchableUrl`（前端）比 Rust 的 `validate_url` 宽松**：前者未限制
+  「明文 HTTP 只允许回环」，后者限制了。但真实网络路径走 Rust，浏览器模式下
+  根本不发请求（会直接报「浏览器无法跨站抓取」）——**纵深防御在关键层**。
+
 ### 主线入口「知识测验」被挤出侧栏可视区（只在真机上看得到）
 
 第一次在**真实 macOS 窗口**上验证（此前都是浏览器），立刻抓到一个浏览器里
