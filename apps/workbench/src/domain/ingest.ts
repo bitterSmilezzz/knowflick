@@ -128,11 +128,56 @@ export function transformPrompt(note: string): string {
 ${note.slice(0, 5000)}`;
 }
 
+/**
+ * 从模型输出里挑出那个真正的卡片数组。
+ *
+ * 不能简单用 `\[[\s\S]*\]` 贪婪匹配：真实模型常在正文里带**引用编号**
+ * （「根据 [1] 的研究，以下是卡片：[{...}]」），贪婪匹配会从 `[1]` 开始截，
+ * JSON.parse 直接失败——而模型其实返回了合法卡片，用户却收到「没有返回卡片数组」。
+ *
+ * 也不能「从后往前取第一个能解析的数组」：卡片里常有嵌套数组
+ * （`searchKeywords: ["a","b"]`），那样会命中内层那个字符串数组。
+ *
+ * 做法：枚举所有能解析成数组的候选，**按「元素是对象的个数」挑最好的**。
+ * `[1]`、`["a","b"]` 这类元素不是对象的候选自然落选。
+ */
+function extractCardArray(text: string): unknown[] | null {
+  const starts: number[] = [];
+  for (let i = 0; i < text.length; i += 1) if (text[i] === "[") starts.push(i);
+
+  let best: unknown[] | null = null;
+  let bestScore = 0;
+  // 找到过任何合法数组（哪怕元素不是对象）——用来区分两种失败：
+  // 「模型没给数组」与「给了数组但没有可用的卡」。后者的提示更有用。
+  let longestEmpty: unknown[] | null = null;
+  for (const start of starts) {
+    for (let end = text.length - 1; end > start; end -= 1) {
+      if (text[end] !== "]") continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(parsed)) continue;
+      if (!longestEmpty || parsed.length > longestEmpty.length) longestEmpty = parsed;
+      const score = parsed.filter((item) => item !== null && typeof item === "object" && !Array.isArray(item)).length;
+      if (score > bestScore) {
+        best = parsed;
+        bestScore = score;
+      }
+      break; // 同一个起点只取最长的那个合法数组
+    }
+  }
+  if (bestScore > 0) return best;
+  // 空数组（或只有标量的数组）：交回调用方给「没有可用的新卡片」这类提示，
+  // 而不是误报成「模型没返回数组」。
+  return longestEmpty;
+}
+
 export function cardsFromModelText(text: string, now = Date.now()): KnowledgeCard[] {
-  const match = text.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error("AI 没有返回卡片数组");
-  const parsed = JSON.parse(match[0]) as unknown;
-  if (!Array.isArray(parsed)) throw new Error("AI 没有返回卡片数组");
+  const parsed = extractCardArray(text);
+  if (!parsed) throw new Error("AI 没有返回卡片数组");
   const seen = new Set<string>();
   const cards: KnowledgeCard[] = [];
   for (const item of parsed) {

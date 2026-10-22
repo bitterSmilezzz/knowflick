@@ -626,8 +626,12 @@ try {
         const cards = [{ headline: '复购率优先', summary: '获取成本高于维护成本',
           details: '复购率比拉新更重要。获取一个新用户的成本远高于维护一个老用户，所以小团队应先把留存做扎实，再考虑扩大获客。'.repeat(2),
           searchKeywords: ['复购', '留存'] }];
+        // 真实模型常带引用编号与 markdown 围栏——用这种响应验证解析层的健壮性。
+        const NL = String.fromCharCode(10);
+        const FENCE = String.fromCharCode(96, 96, 96);
+        const content = '根据 [1] 的研究，提炼如下：' + NL + FENCE + 'json' + NL + JSON.stringify(cards) + NL + FENCE;
         return Promise.resolve(new Response(JSON.stringify({
-          choices: [{ message: { content: JSON.stringify(cards) } }],
+          choices: [{ message: { content } }],
         }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
       return realFetch(input, init);

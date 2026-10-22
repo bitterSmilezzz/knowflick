@@ -59,4 +59,40 @@ describe("AI 提炼：模型输出解析与校验", () => {
     expect(card.category).toBe("随手笔记");
     expect(card.summary).toBe("只有标题和正文");
   });
+
+  // 下面几条针对**真实模型的实际输出习惯**。系统提示要求「仅输出 JSON 数组」，
+  // 但真实模型常带解释、引用编号、markdown 围栏——用贪婪匹配取第一个 `[`
+  // 到最后一个 `]` 会截错，用户收到「没有返回卡片数组」而模型其实给了卡。
+  it("正文带引用编号 [1] 时，仍要取到后面的卡片数组", () => {
+    const text = `根据 [1] 的研究，以下是提炼结果：\n${JSON.stringify([{ headline: "带引用", details: longDetails }])}`;
+    const cards = cardsFromModelText(text);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].headline).toBe("带引用");
+  });
+
+  it("正文带 [图1] 与 [2] 这类混合引用时也能取到", () => {
+    const text = `参考 [图1] 与 [2] 的结论\n${JSON.stringify([{ headline: "混合引用", details: longDetails }])}`;
+    expect(cardsFromModelText(text)).toHaveLength(1);
+  });
+
+  it("markdown 围栏包裹时能取到", () => {
+    const text = "```json\n" + JSON.stringify([{ headline: "围栏", details: longDetails }]) + "\n```";
+    expect(cardsFromModelText(text)).toHaveLength(1);
+  });
+
+  it("卡片内的嵌套数组（searchKeywords）不会被误当成卡片数组", () => {
+    // 「从后往前取第一个能解析的数组」会命中内层的 ["复购","留存"]，
+    // 那样解出来的是字符串数组，一张卡都认不出来。
+    const text = JSON.stringify([{ headline: "带嵌套", details: longDetails, searchKeywords: ["复购", "留存"] }]);
+    const cards = cardsFromModelText(text);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].headline).toBe("带嵌套");
+  });
+
+  it("空数组与「没有数组」要给不同的提示", () => {
+    // 空数组是「模型给了数组但没有可用的卡」，不是「模型没给数组」——
+    // 两者的用户下一步动作不一样。
+    expect(() => cardsFromModelText("[]")).toThrow("没有可用的新卡片");
+    expect(() => cardsFromModelText("没有任何 JSON")).toThrow("AI 没有返回卡片数组");
+  });
 });
