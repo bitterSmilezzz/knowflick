@@ -221,6 +221,43 @@ def check_evidence_is_executed(problems: list[str]) -> None:
                 problems.append(f"「{label}」的证据 {rel} 不在 vitest 的收集范围内")
 
 
+def check_evidence_assertions(problems: list[str]) -> None:
+    """证据测试的断言要**真的在断言行为**，不是只断言存在。
+
+    两种常见的弱断言：
+    - `expect(x.length).toBeGreaterThan(0)`——「1 个」和「8 个」都算过；
+    - for 循环里的断言——**数组为空时循环零次、直接通过**。
+    """
+    for _label, rel, _needle in EVIDENCE_MAP:
+        if not rel.endswith((".test.ts", ".test.tsx")):
+            continue
+        path = ROOT / rel
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for match in re.finditer(r'it\(\s*"([^"]+)"[^)]*\)\s*\{', text):
+            start = match.end()
+            nxt = text.find("\n  it(", start)
+            body = text[start: nxt if nxt > 0 else len(text)]
+            if not body.strip():
+                continue
+            # 循环里的断言：空数组时不会执行 → 形同虚设
+            if re.search(r"for\s*\([^)]*\)\s*\{", body) and not re.search(
+                r"expect\(\s*\w+\.length", body
+            ):
+                problems.append(
+                    f"{rel} 的「{match.group(1)[:30]}」在 for 循环里断言，"
+                    "空数组时会直接通过"
+                )
+            # 存在性断言：只测 > 0 不够
+            if re.search(r"expect\([^)]*\.length\)\.toBeGreaterThan\(0\)", body):
+                if not re.search(r"\.toBe\(\d+\)|\.toEqual\(", body):
+                    problems.append(
+                        f"{rel} 的「{match.group(1)[:30]}」只断言长度 > 0，"
+                        "换个数量也照样通过"
+                    )
+
+
 def main() -> int:
     problems: list[str] = []
 
@@ -282,6 +319,7 @@ def main() -> int:
     check_gate_claims(problems)
     check_evidence(problems)
     check_evidence_is_executed(problems)
+    check_evidence_assertions(problems)
 
     if problems:
         emit("文档与实际有出入：")

@@ -34,7 +34,9 @@ describe("音效开关", () => {
     const created = stubAudio();
     setSoundEffectsEnabled(true);
     playSwipeTone("right");
-    expect(created.length).toBeGreaterThan(0);
+    // 原来是 toBeGreaterThan(0)——「创建了 1 个」和「创建了 8 个」都算过。
+    // 音效不该每次播放都新建上下文（那会耗电），所以断言恰好一个。
+    expect(created.length).toBe(1);
   });
 
   it("关闭时不创建任何音频上下文", () => {
@@ -49,9 +51,10 @@ describe("音效开关", () => {
     const created = stubAudio();
     setSoundEffectsEnabled(false);
     playSwipeTone("right");
+    expect(created.length, "关闭时不该创建上下文").toBe(0);
     setSoundEffectsEnabled(true);
     playSwipeTone("right");
-    expect(created.length).toBeGreaterThan(0);
+    expect(created.length, "重新开启后应该能响").toBe(1);
   });
 
   it("音频上下文创建失败时静默降级，不抛错", () => {

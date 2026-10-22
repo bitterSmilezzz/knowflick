@@ -90,9 +90,22 @@ describe("笔记文件转知识卡", () => {
   it("每张卡都有可复习的标题与正文", () => {
     const markdown = "## 只有标题没有正文\n\n";
     const cards = parseNotesFile(markdown, "x.md");
+    // 原来这里是个 for 循环里的 toBeGreaterThan(0)：**数组为空时循环零次、
+    // 断言直接通过**——什么都没解析出来也算「通过」。先断言确实有卡。
+    expect(cards.length).toBeGreaterThan(0);
     for (const card of cards) {
       expect(card.headline.trim().length).toBeGreaterThan(0);
       expect(card.details.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("标题有但正文空时，正文回落到标题（不留空壳卡）", () => {
+    const markdown = "## 只有标题\n\n";
+    const cards = parseNotesFile(markdown, "x.md");
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) {
+      expect(card.details.trim().length).toBeGreaterThan(0);
+      expect(card.summary.trim().length).toBeGreaterThan(0);
     }
   });
 });
