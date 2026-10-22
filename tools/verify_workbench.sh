@@ -10,6 +10,16 @@ cd src-tauri
 # 加上之后 lock 与 Cargo.toml 一漂移就红。
 cargo test --locked
 
+# 同一批 Rust 用例，**在代理环境变量下**再跑一遍。
+#
+# 为什么：用户系统里配了 HTTP_PROXY 时，本地模型的请求会被交给代理而不是
+# 本机服务（这是真实缺陷，见 docs/SMOOTHNESS.md）。CI 环境干净，跑一次
+# 常规 cargo test 抓不到它——所以这里显式造一个代理环境。
+# 清空 NO_PROXY 是关键：它本来可能含回环地址，那样问题就被掩盖了。
+env -u NO_PROXY -u no_proxy \
+  HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 \
+  cargo test --locked --lib http::tests
+
 # 脚本里的 bash 陷阱（$VAR 紧跟全角标点会被并进变量名）只在 UTF-8 locale 下复现，
 # 本仓库的脚本里中文很多，顺手在本地门禁里挡一道。
 cd "$ROOT"
