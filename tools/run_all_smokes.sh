@@ -21,7 +21,13 @@ fi
 
 # 需要 Vite 在跑（KNOWFLICK_UI_URL，默认 http://localhost:1420）
 URL="${KNOWFLICK_UI_URL:-http://localhost:1420}"
-if ! curl -fsS --max-time 3 "$URL" >/dev/null 2>&1; then
+# 重试几次：Vite 可能正在启动（刚重启就跑门禁会撞上），一次探测就放弃太脆。
+vite_up=0
+for _ in 1 2 3 4 5; do
+  if curl -fsS --max-time 3 "$URL" >/dev/null 2>&1; then vite_up=1; break; fi
+  sleep 2
+done
+if [ "$vite_up" -ne 1 ]; then
   echo "SKIP 浏览器冒烟需要运行中的 Vite（$URL 不通）" >&2
   exit 0
 fi
