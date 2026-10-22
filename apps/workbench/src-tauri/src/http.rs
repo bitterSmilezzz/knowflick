@@ -33,6 +33,85 @@ pub async fn fetch_clip(raw: &str) -> Result<ClipPage, String> {
     Ok(ClipPage { text, final_url })
 }
 
+/// 抹掉服务端错误原文里可能出现的凭据。
+///
+/// 与前端 `redactSecrets` 同一套规则：界面上的密钥一旦被截图或分享就泄露了。
+/// 邮箱侧早定了「错误不回显密钥」的原则（docs/EMAIL_INTEGRATION.md），AI 侧对齐。
+///
+/// 纯字符串扫描实现，不引入 regex 依赖（这台工程刻意保持依赖少）。
+pub fn redact_secrets(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let bytes: Vec<char> = text.chars().collect();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let rest: String = bytes[i..].iter().collect();
+        // Bearer 后的整串（按字符比较，别用字节切片——错误原文可能是中文）
+        if rest.len() >= 7 && rest.chars().take(7).collect::<String>().eq_ignore_ascii_case("bearer ") {
+            out.push_str("Bearer [已隐藏的密钥]");
+            // 跳过 token 本体
+            let mut j = i + 7;
+            while j < bytes.len() && is_secret_char(bytes[j]) {
+                j += 1;
+            }
+            i = j;
+            continue;
+        }
+        // 带常见前缀的 key：sk-、sk-proj-、gsk_、xai-、api_ 等
+        if let Some(len) = prefixed_key_len(&bytes, i) {
+            out.push_str("[已隐藏的密钥]");
+            i += len;
+            continue;
+        }
+        // 长随机串（32 位以上）多半是凭据
+        if is_secret_char(bytes[i]) {
+            let mut j = i;
+            while j < bytes.len() && is_secret_char(bytes[j]) {
+                j += 1;
+            }
+            if j - i >= 32 {
+                out.push_str("[已隐藏的长串]");
+                i = j;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    out
+}
+
+fn is_secret_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.'
+}
+
+/// 若从 `at` 开始是一个「带前缀的密钥」，返回它的长度；否则返回 None。
+fn prefixed_key_len(chars: &[char], at: usize) -> Option<usize> {
+    const PREFIXES: [&str; 5] = ["sk", "rk", "gsk", "xai", "api"];
+    for prefix in PREFIXES {
+        let plen = prefix.chars().count();
+        if at + plen + 1 > chars.len() {
+            continue;
+        }
+        // 前缀都是 ASCII，但**后面**可能接着中文——按字符切，不要用字节索引。
+        let head: String = chars[at..at + plen].iter().collect();
+        if !head.eq_ignore_ascii_case(prefix) {
+            continue;
+        }
+        let sep = chars[at + plen];
+        if sep != '-' && sep != '_' {
+            continue;
+        }
+        let mut j = at + plen + 1;
+        while j < chars.len() && is_secret_char(chars[j]) {
+            j += 1;
+        }
+        if j - (at + plen + 1) >= 8 {
+            return Some(j - at);
+        }
+    }
+    None
+}
+
 pub async fn complete_chat(endpoint: &str, api_key: &str, body: String) -> Result<String, String> {
     validate_url(endpoint)?;
     let client = reqwest::Client::builder()
@@ -56,7 +135,13 @@ pub async fn complete_chat(endpoint: &str, api_key: &str, body: String) -> Resul
     let text = read_capped(response, 2 * 1024 * 1024).await?;
     let text = String::from_utf8_lossy(&text).to_string();
     if !status.is_success() {
-        return Err(format!("API 返回 {}：{}", status.as_u16(), text.chars().take(200).collect::<String>()));
+        // 服务端原文里可能带着 API key（部分服务商在 401 里会回显）。
+        // 邮箱侧定的原则是「错误不回显密钥」，这里同一标准：抹掉再给界面。
+        return Err(format!(
+            "API 返回 {}：{}",
+            status.as_u16(),
+            redact_secrets(&text).chars().take(200).collect::<String>()
+        ));
     }
     let content = serde_json::from_str::<serde_json::Value>(&text)
         .ok()
@@ -210,7 +295,28 @@ fn charset_from_meta(bytes: &[u8]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{charset_from_header, charset_from_meta, decode_body, validate_url, META_SNIFF_BYTES};
+    use super::{charset_from_header, charset_from_meta, decode_body, redact_secrets, validate_url, META_SNIFF_BYTES};
+
+    #[test]
+    fn redacts_prefixed_api_keys() {
+        let text = "Incorrect API key provided: sk-proj-abc123DEF456ghi789. Check your dashboard.";
+        let out = redact_secrets(text);
+        assert!(!out.contains("sk-proj-abc123DEF456ghi789"), "不该回显密钥：{out}");
+        assert!(out.contains("[已隐藏的密钥]"), "{out}");
+        assert!(out.contains("Check your dashboard."), "其余原文要保留：{out}");
+    }
+
+    #[test]
+    fn redacts_bearer_tokens() {
+        let out = redact_secrets("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9abcdefgh");
+        assert!(!out.contains("eyJhbGciOiJIUzI1NiJ9"), "{out}");
+    }
+
+    #[test]
+    fn keeps_ordinary_error_text() {
+        let text = "模型 120 秒没有响应，已中止。可以先检查网络。";
+        assert_eq!(redact_secrets(text), text);
+    }
 
     #[test]
     fn validate_url_allows_https_and_local_http() {

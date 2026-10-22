@@ -106,6 +106,23 @@ export function fetchClip(url: string): Promise<{ text: string; finalUrl: string
  * 浏览器模式下服务商要放开 CORS 才通；不通时错误信息里说明原因，
  * 不要让用户对着一个网络错误猜。
  */
+/**
+ * 抹掉服务端错误原文里可能出现的凭据。
+ *
+ * 邮箱侧早就定了原则：「错误不回显密钥——不把服务端原文透给界面」
+ * （见 docs/EMAIL_INTEGRATION.md）。AI 侧此前把响应原文前 200 字符直接显示，
+ * 而部分服务商在 401 里会回显 API key（OpenAI 会截断，自建网关常常不截）。
+ * 界面上的密钥一旦被截图或分享就泄露了，所以这里统一抹掉。
+ */
+export function redactSecrets(text: string): string {
+  return text
+    // 常见 key 前缀：sk-、sk-proj-、gsk_、xai-、Bearer 后面的整串
+    .replace(/\b(sk|rk|gsk|xai|api)[-_][A-Za-z0-9_-]{8,}/gi, "[已隐藏的密钥]")
+    .replace(/\bBearer\s+[A-Za-z0-9._-]{8,}/gi, "Bearer [已隐藏的密钥]")
+    // 长随机串（32 位以上）多半是凭据，一并抹掉
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[已隐藏的长串]");
+}
+
 export async function completeChat(endpoint: string, apiKey: string, body: string): Promise<string> {
   if (inShell()) {
     return invoke("complete_chat", { endpoint, apiKey, body });
@@ -138,7 +155,7 @@ export async function completeChat(endpoint: string, apiKey: string, body: strin
   }
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`API 返回 ${response.status}：${text.slice(0, 200)}`);
+    throw new Error(`API 返回 ${response.status}：${redactSecrets(text).slice(0, 200)}`);
   }
   const parsed = JSON.parse(text) as {
     choices?: Array<{ message?: { content?: string } }>;
