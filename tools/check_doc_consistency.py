@@ -174,6 +174,15 @@ EVIDENCE_MAP: list[tuple[str, str, str]] = [
     ("订阅来源在收件箱认不出来", "apps/workbench/src/domain/subscription.test.ts", "subscriptionId"),
     ("两个隐藏 input 缺 data-role", "tools/import_ui_smoke.mjs", "data-role=import-files"),
     ("数据库损坏时只甩英文错误", "apps/workbench/src-tauri/src/db.rs", "数据库已损坏"),
+    # —— 第三批：逐条核对 SMOOTHNESS.md 的 42 个小节时补齐的 ——
+    ("批量操作只有单选", "tools/workspace_ui_smoke.mjs", "多选后出现批量操作栏"),
+    ("订阅素材只能一条条点", "tools/workspace_ui_smoke.mjs", "多选订阅素材也出现批量栏"),
+    ("问答的对话一离开就清零", "tools/brain_ui_smoke.mjs", "切页回来后对话仍在"),
+    ("未配密钥时提问点了没反应", "tools/brain_ui_smoke.mjs", "尚未配置 API 密钥"),
+    ("简报「重新分析」看起来像没反应", "tools/brain_ui_smoke.mjs", "重新分析默认显示为「重新分析」"),
+    ("产物库存进去却读不到", "tools/brain_ui_smoke.mjs", "简报已存入产物库"),
+    ("剪藏到知识卡这条链没覆盖", "apps/workbench/src/domain/fixtures.test.ts", "真实文件：网页剪藏"),
+    ("订阅来源在收件箱认不出来", "apps/workbench/src/domain/insights.test.ts", "订阅"),
 ]
 
 
