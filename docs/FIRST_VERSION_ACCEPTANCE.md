@@ -21,7 +21,7 @@
 | --- | --- | --- |
 | 剪藏 | ✅ | `clipEngine.test.ts`、`clipEngine.crossend.test.ts`、`fixtures.test.ts`（真实 GBK/UTF-8 页面）、`tools/check_clip_parity.py`（三端一致） |
 | 笔记导入 | ✅ | `import_ui_smoke.mjs`（27 项）、`subscription.test.ts`、`fixtures.test.ts`（真实 DOCX/PPTX/feed） |
-| AI 出卡 | **B** | `aiTransform` 有实现与 UI 入口；**没有真实模型调用的自动化证据**（需要 API key） |
+| AI 出卡 | **A** | `workspace_ui_smoke.mjs` **拦截 fetch 注入假模型响应**，验证整条链路：素材 → 请求 → 预览 → 确认 → 落库 → 回溯 materialId。仍然**没有真实模型的调用证据**（需要 API key），但链路本身是验过的 |
 | 刷卡 | ✅ | `desktop_interaction_smoke.mjs`（键盘划走）、`review_ui_smoke.mjs`（19 项：评分写回、间隔算出、掌握度前进、重载后仍在） |
 | 卡库和详情 | ✅ | `workspace_ui_smoke.mjs`（76 处断言）、`EntryInspector.test.tsx` |
 | 收藏和历史 | ✅ | `workspace_ui_smoke.mjs`（收藏、归档、移回收件箱）、`model.test.ts` |
@@ -44,7 +44,10 @@
 
 ## 还没证据的
 
-1. **AI 出卡的真实模型调用**——需要 API key 与网络，自动化跑不了。
+1. **真实模型的调用**——链路已用假端点验证（请求发出、响应解析、预览确认、
+   落库回溯都验过）；但「真实模型返回的内容能不能被正确解析」需要 API key。
+   注意 `cardsFromModelText` 有兜底规则（`details` 少于 80 字丢弃、标题去重），
+   真实模型偶尔会返回不符合约定的内容——那部分只能靠真实调用暴露。
 2. **真机语音录制**——面板已确认，但没有真的按下录音键并保存。
 3. **Windows / Linux 安装后首启**——CI 出 msi/deb，本机只能出 DMG，没有人在那两台机器上跑过流程。
 4. **真机录音**——面板在真机上确认过（「准备录音 / 开始录音 / 保存语音笔记」，

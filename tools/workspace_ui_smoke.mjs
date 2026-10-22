@@ -594,6 +594,88 @@ try {
   await browser("set", "viewport", "1040", "760");
   await new Promise((r) => setTimeout(r, 500));
 
+  // AI 出卡：ADR 第一版交付物里的「AI 出卡」此前只有「代码在那儿」的证据
+  // （需要真实 API key）。这里**拦截 fetch 注入假模型响应**，验证整条链路：
+  // 素材 → askModel → completeChat → cardsFromModelText → 落库 → 可回溯。
+  await browser("eval", `(() => {
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    const now = Date.now();
+    raw.materials = [{ id: 'ai-mat-1', sourceType: 'manual', title: '待提炼的素材',
+      sourceUrl: null, rawText: '复购率比拉新更重要，因为获取成本远高于维护成本。',
+      contentHash: '', mediaPath: null, mediaSizeBytes: 0, metadataJson: '{}',
+      inboxStatus: 'inbox', createdAt: now, updatedAt: now }];
+    raw.cards = [];
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    // 浏览器体验把 API key 放在 sessionStorage（桌面端走本机凭据文件）。
+    // 不设的话「AI 提炼卡片」按钮会显示成「配置 AI」。
+    sessionStorage.setItem('knowflick.workspace.key', 'sk-fake-for-test');
+    return true;
+  })()`);
+  await browser("open", url);
+  await new Promise((r) => setTimeout(r, 900));
+  // 假模型要在**页面加载之后**装：重载会清掉 window 上的覆盖。
+  await browser("eval", `(() => {
+    window.__kfAiCalls = [];
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const isChat = (url.indexOf('chat') >= 0 && url.indexOf('completions') >= 0)
+        || (url.indexOf('v1') >= 0 && url.indexOf('messages') >= 0);
+      if (isChat) {
+        window.__kfAiCalls.push(url);
+        const cards = [{ headline: '复购率优先', summary: '获取成本高于维护成本',
+          details: '复购率比拉新更重要。获取一个新用户的成本远高于维护一个老用户，所以小团队应先把留存做扎实，再考虑扩大获客。'.repeat(2),
+          searchKeywords: ['复购', '留存'] }];
+        return Promise.resolve(new Response(JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(cards) } }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return realFetch(input, init);
+    };
+    return true;
+  })()`);
+  await browser("eval", "(() => { const el = [...document.querySelectorAll('.ws-nav-row')].find(e => e.textContent.includes('收件箱')); if (el) el.click(); return !!el; })()");
+  await new Promise((r) => setTimeout(r, 700));
+  await browser("eval", "(() => { const e = [...document.querySelectorAll('.ws-entry')].find(x => x.textContent.includes('待提炼的素材')); if (e) e.click(); return !!e; })()");
+  await new Promise((r) => setTimeout(r, 700));
+  const aiClicked = await browser("eval", `(() => {
+    const d = document.querySelector('[data-material-actions]');
+    if (d) d.open = true;
+    const b = [...document.querySelectorAll('button')].find(x => /AI 提炼卡片/.test(x.textContent));
+    if (b) { b.click(); return 'clicked'; }
+    return 'not-found';
+  })()`);
+  await new Promise((r) => setTimeout(r, 1500));
+  await check(
+    String(aiClicked).includes("clicked"),
+    "素材页有「AI 提炼卡片」入口（配好 key 时）"
+  );
+  // AI 出卡是**两步**：先出预览让用户过目，确认后才落库（有意设计）。
+  await check(
+    "!!document.querySelector('[data-ai-preview]') || document.body.innerText.includes('确认保存')",
+    "AI 出的卡先进预览，不直接落库"
+  );
+  await browser("eval", "(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.includes('确认保存')); if (b) { b.click(); return true; } return false; })()");
+  await new Promise((r) => setTimeout(r, 1200));
+
+  // 假模型确实被调用过（否则上面几条可能是「本来就有卡」造成的假绿）
+  await check(
+    "(() => Array.isArray(window.__kfAiCalls) && window.__kfAiCalls.length > 0)()",
+    "确实发出了模型请求（假端点被调用）"
+  );
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); return (raw.cards || []).length > 0; })()",
+    "AI 返回的卡片落进了库"
+  );
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); const c = (raw.cards || [])[0]; return !!c && c.materialId === 'ai-mat-1'; })()",
+    "AI 出的卡能回溯到原始素材"
+  );
+  await check(
+    "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1')); const c = (raw.cards || [])[0]; return !!c && c.headline === '复购率优先'; })()",
+    "AI 返回的标题被采用"
+  );
+
   // 统计：ADR-0002 把「统计」列进第一版交付物，命令早就在，但没有界面
   await check(
     "[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('统计'))",
