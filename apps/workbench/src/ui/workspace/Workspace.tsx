@@ -1369,6 +1369,57 @@ export function Workspace() {
             <Icon name="card" size={14} /><span>笔记</span>
           </button>
         </div>
+        {/* 「应用」是产品主线（对知识做应用），不能被滚动藏起来：
+            侧栏空间不够时，多出来的那一行会正好把「知识测验」挤出可视区，
+            用户根本看不到这个功能。放在滚动区之外，来源/收件箱/知识库
+            那些流入管道仍然可以滚动。 */}
+<nav className="ws-nav-group" aria-label="应用">
+            <p className="ws-group-label">应用</p>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "brain" ? "page" : undefined}
+              onClick={() => navigate("brain")}
+            >
+              <Icon name="ask" /><span>知识问答</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "briefing" ? "page" : undefined}
+              onClick={() => navigate("briefing")}
+            >
+              <Icon name="brief" /><span>认知简报</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "artifacts" ? "page" : undefined}
+              onClick={() => navigate("artifacts")}
+            >
+              <Icon name="layers" /><span>产物库</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "stats" ? "page" : undefined}
+              onClick={() => navigate("stats")}
+            >
+              <Icon name="brief" /><span>统计</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "quiz" ? "page" : undefined}
+              onClick={() => navigate("quiz")}
+            >
+              <Icon name="ask" /><span>知识测验</span>
+            </button>
+            {reviewEnabled ? (
+              <button
+                className="ws-nav-row"
+                aria-current={page === "review" ? "page" : undefined}
+                onClick={() => navigate("review")}
+              >
+                <Icon name="layers" /><span>温故复习</span>
+              </button>
+            ) : null}
+          </nav>
         <div className="ws-nav-scroll">
           {/* 侧栏只回答一个问题：我在流水线的哪一段。
               「来源 → 收件箱 → 知识库 → 应用」是产品主线；收藏/归档/分类是
@@ -1459,53 +1510,7 @@ export function Workspace() {
             ) : null}
           </nav>
 
-          <nav className="ws-nav-group" aria-label="应用">
-            <p className="ws-group-label">应用</p>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "brain" ? "page" : undefined}
-              onClick={() => navigate("brain")}
-            >
-              <Icon name="ask" /><span>知识问答</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "briefing" ? "page" : undefined}
-              onClick={() => navigate("briefing")}
-            >
-              <Icon name="brief" /><span>认知简报</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "artifacts" ? "page" : undefined}
-              onClick={() => navigate("artifacts")}
-            >
-              <Icon name="layers" /><span>产物库</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "stats" ? "page" : undefined}
-              onClick={() => navigate("stats")}
-            >
-              <Icon name="brief" /><span>统计</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "quiz" ? "page" : undefined}
-              onClick={() => navigate("quiz")}
-            >
-              <Icon name="ask" /><span>知识测验</span>
-            </button>
-            {reviewEnabled ? (
-              <button
-                className="ws-nav-row"
-                aria-current={page === "review" ? "page" : undefined}
-                onClick={() => navigate("review")}
-              >
-                <Icon name="layers" /><span>温故复习</span>
-              </button>
-            ) : null}
-          </nav>
+          
           {/* 内容超过可视高度时，底部渐隐提示「还能往下滚」——
               否则最后一行被硬切一半，看起来像布局坏了。 */}
           <div className="ws-nav-fade" aria-hidden="true" />

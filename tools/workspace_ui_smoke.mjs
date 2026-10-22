@@ -557,6 +557,16 @@ try {
     "document.body.innerText.includes('不影响温故复习') || document.body.innerText.includes('随机')",
     "测验页说清它与复习的区别"
   );
+  // 主线入口不能被滚动藏起来：侧栏空间不够时，「应用」段被挤出去，
+  // 用户根本看不到「知识测验」这个功能。桌面窗口只有 728px 高。
+  await browser("set", "viewport", "1040", "640");
+  await new Promise((r) => setTimeout(r, 700));
+  await check(
+    "(() => { const q = [...document.querySelectorAll('.ws-nav-row')].find(r => r.textContent.includes('知识测验')); if (!q) return false; const b = q.getBoundingClientRect(); return b.bottom <= innerHeight && b.top >= 0; })()",
+    "小窗口下「知识测验」仍然可见（主线入口不被滚动藏起来）"
+  );
+  await browser("set", "viewport", "1040", "760");
+  await new Promise((r) => setTimeout(r, 500));
 
   // 统计：ADR-0002 把「统计」列进第一版交付物，命令早就在，但没有界面
   await check(
