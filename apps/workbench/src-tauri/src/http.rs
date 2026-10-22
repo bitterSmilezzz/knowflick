@@ -236,7 +236,8 @@ fn validate_url(raw: &str) -> Result<reqwest::Url, String> {
         "https" => Ok(url),
         "http" => {
             let host = url.host_str().unwrap_or("");
-            if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+            // url::Url::host_str keeps IPv6 brackets and normalizes expanded ::1.
+            if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
                 Ok(url)
             } else {
                 Err("只有本机地址可以用 HTTP".to_string())
@@ -349,6 +350,85 @@ mod tests {
     }
 
     #[test]
+    fn ipv6_loopback_requests_reach_local_service_without_key() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::time::{Duration, Instant};
+
+        let listener = TcpListener::bind("[::1]:0").expect("IPv6 loopback listener");
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || -> Result<Vec<String>, String> {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let mut requests = Vec::new();
+            for body in [
+                r#"{"choices":[{"message":{"content":"IPv6 local OK"}}]}"#,
+                r#"{"data":[{"embedding":[0.25,0.75]}]}"#,
+                "<html><body>IPv6 local page</body></html>",
+            ] {
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                            if Instant::now() >= deadline {
+                                return Err("Local service did not receive expected request".into());
+                            }
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(err) => return Err(err.to_string()),
+                    }
+                };
+                stream.set_nonblocking(false).map_err(|e| e.to_string())?;
+                stream.set_read_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
+                stream.set_write_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
+                let mut request = Vec::new();
+                loop {
+                    let mut buffer = [0; 2048];
+                    let size = stream.read(&mut buffer).map_err(|e| e.to_string())?;
+                    if size == 0 { return Err("Incomplete HTTP request".into()); }
+                    request.extend_from_slice(&buffer[..size]);
+                    if request.len() > 64 * 1024 { return Err("Oversized HTTP request".into()); }
+                    if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&request[..end]);
+                        let length = headers.lines().find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            if name.eq_ignore_ascii_case("content-length") {
+                                value.trim().parse::<usize>().ok()
+                            } else { None }
+                        }).unwrap_or(0);
+                        if request.len() >= end + 4 + length { break; }
+                    }
+                }
+                requests.push(String::from_utf8(request).map_err(|e| e.to_string())?);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(), body
+                );
+                stream.write_all(response.as_bytes()).map_err(|e| e.to_string())?;
+            }
+            Ok(requests)
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let (chat, vectors, page) = runtime.block_on(async {
+            let chat = super::complete_chat(&format!("http://{address}/v1/chat/completions"), "", "{}".into()).await;
+            let vectors = super::request_embeddings(&format!("http://{address}/v1/embeddings"), "", "local", vec!["note".into()]).await;
+            let page = super::fetch_clip(&format!("http://{address}/page")).await;
+            (chat, vectors, page)
+        });
+        let requests = server.join().unwrap().expect("Local service received all three requests");
+        assert_eq!(chat.unwrap(), "IPv6 local OK");
+        assert_eq!(vectors.unwrap(), vec![vec![0.25_f32, 0.75_f32]]);
+        assert!(page.unwrap().text.contains("IPv6 local page"));
+        assert_eq!(requests.len(), 3);
+        assert!(requests[0].starts_with("POST /v1/chat/completions "));
+        assert!(requests[1].starts_with("POST /v1/embeddings "));
+        assert!(requests[2].starts_with("GET /page "));
+        for request in requests {
+            assert!(!request.to_ascii_lowercase().contains("authorization:"));
+        }
+    }
+
+    #[test]
     fn keeps_ordinary_error_text() {
         let text = "模型 120 秒没有响应，已中止。可以先检查网络。";
         assert_eq!(redact_secrets(text), text);
@@ -358,12 +438,16 @@ mod tests {
     fn validate_url_allows_https_and_local_http() {
         assert!(validate_url("https://example.com/a").is_ok());
         assert!(validate_url("http://127.0.0.1:8080/x").is_ok());
+        assert!(validate_url("http://[::1]:8080/x").is_ok());
+        assert!(validate_url("http://[0:0:0:0:0:0:0:1]:8080/x").is_ok());
     }
 
     #[test]
     fn validate_url_rejects_credentials_and_remote_http() {
         assert!(validate_url("https://user:pw@example.com").is_err());
         assert!(validate_url("http://example.com").is_err());
+        assert!(validate_url("http://[2001:db8::1]/x").is_err());
+        assert!(validate_url("http://[::]/x").is_err());
         assert!(validate_url("javascript:alert(1)").is_err());
     }
 

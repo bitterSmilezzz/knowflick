@@ -48,11 +48,11 @@
 
 | 层 | 在哪跑 | 覆盖什么 |
 | --- | --- | --- |
-| **门禁（每次提交）** | `verify_workbench.sh` | 前端 381 项 + Rust 约 85 项 + 13 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
+| **门禁（每次提交）** | `verify_workbench.sh` | 前端 382 项 + Rust 测试（通过与忽略分开报告）+ 13 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
 | **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
-> 本机 Rust 输出为 **84 passed、3 ignored**，共 87 条测试声明。声明数不能当成通过数；
+> 本机 Rust 输出为 **85 passed、3 ignored**，共 88 条测试声明。声明数不能当成通过数；
 > 不同平台的实际执行结果以各 runner 日志为准。浏览器冒烟需要 agent-browser 与运行中的 Vite，
 > 缺少条件时明确 SKIP，因此 CI 中的静态检查通过不代表浏览器交互已在 CI 执行。
 

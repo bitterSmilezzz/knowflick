@@ -40,7 +40,8 @@ export function completionURL(baseURL: string): string {
 
 export function requiresKey(baseURL: string): boolean {
   const host = new URL(baseURL).hostname;
-  return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+  // WHATWG URL.hostname keeps brackets around IPv6 literals (including ::1).
+  return host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]";
 }
 
 export function estimateTokenCount(text: string): { tokens: number; summary: string } {
@@ -242,7 +243,7 @@ export function assertFetchableUrl(raw: string): URL {
   if (url.username || url.password) throw new Error("链接里不能带账号密码");
   if (url.protocol === "http:") {
     const host = url.hostname;
-    if (host !== "localhost" && host !== "127.0.0.1" && host !== "::1") throw new Error("只有本机地址可以用 HTTP");
+    if (host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]") throw new Error("只有本机地址可以用 HTTP");
   } else if (url.protocol !== "https:") {
     throw new Error("只接受 http 或 https 链接");
   }

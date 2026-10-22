@@ -16,10 +16,14 @@ describe("assertFetchableUrl：能抓取的链接", () => {
   it("接受 http 但只限本机地址", () => {
     expect(assertFetchableUrl("http://localhost:8080/x").hostname).toBe("localhost");
     expect(assertFetchableUrl("http://127.0.0.1:3000/x").hostname).toBe("127.0.0.1");
+    expect(assertFetchableUrl("http://[::1]:8080/x").hostname).toBe("[::1]");
+    expect(assertFetchableUrl("http://[0:0:0:0:0:0:0:1]:8080/x").hostname).toBe("[::1]");
   });
 
   it("拒绝非本机的 http 链接（防止把内网请求打出去）", () => {
     expect(() => assertFetchableUrl("http://example.test/x")).toThrow(/只有本机地址/);
+    expect(() => assertFetchableUrl("http://[2001:db8::1]/x")).toThrow(/只有本机地址/);
+    expect(() => assertFetchableUrl("http://[::]/x")).toThrow(/只有本机地址/);
   });
 
   it("拒绝带账号密码的链接", () => {
@@ -79,11 +83,15 @@ describe("completionURL：拼出可用的 API 地址", () => {
 describe("requiresKey：本地地址不需要 API 密钥", () => {
   it("公网地址需要密钥", () => {
     expect(requiresKey("https://api.example.test/v1")).toBe(true);
+    expect(requiresKey("http://[2001:db8::1]:1234/v1")).toBe(true);
+    expect(requiresKey("http://[::]:1234/v1")).toBe(true);
   });
 
   it("本机地址不需要密钥", () => {
     expect(requiresKey("http://localhost:1234/v1")).toBe(false);
     expect(requiresKey("http://127.0.0.1:1234/v1")).toBe(false);
+    expect(requiresKey("http://[::1]:1234/v1")).toBe(false);
+    expect(requiresKey("http://[0:0:0:0:0:0:0:1]:1234/v1")).toBe(false);
   });
 });
 
