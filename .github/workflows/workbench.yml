@@ -51,7 +51,10 @@ jobs:
   verify:
     name: npm test + cargo test
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 25 分钟不够：实测 Ubuntu runner 的 `apt-get` 偶发卡死到 25 分钟被取消
+    # （2026-10-22 连续两次），而 verify 步骤本身只要 3 分钟。超时上限按
+    # 「最坏情况下的 apt 也要留出余量」来定，别让环境抖动废掉整条流水线。
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: apps/workbench
@@ -63,8 +66,22 @@ jobs:
       # 与 workbench-release.yml 同一份清单。
       - name: 安装 Linux 系统依赖
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+          # apt 的默认超时太长：源响应慢时它会一直挂着，把整个 job 拖到超时上限。
+          # 这里给每次 apt 调用加超时并重试——失败要快，恢复了就继续。
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=2 update \
+               && sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=2 install -y \
+                 cmake libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils; then
+              echo "系统依赖安装成功（第 ${attempt} 次尝试）"
+              exit 0
+            fi
+            echo "第 ${attempt} 次安装失败，等 15 秒再试" >&2
+            sleep 15
+          done
+          echo "::error::安装 Linux 系统依赖失败（已重试 3 次）" >&2
+          exit 1
 
       - name: 配置 Node
         uses: actions/setup-node@v6
