@@ -60,6 +60,7 @@ import { ArtifactsView } from "./ArtifactsView";
 import { StatsView } from "./StatsView";
 import { setSoundEffectsEnabled } from "../../shell/sounds";
 import { parseNotesFile } from "../../domain/notes";
+import { restorableArtifacts, restorableCards, restorableMaterials } from "../../domain/restoreRules";
 import { parseEml } from "./emlParser";
 import { imageMimeOf, mediaMimeOfExtension } from "../../domain/mediaMime";
 import { InkPad, VoiceRecorder } from "./NotePads";
@@ -1195,26 +1196,19 @@ export function Workspace() {
           } catch { /* 单个附件失败不阻断整份备份恢复 */ }
         }
         let total = 0;
-        for (const m of restored.materials) {
-          // 只挡真正无法入库的行（没有 id、正文不是字符串）。
-          // 标题可以为空——那是一条**空标题但有正文**的素材，用户自己建的，
-          // 备份里明明写进去了，恢复时不该悄悄丢掉。
-          if (!m.id || typeof m.rawText !== "string") continue;
+        // 「哪些条目该被放回去」的判定在 domain/restoreRules.ts ——
+        // 那里有单测钉着（曾经是静默丢数据的地方，不能只有浏览器层的证据）。
+        for (const m of restorableMaterials(restored.materials)) {
           const mediaPath = m.mediaPath ? restoredMedia.get(m.mediaPath) ?? null : m.mediaPath;
           await updateMaterial({ ...m, mediaPath, mediaSizeBytes: m.mediaSizeBytes || 0 });
           total++;
         }
-        for (const c of restored.cards) {
-          // 同理：标题或正文为空不代表这张卡无效。原先 `!c.headline || !c.details`
-          // 会把「空标题」「空正文」的卡在恢复时静默丢弃——备份说无损，
-          // 恢复却少了内容。
-          if (!c.id) continue;
+        for (const c of restorableCards(restored.cards)) {
           await updateCard(c);
           total++;
         }
         // 认知产物是 Layer 3，只在桌面端有 SQLite 表；浏览器体验模式没有这层，跳过。
-        for (const art of restored.artifacts) {
-          if (!art.id || !art.title) continue;
+        for (const art of restorableArtifacts(restored.artifacts)) {
           if (inShell()) await dbSaveArtifact(art, dir);
           total++;
         }

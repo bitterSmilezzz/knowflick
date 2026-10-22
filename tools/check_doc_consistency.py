@@ -130,6 +130,45 @@ def check_gate_claims(problems: list[str]) -> None:
                     )
 
 
+# 已修缺陷 → 证据测试。回归防护的**自我审查**：
+# 缺陷修好后，它的测试可能��后来某次改动里被改弱或删掉——那时缺陷就悄悄回来了。
+# 这张表把「缺陷」和「证据」绑在一起，证据不在了就报警。
+EVIDENCE_MAP: list[tuple[str, str, str]] = [
+    ("压缩 PDF 解析出源码", "apps/workbench/src/domain/fixtures.test.ts", "FlateDecode"),
+    ("浏览器不给 MIME 时 JPEG 存成 png", "apps/workbench/src/domain/mediaMime.test.ts", "imageMimeOf"),
+    ("订阅源相对链接", "apps/workbench/src/domain/fixtures.test.ts", "相对链接"),
+    ("AI 错误回显密钥", "apps/workbench/src/shell/store.redact.test.ts", "不该回显"),
+    ("Embedding 错误回显密钥", "apps/workbench/src-tauri/src/http.rs", "embeddings_api_error"),
+    ("导出包带走密钥", "apps/workbench/src/domain/dataEgress.test.ts", "SENTINEL"),
+    ("归档被当成讨厌来源", "apps/workbench/src/domain/insights.test.ts", "归档"),
+    ("恢复丢弃空标题", "apps/workbench/src/domain/restoreRules.test.ts", "空标题"),
+    ("模型输出带引用编号", "apps/workbench/src/domain/ingest.aiPreview.test.ts", "引用编号"),
+    ("details 折叠失效", "tools/taste_usability_gate.mjs", "最后一行完整可见"),
+    ("侧栏四段约定", "tools/taste_usability_gate.mjs", "四段主线分组"),
+    ("一级入口数", "tools/taste_usability_gate.mjs", "一级入口"),
+    ("测验入口", "tools/workspace_ui_smoke.mjs", "知识测验"),
+    ("测验空态措辞", "tools/workspace_ui_smoke.mjs", "没有可以测验的知识卡"),
+    ("统计页", "tools/workspace_ui_smoke.mjs", "统计页"),
+    (".eml 导入", "tools/import_ui_smoke.mjs", "eml"),
+    ("AI 出卡链路", "tools/workspace_ui_smoke.mjs", "AI 提炼"),
+    ("数据库损坏报错", "apps/workbench/src-tauri/src/db.rs", "数据库已损坏"),
+    ("Anki TSV 两端同格式", "apps/android/shared-data/src/jvmTest/kotlin/com/knowflick/app/data/CardExportEngineTest.kt", "exportAnkiTSV"),
+    ("来源矩阵", "apps/workbench/src/ui/workspace/sourceMatrix.test.ts", "来源矩阵"),
+]
+
+
+def check_evidence(problems: list[str]) -> None:
+    """每条已修缺陷都要还有证据测试。"""
+    for label, rel, needle in EVIDENCE_MAP:
+        path = ROOT / rel
+        if not path.exists():
+            problems.append(f"「{label}」的证据文件没了：{rel}")
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if needle not in text:
+            problems.append(f"「{label}」的证据在 {rel} 里找不到「{needle}」——测试可能被改弱了")
+
+
 def main() -> int:
     problems: list[str] = []
 
@@ -189,6 +228,7 @@ def main() -> int:
                 problems.append(f"{rel}:{lineno} 提到 tools/{script}，但该文件不存在")
 
     check_gate_claims(problems)
+    check_evidence(problems)
 
     if problems:
         emit("文档与实际有出入：")
@@ -199,7 +239,7 @@ def main() -> int:
 
     emit(
         f"文档与实际一致：前端 {frontend} 项、Rust {rust} 项、{smokes} 套浏览器冒烟，"
-        "文档里提到的脚本都存在"
+        f"文档里提到的脚本都存在，{len(EVIDENCE_MAP)} 条已修缺陷的证据测试都在"
     )
     return 0
 
