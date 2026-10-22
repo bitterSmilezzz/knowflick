@@ -68,7 +68,7 @@ unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "assets/bg/.*\.webp" |
 cd apps/workbench && npm run build
 ls dist/bg/*.webp | head
 
-# 第一套桌面的完整门禁（npm test + tsc + cargo test，与 workbench.yml 同口径）
+# 第一套桌面的完整门禁（npm test + tsc + cargo test + 冒烟套件，与 workbench.yml 同口径）
 ./tools/verify_workbench.sh
 ```
 
@@ -213,7 +213,7 @@ mac 端（**已删除**）历史上用**无前缀的 `v*`**（40 余个 Release�
 ```sh
 # 1. 端内测试与构建
 ./tools/build_android.sh          # android：单测 + Lint + release + 签名校验
-./tools/verify_workbench.sh       # 第一套桌面：npm test + tsc + cargo test（只需 Node 22+ 与 Rust）
+./tools/verify_workbench.sh       # 第一套桌面：npm test + tsc + cargo test + 冒烟套件（只需 Node 22+ 与 Rust）
 cd apps/android && ./gradlew :desktop:test :desktop:packageDmg   # 冻结的 JVM 桌面：本系统安装包
 #   ↑ jpackage 不支持交叉编译：macOS 出 dmg、Windows 出 msi、Linux 出 deb。
 #     发布用的三个包由 .github/workflows/desktop.yml 的三系统 matrix 自动产出并附到 Release。

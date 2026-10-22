@@ -66,8 +66,13 @@ npm run tauri dev                       # 开发（起 Tauri 窗口 + 前端 dev
 npm run dev                             # 只起前端，http://localhost:1420（无壳能力）
 
 cd ../..
-./tools/verify_workbench.sh             # 门禁：npm test + tsc --noEmit + cargo test
+./tools/verify_workbench.sh             # 门禁：npm test + tsc + cargo test + 冒烟套件
 cd apps/workbench && npm run tauri build -- --bundles dmg   # 本系统那一档安装包
+
+# 门禁里还包含 13 套浏览器冒烟（界面级回归）。它们要真实浏览器与运行中的 Vite，
+# 所以开着一个 dev server 时才会跑；缺工具就明确 SKIP，不会让门禁红掉。
+npm run dev &                            # 另开一个终端：前端 dev server
+./tools/run_all_smokes.sh                # 只跑浏览器冒烟
 ```
 
 三端安装包**不在本机出**：Tauri 与 jpackage 一样不支持交叉编译。打 tag `workbench-v<版本>` 触发
