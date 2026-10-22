@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """核对「当前状态」类文档里的数字与实际是否相符。
 
+# 改这个文件应当触发 CI（路径过滤里列了它）——这一行就是验证用的。
+
 背景：这轮手工核对时发现 README / UI_CONSOLIDATION 写着的门禁内容与实际
 已经差了好几轮（文档说「npm test + tsc + cargo test」，实际还有 MCP、
 来源矩阵、taste gate 与 13 套浏览器冒烟）。这类漂移靠人查迟早会再犯。
