@@ -50,12 +50,19 @@ async function contentRegionHash(file) {
   return hash;
 }
 
-/** 应用窗口左上角坐标（逻辑像素）。 */
+/**
+ * 应用窗口左上角坐标（逻辑像素）。
+ *
+ * 窗口可能不存在：应用进程还活着但窗口被关了（留在托盘里）。
+ * 这时返回 null，由调用方 SKIP——工具不该因为「窗口没开」崩掉。
+ */
 async function windowOrigin() {
   const raw = await osascript(
     'tell application "System Events" to tell process "knowflick-workbench" to get position of front window',
-  );
+  ).catch(() => "");
+  if (!raw || !raw.includes(",")) return null;
   const [x, y] = raw.split(",").map((s) => Number(s.trim()));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   return { x, y };
 }
 
@@ -89,6 +96,10 @@ try {
   await osascript('tell application "KnowFlick" to activate');
   await sleep(1500);
   const origin = await windowOrigin();
+  if (!origin) {
+    console.log("SKIP 应用没有打开的窗口（进程可能在托盘里）——先从菜单栏或 Dock 打开主窗口");
+    process.exit(0);
+  }
   pass(`真机窗口就位（${origin.x}, ${origin.y}）`);
 
   // 1. 主线入口在真机窗口里都要能点开，而且**页面确实换了**。
