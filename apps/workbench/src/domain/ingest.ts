@@ -38,10 +38,47 @@ export function completionURL(baseURL: string): string {
   return url.toString();
 }
 
+/**
+ * 本机回环判定：127.0.0.1 / localhost / IPv6 回环。
+ *
+ * 口径与安卓端 `LoopbackHost`、桌面壳 `is_loopback_host` 一致（ADR-0002 §3：
+ * 同一份 settings.json 在两端行为相同）。
+ *
+ * IPv6 回环不能只比字符串：`::1`、`[::1]`、`0:0:0:0:0:0:0:1` 指同一个地址。
+ * WHATWG URL 的 hostname 保留方括号；WHATWG 也会把 `::ffff:127.0.0.1` 归一化成
+ * `[::ffff:7f00:1]`，那种**不算**回环（Rust 端 `Ipv6Addr::is_loopback` 同样不认）。
+ */
+export function isLoopbackHost(rawHost: string): boolean {
+  const host = rawHost.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host === "127.0.0.1") return true;
+  if (!host.includes(":")) return false;
+  // 只接受 IPv6 字面量的字符集：别的交给 URL 解析器会被当主机名去解析。
+  if (!/^[0-9a-f:.]+$/.test(host)) return false;
+
+  // 按八组解析（不用 :: 压缩语法）：`0:0:0:0:0:0:0:1` 没有 `::`，
+  // 只按压缩写法判断会漏掉它。
+  const compressed = host.includes("::");
+  let groups: string[];
+  if (compressed) {
+    const [head, tail] = host.split("::");
+    const headParts = head ? head.split(":") : [];
+    const tailParts = tail ? tail.split(":") : [];
+    const missing = 8 - headParts.length - tailParts.length;
+    if (missing < 0) return false;
+    groups = [...headParts, ...Array(missing).fill("0"), ...tailParts];
+  } else {
+    groups = host.split(":");
+  }
+  if (groups.length !== 8) return false;
+  if (!groups.every((part) => /^[0-9a-f]{1,4}$/.test(part))) return false;
+  // 恰好 ::1：前七组全零、末组为 1。
+  return groups.slice(0, 7).every((part) => part === "0") && groups[7] === "1";
+}
+
 export function requiresKey(baseURL: string): boolean {
   const host = new URL(baseURL).hostname;
   // WHATWG URL.hostname keeps brackets around IPv6 literals (including ::1).
-  return host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]";
+  return !isLoopbackHost(host);
 }
 
 export function estimateTokenCount(text: string): { tokens: number; summary: string } {
@@ -243,7 +280,7 @@ export function assertFetchableUrl(raw: string): URL {
   if (url.username || url.password) throw new Error("链接里不能带账号密码");
   if (url.protocol === "http:") {
     const host = url.hostname;
-    if (host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]") throw new Error("只有本机地址可以用 HTTP");
+    if (!isLoopbackHost(host)) throw new Error("只有本机地址可以用 HTTP");
   } else if (url.protocol !== "https:") {
     throw new Error("只接受 http 或 https 链接");
   }

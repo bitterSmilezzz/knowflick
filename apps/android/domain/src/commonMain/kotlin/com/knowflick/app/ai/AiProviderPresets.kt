@@ -116,7 +116,7 @@ object AiProviderPresets {
         matchRules.firstOrNull { (domain, _) -> host == domain || host.endsWith(".$domain") }?.let { rule ->
             return presets.first { it.id == rule.second }
         }
-        val isLoopback = host == "localhost" || host == "127.0.0.1" || host == "::1"
+        val isLoopback = com.knowflick.app.domain.LoopbackHost.isLoopback(host)
         return when {
             isLoopback && uri.port == 31415 -> presets.first { it.id == "local_freellm" }
             isLoopback -> presets.first { it.id == "ollama" }

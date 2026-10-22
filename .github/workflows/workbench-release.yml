@@ -20,6 +20,7 @@ on:
       - 'tools/verify_workbench.sh'
       # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
       - 'tools/check_doc_consistency.py'
+      - 'tools/check_loopback_parity.mjs'
       - 'tools/test_check_doc_consistency.py'
       - 'tools/mcp_smoke.mjs'
       - 'tools/source_matrix_smoke.mjs'
