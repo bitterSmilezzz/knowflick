@@ -28,3 +28,8 @@ node tools/taste_usability_gate.mjs
 # 来源矩阵：每种来源都要能进收件箱、被搜到、转成卡并回溯。
 # 此前每类来源各有一套冒烟，但没有一套覆盖全部来源——这条线是拼起来的，不是验过的。
 node tools/source_matrix_smoke.mjs
+
+# 全部浏览器冒烟：13 套界面级回归。
+# 它们要真实浏览器与运行中的 Vite，CI 环境两者都没有（脚本会 SKIP）；
+# 但在本机，门禁应当把它们一起跑完——否则界面退化只在「谁记得手动跑」时才被发现。
+./tools/run_all_smokes.sh
