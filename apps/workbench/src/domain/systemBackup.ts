@@ -54,7 +54,11 @@ export function createKfBackupArchive(
   const now = Date.now();
   const cardsStr = JSON.stringify(cards, null, 2);
   const materialsStr = JSON.stringify(materials, null, 2);
-  const settingsStr = encodeSettings(settingsFile);
+  // 备份包是**用户会分享/上传的文件**，界面与文档都写着「不含 API 密钥」。
+  // 但 encodeSettings 会把 settings.json 里的未知键原样带走——如果那份文件里
+  // 留着密钥字段（用户手改过、或旧版本写过），它就会被打进包里。
+  // 这里在**备份路径上**净化，不改动正常读写 settings.json 的行为。
+  const settingsStr = stripSecrets(encodeSettings(settingsFile));
   const artifactsStr = JSON.stringify(artifacts, null, 2);
 
   const manifest: BackupManifest = {
@@ -238,6 +242,29 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
     artifacts,
     media,
   };
+}
+
+/**
+ * 去掉设置 JSON 里像凭据的键。
+ *
+ * 只认「名字像密钥」的键（apiKey / api_key / token / secret / password / credential…），
+ * 不做值层面的猜测——值层面的脱敏是错误信息的职责，这里防的是「字段本身不该带走」。
+ */
+export function stripSecrets(settingsJson: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(settingsJson) as unknown;
+  } catch {
+    return settingsJson;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return settingsJson;
+  const SECRET_KEY = /(api[-_]?key|apikey|token|secret|password|passwd|credential|auth)/i;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (SECRET_KEY.test(key)) continue;
+    out[key] = value;
+  }
+  return JSON.stringify(out);
 }
 
 /** 触发浏览器下载系统级备份包 */

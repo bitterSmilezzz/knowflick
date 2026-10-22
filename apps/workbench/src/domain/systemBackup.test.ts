@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createKfBackupArchive, restoreKfBackup } from "./systemBackup";
+import { createKfBackupArchive, restoreKfBackup, stripSecrets } from "./systemBackup";
 import { cardFromJson } from "./card";
 import type { RawMaterial, Artifact } from "../shell/store";
 import type { SettingsFile } from "./settings";
-import { defaultSettings } from "./settings";
+import { defaultSettings, parseSettings } from "./settings";
 
 describe("系统级完整无损备份包 (.kfbackup)", () => {
   const sampleCard = cardFromJson({
@@ -225,6 +225,45 @@ describe("备份带走附件", () => {
     expect(material.inboxStatus).toBe("dismissed");
     expect(material.metadataJson).toBe(edgeMaterial.metadataJson);
     expect(material.mediaPath).toBeNull();
+  });
+
+  it("备份包不带 settings.json 里遗留的密钥字段", () => {
+    // 界面与文档都写着「.kfbackup 不含 API 密钥」。但 encodeSettings 会把
+    // settings.json 的未知键原样带走——那份文件里若留着密钥（用户手改过、
+    // 或旧版本写过），就会被打进用户会分享的包里。
+    const raw = JSON.stringify({
+      providerId: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-4",
+      apiKey: "sk-legacy-INSECURE-1234567890",
+      api_key: "sk-legacy-2-INSECURE-0987654321",
+      token: "legacy-token-abcdefghijklmnop",
+      password: "hunter2",
+    });
+    const file = parseSettings(raw);
+    const archive = createKfBackupArchive([], [], file, []);
+    const text = new TextDecoder("latin1").decode(new Uint8Array(archive));
+    expect(text).not.toContain("sk-legacy-INSECURE-1234567890");
+    expect(text).not.toContain("sk-legacy-2-INSECURE-0987654321");
+    expect(text).not.toContain("legacy-token-abcdefghijklmnop");
+    expect(text).not.toContain("hunter2");
+    // 正常的设置要留着——净化不能把该带的也删了
+    expect(text).toContain("openai");
+    expect(text).toContain("gpt-4");
+  });
+
+  it("stripSecrets 只认名字像密钥的键，不误删正常键", () => {
+    const out = JSON.parse(stripSecrets(JSON.stringify({
+      providerId: "openai",
+      baseURL: "https://api.example.test/v1",
+      model: "gpt-4",
+      soundEffectsEnabled: true,
+      // 名字里带 key 但是正常配置
+      orderKey: "a-1",
+      searchKeywords: ["复购", "留存"],
+    }))) as Record<string, unknown>;
+    expect(out.providerId).toBe("openai");
+    expect(out.model).toBe("gpt-4");
+    expect(out.soundEffectsEnabled).toBe(true);
+    expect(out.searchKeywords).toEqual(["复购", "留存"]);
   });
 
   it("旧备份没有附件时 media 为空而不是报错", () => {

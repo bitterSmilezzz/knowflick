@@ -167,9 +167,41 @@ pub fn write_api_key(dir: &Path, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 去掉设置 JSON 里像凭据的键（与前端 `stripSecrets` 同一套规则）。
+///
+/// 只认「名字像密钥」的键，不做值层面的猜测——值层面的脱敏是错误信息的职责，
+/// 这里防的是「字段本身不该被带出库外」。
+pub fn strip_secret_settings(settings_json: &str) -> String {
+    let parsed: serde_json::Value = match serde_json::from_str(settings_json) {
+        Ok(v) => v,
+        // 坏 JSON 原样返回：导出不该因为设置文件坏了就失败。
+        Err(_) => return settings_json.to_string(),
+    };
+    let obj = match parsed.as_object() {
+        Some(o) => o,
+        None => return settings_json.to_string(),
+    };
+    let mut kept = serde_json::Map::new();
+    for (key, value) in obj {
+        let lower = key.to_ascii_lowercase();
+        let is_secret = ["apikey", "api_key", "token", "secret", "password", "passwd", "credential", "auth"]
+            .iter()
+            .any(|needle| lower.contains(needle));
+        if is_secret {
+            continue;
+        }
+        kept.insert(key.clone(), value.clone());
+    }
+    serde_json::Value::Object(kept).to_string()
+}
+
 pub fn export_archive(dir: &Path, dest: &Path) -> Result<(), String> {
     let cards = read_cards_json_text(dir)?;
     let settings = read_optional(&dir.join("settings.json"))?.unwrap_or_else(|| "{}".to_string());
+    // 导出包是**用户会分享的文件**，界面写着「不含 API 密钥」。
+    // settings.json 里若留着密钥字段（用户手改过、或旧版本写过），
+    // 原样打包就把它带出去了。前端 .kfbackup 已同样净化。
+    let settings = strip_secret_settings(&settings);
     let bytes = zip_store(&[
         ("cards.json", cards.as_bytes()),
         ("settings.json", settings.as_bytes()),
@@ -305,6 +337,37 @@ fn restrict_to_owner(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_archive_does_not_carry_legacy_secret_fields() {
+        // 界面写着「导出包不含 API 密钥」。settings.json 里若留着密钥字段
+        // （用户手改过、或旧版本写过），原样打包就把它带出去了。
+        let dir = temp_dir("export-no-secrets");
+        fs::write(
+            dir.join("settings.json"),
+            r#"{"providerId":"openai","model":"gpt-4","apiKey":"sk-must-not-leak-123456","token":"legacy-token"}"#,
+        )
+        .unwrap();
+        let out = strip_secret_settings(&fs::read_to_string(dir.join("settings.json")).unwrap());
+        assert!(!out.contains("sk-must-not-leak-123456"), "不该带出密钥：{out}");
+        assert!(!out.contains("legacy-token"), "不该带出 token：{out}");
+        // 正常设置要留着
+        assert!(out.contains("openai"), "{out}");
+        assert!(out.contains("gpt-4"), "{out}");
+    }
+
+    #[test]
+    fn strip_secret_settings_keeps_harmless_keys() {
+        let out = strip_secret_settings(r#"{"orderKey":"a-1","soundEffectsEnabled":true}"#);
+        assert!(out.contains("orderKey"), "名字里带 key 但正常：{out}");
+        assert!(out.contains("soundEffectsEnabled"), "{out}");
+    }
+
+    #[test]
+    fn strip_secret_settings_tolerates_broken_json() {
+        // 设置文件坏了不该让导出失败
+        assert_eq!(strip_secret_settings("{ not json"), "{ not json");
+    }
 
     #[test]
     fn export_cards_json_reads_from_sqlite_not_only_the_legacy_file() {
