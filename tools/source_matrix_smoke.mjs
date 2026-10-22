@@ -16,7 +16,7 @@
  * 手写 / 语音需要真实设备或插件，这里用**同样的素材形状**注入——
  * 它们与来源矩阵的差别只在采集方式，落到库后的路径完全一致。
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 
@@ -33,6 +33,16 @@ const ev = async (code) => {
 let count = 0;
 const pass = (label) => { count++; console.log(`PASS ${label}`); };
 
+/** agent-browser 是否可用。 */
+function hasAgentBrowser() {
+  try {
+    execFileSync("agent-browser", ["--help"], { timeout: 15000, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 来源矩阵。
  *
@@ -48,6 +58,13 @@ const SOURCES = [
   { kind: "ink", label: "手写笔记", title: "手写.json", text: "手写笔迹的占位内容", meta: { fileName: "手写.json" } },
   { kind: "manual", label: "随手灵感", title: "闪念", text: "随手记下的一条闪念", meta: {} },
 ];
+
+// 需要 agent-browser（真实浏览器）。CI 环境没有它，所以在那里跳过——
+// 本机跑门禁时它必须真的执行，否则这条线就白验了。
+if (!hasAgentBrowser()) {
+  console.log("SKIP 来源矩阵需要 agent-browser（CI 环境没有）");
+  process.exit(0);
+}
 
 try {
   await b("set", "viewport", "1040", "760");
