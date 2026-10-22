@@ -338,12 +338,74 @@ pub fn open_db(path: &Path) -> Result<Connection> {
             })?;
         }
     }
-    let conn = Connection::open(path)?;
-    conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
-    conn.execute("PRAGMA foreign_keys = ON", [])?;
-    conn.execute("PRAGMA synchronous = NORMAL", [])?;
-    init_tables(&conn)?;
+    // 库文件坏了（磁盘损坏、写入被中断）时，rusqlite 只会给出一句英文
+    // "file is not a database"——不说哪个文件、也不告诉用户怎么办。
+    // 这里换成中文，带上路径与可执行的下一步，并且**绝不改动原文件**：
+    // 损坏的库里可能还有能救回来的数据。
+    let conn = Connection::open(path).map_err(|err| describe_db_error(path, &err))?;
+    conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))
+        .map_err(|err| describe_db_error(path, &err))?;
+    conn.execute("PRAGMA foreign_keys = ON", [])
+        .map_err(|err| describe_db_error(path, &err))?;
+    conn.execute("PRAGMA synchronous = NORMAL", [])
+        .map_err(|err| describe_db_error(path, &err))?;
+    init_tables(&conn).map_err(|err| describe_db_error(path, &err))?;
     Ok(conn)
+}
+
+#[cfg(test)]
+mod corrupt_probe {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn corrupt_db_is_reported_not_silently_recreated() {
+        let dir = std::env::temp_dir().join(format!("kf-corrupt-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("knowflick.db");
+        // 模拟损坏：写一堆不是 SQLite 的字节
+        fs::write(&path, b"this is not a sqlite database at all").unwrap();
+
+        let result = open_db(&path);
+        match result {
+            Ok(_) => panic!("损坏的库不该被当成正常库打开"),
+            Err(e) => {
+                let msg = e.to_string();
+                // 用户看到的是中文、带路径、且告诉下一步怎么做——
+                // 不是 rusqlite 那句 "file is not a database"。
+                assert!(msg.contains("数据库已损坏"), "应给中文说明：{msg}");
+                assert!(msg.contains("knowflick.db"), "应带上文件路径：{msg}");
+                assert!(msg.contains("原文件没有被改动"), "应说明文件未动：{msg}");
+                assert!(msg.contains("备份"), "应给出恢复办法：{msg}");
+                // 关键：不能把损坏的文件删掉或覆盖——里面可能有用户数据
+                let still_there = fs::read(&path).unwrap();
+                assert_eq!(still_there, b"this is not a sqlite database at all", "损坏的文件不该被改动");
+            }
+        }
+    }
+}
+
+/// 把数据库打开失败翻译成用户能照着做的中文提示。
+///
+/// 原文件一个字节都不动——损坏的库里可能还有能救回来的数据。
+fn describe_db_error(path: &Path, err: &rusqlite::Error) -> rusqlite::Error {
+    let raw = err.to_string();
+    let damaged = raw.contains("file is not a database") || raw.contains("malformed");
+    let message = if damaged {
+        format!(
+            "知识库数据库已损坏，无法打开：{}\n原文件没有被改动。\
+             可以把它复制到别处后用备份包（.kfbackup）恢复；联系支持时把这个文件一起提供。",
+            path.display()
+        )
+    } else {
+        format!("打开知识库数据库失败（{}）：{raw}", path.display())
+    };
+    // 换成自己的说明，同时保留原始错误链（调试时还能看到 rusqlite 那一句）。
+    rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        message,
+    )))
 }
 
 pub fn init_tables(conn: &Connection) -> Result<()> {
