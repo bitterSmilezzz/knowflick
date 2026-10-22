@@ -183,6 +183,14 @@ EVIDENCE_MAP: list[tuple[str, str, str]] = [
     ("产物库存进去却读不到", "tools/brain_ui_smoke.mjs", "简报已存入产物库"),
     ("剪藏到知识卡这条链没覆盖", "apps/workbench/src/domain/fixtures.test.ts", "真实文件：网页剪藏"),
     ("订阅来源在收件箱认不出来", "apps/workbench/src/domain/insights.test.ts", "订阅"),
+    # —— 第四批：扫「没被任何测试触及的纯逻辑函数」时补上的 ——
+    # 这几个函数此前完全没有测试覆盖，其中 assertFetchableUrl 是 SSRF 防护。
+    ("链接可抓取性判定（SSRF 防护）", "apps/workbench/src/domain/ingest.boundaries.test.ts", "拒绝非本机的 http 链接"),
+    ("API 地址拼接", "apps/workbench/src/domain/ingest.boundaries.test.ts", "/v1/chat/completions"),
+    ("本地地址不需要 API 密钥", "apps/workbench/src/domain/ingest.boundaries.test.ts", "本机地址不需要密钥"),
+    ("模型提示词的长文分支", "apps/workbench/src/domain/ingest.boundaries.test.ts", "长文智能切片提示"),
+    ("剪藏侧相对链接补全", "apps/workbench/src/domain/clipEngine.links.test.ts", "同目录相对地址补上目录"),
+    ("从文字里找出第一个链接", "apps/workbench/src/domain/clipEngine.links.test.ts", "找得到时返回原样地址"),
 ]
 
 
