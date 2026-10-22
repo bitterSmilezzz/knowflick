@@ -17,10 +17,16 @@ const exec = promisify(execFile);
 const session = "knowflick-taste-gate";
 const url = process.env.KNOWFLICK_UI_URL || "http://localhost:1420";
 
-/** agent-browser 是否可用。 */
+/**
+ * agent-browser 是否可用。
+ *
+ * 用包装后的 exec（promisify 过的），不是原始 execFile——原始的回调版
+ * **不抛错**，await 只会等一个立即返回的 ChildProcess，于是这里永远返回 true，
+ * 守卫形同虚设（CI 报 spawn agent-browser ENOENT 才发现）。
+ */
 async function hasAgentBrowser() {
   try {
-    await execFile("which", ["agent-browser"], { timeout: 10_000 });
+    await exec("which", ["agent-browser"], { timeout: 10_000 });
     return true;
   } catch {
     return false;
