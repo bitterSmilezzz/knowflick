@@ -127,7 +127,178 @@ describe("订阅源（主动收集）", () => {
   });
 
   describe("GitHub 解析", () => {
-    it("解析 Release 数组", () => {
+    it("真实 RSS：CDATA、实体、各种日期格式、坏条目跳过", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example Blog</title>
+    <link>https://example.com/</link>
+    <description><![CDATA[A blog about & things <b>like</b> this]]></description>
+    <atom:link href="https://example.com/feed.xml" rel="self" type="application/rss+xml"/>
+    <lastBuildDate>Tue, 21 Oct 2026 08:30:00 +0800</lastBuildDate>
+    <item>
+      <title>Post with CDATA &amp; entities</title>
+      <link>https://example.com/posts/1?utm_source=rss</link>
+      <guid isPermaLink="false">tag:example.com,2026:post-1</guid>
+      <description><![CDATA[<p>Body with <a href="https://example.com">a link</a> &amp; entities</p>]]></description>
+      <content:encoded><![CDATA[<p>Full content here</p><ul><li>one</li><li>two</li></ul>]]></content:encoded>
+      <pubDate>Tue, 21 Oct 2026 08:00:00 +0800</pubDate>
+      <dc:creator>Alice</dc:creator>
+      <category>tech</category>
+    </item>
+    <item>
+      <title>Post with relative-ish link and no guid</title>
+      <link>/posts/2</link>
+      <description>Plain description with &lt;escaped&gt; markup</description>
+      <pubDate>Mon, 20 Oct 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>ISO date post</title>
+      <link>https://example.com/posts/3</link>
+      <description>Third post</description>
+      <pubDate>2026-10-19T12:00:00Z</pubDate>
+    </item>
+    <item>
+      <title>Broken item without link</title>
+      <description>Should be skipped</description>
+    </item>
+  </channel>
+</rss>
+`;
+    const items = parseFeed(xml, "https://example.com/feed.xml");
+    // 缺链接的坏条目要跳过，而不是让整次抓取作废
+    expect(items.length).toBe(3);
+    const first = items[0];
+    expect(first.title).toContain("CDATA");
+    expect(first.key).toBe("tag:example.com,2026:post-1");
+    // content:encoded 优先于 description
+    expect(first.text).toContain("Full content here");
+    // RFC822 与 ISO 两种日期都要能解析
+    expect(first.publishedAt).toBeTypeOf("number");
+    expect(items[2].publishedAt).toBe(Date.parse("2026-10-19T12:00:00Z"));
+  });
+
+  it("真实 feed 里的相对链接要补成绝对地址", () => {
+    // 直接存成素材的「原文链接」的话，相对路径点开是无效地址。
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example Blog</title>
+    <link>https://example.com/</link>
+    <description><![CDATA[A blog about & things <b>like</b> this]]></description>
+    <atom:link href="https://example.com/feed.xml" rel="self" type="application/rss+xml"/>
+    <lastBuildDate>Tue, 21 Oct 2026 08:30:00 +0800</lastBuildDate>
+    <item>
+      <title>Post with CDATA &amp; entities</title>
+      <link>https://example.com/posts/1?utm_source=rss</link>
+      <guid isPermaLink="false">tag:example.com,2026:post-1</guid>
+      <description><![CDATA[<p>Body with <a href="https://example.com">a link</a> &amp; entities</p>]]></description>
+      <content:encoded><![CDATA[<p>Full content here</p><ul><li>one</li><li>two</li></ul>]]></content:encoded>
+      <pubDate>Tue, 21 Oct 2026 08:00:00 +0800</pubDate>
+      <dc:creator>Alice</dc:creator>
+      <category>tech</category>
+    </item>
+    <item>
+      <title>Post with relative-ish link and no guid</title>
+      <link>/posts/2</link>
+      <description>Plain description with &lt;escaped&gt; markup</description>
+      <pubDate>Mon, 20 Oct 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>ISO date post</title>
+      <link>https://example.com/posts/3</link>
+      <description>Third post</description>
+      <pubDate>2026-10-19T12:00:00Z</pubDate>
+    </item>
+    <item>
+      <title>Broken item without link</title>
+      <description>Should be skipped</description>
+    </item>
+  </channel>
+</rss>
+`;
+    const items = parseFeed(xml, "https://example.com/feed.xml");
+    const relative = items.find((i) => i.title.includes("relative-ish"));
+    expect(relative?.url).toBe("https://example.com/posts/2");
+  });
+
+  it("没有 base 时不乱补，相对链接原样保留", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example Blog</title>
+    <link>https://example.com/</link>
+    <description><![CDATA[A blog about & things <b>like</b> this]]></description>
+    <atom:link href="https://example.com/feed.xml" rel="self" type="application/rss+xml"/>
+    <lastBuildDate>Tue, 21 Oct 2026 08:30:00 +0800</lastBuildDate>
+    <item>
+      <title>Post with CDATA &amp; entities</title>
+      <link>https://example.com/posts/1?utm_source=rss</link>
+      <guid isPermaLink="false">tag:example.com,2026:post-1</guid>
+      <description><![CDATA[<p>Body with <a href="https://example.com">a link</a> &amp; entities</p>]]></description>
+      <content:encoded><![CDATA[<p>Full content here</p><ul><li>one</li><li>two</li></ul>]]></content:encoded>
+      <pubDate>Tue, 21 Oct 2026 08:00:00 +0800</pubDate>
+      <dc:creator>Alice</dc:creator>
+      <category>tech</category>
+    </item>
+    <item>
+      <title>Post with relative-ish link and no guid</title>
+      <link>/posts/2</link>
+      <description>Plain description with &lt;escaped&gt; markup</description>
+      <pubDate>Mon, 20 Oct 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>ISO date post</title>
+      <link>https://example.com/posts/3</link>
+      <description>Third post</description>
+      <pubDate>2026-10-19T12:00:00Z</pubDate>
+    </item>
+    <item>
+      <title>Broken item without link</title>
+      <description>Should be skipped</description>
+    </item>
+  </channel>
+</rss>
+`;
+    const items = parseFeed(xml);
+    const relative = items.find((i) => i.title.includes("relative-ish"));
+    expect(relative?.url).toBe("/posts/2");
+  });
+
+  it("真实 Atom：entry、CDATA 实体、type=html 的 summary", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Atom Feed</title>
+  <link href="https://example.org/"/>
+  <updated>2026-10-21T09:00:00Z</updated>
+  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
+  <entry>
+    <title>Atom entry one</title>
+    <link href="https://example.org/entries/1"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
+    <updated>2026-10-21T08:00:00Z</updated>
+    <published>2026-10-20T08:00:00Z</published>
+    <summary type="html">&lt;p&gt;Summary with &amp;amp; entity&lt;/p&gt;</summary>
+    <content type="html">&lt;div&gt;Full content&lt;/div&gt;</content>
+  </entry>
+  <entry>
+    <title>Atom entry with &lt;escaped&gt; title</title>
+    <link href="https://example.org/entries/2" rel="alternate"/>
+    <id>urn:uuid:2225c695-cfb8-4ebb-bbbb-80da344efa6a</id>
+    <updated>2026-10-20T08:00:00Z</updated>
+    <summary>Plain summary</summary>
+  </entry>
+</feed>
+`;
+    const items = parseFeed(xml, "https://example.org/feed.xml");
+    expect(items.length).toBe(2);
+    expect(items[0].title).toBe("Atom entry one");
+    expect(items[0].url).toBe("https://example.org/entries/1");
+    expect(items[0].key).toContain("urn:uuid:");
+    expect(items[1].title).toContain("escaped");
+  });
+
+  it("解析 Release 数组", () => {
       const json = JSON.stringify([
         {
           tag_name: "v1.2.0",

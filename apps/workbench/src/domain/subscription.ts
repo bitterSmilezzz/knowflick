@@ -130,14 +130,18 @@ function parseDate(raw: string | null): number | null {
  * 用手写正则而不是引入 XML 解析器：feed 结构简单、且这里必须零依赖，
  * 解析失败的条目跳过而不是整体报错——一个坏条目不该让整次订阅抓取作废。
  */
-export function parseFeed(xml: string): FeedItem[] {
+export function parseFeed(xml: string, baseUrl = ""): FeedItem[] {
   const items: FeedItem[] = [];
+  // 真实 feed 里的链接常是相对的（/posts/2）。直接存成素材的「原文链接」，
+  // 用户点开会指向无效地址。用 feed 自身的地址补全。
+  const base = baseUrl ? safeBase(baseUrl) : null;
 
   // RSS 2.0
   const rssBlocks = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) ?? [];
   for (const block of rssBlocks) {
     const title = firstTag(block, "title");
-    const link = firstTag(block, "link") ?? firstTag(block, "guid");
+    const rawLink = firstTag(block, "link") ?? firstTag(block, "guid");
+    const link = rawLink ? absolutize(rawLink, base) : null;
     if (!title || !link) continue;
     const guid = firstTag(block, "guid");
     const body =
@@ -156,7 +160,7 @@ export function parseFeed(xml: string): FeedItem[] {
       const title = firstTag(block, "title");
       const id = firstTag(block, "id");
       const href = /<link[^>]*href="([^"]+)"/i.exec(block)?.[1] ?? null;
-      const link = href ? decodeEntities(href) : id;
+      const link = href ? absolutize(decodeEntities(href), base) : id;
       if (!title || !link) continue;
       const body = firstTag(block, "content") ?? firstTag(block, "summary") ?? "";
       const publishedAt = parseDate(firstTag(block, "updated") ?? firstTag(block, "published"));
@@ -165,6 +169,27 @@ export function parseFeed(xml: string): FeedItem[] {
   }
 
   return items;
+}
+
+/** 取 feed 地址的 origin（协议 + 主机 + 端口），用于补全相对链接。 */
+function safeBase(feedUrl: string): string | null {
+  try {
+    const url = new URL(feedUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/** 把相对链接补成绝对链接；已经是绝对的、或补不了就原样返回。 */
+function absolutize(link: string, base: string | null): string {
+  const trimmed = link.trim();
+  if (!trimmed || !base) return trimmed;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("//")) return `${base.split(":")[0]}:${trimmed}`;
+  if (trimmed.startsWith("/")) return `${base}${trimmed}`;
+  return `${base}/${trimmed}`;
 }
 
 interface GithubRelease {
@@ -254,7 +279,7 @@ export function parseSubscriptionPayload(
   switch (sub.type) {
     case "rss":
     case "tech_board":
-      return parseFeed(payload);
+      return parseFeed(payload, sub.targetUrl);
     case "github_release":
       return parseGithubReleases(payload, sub.targetUrl);
     case "github_trending":
