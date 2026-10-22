@@ -20,6 +20,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import re
 import subprocess
 import sys
@@ -187,6 +189,38 @@ def check_evidence(problems: list[str]) -> None:
             problems.append(f"「{label}」的证据在 {rel} 里找不到「{needle}」——测试可能被改弱了")
 
 
+def check_evidence_is_executed(problems: list[str]) -> None:
+    """证据测试**确实会被执行**。
+
+    「文件里有断言」不够——它还得真的被跑：
+    - 浏览器冒烟要在 run_all_smokes 的列表里（或门禁单独调），否则永远不跑；
+    - Android 测试的模块要被 CI 显式点名（AGENTS.md 记着：漏了会静默少跑）；
+    - 前端单测要在 vitest 的收集范围（apps/workbench/src）里。
+    """
+    runner = (ROOT / "tools/run_all_smokes.sh").read_text(encoding="utf-8")
+    gate = gate_contents()
+    ci = (ROOT / ".github/workflows/android.yml").read_text(encoding="utf-8")
+
+    for label, rel, _needle in EVIDENCE_MAP:
+        if not rel.endswith((".mjs", ".kt", ".test.ts", ".test.tsx")):
+            continue  # 实现文件（.ts/.rs）本身不是「测试」
+        if rel.endswith(".mjs"):
+            name = Path(rel).stem
+            if name not in runner and name not in gate:
+                problems.append(
+                    f"「{label}」的证据 {rel} 不会被执行：既不在 run_all_smokes.sh 也不在门禁里"
+                )
+        elif rel.endswith(".kt"):
+            module = rel.split("apps/android/")[1].split("/")[0]
+            if f":{module}:jvmTest" not in ci and f":{module}:test" not in ci:
+                problems.append(
+                    f"「{label}」的证据 {rel} 所在模块 {module} 没被 CI 点名，不会被跑"
+                )
+        else:
+            if "apps/workbench/src/" not in rel:
+                problems.append(f"「{label}」的证据 {rel} 不在 vitest 的收集范围内")
+
+
 def main() -> int:
     problems: list[str] = []
 
@@ -247,6 +281,7 @@ def main() -> int:
 
     check_gate_claims(problems)
     check_evidence(problems)
+    check_evidence_is_executed(problems)
 
     if problems:
         emit("文档与实际有出入：")
