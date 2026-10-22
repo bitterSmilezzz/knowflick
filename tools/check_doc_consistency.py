@@ -95,6 +95,39 @@ def emit(text: str) -> None:
         sys.stdout.flush()
 
 
+def gate_contents() -> str:
+    """门禁脚本的全文——用来核对「在门禁里」这类说法。"""
+    gate = ROOT / "tools/verify_workbench.sh"
+    return gate.read_text(encoding="utf-8") if gate.exists() else ""
+
+
+def check_gate_claims(problems: list[str]) -> None:
+    """文档说某个检查「在门禁里」，门禁里就得真的有它。
+
+    反过来的漂移我踩过：验收清单写「taste gate 未纳入门禁」，而它早就接进去了。
+    """
+    gate = gate_contents()
+    if not gate:
+        return
+    for rel in CURRENT_STATE_DOCS:
+        path = ROOT / rel
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if "在门禁里" not in line and "已纳入门禁" not in line:
+                continue
+            # 只核对**紧挨着「在门禁里」的那个**脚本名——
+            # 一行里可能提到好几个脚本，别的未必声称在门禁里。
+            for match in re.finditer(
+                r"([a-z0-9_]+\.(?:mjs|py))[^。；;]{0,12}?在门禁里", line
+            ):
+                script = match.group(1)
+                if script not in gate:
+                    problems.append(
+                        f"{rel}:{lineno} 说「{script} 在门禁里」，但 verify_workbench.sh 里没有它"
+                    )
+
+
 def main() -> int:
     problems: list[str] = []
 
@@ -152,6 +185,8 @@ def main() -> int:
                 if deleted_note.search(line):
                     continue  # 这是「该脚本已删除」的历史说明
                 problems.append(f"{rel}:{lineno} 提到 tools/{script}，但该文件不存在")
+
+    check_gate_claims(problems)
 
     if problems:
         emit("文档与实际有出入：")
