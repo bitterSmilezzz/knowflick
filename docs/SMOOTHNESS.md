@@ -3,6 +3,34 @@
 > 目标不是「功能存在」，而是**每一步都不卡、不猜、不等**。
 > 这份文档记录已经量过／修过的地方，以及实测后判定**不需要动**的地方。
 
+### 前端 invoke ↔ Rust 注册：编译期看不出来的断裂
+
+`db_list_stale_embedding_card_ids` 的 Rust 函数写了、也标了 `#[tauri::command]`，
+但**没进 `generate_handler`**——前端 `embeddingEngine` 一调它就抛错。
+
+影响路径明确：本地语义检索在「维度变了、要重算旧向量」时走这条，命令未注册
+→ invoke 抛错 → **整个索引流程中断**，那些卡片在检索里永远匹配不到。
+
+这类断裂**编译期完全看不出来**（函数存在、类型正确），只在运行时炸。
+
+现在有自动检查：前端所有 invoke 的命令名，Rust 的 `invoke_handler` 里必须真的
+注册了。**反向验证过**：去掉注册，检查立刻报出来。
+
+> 顺带核实过「Rust 注册但前端不调」的候选死命令——修复后**没有**。
+
+### 一批零引用的死代码（记录，暂不删）
+
+扫「定义了但没有调用点」时发现一批：
+
+| 位置 | 内容 | 判定 |
+| --- | --- | --- |
+| `domain/deckSession.ts` | `eligibleDeck` / `buildDeckIds` / `deckFilterSignature` / `deckFromIds` | **安卓端卡堆逻辑的移植**；工作台改用 `reviewQueue` / `buildQuiz` 后就成了孤儿（自己还有一整套测试） |
+| `ui/stampColor.ts` | 8 条学科配色规则 | 第一版迁移带进来，从没接上 |
+| `domain/cardTheme.ts` | `themeImageUrl` / `themeFallbackBackground` / `pruneThemeCache` | 同上 |
+
+**暂不删**——AGENTS.md 要求「只暂存本任务明确修改的文件、不碰无关改动」，
+而删死代码要先确认没有别的端依赖。记在这里，等专门一轮处理。
+
 ## 索引：按症状找
 
 > **环境提醒（2026-10-22 22:15）**：`gh` 的 token 失效过一次（keychain 里的
