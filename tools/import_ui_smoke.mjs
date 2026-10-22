@@ -59,6 +59,12 @@ try {
     return true;
   })()`);
   await check("document.body.innerText.includes('没有文件导入成功')", "全部失败时明确说明");
+  // 「重新读取」只对**读取失败**有意义。导入失败时挂那个按钮会误导：
+  // 用户点了只会重载库，与他的问题无关，还打断当前操作。
+  await check(
+    "![...document.querySelectorAll('.ws-feedback button')].some(b => b.textContent.includes('重新读取'))",
+    "导入失败时不提供「重新读取」（那是读取失败才有的出口）",
+  );
 
   // 图片作为独立来源：不再是「不支持的格式」
   await ev(`(() => {

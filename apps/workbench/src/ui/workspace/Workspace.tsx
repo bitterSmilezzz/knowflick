@@ -129,7 +129,15 @@ export function Workspace() {
   const [busy, setBusy] = useState(false);
   // 长操作（AI 归纳、转写、导入）要让用户看见「在做什么」，而不只是按钮变灰。
   const [busyLabel, setBusyLabel] = useState("");
-  const [error, setError] = useState("");
+  const [error, setErrorText] = useState("");
+  // 错误提示条上的「重新读取」只对**读取失败**有意义。导入/转换/导出/恢复失败时
+  // 挂那个按钮会误导：用户点了只会重载库，与他的问题无关，还打断当前操作。
+  const [errorIsReloadable, setErrorIsReloadable] = useState(false);
+  // 报错统一走这里：默认**不提供**「重新读取」——那个按钮只对读取失败有意义。
+  const setError = useCallback((message: string) => {
+    setErrorText(message);
+    setErrorIsReloadable(false);
+  }, []);
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<KnowledgeCard[]>([]);
   const [previewSelectedIds, setPreviewSelectedIds] = useState<Set<string>>(new Set());
@@ -248,7 +256,10 @@ export function Workspace() {
       setApiKey(data.apiKey);
       setDir(data.dir);
     } catch (e) {
-      if (current === revision.current) setError(`读取知识库失败：${String(e)}`);
+      if (current === revision.current) {
+        setErrorText(`读取知识库失败：${String(e)}`);
+        setErrorIsReloadable(true);
+      }
     } finally {
       if (current === revision.current) setLoading(false);
     }
@@ -1570,9 +1581,11 @@ export function Workspace() {
         {error ? (
           <div className="ws-feedback" role="alert">
             <span>{error}</span>
-            <button onClick={() => void load()} disabled={busy}>
-              重新读取
-            </button>
+            {errorIsReloadable ? (
+              <button onClick={() => void load()} disabled={busy}>
+                重新读取
+              </button>
+            ) : null}
             <button aria-label="关闭提示" onClick={() => setError("")}>
               <Icon name="close" />
             </button>
