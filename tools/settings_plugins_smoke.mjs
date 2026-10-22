@@ -147,6 +147,42 @@ try {
     "样本素材确实落到存储里"
   );
 
+  // 边界样本：标题为空、正文为空的卡片，以及标题为空的素材。
+  // 恢复逻辑曾用 `if (!c.headline || !c.details) continue` 过滤，
+  // 于是这些内容在恢复时被**静默丢弃**——备份明明写进去了。
+  await browser("eval", `(() => {
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    const now = Date.now();
+    const base = {
+      category: '', summary: '摘要', links: [], tags: [], source: 'seed', createdAt: now,
+      editedAt: null, seenAt: null, swiped: null, isFavorite: false, favoritedAt: null,
+      reviewCount: 0, masteryLevel: 0, lastReviewedAt: null, repetition: 0, intervalDays: 0,
+      easeFactor: 2.5, stability: 0, difficulty: 0, subject: null, branch: null, level: null,
+      track: null, orderKey: null, prereq: [],
+    };
+    raw.cards = [...(raw.cards || []),
+      { ...base, id: 'restore-empty-title', headline: '', details: '正文不为空' },
+      { ...base, id: 'restore-empty-body', headline: '标题不为空', details: '' }];
+    raw.materials = [...(raw.materials || []), {
+      id: 'restore-empty-title-mat', sourceType: 'web', title: '', sourceUrl: null,
+      rawText: '正文', contentHash: '', mediaPath: null, mediaSizeBytes: 0,
+      metadataJson: '{}', inboxStatus: 'inbox', createdAt: now, updatedAt: now,
+    }];
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    return true;
+  })()`);
+  await check(
+    'JSON.parse(localStorage.getItem("knowflick.workspace.v1")).cards.length >= 2',
+    "边界样本（空标题/空正文）已写入"
+  );
+  // 页面内存里的 cards state 也要看到它们，否则导出的包里根本没有边界样本。
+  await browser("open", url);
+  await new Promise((r) => setTimeout(r, 900));
+  await check(
+    'JSON.parse(localStorage.getItem("knowflick.workspace.v1")).cards.some(c => c.id === "restore-empty-title")',
+    "边界样本仍在存储里"
+  );
+
   // 拦下导出的 Blob，这样拿到的是「用户点导出按钮」真实产出的字节
   await browser(
     "eval",
@@ -197,6 +233,23 @@ try {
     'document.body.innerText.includes("备份往返记录")',
     "恢复后的素材出现在工作台里"
   );
+  // 备份的承诺是「无损」：边界内容也必须回来，不能被静默丢弃。
+  const restoredIds = await browser(
+    "eval",
+    `JSON.stringify(JSON.parse(localStorage.getItem('knowflick.workspace.v1')).cards.map(c => c.id))`
+  );
+  await check(
+    restoredIds.includes("restore-empty-title"),
+    "空标题的卡片也恢复回来了"
+  );
+  await check(
+    restoredIds.includes("restore-empty-body"),
+    "空正文的卡片也恢复回来了"
+  );
+  await check(
+    'JSON.parse(localStorage.getItem("knowflick.workspace.v1")).materials.some(m => m.id === "restore-empty-title-mat")',
+    "空标题的素材也恢复回来了"
+  );
   await check(
     'JSON.parse(localStorage.getItem("knowflick.workspace.v1")).materials.some(m=>m.title==="备份往返记录" && m.rawText.includes("kfbackup"))',
     "恢复后的正文逐字段一致"
@@ -207,6 +260,35 @@ try {
   );
   rmSync(backupPath, { force: true });
   console.log("PASS .kfbackup 从导出按钮到恢复输入框的整条链路可用");
+
+  // 恢复：备份里的内容必须**全部**回来。
+  // 恢复逻辑曾用 `if (!c.headline || !c.details) continue` 过滤卡片，
+  // 于是「标题或正文为空」的卡在恢复时被静默丢弃——备份明明写进去了。
+  const backupRoundTrip = await browser("eval", `(() => {
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+    const now = Date.now();
+    const emptyTitleCard = {
+      id: 'restore-empty-title', category: '', headline: '', summary: '摘要',
+      details: '正文内容不能为空', links: [], tags: [], source: 'seed', createdAt: now,
+      editedAt: null, seenAt: null, swiped: null, isFavorite: false, favoritedAt: null,
+      reviewCount: 0, masteryLevel: 0, lastReviewedAt: null, repetition: 0, intervalDays: 0,
+      easeFactor: 2.5, stability: 0, difficulty: 0, subject: null, branch: null, level: null,
+      track: null, orderKey: null, prereq: [],
+    };
+    const emptyBodyCard = {
+      ...emptyTitleCard, id: 'restore-empty-body', headline: '有标题', details: '',
+    };
+    const emptyTitleMaterial = {
+      id: 'restore-empty-title-mat', sourceType: 'web', title: '', sourceUrl: null,
+      rawText: '正文', contentHash: '', mediaPath: null, mediaSizeBytes: 0,
+      metadataJson: '{}', inboxStatus: 'inbox', createdAt: now, updatedAt: now,
+    };
+    raw.cards = [...(raw.cards || []), emptyTitleCard, emptyBodyCard];
+    raw.materials = [...(raw.materials || []), emptyTitleMaterial];
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    return true;
+  })()`);
+  await check(String(backupRoundTrip) === "true", "准备了一份含空标题/空正文/空标题素材的备份样本");
 
   console.log("Plugins / backup / MCP settings smoke complete.");
 } finally {

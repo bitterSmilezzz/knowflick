@@ -156,6 +156,77 @@ describe("备份带走附件", () => {
     expect([...restored.media.keys()]).toEqual(["media/audio/ok.webm"]);
   });
 
+  it("带全部字段取值的卡片与素材逐字段无损往返", () => {
+    // 已有测试用的都是常见取值。这条专门用「边角取值」跑一遍：
+    // 空字符串、负数、极值时间戳、含特殊字符的正文、null 与缺失的区别。
+    // 备份的承诺是「无损」——字段一多，某个字段被悄悄丢掉就很难被发现。
+    const edgeCard = cardFromJson({
+      id: "card-edge-1",
+      headline: "",
+      summary: "含特殊字符 \"引号\" 与\t制表\n换行",
+      details: "",
+      category: "",
+      tags: [],
+      links: [],
+      source: "seed",
+      createdAt: 0,
+      editedAt: null,
+      seenAt: null,
+      swiped: null,
+      isFavorite: false,
+      favoritedAt: null,
+      reviewCount: 0,
+      masteryLevel: 0,
+      lastReviewedAt: null,
+      repetition: 0,
+      intervalDays: 0,
+      easeFactor: 2.5,
+      stability: 0,
+      difficulty: 0,
+      subject: null, branch: null, level: null, track: null, orderKey: null, prereq: [],
+    });
+    const edgeMaterial: RawMaterial = {
+      id: "mat-edge-1",
+      sourceType: "web",
+      title: "",
+      sourceUrl: null,
+      rawText: "换行\n与制表\t以及\"引号\"",
+      contentHash: "",
+      mediaPath: null,
+      mediaSizeBytes: 0,
+      metadataJson: JSON.stringify({ from: "a@b.test", tags: ["x"] }),
+      inboxStatus: "dismissed",
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    const archive = createKfBackupArchive(
+      [edgeMaterial],
+      [edgeCard],
+      { raw: { ...defaultSettings }, settings: defaultSettings },
+      []
+    );
+    const restored = restoreKfBackup(archive);
+    expect(restored.cards).toHaveLength(1);
+    const card = restored.cards[0];
+    expect(card.id).toBe("card-edge-1");
+    expect(card.headline).toBe("");
+    expect(card.summary).toBe(edgeCard.summary);
+    expect(card.source).toBe("seed");
+    expect(card.createdAt).toBe(0);
+    expect(card.seenAt).toBeNull();
+    expect(card.tags).toEqual([]);
+    expect(card.prereq).toEqual([]);
+    expect(restored.materials).toHaveLength(1);
+    const material = restored.materials[0];
+    expect(material.id).toBe("mat-edge-1");
+    expect(material.title).toBe("");
+    expect(material.sourceUrl).toBeNull();
+    expect(material.rawText).toBe(edgeMaterial.rawText);
+    expect(material.inboxStatus).toBe("dismissed");
+    expect(material.metadataJson).toBe(edgeMaterial.metadataJson);
+    expect(material.mediaPath).toBeNull();
+  });
+
   it("旧备份没有附件时 media 为空而不是报错", () => {
     const restored = restoreKfBackup(createKfBackupArchive([], [], settings, []));
     expect(restored.media.size).toBe(0);

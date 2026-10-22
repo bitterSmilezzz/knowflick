@@ -1168,13 +1168,19 @@ export function Workspace() {
         }
         let total = 0;
         for (const m of restored.materials) {
-          if (!m.id || typeof m.rawText !== "string" || !m.title) continue;
+          // 只挡真正无法入库的行（没有 id、正文不是字符串）。
+          // 标题可以为空——那是一条**空标题但有正文**的素材，用户自己建的，
+          // 备份里明明写进去了，恢复时不该悄悄丢掉。
+          if (!m.id || typeof m.rawText !== "string") continue;
           const mediaPath = m.mediaPath ? restoredMedia.get(m.mediaPath) ?? null : m.mediaPath;
           await updateMaterial({ ...m, mediaPath, mediaSizeBytes: m.mediaSizeBytes || 0 });
           total++;
         }
         for (const c of restored.cards) {
-          if (!c.headline || !c.details) continue;
+          // 同理：标题或正文为空不代表这张卡无效。原先 `!c.headline || !c.details`
+          // 会把「空标题」「空正文」的卡在恢复时静默丢弃——备份说无损，
+          // 恢复却少了内容。
+          if (!c.id) continue;
           await updateCard(c);
           total++;
         }
