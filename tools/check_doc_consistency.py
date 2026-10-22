@@ -314,6 +314,34 @@ def check_evidence_assertions(problems: list[str]) -> None:
                 )
 
 
+def check_tauri_commands(problems: list[str]) -> None:
+    """前端 invoke 的命令，Rust 侧必须真的注册了。
+
+    「函数写了、#[tauri::command] 标了、但**没进 generate_handler**」——这种
+    断裂在编译期完全看不出来，只在运行时抛错。实测就抓到过一条：
+    db_list_stale_embedding_card_ids 没注册，embeddingEngine 一调就炸。
+    """
+    lib = ROOT / "apps/workbench/src-tauri/src/lib.rs"
+    if not lib.exists():
+        return
+    match = re.search(r"generate_handler!\[(.*?)\]\)", lib.read_text(encoding="utf-8"), re.S)
+    if not match:
+        return
+    registered = set(re.findall(r"^\s+([a-z_]+),", match.group(1), re.M))
+
+    invoked: set[str] = set()
+    for path in (ROOT / "apps/workbench/src").rglob("*.ts"):
+        if path.name.endswith(".test.ts"):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        invoked |= set(re.findall(r'invoke(?:<[^>]*>)?\(\s*"([a-z_]+)"', text))
+    missing = sorted(invoked - registered)
+    for cmd in missing:
+        problems.append(
+            f"前端 invoke(\"{cmd}\")，但 Rust 的 invoke_handler 里没注册——运行时会抛错"
+        )
+
+
 def main() -> int:
     problems: list[str] = []
 
@@ -376,6 +404,7 @@ def main() -> int:
     check_evidence(problems)
     check_evidence_is_executed(problems)
     check_evidence_assertions(problems)
+    check_tauri_commands(problems)
 
     if problems:
         emit("文档与实际有出入：")

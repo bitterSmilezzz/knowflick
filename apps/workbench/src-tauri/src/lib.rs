@@ -942,6 +942,7 @@ pub fn run() {
             db_search_cards_hybrid,
             db_list_unembedded_card_ids,
             db_save_card_embeddings_batch,
+            db_list_stale_embedding_card_ids,
             request_embeddings,
             db_search_materials_fts,
             db_backfill_material_fts,
