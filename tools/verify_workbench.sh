@@ -17,3 +17,7 @@ cd "$ROOT"
 
 # MCP 是外部 agent 读写这个库的入口，坏掉不会有界面报错——纳入门禁。
 node tools/mcp_smoke.mjs
+
+# 来源矩阵：每种来源都要能进收件箱、被搜到、转成卡并回溯。
+# 此前每类来源各有一套冒烟，但没有一套覆盖全部来源——这条线是拼起来的，不是验过的。
+node tools/source_matrix_smoke.mjs

@@ -75,6 +75,9 @@ const META: Record<string, { label: string; icon: string }> = {
   document: { label: "文档", icon: "library" },
   audio: { label: "语音", icon: "note" },
   image: { label: "图片", icon: "image" },
+  // 手写笔记此前没登记在这里，来源标签显示成英文 "ink"，
+  // 而 model.ts 里的分类是「手写笔记」——同一件事两种说法。
+  ink: { label: "手写笔记", icon: "edit" },
   card: { label: "知识卡", icon: "card" },
 };
 
