@@ -67,6 +67,16 @@ python3 tools/check_clip_parity.py # 剪藏规则表：Kotlin ↔ TypeScript 逐
 
 发版流程见 [MULTI_PLATFORM.md](docs/MULTI_PLATFORM.md) §提交与发布；产物不入 Git，Release 附件依赖本地上传（android）或 CI workflow（`workbench-v*` 与 `desktop-v*` tag）。
 
+### Rust 编译产物定期清理（存储不会无限膨胀）
+
+`apps/workbench/src-tauri/target/` 会随构建无限增长（本轮清理前实测约 15 GB）。本机装了**独立于本仓**的周清理任务：
+
+- **调度**：LaunchAgent `local.agents.rust-clean`，每周日 03:00 运行 `~/.agents/scripts/rust-clean-sweep.sh`
+- **策略**：扫 `~/workspace` 下所有 `Cargo.toml`，仅当 `target/` ≥ 5 GiB 时执行 `cargo clean`（debug + release 全清）
+- **护栏**：只要有 `cargo` / `rustc` / `rust-analyzer` / `cargo-tauri` 在跑，整轮跳过——正在构建或调试的产物不动；仓根放 `.rust-clean-skip` 可让本仓永久跳过
+- **手动**：`~/.agents/scripts/rust-clean-sweep.sh --dry-run` 先看会清什么；`--project "$PWD"` 只清本仓。日志在 `~/Library/Logs/rust-clean/sweep.log`
+- **代价**：清理后下一次 `cargo test` / `verify_workbench.sh` 是全量重编（几分钟）
+
 ## 会话工作区与文档纪律
 
 - **临时产物写 `.scratch/<主题>/`**（已 gitignore），不要散落在仓库根目录；不要提交 `.scratch/` 内容。

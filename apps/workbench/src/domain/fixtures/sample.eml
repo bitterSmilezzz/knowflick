@@ -1,0 +1,28 @@
+From: 张三 <zhangsan@example.com>
+To: 李四 <lisi@example.com>
+Subject: =?UTF-8?B?5a2j5bqm5oql5ZGK5LiO5ZCO57ut6K6h5YiS?=
+Date: Tue, 21 Oct 2026 08:30:00 +0800
+Message-ID: <abc123@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY42"
+
+--BOUNDARY42
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: base64
+
+6L+Z5piv5LiA5bCB5rWL6K+V6YKu5Lu255qE5q2j5paH5YaF5a6544CCCuesrOS6jOihjOe7p+e7reOAgg==
+
+--BOUNDARY42
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<html><body><p>HTML =E4=BC=8A=E4=B8=AA=E6=98=AF=E5=8C=85=E8=A3=85=E7=89=88</p></body></html>
+
+--BOUNDARY42
+Content-Type: application/pdf; name="report.pdf"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="report.pdf"
+
+JVBERi0xLjQK
+
+--BOUNDARY42--
