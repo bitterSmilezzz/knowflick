@@ -162,6 +162,22 @@ trap 兜底卸载 → 确认进程真的起来。
 - 只留最近 **40 轮**；写入失败（存储满）只放弃持久化，对话仍在内存里。
 - 有对话时提供「清空对话」，并说明「对话会保存在本机」——有持久化就必须有清空的出口。
 
+### 订阅源里的相对链接点开是无效地址
+
+真实 feed 里的文章链接常是相对的（`/posts/2`），解析器原样存成素材的「原文链接」，
+用户点开会指向无效地址。
+
+- `parseFeed` 加 `baseUrl` 参数：相对链接用 feed 自身的 origin 补全
+  （`/posts/2` → `https://example.com/posts/2`）；协议相对（`//host/x`）也处理。
+- `parseSubscriptionPayload` 把 `sub.targetUrl` 传下去。
+- **没有 base 时不乱补**，相对链接原样保留（不猜）。
+
+单测 4 项，fixture 是**真实结构的 feed**（不是理想样本）：
+
+- 真实 RSS：CDATA、HTML 实体、`content:encoded` 优先于 `description`、
+  RFC822 与 ISO 两种日期格式、缺链接的坏条目要跳过而不是让整次抓取作废。
+- 真实 Atom：`entry`、`type=html` 的 `summary`、转义标题、`urn:uuid` 作 key。
+
 ### 浏览器不给 MIME 时，JPEG 被存成 .png
 
 查「真实图片导入」时抓到的缺陷：图片导入的 mime 完全依赖浏览器的 `File.type`，
