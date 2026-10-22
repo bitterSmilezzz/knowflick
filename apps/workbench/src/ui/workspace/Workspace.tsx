@@ -1770,17 +1770,22 @@ export function Workspace() {
                         ? "还没有待整理的内容"
                         : "这里还没有内容"}
                   </h2>
-                  <p>{query ? "试试更短的关键词，或清除筛选。" : "记一段想法，或导入一份笔记。"}</p>
-                  <button
-                    className="ws-primary"
-                    onClick={() =>
-                      query || tag || source !== "all"
-                        ? (setQuery(""), setTag(""), setSource("all"))
-                        : setCapture(true)
-                    }
-                  >
-                    {query || tag || source !== "all" ? "清除筛选" : "记录第一条"}
-                  </button>
+                  <p>
+                    {query
+                      ? "试试更短的关键词，或清除筛选。"
+                      : "记一段想法，或导入一份笔记。侧栏的「记录」随时可以写一条。"}
+                  </p>
+                  {/* 有筛选时给「清除筛选」；没有筛选时**不放**「记录第一条」——
+                      侧栏的「记录 ⌘N」常驻可见，再放一个做同一件事的按钮只会
+                      让用户以为是两个不同的入口。 */}
+                  {query || tag || source !== "all" ? (
+                    <button
+                      className="ws-primary"
+                      onClick={() => (setQuery(""), setTag(""), setSource("all"))}
+                    >
+                      清除筛选
+                    </button>
+                  ) : null}
                 </div>
               ) : (
                 <>
@@ -1949,7 +1954,7 @@ export function Workspace() {
                         ? "换个关键词，或清空筛选看看全部内容"
                         : "按 ⌘N 记一条闪念，拖入文件，粘贴链接自动抓取，或用订阅源定期收集"}
                     </span>
-                    {/* 不再放「记录」按钮：中栏空状态已经有「记录第一条」，
+                    {/* 不再放「记录」按钮：侧栏的「记录 ⌘N」常驻可见，
                         同一动作同一屏出现两次是重复 CTA。这里补的是用户还没看到的入口。 */}
                     {query.trim() || tag ? (
                       // 文案里写着「清空筛选看看全部内容」，那就得有个能点的入口——

@@ -264,6 +264,32 @@ try {
   assert.deepEqual(dupCta, [], `同一屏出现重复动作：${JSON.stringify(dupCta)}`);
   pass("同一屏没有重复 CTA");
 
+  // ---- 同一个动作出现两次（文字不同也算）----
+  // 上面那条按**文字**计数，所以「记录⌘N」与「记录第一条」抓不到——
+  // 它们做的是同一件事（都打开记录面板）。同一个动作在一屏里出现两次，
+  // 用户会以为是两个不同的入口。
+  const sameAction = await evaluate(`(() => {
+    // 按语义分组：同组的按钮做的是同一件事。
+    const groups = {
+      "打开记录": '[data-action="capture"], [data-action="open-capture"]',
+    };
+    const found = [];
+    for (const [name, selector] of Object.entries(groups)) {
+      const count = document.querySelectorAll(selector).length;
+      if (count > 1) found.push(name + '×' + count);
+    }
+    // 记录面板的入口：顶栏的「记录」与空态的「记录第一条」都调 setCapture(true)。
+    const captureTriggers = [...document.querySelectorAll('.ws button')]
+      .filter(b => /^(记录|记录第一条)/.test(b.textContent.trim()));
+    if (captureTriggers.length > 1) {
+      found.push('打开记录×' + captureTriggers.length + '（' +
+        captureTriggers.map(b => b.textContent.trim()).join('、') + '）');
+    }
+    return found;
+  })()`);
+  assert.deepEqual(sameAction, [], `同一屏有多个入口做同一件事：${JSON.stringify(sameAction)}`);
+  pass("同一屏没有重复的同义入口");
+
   // ---- 可用性：Tab 顺序可达且有焦点环 ----
   await browser("eval", "document.body.focus(); true");
   let noRing = 0;

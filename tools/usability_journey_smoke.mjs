@@ -49,7 +49,15 @@ try {
 
   // 1. 空库首屏引导
   const t1 = await evaluate("document.body.innerText.replace(/\\s+/g,' ')");
-  assert.ok(t1.includes("从一个想法开始") && t1.includes("记录第一条"), "首屏需要有下一步引导");
+  // 引导看的是**可执行的下一步**（记一条 / 连邮箱 / 加订阅 / 导入文件），
+  // 而不是某个具体按钮：按钮位置会随界面收敛调整，引导不能跟着消失。
+  assert.ok(t1.includes("从一个想法开始"), "首屏要有上手引导的标题");
+  assert.ok(
+    t1.includes("按 ⌘N 记一条闪念") ||
+      t1.includes("连接邮箱") ||
+      t1.includes("添加订阅"),
+    "首屏引导要说清下一步能做什么",
+  );
   pass(1, "首屏能看出下一步该做什么");
 
   // 2. Cmd/Ctrl+N
