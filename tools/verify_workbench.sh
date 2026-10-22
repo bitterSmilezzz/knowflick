@@ -29,6 +29,11 @@ node tools/taste_usability_gate.mjs
 # 此前每类来源各有一套冒烟，但没有一套覆盖全部来源——这条线是拼起来的，不是验过的。
 node tools/source_matrix_smoke.mjs
 
+# 文档一致性：描述「当前状态」的文档里的数字与命令要和实际相符。
+# 这轮手工核对时发现 README / UI_CONSOLIDATION 写的门禁内容已经差了好几轮——
+# 靠人查迟早会再犯，交给脚本。
+python3 tools/check_doc_consistency.py
+
 # 全部浏览器冒烟：13 套界面级回归。
 # 它们要真实浏览器与运行中的 Vite，CI 环境两者都没有（脚本会 SKIP）；
 # 但在本机，门禁应当把它们一起跑完——否则界面退化只在「谁记得手动跑」时才被发现。
