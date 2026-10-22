@@ -315,30 +315,40 @@ def check_evidence_assertions(problems: list[str]) -> None:
 
 
 def check_tauri_commands(problems: list[str]) -> None:
-    """前端 invoke 的命令，Rust 侧必须真的注册了。
+    """核对静态字面量 invoke 与命令注册，并拒绝重复注册。
 
-    「函数写了、#[tauri::command] 标了、但**没进 generate_handler**」——这种
-    断裂在编译期完全看不出来，只在运行时抛错。实测就抓到过一条：
-    db_list_stale_embedding_card_ids 没注册，embeddingEngine 一调就炸。
+    Rust 列表的最后一项允许没有尾逗号。旧扫描器漏了这一项，曾将已经注册的
+    db_list_stale_embedding_card_ids 误判为缺失；不能据此宣称发生过运行时故障。
+    动态生成的命令名不在此静态检查的覆盖范围内。
     """
     lib = ROOT / "apps/workbench/src-tauri/src/lib.rs"
     if not lib.exists():
+        problems.append("找不到 Tauri 命令注册文件")
         return
-    match = re.search(r"generate_handler!\[(.*?)\]\)", lib.read_text(encoding="utf-8"), re.S)
+    match = re.search(r"generate_handler!\s*\[(.*?)\]\s*\)", lib.read_text(encoding="utf-8"), re.S)
     if not match:
+        problems.append("无法读取 Tauri 命令注册列表")
         return
-    registered = set(re.findall(r"^\s+([a-z_]+),", match.group(1), re.M))
+    # 按逗号分项，末项有无尾逗号都有效；注释不算注册项。
+    registration_text = re.sub(r"/\*.*?\*/|//[^\n]*", "", match.group(1), flags=re.S)
+    commands = [item.strip() for item in registration_text.split(",") if item.strip()]
+    registered: set[str] = set()
+    for command in commands:
+        if not re.fullmatch(r"[a-z_][a-z_0-9]*", command):
+            problems.append(f"无法识别 Tauri 注册项：{command}")
+        elif command in registered:
+            problems.append(f"Tauri 命令重复注册：{command}")
+        registered.add(command)
 
     invoked: set[str] = set()
-    for path in (ROOT / "apps/workbench/src").rglob("*.ts"):
-        if path.name.endswith(".test.ts"):
+    for path in (ROOT / "apps/workbench/src").rglob("*"):
+        if path.suffix not in (".ts", ".tsx") or path.name.endswith((".test.ts", ".test.tsx")):
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
-        invoked |= set(re.findall(r'invoke(?:<[^>]*>)?\(\s*"([a-z_]+)"', text))
-    missing = sorted(invoked - registered)
-    for cmd in missing:
+        invoked |= set(re.findall(r'''\binvoke\s*(?:<[^;]*?>\s*)?\(\s*["']([a-z_][a-z_0-9]*)["']''', text))
+    for command in sorted(invoked - registered):
         problems.append(
-            f"前端 invoke(\"{cmd}\")，但 Rust 的 invoke_handler 里没注册——运行时会抛错"
+            f"前端 invoke(\"{command}\")，但 Rust 的 invoke_handler 里没注册——运行时会抛错"
         )
 
 
@@ -365,10 +375,8 @@ def main() -> int:
                     problems.append(
                         f"{rel}:{lineno} 说「前端 {claimed} 项」，实际 {frontend} 项"
                     )
-            # 「Rust N 项」**不核对**：Rust 测试里有 #[cfg(target_os = "macos")] /
-            # #[cfg(unix)] 这类平台门，三端跑出来的数量本来就不一样
-            # （实测 macOS 87 项 / Windows 84 项）。文档写一个数必然有一端对不上，
-            # 所以只提示、不报错。
+            # 这里只数 #[test] 声明，包含 ignored，也不展开平台条件。
+            # 不能把声明数当作实际通过数；执行结果以 cargo test 日志为准。
             for match in re.finditer(r"Rust\s*(\d+)\s*项", line):
                 claimed = int(match.group(1))
                 if rust and claimed != rust:
@@ -414,8 +422,8 @@ def main() -> int:
         return 1
 
     emit(
-        f"文档与实际一致：前端 {frontend} 项、Rust {rust} 项、{smokes} 套浏览器冒烟，"
-        f"文档里提到的脚本都存在，{len(EVIDENCE_MAP)} 条已修缺陷的证据测试都在"
+        f"静态核对通过：前端用例声明 {frontend} 条、Rust 测试声明 {rust} 条、{smokes} 套浏览器冒烟，"
+        f"{len(EVIDENCE_MAP)} 条登记的证据路径与标识仍在；实际执行结果以测试日志为准"
     )
     return 0
 

@@ -79,6 +79,9 @@ summary.ws-group-label {
   font-weight: inherit;
   cursor: pointer;
   list-style: none;
+  /* 三角伪元素和标题是两个 flex 子项；覆盖组标签的两端对齐，让两者相邻。 */
+  justify-content: flex-start;
+  gap: 6px;
 }
 summary.ws-group-label::-webkit-details-marker { display: none; }
 .ws-nav-summary {

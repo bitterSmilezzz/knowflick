@@ -311,6 +311,38 @@ try {
   }))()`);
   assert.deepEqual(nav.groups, ["来源", "收件箱", "知识库", "应用"], `侧栏应按四段主线分组：${nav.groups}`);
   pass("侧栏按四段主线分组");
+
+  // ---- 组标签的文字要跟在三角指示器后面，不能被推到最右 ----
+  // .ws-group-label 是 justify-content: space-between（为的是标签右侧放计数）。
+  // 「应用」组没有计数，不覆盖的话文字会被推到最右——三角在左、文字在右，
+  // 看起来像坏了。真机截图先发现，浏览器中再用文字节点的实际位置锁住。
+  const groupLabelAlign = await evaluate(`(() => {
+    const labels = [...document.querySelectorAll('summary.ws-group-label')];
+    const bad = [];
+    let measured = 0;
+    for (const label of labels) {
+      const nodes = [...label.childNodes]
+        .filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
+      if (!nodes.length) continue;
+      const rects = nodes.flatMap(node => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return [...range.getClientRects()].filter(r => r.width > 0);
+      });
+      if (!rects.length) continue;
+      measured++;
+      const textLeft = Math.min(...rects.map(r => r.left));
+      const offset = textLeft - label.getBoundingClientRect().left;
+      // 文字起点离标签左边缘太远 = 被 space-between 推到了右边
+      if (offset < 0 || offset > 60) {
+        bad.push(label.textContent.trim() + '（左偏移 ' + Math.round(offset) + 'px）');
+      }
+    }
+    return { measured, bad };
+  })()`);
+  assert.ok(groupLabelAlign.measured > 0, '应用组的文字位置必须实际测到');
+  assert.equal(groupLabelAlign.bad.length, 0, `组标签文字被推到右侧：${groupLabelAlign.bad.join('、')}`);
+  pass("侧栏组标签文字左对齐");
   assert.ok(nav.topLevel.length <= 6, `一级入口应收敛在六个以内：${nav.topLevel}`);
   pass(`一级入口收敛为 ${nav.topLevel.length} 个`);
   assert.ok(nav.collapsible.some(label => label.includes("筛选")), `收藏/归档应折叠为知识库筛选：${nav.collapsible}`);
