@@ -562,6 +562,36 @@ mod tests {
     }
 
     #[test]
+    fn prints_loopback_verdicts_for_cross_platform_parity() {
+        // 常驻的对照探针：`tools/check_loopback_parity.mjs` 跑 Rust 测试时
+        // 读它的输出，与 TypeScript 侧逐条比对。
+        //
+        // 为什么是常驻测试而不是临时插桩：临时改 http.rs 会让 cargo **重新编译**
+        // 整个 crate 依赖树——CI 上一次门禁要多花十几分钟，实测把 Linux job
+        // 顶到 25 分钟上限之外。常驻测试只需一次增量编译。
+        for host in [
+            "127.0.0.1",
+            "localhost",
+            "::1",
+            "[::1]",
+            "0:0:0:0:0:0:0:1",
+            "[0:0:0:0:0:0:0:1]",
+            "::",
+            "[::]",
+            "::ffff:127.0.0.1",
+            "[::ffff:7f00:1]",
+            "[2001:db8::1]",
+            "192.168.1.10",
+            "10.0.0.1",
+            "example.com",
+            "",
+            "not a host",
+        ] {
+            println!("PARITY\t{}\t{}", host, super::is_loopback_host(host));
+        }
+    }
+
+    #[test]
     fn keeps_ordinary_error_text() {
         let text = "模型 120 秒没有响应，已中止。可以先检查网络。";
         assert_eq!(redact_secrets(text), text);

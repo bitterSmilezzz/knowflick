@@ -52,7 +52,7 @@
 | **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
-> 本机 Rust 输出为 **88 passed、3 ignored**，共 91 条测试声明。声明数不能当成通过数；
+> 本机 Rust 输出为 **89 passed、3 ignored**，共 92 条测试声明。声明数不能当成通过数；
 > 不同平台的实际执行结果以各 runner 日志为准。浏览器冒烟需要 agent-browser 与运行中的 Vite，
 > 缺少条件时明确 SKIP，因此 CI 中的静态检查通过不代表浏览器交互已在 CI 执行。
 

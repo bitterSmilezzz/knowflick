@@ -70,34 +70,26 @@ function parseVerdicts(output, label) {
   return verdicts;
 }
 
-/** Rust 侧：跑一个临时探针测试，把每条判定打印出来。 */
+/** Rust 侧：跑**常驻**的对照探针测试，读它打印的判定。 */
 async function rustVerdicts() {
-  const lib = path.join(ROOT, "apps/workbench/src-tauri/src/http.rs");
-  const fs = await import("node:fs/promises");
-  const original = await fs.readFile(lib, "utf8");
-  const probe = `    #[test]
-    fn __parity_probe() {
-        for h in ${JSON.stringify(HOSTS)}.iter() {
-            println!("PARITY\\t{}\\t{}", h, super::is_loopback_host(h));
-        }
-    }
-
-`;
-  const anchor = "    #[test]\n    fn keeps_ordinary_error_text() {";
-  if (!original.includes(anchor)) throw new Error("http.rs 里找不到插入探针的锚点");
-  await fs.writeFile(lib, original.replace(anchor, probe + anchor), "utf8");
-  try {
-    const { stdout } = await exec("cargo", ["test", "--locked", "--lib", "http::tests::__parity_probe", "--", "--nocapture"], {
+  const { stdout } = await exec(
+    "cargo",
+    [
+      "test",
+      "--locked",
+      "--lib",
+      "http::tests::prints_loopback_verdicts_for_cross_platform_parity",
+      "--",
+      "--nocapture",
+      "--test-threads=1",
+    ],
+    {
       cwd: path.join(ROOT, "apps/workbench/src-tauri"),
       timeout: 900_000,
       maxBuffer: 32 * 1024 * 1024,
-      // Windows 上 cargo 是 cargo.exe，直接 spawn 即可。
-      shell: false,
-    });
-    return parseVerdicts(stdout, "Rust");
-  } finally {
-    await fs.writeFile(lib, original, "utf8");
-  }
+    },
+  );
+  return parseVerdicts(stdout, "Rust");
 }
 
 /**
