@@ -6,7 +6,11 @@ import assert from "node:assert/strict";
 const exec = promisify(execFile);
 const session = "knowflick-notes-smoke";
 const url = process.env.KNOWFLICK_UI_URL || "http://localhost:1420";
-const b = async (...args) => (await exec("agent-browser", ["--session", session, ...args], { timeout: 25000 })).stdout.trim();
+// 假麦克风：让「真的按下录音键」这条路径能在没有硬件与麦克风权限的机器上跑
+// （CI 的 runner 与普通开发机都没有麦克风）。Chrome 的
+// --use-fake-device-for-media-stream 提供一个合成音频输入。
+const BROWSER_ARGS = "--use-fake-device-for-media-stream,--use-fake-ui-for-media-stream,--autoplay-policy=no-user-gesture-required";
+const b = async (...args) => (await exec("agent-browser", ["--session", session, "--args", BROWSER_ARGS, ...args], { timeout: 25000 })).stdout.trim();
 const ev = async code => { const r = JSON.parse(await b("eval", `JSON.stringify(${code})`)); return typeof r === "string" ? JSON.parse(r) : r; };
 let count = 0;
 async function check(expression, label) {
@@ -78,6 +82,39 @@ try {
   await check("[...document.querySelectorAll('button')].find(e=>e.textContent.includes('保存语音笔记')).disabled===true", "没有录音时不能保存");
   await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='取消').click();return true})()");
   await check("!document.querySelector('.voice-recorder')", "语音面板可取消");
+
+  // 真的按下录音键：这条路径此前**从未跑过**（验收清单里长期空白的一条）。
+  // 用 Chrome 的假麦克风（--use-fake-device-for-media-stream）——不需要真硬件，
+  // 也不需要麦克风权限，CI 与本机都能跑。
+  await b("click", '[aria-label="语音笔记"]');
+  await check("!!document.querySelector('.voice-recorder')", "再次打开语音面板");
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('开始录音')).click();return true})()");
+  await check(
+    "document.querySelector('.voice-status')?.dataset.state === 'recording'",
+    "按下后进入录音状态",
+  );
+  await check(
+    "document.querySelector('.voice-status')?.textContent.includes('正在录音')",
+    "录音中显示状态与时长",
+  );
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('停止录音')).click();return true})()");
+  await check(
+    "document.querySelector('.voice-status')?.dataset.state === 'ready'",
+    "停止后进入可保存状态",
+  );
+  await check("!!document.querySelector('.voice-audio')", "录到的音频可回放");
+  await check(
+    "[...document.querySelectorAll('button')].find(e=>e.textContent.includes('保存语音笔记')).disabled===false",
+    "录到声音后可以保存",
+  );
+  // 真的保存：浏览器体验**不保存录音**（产品设计，界面会说明并让用户去桌面端），
+  // 所以这里验的是「给出可执行的下一步」而不是落库——落库要真桌面端才有意义。
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('保存语音笔记')).click();return true})()");
+  await new Promise((r) => setTimeout(r, 1200));
+  await check(
+    "/桌面客户端/.test(document.querySelector('.voice-error')?.textContent ?? '')",
+    "浏览器里保存录音时说明要去桌面端（不是静默失败）",
+  );
 
   console.log(`Notes UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }
