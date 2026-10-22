@@ -1369,57 +1369,6 @@ export function Workspace() {
             <Icon name="card" size={14} /><span>笔记</span>
           </button>
         </div>
-        {/* 「应用」是产品主线（对知识做应用），不能被滚动藏起来：
-            侧栏空间不够时，多出来的那一行会正好把「知识测验」挤出可视区，
-            用户根本看不到这个功能。放在滚动区之外，来源/收件箱/知识库
-            那些流入管道仍然可以滚动。 */}
-<nav className="ws-nav-group" aria-label="应用">
-            <p className="ws-group-label">应用</p>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "brain" ? "page" : undefined}
-              onClick={() => navigate("brain")}
-            >
-              <Icon name="ask" /><span>知识问答</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "briefing" ? "page" : undefined}
-              onClick={() => navigate("briefing")}
-            >
-              <Icon name="brief" /><span>认知简报</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "artifacts" ? "page" : undefined}
-              onClick={() => navigate("artifacts")}
-            >
-              <Icon name="layers" /><span>产物库</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "stats" ? "page" : undefined}
-              onClick={() => navigate("stats")}
-            >
-              <Icon name="brief" /><span>统计</span>
-            </button>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "quiz" ? "page" : undefined}
-              onClick={() => navigate("quiz")}
-            >
-              <Icon name="ask" /><span>知识测验</span>
-            </button>
-            {reviewEnabled ? (
-              <button
-                className="ws-nav-row"
-                aria-current={page === "review" ? "page" : undefined}
-                onClick={() => navigate("review")}
-              >
-                <Icon name="layers" /><span>温故复习</span>
-              </button>
-            ) : null}
-          </nav>
         <div className="ws-nav-scroll">
           {/* 侧栏只回答一个问题：我在流水线的哪一段。
               「来源 → 收件箱 → 知识库 → 应用」是产品主线；收藏/归档/分类是
@@ -1507,6 +1456,70 @@ export function Workspace() {
                   </button>
                 ))}
               </details>
+            ) : null}
+          </nav>
+
+        {/* 「应用」是产品主线（对知识做应用），不能被滚动藏起来：
+            侧栏空间不够时，多出来的那一行会正好把「知识测验」挤出可视区，
+            用户根本看不到这个功能。放在滚动区之外，来源/收件箱/知识库
+            那些流入管道仍然可以滚动。 */}
+<nav className="ws-nav-group" aria-label="应用">
+            {/* 「应用」段收进可折叠区：一级入口（各组里直接可见的行）要控制在六个
+                以内（见 17834ea 的四段收敛），我新增「统计」「知识测验」后一度到 9。
+                但**当前就在应用页时自动展开**——折叠着的「知识问答」会让用户
+                以为自己没在那一段。
+                summary 带 ws-group-label 类：它同时就是这一段的组标签。 */}
+            <details
+              className="ws-nav-details"
+              open={["brain", "briefing", "artifacts", "stats", "quiz"].includes(page)}
+            >
+            <summary className="ws-nav-summary ws-group-label">应用</summary>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "brain" ? "page" : undefined}
+              onClick={() => navigate("brain")}
+            >
+              <Icon name="ask" /><span>知识问答</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "briefing" ? "page" : undefined}
+              onClick={() => navigate("briefing")}
+            >
+              <Icon name="brief" /><span>认知简报</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "artifacts" ? "page" : undefined}
+              onClick={() => navigate("artifacts")}
+            >
+              <Icon name="layers" /><span>产物库</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "stats" ? "page" : undefined}
+              onClick={() => navigate("stats")}
+            >
+              <Icon name="brief" /><span>统计</span>
+            </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "quiz" ? "page" : undefined}
+              onClick={() => navigate("quiz")}
+            >
+              <Icon name="ask" /><span>知识测验</span>
+            </button>
+            </details>
+            {/* 温故复习是**高频入口**（每天都要用），不跟着「应用」一起折叠——
+                折叠起来用户就找不到每天要点开的那个按钮了。 */}
+            {reviewEnabled ? (
+              <button
+                className="ws-nav-row"
+                aria-current={page === "review" ? "page" : undefined}
+                onClick={() => navigate("review")}
+              >
+                <Icon name="layers" /><span>温故复习</span>
+              </button>
             ) : null}
           </nav>
 

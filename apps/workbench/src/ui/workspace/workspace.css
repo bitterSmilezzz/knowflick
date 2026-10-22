@@ -65,6 +65,22 @@ select {
   display: flex;
   flex-direction: column;
 }
+/* <details> 收起时浏览器会把子元素隐藏，但上面那条 display:flex 覆盖了这个默认
+   行为——于是「筛选」收起了，里面的「收藏」「已归档」却照样显示，还撑破了侧栏
+   （最后一行被裁在容器外）。这里明确：收起时子元素不参与布局。 */
+.ws-nav-details:not([open]) > *:not(summary) {
+  display: none;
+}
+/* 「应用」组的折叠开关兼作组标签：它带 .ws-group-label 类（保持分组语义与样式），
+   但作为 <summary> 需要能点、能展开。 */
+summary.ws-group-label {
+  height: auto;
+  padding: 0;
+  font-weight: inherit;
+  cursor: pointer;
+  list-style: none;
+}
+summary.ws-group-label::-webkit-details-marker { display: none; }
 .ws-nav-summary {
   display: flex;
   align-items: center;
