@@ -60,6 +60,7 @@ import { ArtifactsView } from "./ArtifactsView";
 import { StatsView } from "./StatsView";
 import { setSoundEffectsEnabled } from "../../shell/sounds";
 import { parseNotesFile } from "../../domain/notes";
+import { parseEml } from "./emlParser";
 import { imageMimeOf, mediaMimeOfExtension } from "../../domain/mediaMime";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
@@ -823,8 +824,35 @@ export function Workspace() {
       ok.push(f.name);
       return;
     }
-    if (!/\.(md|markdown|txt|json|docx|pptx|pdf)$/i.test(f.name)) {
-      throw new Error("暂不支持这种格式（支持 Markdown、TXT、JSON、Word、PPT、PDF、图片）");
+    if (/\.eml$/i.test(f.name)) {
+      // 邮件文件：导回知识库是「数据完全归你所有」的自然一环。
+      // 产出 sourceType="email" 的素材，才能进邮箱视图、参与来源洞察。
+      const raw = new TextDecoder("utf-8").decode(new Uint8Array(await f.arrayBuffer()));
+      const mail = parseEml(raw);
+      if (!mail.text.trim()) throw new Error("这封邮件里没有可读正文");
+      const metadata = {
+        accountId: "eml-import",
+        from: mail.from,
+        to: mail.to,
+        date: mail.date,
+        messageId: mail.messageId,
+        attachments: mail.attachments,
+        fileName: f.name,
+      };
+      const m = {
+        ...makeMaterial({ title: mail.subject, text: mail.text, url: "" }),
+        sourceType: "email" as const,
+        metadataJson: JSON.stringify(metadata),
+      };
+      const key = `eml:${mail.messageId || f.name}:${mail.text.length}`;
+      if (seen.has(key)) { skipped.push(f.name); return; }
+      seen.add(key);
+      await updateMaterial(m);
+      ok.push(f.name);
+      return;
+    }
+    if (!/\.(md|markdown|txt|json|docx|pptx|pdf|eml)$/i.test(f.name)) {
+      throw new Error("暂不支持这种格式（支持 Markdown、TXT、JSON、Word、PPT、PDF、EML、图片）");
     }
     if (/\.json$/i.test(f.name)) {
       const text = await f.text();
@@ -2073,7 +2101,7 @@ export function Workspace() {
         type="file"
         multiple
         data-role="import-files"
-        accept=".md,.markdown,.txt,.json,.docx,.pptx,.pdf,.png,.jpg,.jpeg,.webp,.gif,.heic"
+        accept=".md,.markdown,.txt,.json,.docx,.pptx,.pdf,.eml,.png,.jpg,.jpeg,.webp,.gif,.heic"
         onChange={(e) => {
           if (e.target.files) void importFiles(e.target.files);
           e.target.value = "";

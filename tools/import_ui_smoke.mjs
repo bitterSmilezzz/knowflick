@@ -158,6 +158,44 @@ try {
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return !(raw.materials||[]).some(m=>m.title==='huge')})()", "超大图片没有落库");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).length>0})()", "拒绝大图不影响已有内容");
 
+  // .eml 邮件文件：导回知识库是「数据完全归你所有」的自然一环
+  const emlBody = [
+    "From: zhangsan@example.com",
+    "To: lisi@example.com",
+    "Subject: =?UTF-8?B?" + btoa(unescape(encodeURIComponent("季度报告"))) + "?=",
+    "Date: Tue, 21 Oct 2026 08:30:00 +0800",
+    "Message-ID: <eml-probe@example.com>",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    btoa(unescape(encodeURIComponent("这是邮件正文内容。"))),
+  ].join("\n");
+  await b("eval", `(() => {
+    const bin = atob(${JSON.stringify(btoa(unescape(encodeURIComponent(emlBody))))});
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const file = new File([arr], "probe.eml", { type: "message/rfc822" });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    const input = document.querySelector('input[data-role=import-files]');
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 1200));
+  await check(
+    "(() => { const m = (JSON.parse(localStorage.getItem('knowflick.workspace.v1')).materials || []).find(x => x.sourceType === 'email'); return !!m; })()",
+    ".eml 邮件被导入成邮件素材"
+  );
+  await check(
+    "(() => { const m = (JSON.parse(localStorage.getItem('knowflick.workspace.v1')).materials || []).find(x => x.sourceType === 'email'); return !!m && m.title === '季度报告'; })()",
+    ".eml 的 RFC 2047 主题被解出来"
+  );
+  await check(
+    "(() => { const m = (JSON.parse(localStorage.getItem('knowflick.workspace.v1')).materials || []).find(x => x.sourceType === 'email'); return !!m && m.rawText.includes('这是邮件正文内容'); })()",
+    ".eml 的 base64 正文被解出来"
+  );
+
   // 图片 MIME：浏览器的 File.type 不总是有值（HEIC 尤其常见），
   // 给空时若一律当成 PNG，JPEG/HEIC 会以 .png 落盘——内容与扩展名不符。
   for (const [name, ext, expected] of [["照片", "jpg", "image/jpeg"], ["截图", "heic", "image/heic"]]) {
