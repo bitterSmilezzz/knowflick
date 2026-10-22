@@ -71,6 +71,8 @@ async function rustVerdicts() {
       cwd: path.join(ROOT, "apps/workbench/src-tauri"),
       timeout: 900_000,
       maxBuffer: 32 * 1024 * 1024,
+      // Windows 上 cargo 是 cargo.exe，直接 spawn 即可。
+      shell: false,
     });
     const verdicts = new Map();
     for (const line of stdout.split("\n")) {
@@ -86,19 +88,20 @@ async function rustVerdicts() {
   }
 }
 
-/** TypeScript 侧：直接调用实现（vite-node 能加载 TS）。 */
+/**
+ * TypeScript 侧：调用**已安装的** vitest 跑一个临时用例，把判定打印出来。
+ *
+ * 为什么不用 npx：Windows runner 上 npx 是 `npx.cmd`，`spawn npx` 会 ENOENT
+ * （实测在 Windows CI 上把门禁打红）。改为直接用 node 执行 vitest 的
+ * JS 入口（node_modules/vitest/vitest.mjs），三端都稳。
+ */
 async function typescriptVerdicts() {
-  const { createRequire } = await import("node:module");
-  const require = createRequire(import.meta.url);
-  const ts = await import(
-    path.join(ROOT, "apps/workbench/src/domain/ingest.ts")
-  ).catch(async () => {
-    // vite-node 不可用时退回 vitest 的临时用例
-    const testFile = path.join(ROOT, "apps/workbench/src/domain/__parity.test.ts");
-    const fs = await import("node:fs/promises");
-    await fs.writeFile(
-      testFile,
-      `import { it } from "vitest";
+  const fs = await import("node:fs/promises");
+  const workbench = path.join(ROOT, "apps/workbench");
+  const testFile = path.join(workbench, "src/domain/__parity.test.ts");
+  await fs.writeFile(
+    testFile,
+    `import { it } from "vitest";
 import { isLoopbackHost } from "./ingest";
 it("parity", () => {
   for (const h of ${JSON.stringify(HOSTS)}) {
@@ -106,27 +109,33 @@ it("parity", () => {
   }
 });
 `,
-      "utf8",
-    );
-    try {
-      const { stdout } = await exec("npx", ["vitest", "run", "src/domain/__parity.test.ts"], {
-        cwd: path.join(ROOT, "apps/workbench"),
-        timeout: 300_000,
-        maxBuffer: 32 * 1024 * 1024,
-      });
-      const verdicts = new Map();
-      for (const line of stdout.split("\n")) {
-        const match = line.match(/^PARITY\t(.*)\t(true|false)$/);
-        if (match) verdicts.set(match[1], match[2] === "true");
-      }
-      return verdicts;
-    } finally {
-      await fs.rm(testFile, { force: true });
+    "utf8",
+  );
+  try {
+    // 直接用 node 执行 vitest 的 JS 入口，绕开 Windows 上「npx / .cmd 垫片」
+    // 的解析差异（实测 Windows CI 上 spawn npx 直接 ENOENT）。
+    const vitestEntry = path.join(workbench, "node_modules", "vitest", "vitest.mjs");
+    const fsCheck = await fs.stat(vitestEntry).catch(() => null);
+    if (!fsCheck) {
+      throw new Error(`找不到 vitest 入口：${vitestEntry}（先在 apps/workbench 跑 npm ci）`);
     }
-  });
-  const verdicts = new Map();
-  for (const host of HOSTS) verdicts.set(host, ts.isLoopbackHost(host));
-  return verdicts;
+    const { stdout } = await exec(process.execPath, [vitestEntry, "run", "src/domain/__parity.test.ts"], {
+      cwd: workbench,
+      timeout: 300_000,
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    const verdicts = new Map();
+    for (const line of stdout.split("\n")) {
+      const match = line.match(/^PARITY\t(.*)\t(true|false)$/);
+      if (match) verdicts.set(match[1], match[2] === "true");
+    }
+    if (verdicts.size !== HOSTS.length) {
+      throw new Error(`TypeScript 侧只返回 ${verdicts.size} 条，应为 ${HOSTS.length} 条`);
+    }
+    return verdicts;
+  } finally {
+    await fs.rm(testFile, { force: true });
+  }
 }
 
 const rust = await rustVerdicts();
