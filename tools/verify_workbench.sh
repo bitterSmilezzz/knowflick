@@ -21,6 +21,7 @@ node tools/mcp_smoke.mjs
 # 品味与可用性门禁：验「看起来对不对、用起来顺不顺」——对比度、点击目标、
 # 焦点可见性、侧栏层级与裁切、重复 CTA。这些是用户能感知、而功能测试查不出的。
 # 此前它只在本地跑，界面退化不会被 CI 拦住。
+# 缺 agent-browser 时脚本自己 SKIP（CI 环境没有那个工具）。
 node tools/taste_usability_gate.mjs
 
 # 来源矩阵：每种来源都要能进收件箱、被搜到、转成卡并回溯。
