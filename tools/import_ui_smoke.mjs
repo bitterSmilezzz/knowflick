@@ -158,5 +158,34 @@ try {
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return !(raw.materials||[]).some(m=>m.title==='huge')})()", "超大图片没有落库");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1')||'{}');return (raw.materials||[]).length>0})()", "拒绝大图不影响已有内容");
 
+  // 图片 MIME：浏览器的 File.type 不总是有值（HEIC 尤其常见），
+  // 给空时若一律当成 PNG，JPEG/HEIC 会以 .png 落盘——内容与扩展名不符。
+  for (const [name, ext, expected] of [["照片", "jpg", "image/jpeg"], ["截图", "heic", "image/heic"]]) {
+    const b64 = await b("eval", `(() => {
+      const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+      let bin = "";
+      for (const b of bytes) bin += String.fromCharCode(b);
+      return btoa(bin);
+    })()`);
+    const fired = await b("eval", `(() => {
+      const bin = atob(${b64});
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], ${JSON.stringify(name + "." + ext)}, { type: "" });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      const input = document.querySelector('input[data-role=import-files]');
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()`);
+    assert.ok(String(fired).includes("true"), "图片导入应被触发");
+    await new Promise((r) => setTimeout(r, 900));
+    const got = await b("eval", `(() => { const m = (JSON.parse(localStorage.getItem('knowflick.workspace.v1')).materials || []).find(x => x.title === ${JSON.stringify(name)}); return m ? JSON.parse(m.metadataJson).mime : null; })()`);
+    assert.equal(String(got).replace(/^"|"$/g, ""), expected, `.${ext} 在浏览器不给 MIME 时应推断为 ${expected}，实际 ${got}`);
+  }
+  count++;
+  console.log("PASS 图片在浏览器不给 MIME 时按扩展名推断");
+
   console.log(`Import UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }

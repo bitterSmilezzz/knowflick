@@ -60,6 +60,7 @@ import { ArtifactsView } from "./ArtifactsView";
 import { StatsView } from "./StatsView";
 import { setSoundEffectsEnabled } from "../../shell/sounds";
 import { parseNotesFile } from "../../domain/notes";
+import { imageMimeOf, mediaMimeOfExtension } from "../../domain/mediaMime";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
 import { existingKeys } from "../../domain/contentHash";
@@ -791,7 +792,10 @@ export function Workspace() {
       if (!inShell() && f.size > 1024 * 1024) {
         throw new Error("浏览器体验只存得住 1 MB 以内的图片；请改用桌面客户端，那边存原图");
       }
-      const mime = f.type && f.type.startsWith("image/") ? f.type : "image/png";
+      // f.type 不是总有的：浏览器对某些扩展名给不出 MIME（HEIC 尤其常见），
+      // 给空时一律当成 PNG 会把 JPEG / HEIC 存成 .png 文件——内容与扩展名不符，
+      // 有些查看器直接打不开。所以先按扩展名推断，再退回 f.type。
+      const mime = imageMimeOf(f.name, f.type);
       const bytes = new Uint8Array(await f.arrayBuffer());
       // 浏览器没有可写的库目录，但图片不大：用 data URL 内嵌，随素材一起进
       // localStorage，重开还能看。桌面端才落到 media/ 文件，避免把大文件塞进库行。
@@ -1155,11 +1159,7 @@ export function Workspace() {
           try {
             // media 只接受白名单 MIME，必须按扩展名还原，否则每一条都会被判失败。
             const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-            const mime = ({
-              webm: "audio/webm", ogg: "audio/ogg", m4a: "audio/mp4", wav: "audio/wav",
-              png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
-              gif: "image/gif", heic: "image/heic", json: "application/json",
-            } as Record<string, string>)[ext];
+            const mime = mediaMimeOfExtension(ext);
             const kind = rel.startsWith("media/image/") ? "image" : rel.startsWith("media/ink/") ? "ink" : "audio";
             if (!mime) return;
             const saved = await saveMedia(kind as "audio" | "ink" | "image", mime, bytes, dir);
