@@ -81,6 +81,20 @@ def count_smoke_suites() -> int:
     return len(re.findall(r"^\s+[a-z_]+$", match.group(1), re.M))
 
 
+def emit(text: str) -> None:
+    """打印一段可能含中文的文本。
+
+    Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError
+    （实测在 Windows CI 上把门禁打红了）。所以按 UTF-8 写字节，绕开编码器。
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        import sys
+        sys.stdout.buffer.write(text.encode("utf-8", errors="replace") + b"\n")
+        sys.stdout.flush()
+
+
 def main() -> int:
     problems: list[str] = []
 
@@ -111,7 +125,7 @@ def main() -> int:
             for match in re.finditer(r"Rust\s*(\d+)\s*项", line):
                 claimed = int(match.group(1))
                 if rust and claimed != rust:
-                    print(
+                    emit(
                         f"  提示 {rel}:{lineno} 的「Rust {claimed} 项」与本机 {rust} 项不同"
                         "（三端数量本就不同，不算漂移）"
                     )
@@ -140,13 +154,13 @@ def main() -> int:
                 problems.append(f"{rel}:{lineno} 提到 tools/{script}，但该文件不存在")
 
     if problems:
-        print("文档与实际有出入：")
+        emit("文档与实际有出入：")
         for item in problems:
-            print(f"  - {item}")
-        print(f"\n（共 {len(problems)} 处）")
+            emit(f"  - {item}")
+        emit(f"\n（共 {len(problems)} 处）")
         return 1
 
-    print(
+    emit(
         f"文档与实际一致：前端 {frontend} 项、Rust {rust} 项、{smokes} 套浏览器冒烟，"
         "文档里提到的脚本都存在"
     )
