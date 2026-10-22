@@ -50,6 +50,26 @@ function emit(text) {
   }
 }
 
+/**
+ * 从输出里取回判定结果。
+ *
+ * 不能要求行首就是 `PARITY`：vitest 在 CI 上会给 console.log 加前缀并缩进
+ * （本地输出是裸行，CI 上是 `stdout | src/... > parity` 加缩进）——实测
+ * 按行首匹配时 CI 上少一条判定，门禁因此在三端一起失败。
+ * 所以用「行内出现 PARITY + 末尾是 true/false」来认。
+ */
+function parseVerdicts(output, label) {
+  const verdicts = new Map();
+  for (const line of output.split("\n")) {
+    const match = line.match(/PARITY\t(.*)\t(true|false)\s*$/);
+    if (match) verdicts.set(match[1], match[2] === "true");
+  }
+  if (verdicts.size !== HOSTS.length) {
+    throw new Error(`${label} 侧只返回 ${verdicts.size} 条，应为 ${HOSTS.length} 条`);
+  }
+  return verdicts;
+}
+
 /** Rust 侧：跑一个临时探针测试，把每条判定打印出来。 */
 async function rustVerdicts() {
   const lib = path.join(ROOT, "apps/workbench/src-tauri/src/http.rs");
@@ -74,15 +94,7 @@ async function rustVerdicts() {
       // Windows 上 cargo 是 cargo.exe，直接 spawn 即可。
       shell: false,
     });
-    const verdicts = new Map();
-    for (const line of stdout.split("\n")) {
-      const match = line.match(/^PARITY\t(.*)\t(true|false)$/);
-      if (match) verdicts.set(match[1], match[2] === "true");
-    }
-    if (verdicts.size !== HOSTS.length) {
-      throw new Error(`Rust 探针只返回 ${verdicts.size} 条，应为 ${HOSTS.length} 条`);
-    }
-    return verdicts;
+    return parseVerdicts(stdout, "Rust");
   } finally {
     await fs.writeFile(lib, original, "utf8");
   }
@@ -124,15 +136,7 @@ it("parity", () => {
       timeout: 300_000,
       maxBuffer: 32 * 1024 * 1024,
     });
-    const verdicts = new Map();
-    for (const line of stdout.split("\n")) {
-      const match = line.match(/^PARITY\t(.*)\t(true|false)$/);
-      if (match) verdicts.set(match[1], match[2] === "true");
-    }
-    if (verdicts.size !== HOSTS.length) {
-      throw new Error(`TypeScript 侧只返回 ${verdicts.size} 条，应为 ${HOSTS.length} 条`);
-    }
-    return verdicts;
+    return parseVerdicts(stdout, "TypeScript");
   } finally {
     await fs.rm(testFile, { force: true });
   }
