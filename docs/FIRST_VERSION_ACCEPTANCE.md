@@ -15,6 +15,21 @@
 | **B** | 逻辑层有单测，交互层靠人工或弱覆盖 |
 | **C** | 只有代码存在，没有自动化证据 |
 
+## 怎么读这份表
+
+「证据」一列给的是**测试文件**，不是「我试过」。点进去能看见断言，那就是证据；
+点进去发现是空的，那这一行就只是我的说法。
+
+证据的运行位置分三层：
+
+| 层 | 在哪跑 | 覆盖什么 |
+| --- | --- | --- |
+| **门禁（每次提交）** | `verify_workbench.sh` | 前端 339 项 + Rust 约 85 项 + 13 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
+| **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
+| **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
+
+> Rust 测试数**三端不同**（macOS 87 / Windows 84）：测试里有 `#[cfg(target_os)]` 平台门。
+
 ## 逐项对照
 
 | ADR 承诺 | 状态 | 证据 |
@@ -40,7 +55,10 @@
 | 备份无损往返 | ✅ | `systemBackup.test.ts`、`settings_plugins_smoke.mjs` |
 | 外部接口（MCP） | ✅ | `mcp_smoke.mjs`（7 项，在门禁里） |
 | 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时） |
-| 界面质感 | **B** | `taste_usability_gate.mjs` 存在但**未纳入门禁**；`tools/real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
+| 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 13 套浏览器冒烟（`run_all_smokes.sh`，也在门禁里）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
+| 数据出口（凭据不外流） | ✅ | `dataEgress.test.ts`（5 项，哨兵密钥跑所有导出路径）+ `store.redact.test.ts`（6 项）+ Rust `http.rs` 的 `redact_secrets`（含走真实 401 服务器的路径级测试） |
+| 凭据存放 | ✅ | 桌面端 `<data_root>/credentials/apiKey.credential`（`store/` 的**兄弟目录**，导出天然带不走）；浏览器端 sessionStorage。不进 SQLite、不进任何导出格式 |
+| 文档与实现一致 | ✅ | `check_doc_consistency.py`（在门禁里）：当前状态类文档里的数字与命令要跟得上实际 |
 
 ## 还没证据的
 
