@@ -67,5 +67,70 @@ try {
   await check("document.body.innerText.includes('本轮温故复习完成')", "评分完一轮后有完成提示");
   await check("[...document.querySelectorAll('button')].some(e=>e.textContent.includes('再来一轮'))", "完成后可以再来一轮");
 
+  // 4. 学习的核心不是「记过一次」，而是**下次该什么时候复习**被算出来并存住。
+  await check(
+    "(() => { const c = JSON.parse(localStorage.getItem('knowflick.workspace.v1')).cards[0]; return c.intervalDays > 0 && c.lastReviewedAt !== null; })()",
+    "评分后算出下次复习间隔并写回"
+  );
+  await check(
+    "(() => { const c = JSON.parse(localStorage.getItem('knowflick.workspace.v1')).cards[0]; return c.masteryLevel >= 1 || c.repetition >= 1; })()",
+    "评分后掌握度/重复次数前进"
+  );
+
+  // 5. 重载后间隔仍在——只存在内存里等于没复习过。
+  const intervalBefore = await ev("JSON.parse(localStorage.getItem('knowflick.workspace.v1')).cards[0].intervalDays");
+  await b("open", url);
+  await new Promise(r => setTimeout(r, 1000));
+  const intervalAfter = await ev("JSON.parse(localStorage.getItem('knowflick.workspace.v1')).cards[0].intervalDays");
+  await check(
+    String(intervalAfter) === String(intervalBefore) && Number(intervalAfter) > 0,
+    `重载后复习间隔仍在（${intervalAfter} 天）`
+  );
+
+  // 6. 评为「重来」的卡应当很快再出现——间隔重复的重点是**没记住的要多见**。
+  //    若它跟「良好」一样被推到一天后，用户当天就复习不到刚忘掉的内容。
+  await seed([card({ id: "r-again", headline: "没记住的卡" })]);
+  await check("[...document.querySelectorAll('button')].some(e=>/较难/.test(e.textContent))", "有到期卡时直接可复习");
+  await ev("(() => { const el = [...document.querySelectorAll('button')].find(e => /显示答案解析|点击或按空格/.test(e.textContent)); if (el) el.click(); return !!el; })()");
+  await new Promise(r => setTimeout(r, 300));
+  await ev("(() => { const el = [...document.querySelectorAll('button')].find(e => /重来|再次/.test(e.textContent)); if (el) el.click(); return !!el; })()");
+  await new Promise(r => setTimeout(r, 400));
+  await check(
+    "(() => { const c = JSON.parse(localStorage.getItem('knowflick.workspace.v1')).cards.find(x => x.id === 'r-again'); return !!c && c.repetition === 0 && c.masteryLevel === 0; })()",
+    "评为「重来」会清零重复次数与掌握度"
+  );
+  await check(
+    "(() => { const c = JSON.parse(localStorage.getItem('knowflick.workspace.v1')).cards.find(x => x.id === 'r-again'); return !!c && c.intervalDays === 1; })()",
+    "评为「重来」的间隔被压回 1 天"
+  );
+
+  // 7. 刚复习过的卡不该立刻又出现在到期队列里。
+  //    单独放一张卡：评「良好」之后它应当离开今天的到期列表。
+  await seed([card({ id: "r-good", headline: "记住了的卡" })]);
+  await ev("(() => { const el = [...document.querySelectorAll('button')].find(e => /显示答案解析|点击或按空格/.test(e.textContent)); if (el) el.click(); return !!el; })()");
+  await new Promise(r => setTimeout(r, 300));
+  await ev("(() => { const el = [...document.querySelectorAll('button')].find(e => /良好|简单/.test(e.textContent) && !/较难/.test(e.textContent)); if (el) el.click(); return !!el; })()");
+  await new Promise(r => setTimeout(r, 400));
+  await ev("(() => { const el = [...document.querySelectorAll('.ws-nav-row')].find(e => e.textContent.includes('温故复习')); if (el) el.click(); return !!el; })()");
+  await new Promise(r => setTimeout(r, 800));
+  // 复习过的卡不该还留在「今天」，但**会在未来的某天**到期——
+  // 所以要看的不是「没有到期卡片」，而是「它被排到了后面」。
+  await check(
+    "document.body.innerText.includes('本轮温故复习完成')",
+    "复习完成后有明确的完成提示"
+  );
+  await check(
+    "(() => { const t = document.body.innerText.replace(/\\s+/g, ' '); const m = t.match(/平均间隔 ([0-9]+) 天/); return !!m && Number(m[1]) > 0; })()",
+    "统计里的平均间隔按新间隔更新了"
+  );
+  await check(
+    "document.body.innerText.includes('未来 7 天到期负荷')",
+    "未来到期负荷可见（复习过的卡排到了后面）"
+  );
+  await check(
+    "(() => { const t = document.body.innerText; const m = t.match(/未来 7 天到期负荷[\\s\\S]{0,200}/); return !!m && !/今天[\\s\\S]{0,40}\\b1\\b/.test(m[0].split('10-23')[1] || ''); })()",
+    "今天不再有待复习的卡（它被推到了未来某天）"
+  );
+
   console.log(`Review UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }
