@@ -162,6 +162,31 @@ trap 兜底卸载 → 确认进程真的起来。
 - 只留最近 **40 轮**；写入失败（存储满）只放弃持久化，对话仍在内存里。
 - 有对话时提供「清空对话」，并说明「对话会保存在本机」——有持久化就必须有清空的出口。
 
+### 真实文件固化成仓库内 fixture（让方法可重复）
+
+前三轮靠临时造真实文件抓到了三个缺陷（压缩 PDF 解析出源码、JPEG 被存成 .png、
+订阅源相对链接点不开），但那些样本只躺在 `.scratch/` 里——下一轮就没了，
+「用真实文件测」这个方法**无法重复执行**。
+
+现在固化成仓库内的 fixture + 一套统一测试（`fixtures.test.ts`，11 项）：
+
+`fixtures/` 下是**真实结构的文件**，不是能跑的理想样本：
+
+| fixture | 特点 |
+| --- | --- |
+| `sample.pdf` / `sample-compressed.pdf` | 带 xref 与 `/Length`，后者是 FlateDecode（真实世界的 PDF 几乎都是压缩的） |
+| `sample.docx` / `sample.pptx` | 真正的 ZIP 容器 |
+| `sample.png` / `sample.jpg` / `sample.heic` | 真的文件头（测试里断言魔数，防止 fixture 本身造错） |
+| `sample-rss.xml` / `sample-atom.xml` | CDATA、HTML 实体、各种日期格式、相对链接、缺链接的坏条目 |
+| `sample-page.html` / `sample-page-gbk.html` | UTF-8 与 GBK 两种编码 |
+
+字节以 base64 存进 `bytes.json`（`?raw` 导入后解码）。不用 `?url`+fetch 是因为
+vitest 里拿不到 dev server 资源；不用 `?raw` 直接导入二进制是因为 raw 会把
+二进制当 UTF-8 处理、字节会坏。
+
+**反向验证过**：把 PDF 解压分支与相对链接补全分别关掉，这套测试立刻失败两条
+——它确实守得住，不只是装饰。
+
 ### 剪藏到知识卡：这条转换链此前完全没有覆盖
 
 造了真实结构的页面（GBK / GB2312 / UTF-8 / BOM / `http-equiv` 声明 /
