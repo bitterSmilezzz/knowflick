@@ -315,6 +315,38 @@ try {
   assert.equal(noRing, 0, `${noRing} 个可聚焦控件没有可见焦点环`);
   pass(`Tab 顺序可达 ${visited.length} 个控件，全部有可见焦点环`);
 
+  // ---- 手写/语音面板：键盘必须进得去，且在里面循环 ----
+  // 这两个面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱。
+  // 实测修之前：打开面板后连按 12 次 Tab，焦点始终在侧栏——面板里的
+  // 「开始录音」「取消」「保存」全部键盘不可达，Escape 也关不掉。
+  await browser("click", '[aria-label="语音笔记"]');
+  await new Promise((r) => setTimeout(r, 400));
+  const panelFocus = await evaluate(`(() => {
+    const panel = document.querySelector('.ws-note-backdrop');
+    if (!panel) return { open: false };
+    const active = document.activeElement;
+    return {
+      open: true,
+      inside: !!active && !!active.closest('.ws-note-backdrop'),
+    };
+  })()`);
+  assert.ok(panelFocus.open, "语音面板应已打开");
+  assert.ok(panelFocus.inside, "打开面板后焦点应落在面板内");
+  const inPanelTabs = [];
+  for (let i = 0; i < 6; i++) {
+    await browser("press", "Tab");
+    inPanelTabs.push(await evaluate(`!!document.activeElement?.closest('.ws-note-backdrop')`));
+  }
+  assert.ok(
+    inPanelTabs.every(Boolean),
+    `Tab 应始终在面板内循环，跑到了外面：${JSON.stringify(inPanelTabs)}`,
+  );
+  await browser("press", "Escape");
+  await new Promise((r) => setTimeout(r, 300));
+  const panelClosed = await evaluate("!document.querySelector('.voice-recorder')");
+  assert.ok(panelClosed, "Escape 应能关闭语音面板");
+  pass("手写/语音面板键盘可达（焦点进入、Tab 循环、Escape 关闭）");
+
   // ---- 版式：侧栏最后一行不被裁切 ----
   const navClip = await evaluate(`(() => {
     const sc = document.querySelector('.ws-nav-scroll');

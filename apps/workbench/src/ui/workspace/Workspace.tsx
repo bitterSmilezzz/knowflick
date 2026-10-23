@@ -87,6 +87,7 @@ import {
 } from "../../domain/sniffer";
 import { parseDocumentFile } from "../../domain/documentParser";
 import { EmbeddingEngine, syncCardEmbeddings } from "../../domain/embeddingEngine";
+import { useModalFocus } from "./useModalFocus";
 import "./workspace.css";
 
 const Briefing = lazy(() => import("../BrainViews").then((m) => ({ default: m.BriefingView })));
@@ -125,6 +126,11 @@ export function Workspace() {
   const [source, setSource] = useState("all");
   const [capture, setCapture] = useState(false);
   const [notePad, setNotePad] = useState<"ink" | "voice" | null>(null);
+  // 手写/语音面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱
+  // 与 Escape 处理——实测 Tab 进不去、Escape 无效。用这个钩子补上。
+  const notePadRef = useRef<HTMLDivElement | null>(null);
+  const closeNotePad = useCallback(() => setNotePad(null), []);
+  useModalFocus(notePad !== null, closeNotePad, notePadRef);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   // 长操作（AI 归纳、转写、导入）要让用户看见「在做什么」，而不只是按钮变灰。
@@ -2189,8 +2195,13 @@ export function Workspace() {
       ) : null}
 
       {notePad ? (
-        <div className="ws-note-backdrop" role="dialog" aria-modal="true" aria-label={notePad === "ink" ? "手写笔记" : "语音笔记"}
-          onKeyDown={event => { if (event.key === "Escape") setNotePad(null); }}>
+        <div
+          className="ws-note-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={notePad === "ink" ? "手写笔记" : "语音笔记"}
+          ref={notePadRef}
+        >
           <div className="ws-note-panel">
             <header className="ws-note-head">
               <strong>{notePad === "ink" ? "手写笔记" : "语音笔记"}</strong>
