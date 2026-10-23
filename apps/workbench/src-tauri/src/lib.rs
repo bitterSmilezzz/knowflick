@@ -192,6 +192,40 @@ fn notify_library_changed(app: &tauri::AppHandle) {
     }
 }
 
+/// 库目录的「修改签名」——用来发现**外部进程**写进来的改动。
+///
+/// 为什么需要：界面刷新只有两个信号——`knowflick:library-changed`（DOM 事件，
+/// 由本应用的 Tauri 命令派发）与 `storage`（浏览器 localStorage 跨标签页）。
+/// 而 MCP server（`tools/mcp-server.mjs`）是**独立进程**，它直接写 SQLite：
+/// 两个信号都收不到，界面会一直停在旧状态，用户得重启或切页才看得到新卡片。
+///
+/// 这里给出库文件与配套 json 的修改时间+大小，界面拿它做**轮询比对**，
+/// 一旦发现外部改动就派发已有的 `knowflick:library-changed`——复用现成的刷新路径。
+///
+/// 不引入文件监听依赖：轮询 2 秒一次的开销远小于多一个 crate 与它的跨平台坑，
+/// 而 SQLite 的写入本来也是低频的。
+#[tauri::command]
+fn db_library_signature(dir: Option<String>) -> Result<String, String> {
+    let path = library_dir(dir);
+    let mut parts: Vec<String> = Vec::new();
+    for name in ["knowflick.db", "cards.json", "settings.json"] {
+        let file = path.join(name);
+        match std::fs::metadata(&file) {
+            Ok(meta) => {
+                let modified = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0);
+                parts.push(format!("{}:{}:{}", name, modified, meta.len()));
+            }
+            Err(_) => parts.push(format!("{}:-", name)),
+        }
+    }
+    Ok(parts.join("|"))
+}
+
 #[tauri::command]
 async fn mail_sync_account(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<mail::MailSyncResult, String> {
     let path = library_dir(dir);
@@ -930,6 +964,7 @@ pub fn run() {
             db_list_materials,
             db_update_material_status,
             db_get_stats,
+            db_library_signature,
             db_replace_cards,
             hide_capsule,
             toggle_capsule,
@@ -1057,5 +1092,48 @@ mod shortcut_and_tray_tests {
             assert_eq!(platform_capture_tray_label(true), "快速闪念 (Alt+Space)");
         }
         assert_eq!(platform_capture_tray_label(false), "快速闪念");
+    }
+}
+
+#[cfg(test)]
+mod library_signature_tests {
+    use super::*;
+
+    /// 签名必须能看出「外部进程改了库」——这正是它存在的理由。
+    #[test]
+    fn signature_changes_when_the_database_is_touched() {
+        let dir = std::env::temp_dir().join(format!("kf-sig-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("knowflick.db");
+        // 建一个真实库，让签名有内容可读
+        {
+            let conn = db::open_db(&db_path).unwrap();
+            drop(conn);
+        }
+        let before = db_library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        assert!(before.contains("knowflick.db"), "签名里应含库文件名：{before}");
+
+        // 外部写一笔（模拟 MCP server）
+        {
+            let conn = db::open_db(&db_path).unwrap();
+            conn.execute(
+                "INSERT INTO cards (id, category, headline, summary, details, links_json, tags_json, source, created_at, updated_at) VALUES ('sig-1','x','标题','摘要','正文','[]','[]','imported',1,1)",
+                [],
+            ).unwrap();
+            drop(conn);
+        }
+        let after = db_library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        assert_ne!(before, after, "库被外部写入后签名必须变化");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 库还不存在时也要给出签名（不能报错——首次启动时它就是空的）。
+    #[test]
+    fn signature_works_on_an_empty_directory() {
+        let dir = std::env::temp_dir().join(format!("kf-sig-empty-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sig = db_library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        assert!(sig.contains("knowflick.db"), "{sig}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

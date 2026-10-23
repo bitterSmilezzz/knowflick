@@ -88,6 +88,8 @@ import {
 import { parseDocumentFile } from "../../domain/documentParser";
 import { EmbeddingEngine, syncCardEmbeddings } from "../../domain/embeddingEngine";
 import { useModalFocus } from "./useModalFocus";
+import { dbLibrarySignature } from "../../shell/store";
+import { EXTERNAL_REFRESH_INTERVAL_MS, externalChangeDetected } from "./externalRefresh";
 import { DisabledEntry } from "./DisabledEntry";
 import "./workspace.css";
 
@@ -289,6 +291,39 @@ export function Workspace() {
       window.removeEventListener("storage", storageChanged);
     };
   }, [load]);
+
+  // 发现**外部进程**写进来的改动。
+  //
+  // 上面那两个信号都只覆盖「本应用自己写的」：DOM 事件由 Tauri 命令派发，
+  // storage 事件来自浏览器 localStorage。而 MCP server 是独立进程、直接写
+  // SQLite——它两个信号都发不出去，界面就停在旧状态（外部 Agent 写完卡，
+  // 用户这边什么也看不到，得重启或切页）。
+  //
+  // 这里轮询库文件的修改签名；一变就派发**已有的** knowflick:library-changed，
+  // 复用现成的刷新路径，不另开一套。
+  useEffect(() => {
+    if (!inShell() || !dir) return;
+    let cancelled = false;
+    let last = "";
+    const check = async () => {
+      if (cancelled || document.hidden) return;
+      try {
+        const signature = await dbLibrarySignature(dir);
+        if (cancelled) return;
+        if (externalChangeDetected(last, signature)) {
+          last = signature;
+          window.dispatchEvent(new CustomEvent("knowflick:library-changed"));
+        } else {
+          last = signature;
+        }
+      } catch {
+        // 库还没建出来（首次启动）——下次再试，不打扰用户。
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), EXTERNAL_REFRESH_INTERVAL_MS);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [dir]);
 
   useEffect(() => {
     if (preview.length && previewRef.current && !previewRef.current.open) {

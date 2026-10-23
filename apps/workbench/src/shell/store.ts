@@ -366,6 +366,16 @@ export function saveMedia(kind: "audio" | "ink" | "image", mime: string, data: U
   return invoke("save_media", { dir: dir ?? null, kind, mime, data: Array.from(data) });
 }
 
+/**
+ * 库目录的「修改签名」——外部进程（MCP server 等）写库时用它发现改动。
+ *
+ * 界面刷新只有两个信号：本应用命令派发的 DOM 事件、浏览器 localStorage 的
+ * storage 事件。独立进程写 SQLite 时两个都收不到，界面会停在旧状态。
+ */
+export function dbLibrarySignature(dir?: string): Promise<string> {
+  return invoke("db_library_signature", { dir: dir ?? null });
+}
+
 export function readMedia(relative: string, dir?: string): Promise<number[]> {
   return invoke("read_media", { dir: dir ?? null, relative });
 }
