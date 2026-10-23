@@ -22,6 +22,10 @@ import re
 import sys
 from pathlib import Path
 
+# Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows_console import emit  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 KOTLIN = ROOT / "apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/WebClipEngine.kt"
 TS = ROOT / "apps/workbench/src/domain/clipEngine.ts"
@@ -83,7 +87,7 @@ def describe(values: list[str], limit: int = 6) -> str:
 def main() -> int:
     for path in (KOTLIN, TS, RUST):
         if not path.is_file():
-            print(f"::error::找不到规则表文件：{path.relative_to(ROOT)}", file=sys.stderr)
+            emit(f"::error::找不到规则表文件：{path.relative_to(ROOT)}", file=sys.stderr)
             return 2
 
     kotlin_text = KOTLIN.read_text(encoding="utf-8")
@@ -106,7 +110,7 @@ def main() -> int:
             same = set(k_values) == set(t_values)
         label = f"{k_name} ↔ {t_name}"
         if same:
-            print(f"✓ {label}：{describe(k_values)}")
+            emit(f"✓ {label}：{describe(k_values)}")
             continue
         extra_k = [v for v in k_values if v not in t_values]
         extra_t = [v for v in t_values if v not in k_values]
@@ -132,7 +136,7 @@ def main() -> int:
             issues.append(f"解析不到阈值 {k_name}（Kotlin={k_value} / TS={t_value}）")
             continue
         if k_value == t_value:
-            print(f"✓ {k_name} ↔ {t_name}：{k_value}")
+            emit(f"✓ {k_name} ↔ {t_name}：{k_value}")
         else:
             issues.append(f"{k_name} ↔ {t_name} 不一致：Kotlin={k_value} / TS={t_value}")
 
@@ -152,19 +156,19 @@ def main() -> int:
             + " / ".join(f"{k}={v}" for k, v in sniff.items())
         )
     else:
-        print(f"✓ META_SNIFF_BYTES（Kotlin / TypeScript / Rust 三处一致）：{sniff['Kotlin']}")
+        emit(f"✓ META_SNIFF_BYTES（Kotlin / TypeScript / Rust 三处一致）：{sniff['Kotlin']}")
 
     if issues:
-        print(f"\n发现 {len(issues)} 处跨端不一致：", file=sys.stderr)
+        emit(f"\n发现 {len(issues)} 处跨端不一致：", file=sys.stderr)
         for issue in issues:
-            print(f"  - {issue}", file=sys.stderr)
-        print(
+            emit(f"  - {issue}", file=sys.stderr)
+        emit(
             "\n这两份实现服务同一篇文章，规则表必须同源；改一端就把另一端一起改。",
             file=sys.stderr,
         )
         return 1
 
-    print("\n剪藏规则表逐条一致。")
+    emit("\n剪藏规则表逐条一致。")
     return 0
 
 

@@ -23,6 +23,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
+# 用共享的 emit——这已经是同一个坑第三次出现了。
+sys.path.insert(0, str(ROOT / "tools"))
+from windows_console import emit  # noqa: E402
 UI = ROOT / "apps/workbench/src/ui/workspace"
 GUARD = ROOT / "tools/check_destructive_confirm.py"
 
@@ -71,8 +76,8 @@ def main() -> int:
     failures = 0
     baseline_code, baseline_out = run_guard()
     if baseline_code != 0:
-        print("FAIL 正常实现必须先通过守卫")
-        print(baseline_out)
+        emit("FAIL 正常实现必须先通过守卫")
+        emit(baseline_out)
         return 1
 
     for label, filename, original, degraded, expect_report in CASES:
@@ -80,32 +85,32 @@ def main() -> int:
         backup = path.read_text(encoding="utf-8")
         try:
             if original not in backup:
-                print(f"FAIL {label} → 锚点没找到，这个用例测不到任何东西")
+                emit(f"FAIL {label} → 锚点没找到，这个用例测不到任何东西")
                 failures += 1
                 continue
             path.write_text(backup.replace(original, degraded, 1), encoding="utf-8")
             code, out = run_guard()
             reported = code == 1 and "缺二次确认" in out
             if reported == expect_report:
-                print(f"PASS {label} → 守卫{'报出' if reported else '放过'}（符合预期）")
+                emit(f"PASS {label} → 守卫{'报出' if reported else '放过'}（符合预期）")
             else:
-                print(f"FAIL {label} → 守卫{'报出' if reported else '放过'}，与预期不符")
+                emit(f"FAIL {label} → 守卫{'报出' if reported else '放过'}，与预期不符")
                 failures += 1
         finally:
             path.write_text(backup, encoding="utf-8")
 
     code, out = run_guard()
     if code != 0:
-        print("FAIL 恢复后守卫必须通过")
-        print(out)
+        emit("FAIL 恢复后守卫必须通过")
+        emit(out)
         failures += 1
     else:
-        print("PASS 恢复后守卫通过")
+        emit("PASS 恢复后守卫通过")
 
     if failures:
-        print(f"\n反向验证有 {failures} 项没通过")
+        emit(f"\n反向验证有 {failures} 项没通过")
         return 1
-    print(f"\n反向验证全部通过：{len(CASES)} 个退化用例的断言都真的在守东西")
+    emit(f"\n反向验证全部通过：{len(CASES)} 个退化用例的断言都真的在守东西")
     return 0
 
 

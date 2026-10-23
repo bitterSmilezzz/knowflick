@@ -21,6 +21,10 @@ from pathlib import Path
 
 import taxonomy
 
+# Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows_console import emit  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Swift 第二实现已删除。学科表只剩契约 JSON 与 :domain 的 Kotlin 表。
@@ -93,20 +97,20 @@ def main() -> int:
     if seed_path.is_file():
         seed_issues, distribution = check_seed(seed_path, data, args.strict_map)
         issues += seed_issues
-        print("学科内容分布:", json.dumps(distribution, ensure_ascii=False))
+        emit("学科内容分布:", json.dumps(distribution, ensure_ascii=False))
         ungraded = distribution.get("未分级", 0)
-        print(f"未分级卡片: {ungraded}（历史内容允许未分级，分级由导入管道逐步补齐）")
+        emit(f"未分级卡片: {ungraded}（历史内容允许未分级，分级由导入管道逐步补齐）")
     else:
-        print(f"内容校验跳过：{seed_path} 不存在（预置库退役后仓库不再自带内容库）")
+        emit(f"内容校验跳过：{seed_path} 不存在（预置库退役后仓库不再自带内容库）")
 
     if issues:
-        print(f"\n发现 {len(issues)} 个问题：", file=sys.stderr)
+        emit(f"\n发现 {len(issues)} 个问题：", file=sys.stderr)
         for issue in issues[:40]:
-            print(f"  - {issue}", file=sys.stderr)
+            emit(f"  - {issue}", file=sys.stderr)
         if len(issues) > 40:
-            print(f"  …另有 {len(issues) - 40} 条", file=sys.stderr)
+            emit(f"  …另有 {len(issues) - 40} 条", file=sys.stderr)
         return 1
-    print("学科契约校验通过：契约自洽、Kotlin 内嵌表一致" + ("、内容库合法。" if seed_path.is_file() else "。"))
+    emit("学科契约校验通过：契约自洽、Kotlin 内嵌表一致" + ("、内容库合法。" if seed_path.is_file() else "。"))
     return 0
 
 
