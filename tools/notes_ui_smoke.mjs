@@ -44,6 +44,24 @@ try {
   count++;
   console.log("PASS 记录入口并列手写/语音/转写/笔记转卡");
 
+  // 「转写」在 ASR 插件没开时不可用——但**必须可被发现**。
+  // 禁用按钮不接收焦点、不派发鼠标事件：键盘用户 Tab 不到、鼠标点了没反应，
+  // 连 title 都看不到——界面上就多出一个没人知道为什么灰掉的入口。
+  await check(
+    "(()=>{const el=document.querySelector('.ws-capture-mode[aria-label=\"导入音频转写\"]');if(!el)return false;el.focus();return document.activeElement===el})()",
+    "不可用的「转写」入口仍能被键盘聚焦"
+  );
+  await check(
+    "document.querySelector('.ws-capture-mode[aria-label=\"导入音频转写\"]').getAttribute('aria-disabled')==='true'",
+    "「转写」入口在插件未启用时标为不可用"
+  );
+  await b("eval", "(()=>{document.querySelector('.ws-capture-mode[aria-label=\"导入音频转写\"]').click();return true})()");
+  await new Promise((r) => setTimeout(r, 400));
+  await check(
+    "document.body.innerText.includes('插件未启用') && document.body.innerText.includes('功能模块与官方插件')",
+    "激活不可用的「转写」入口会说明原因与下一步"
+  );
+
   // 手写
   await b("click", '[aria-label="手写笔记"]');
   await check("!!document.querySelector('.ink-canvas')", "手写板打开");

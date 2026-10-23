@@ -88,6 +88,7 @@ import {
 import { parseDocumentFile } from "../../domain/documentParser";
 import { EmbeddingEngine, syncCardEmbeddings } from "../../domain/embeddingEngine";
 import { useModalFocus } from "./useModalFocus";
+import { DisabledEntry } from "./DisabledEntry";
 import "./workspace.css";
 
 const Briefing = lazy(() => import("../BrainViews").then((m) => ({ default: m.BriefingView })));
@@ -1306,19 +1307,29 @@ export function Workspace() {
             {selected && isCollection ? ` / ${selected.category}` : ""}
           </span>
           <div className="ws-toolbar-actions">
-            <button
-              className="ws-icon-button"
-              aria-label="语音转写"
-              title={
-                asrEnabled
-                  ? "语音转写（本地 Whisper）"
-                  : "语音转写插件未启用：在设置 →「功能模块与官方插件」里开启"
-              }
-              disabled={loading || busy || !asrEnabled}
-              onClick={() => void transcribeAudio()}
-            >
-              <Icon name="mic" />
-            </button>
+            {/* 同上：插件没开时用 aria-disabled 而不是 disabled，
+                让它仍可聚焦、点了会说明原因与下一步。 */}
+            {asrEnabled ? (
+              <button
+                className="ws-icon-button"
+                aria-label="语音转写"
+                title="语音转写（本地 Whisper）"
+                disabled={loading || busy}
+                onClick={() => void transcribeAudio()}
+              >
+                <Icon name="mic" />
+              </button>
+            ) : (
+              <DisabledEntry
+                className="ws-icon-button"
+                label="语音转写"
+                reason="语音转写插件未启用"
+                hint="到设置 →「功能模块与官方插件」里开启"
+                onExplain={(message) => setNotice(message)}
+              >
+                <Icon name="mic" />
+              </DisabledEntry>
+            )}
             <button
               className="ws-icon-button"
               aria-label="导出备份"
@@ -1373,9 +1384,25 @@ export function Workspace() {
           <button type="button" className="ws-capture-mode" aria-label="语音笔记" disabled={loading || busy} onClick={() => setNotePad("voice")}>
             <Icon name="mic" size={14} /><span>语音</span>
           </button>
-          <button type="button" className="ws-capture-mode" aria-label="导入音频转写" disabled={loading || busy || !asrEnabled} title={asrEnabled ? "导入已有音频并转写" : "语音转写插件未启用"} onClick={() => void transcribeAudio()}>
-            <Icon name="upload" size={14} /><span>转写</span>
-          </button>
+          {/* 插件没开时**不能**用 disabled：禁用按钮不可聚焦、不派发事件，
+              键盘用户 Tab 不到、鼠标点了也没反应，连 title 都看不到——
+              界面上就多出一个没人知道为什么灰掉的入口。
+              改成 aria-disabled：照常可聚焦，点了说明原因与下一步。 */}
+          {asrEnabled ? (
+            <button type="button" className="ws-capture-mode" aria-label="导入音频转写" disabled={loading || busy} title="导入已有音频并转写" onClick={() => void transcribeAudio()}>
+              <Icon name="upload" size={14} /><span>转写</span>
+            </button>
+          ) : (
+            <DisabledEntry
+              className="ws-capture-mode"
+              label="导入音频转写"
+              reason="语音转写插件未启用"
+              hint="到设置 →「功能模块与官方插件」里开启"
+              onExplain={(message) => setNotice(message)}
+            >
+              <Icon name="upload" size={14} /><span>转写</span>
+            </DisabledEntry>
+          )}
           <button type="button" className="ws-capture-mode" aria-label="笔记转知识卡" disabled={loading || busy} title="把 Markdown 笔记拆成可复习的知识卡" onClick={() => notesRef.current?.click()}>
             <Icon name="card" size={14} /><span>笔记</span>
           </button>

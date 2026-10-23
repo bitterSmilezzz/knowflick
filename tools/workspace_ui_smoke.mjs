@@ -75,11 +75,28 @@ try {
   await browser("open", url);
   await check('document.querySelector(".ws-prose")?.textContent.includes("修改后的正文")', "edited body survives reload");
 
-  // 语音转写入口存在，但插件默认关闭时必须是禁用态
+  // 语音转写入口存在；插件默认关闭时**不可用，但必须可被发现**。
+  //
+  // 锁的是**行为**不是实现：以前断言 `.disabled === true`——那是「禁用」这个
+  // 具体写法。禁用按钮不接收焦点、不派发鼠标事件，键盘用户 Tab 不到、
+  // 鼠标点了没反应，连 title 都看不到：界面上多出一个没人知道为什么灰掉的入口。
+  // 现在改成 aria-disabled：仍可聚焦，点了会说明原因与下一步。
   await check('!!document.querySelector(\'[aria-label="语音转写"]\')', "top bar exposes the speech entry");
   await check(
-    'document.querySelector(\'[aria-label="语音转写"]\').disabled === true && document.querySelector(\'[aria-label="语音转写"]\').title.includes("插件未启用")',
-    "speech entry is disabled while its plugin is off"
+    'document.querySelector(\'[aria-label="语音转写"]\').getAttribute("aria-disabled") === "true" && document.querySelector(\'[aria-label="语音转写"]\').title.includes("插件未启用")',
+    "speech entry is unavailable while its plugin is off"
+  );
+  // 不可用也要能被键盘发现：Tab 能走到它（禁用按钮就做不到）
+  await check(
+    '(()=>{const el=document.querySelector(\'[aria-label="语音转写"]\');el.focus();return document.activeElement===el})()',
+    "unavailable speech entry is still reachable by keyboard"
+  );
+  // 激活它要说清楚原因和下一步，而不是静默无反应
+  await browser("eval", "(()=>{document.querySelector('[aria-label=\"语音转写\"]').click();return true})()");
+  await new Promise((r) => setTimeout(r, 400));
+  await check(
+    'document.body.innerText.includes("插件未启用") && document.body.innerText.includes("功能模块与官方插件")',
+    "activating the unavailable entry explains why and what to do"
   );
 
   // Material -> card
