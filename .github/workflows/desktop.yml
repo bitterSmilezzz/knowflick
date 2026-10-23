@@ -88,6 +88,10 @@ jobs:
       # 依赖源已经按 CI 环境分流（settings.gradle.kts），wrapper 这层补上。
       # 校验和保持不变：官方源被篡改一样会被 wrapper 拒绝。
       - name: Gradle wrapper 改用官方源
+        # 必须显式指定 bash：Windows runner 默认 shell 是 PowerShell，
+        # 而 .sh 脚本在 PowerShell 里**不会报错也不会执行**——步骤照样「成功」，
+        # 改写没发生，CI 继续用国内镜像。静默少跑，最坑的一种。
+        shell: bash
         run: ./tools/ci_gradle_official_source.sh
 
       - name: 共享模块测试 + 打本系统安装包
