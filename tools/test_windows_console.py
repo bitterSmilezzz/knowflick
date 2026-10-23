@@ -26,6 +26,7 @@ CANDIDATES = [
     "check_rust_error_messages.py",
     "check_source_labels.py",
     "check_test_assertions.py",
+    "check_destructive_confirm.py",
 ]
 
 CP1252_HARNESS = '''
