@@ -214,10 +214,25 @@ def check_evidence_is_executed(problems: list[str]) -> None:
     - 浏览器冒烟要在 run_all_smokes 的列表里（或门禁单独调），否则永远不跑；
     - Android 测试的模块要被 CI 显式点名（AGENTS.md 记着：漏了会静默少跑）；
     - 前端单测要在 vitest 的收集范围（apps/workbench/src）里。
+
+    「在列表里」还要再问一层：**CI 上真会跑吗**。
+    浏览器冒烟需要 agent-browser 与运行中的 Vite，CI 上两者都没有
+    （`run_all_smokes.sh` 缺 agent-browser 时打印 SKIP 并 exit 0）。
+    所以只靠 run_all_smokes 到达的证据在 CI 上**一条断言都不产生**，
+    却会被算成「已覆盖」——这正是本条检查原先放过的事。
     """
     runner = (ROOT / "tools/run_all_smokes.sh").read_text(encoding="utf-8")
     gate = gate_contents()
     ci = (ROOT / ".github/workflows/android.yml").read_text(encoding="utf-8")
+    # CI 上真正会跑的浏览器冒烟：单独一个 job（workbench.yml 的 browser-smokes），
+    # 用 tools/ci_run_browser_smokes.sh 逐套遍历，缺任何一套都算失败。
+    ci_smokes = ""
+    ci_smokes_script = ROOT / "tools/ci_run_browser_smokes.sh"
+    for candidate in (ROOT / ".github/workflows/workbench.yml", ROOT / ".github/workflows/workbench-release.yml"):
+        if candidate.exists():
+            ci_smokes += candidate.read_text(encoding="utf-8")
+    if ci_smokes_script.exists():
+        ci_smokes += ci_smokes_script.read_text(encoding="utf-8")
 
     for label, rel, _needle in EVIDENCE_MAP:
         if not rel.endswith((".mjs", ".kt", ".test.ts", ".test.tsx")):
@@ -228,6 +243,18 @@ def check_evidence_is_executed(problems: list[str]) -> None:
                 problems.append(
                     f"「{label}」的证据 {rel} 不会被执行：既不在 run_all_smokes.sh 也不在门禁里"
                 )
+            elif name in gate and name not in runner:
+                continue  # 门禁直接调用它：CI 上真会跑
+            elif name in runner and name not in gate:
+                # 只靠 run_all_smokes 到达：本机跑得到，但要确认 **CI 上也跑得到**——
+                # CI 的 browser-smokes job 用 ci_run_browser_smokes.sh 逐套遍历，
+                # 套件名出现在那里才算 CI 已覆盖。
+                if name not in ci_smokes:
+                    problems.append(
+                        f"「{label}」的证据 {rel} 只在本机跑：它不在 CI 的浏览器冒烟"
+                        "（tools/ci_run_browser_smokes.sh 或 workbench workflow）里，"
+                        "CI 上不会被执行——不能算 CI 已覆盖"
+                    )
         elif rel.endswith(".kt"):
             module = rel.split("apps/android/")[1].split("/")[0]
             if f":{module}:jvmTest" not in ci and f":{module}:test" not in ci:
@@ -353,6 +380,56 @@ def check_tauri_commands(problems: list[str]) -> None:
         )
 
 
+def check_ci_trigger_paths(problems: list[str]) -> None:
+    """CI 的路径过滤要盖住**真正被 CI 依赖的东西**。
+
+    这类漂移的特点是「改了没人验」：
+    - `tools/mcp-server.mjs` 是 MCP server 的实现，`mcp_smoke.mjs` spawn 它、
+      断言它的工具名。它不在任何 workflow 的 paths 里 → 改它只有本机 smoke
+      会红，CI 一次都不跑。
+    - `.github/workflows/android.yml` 决定 Android 测哪些模块，
+      `check_doc_consistency.py` 正是拿它当依据来核对「模块有没有被点名」。
+      改它却不触发跑这个守卫的 workflow → 守卫在 CI 上形同虚设。
+
+    守卫自己的触发路径漏了，比守卫逻辑写错更隐蔽。
+    """
+    required = {
+        # 文件 → 至少一个 workflow 要在 paths 里提到它
+        "tools/mcp-server.mjs": (".github/workflows/workbench.yml", ".github/workflows/workbench-release.yml"),
+        ".github/workflows/android.yml": (".github/workflows/workbench.yml", ".github/workflows/workbench-release.yml"),
+    }
+    for target, workflows in required.items():
+        mentioned = False
+        for workflow in workflows:
+            path = ROOT / workflow
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            for event in ("push", "pull_request"):
+                block = re.search(
+                    rf"^  {event}:\n(.*?)(?=^  \w|^\S|\Z)", text, re.M | re.S
+                )
+                if not block:
+                    continue
+                paths_block = re.search(
+                    r"^    paths:\n((?:^      .*\n?)+)", block[1], re.M
+                )
+                if not paths_block:
+                    continue
+                patterns = re.findall(r"^      - '([^']+)'$", paths_block[1], re.M)
+                if any(
+                    pattern == target
+                    or (pattern.endswith("/**") and target.startswith(pattern[:-3] + "/"))
+                    for pattern in patterns
+                ):
+                    mentioned = True
+        if not mentioned:
+            problems.append(
+                f"{target} 没被任何 workflow 的 paths 提到——改它不会触发 CI，"
+                "而它是被 CI 依赖的东西（证据被改弱时无人察觉）"
+            )
+
+
 def main() -> int:
     problems: list[str] = []
 
@@ -414,6 +491,7 @@ def main() -> int:
     check_evidence_is_executed(problems)
     check_evidence_assertions(problems)
     check_tauri_commands(problems)
+    check_ci_trigger_paths(problems)
 
     if problems:
         emit("文档与实际有出入：")

@@ -3,6 +3,49 @@
 > 目标不是「功能存在」，而是**每一步都不卡、不猜、不等**。
 > 这份文档记录已经量过／修过的地方，以及实测后判定**不需要动**的地方。
 
+### 19 条「已修缺陷 → 证据测试」在 CI 上是空转的
+
+验收清单里 52 条「已修缺陷 → 证据测试」的登记，由 `check_doc_consistency.py`
+守着：证据文件没了、断言被改弱了、或者它压根不会被执行，都会报出来。
+
+但这条守卫有个盲区：它只检查浏览器冒烟**在不在 `run_all_smokes.sh` 的列表里**。
+而那个脚本在缺 `agent-browser` 时打印 SKIP 并 **exit 0**——CI 环境正好没有
+`agent-browser`。于是 24 条 `.mjs` 证据里有 **19 条**在 CI 上**一条断言都不产生**，
+却仍被算成「已覆盖」。
+
+这 19 条恰恰是最要紧的界面回归：测验入口、统计页、AI 出卡链路、`.eml` 导入、
+复习闭环的间隔、产物库存进去却读不到、问答引用指向已删除的卡片……
+
+**证据被改弱时，CI 上无人察觉，而守卫还报绿灯。**
+
+修法不是改标签，是**让 CI 真的跑**：
+
+- 新增 `tools/ci_run_browser_smokes.sh`：装 agent-browser（含浏览器二进制）、
+  起 Vite、**逐套遍历 13 套冒烟**。不用 `run_all_smokes.sh`——它缺 agent-browser
+  时 exit 0，在 CI 上会变成「什么都没跑也算成功」。
+- `workbench.yml` 新增独立 job `browser-smokes`。单独一个 job：它要装浏览器、
+  要起服务，失败原因与编译/单测不同，混进 verify 步骤会让日志难读。
+- 守卫改成核对「这套冒烟**在不在 CI 的浏览器冒烟里**」，而不是「在不在本地列表里」。
+  修好后守卫报绿——但这次绿得有依据：**CI 上它真会跑**。
+
+反向验证：从 `ci_run_browser_smokes.sh` 的列表里删掉 `workspace_ui_smoke`，
+守卫立刻报「只在本地跑」并 exit=1；恢复后回绿。
+
+顺带补齐两处触发路径（同一类问题，都是「改了没人验」）：
+
+- `tools/mcp-server.mjs` 是 MCP server 的实现，`mcp_smoke.mjs` spawn 它并断言
+  它的工具名——但它**不在任何 workflow 的 paths 里**。改它只有本机 smoke 会红。
+  实测把 `search_knowledge` 改名后 smoke 确实 exit=1，而 CI 一次都不跑。
+- `.github/workflows/android.yml` 决定 Android 测哪些模块，
+  `check_doc_consistency.py` 正是拿它当依据。**改它却不触发跑这个守卫的 workflow**
+  → 守卫在 CI 上形同虚设。
+
+这两条也加进守卫：任一 workflow 的 paths 都不提它们时，守卫报出来。
+
+> 教训：**「有证据」和「证据会在 CI 上被执行」是两件事。**
+> 前者容易查（文件在、断言在），后者要问「CI 上这套东西真的跑得到吗」。
+> 少了后一问，「已覆盖」就只是一句说法。
+
 ### Desktop 测试点名了 shared-data，变更却不触发 CI
 
 2026-10-23 核对 Desktop workflow 的触发边界：构建直接依赖 `:shared-data`，

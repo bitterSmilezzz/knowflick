@@ -21,6 +21,24 @@ on:
       - 'tools/source_matrix_smoke.mjs'
       - 'tools/taste_usability_gate.mjs'
       - 'tools/run_all_smokes.sh'
+      - 'tools/workspace_ui_smoke.mjs'
+      - 'tools/brain_ui_smoke.mjs'
+      - 'tools/import_ui_smoke.mjs'
+      - 'tools/notes_ui_smoke.mjs'
+      - 'tools/mailbox_ui_smoke.mjs'
+      - 'tools/review_ui_smoke.mjs'
+      - 'tools/scale_ui_smoke.mjs'
+      - 'tools/settings_plugins_smoke.mjs'
+      - 'tools/subscriptions_ui_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/usability_journey_smoke.mjs'
+      - 'tools/desktop_interaction_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/mcp_server_smoke.mjs'
+      - 'tools/mcp-server.mjs'
+      - 'tools/ci_run_browser_smokes.sh'
+      - '.github/workflows/android.yml'
       - '.github/workflows/workbench.yml'
   pull_request:
     paths:
@@ -38,6 +56,21 @@ on:
       - 'tools/source_matrix_smoke.mjs'
       - 'tools/taste_usability_gate.mjs'
       - 'tools/run_all_smokes.sh'
+      - 'tools/workspace_ui_smoke.mjs'
+      - 'tools/brain_ui_smoke.mjs'
+      - 'tools/import_ui_smoke.mjs'
+      - 'tools/notes_ui_smoke.mjs'
+      - 'tools/mailbox_ui_smoke.mjs'
+      - 'tools/review_ui_smoke.mjs'
+      - 'tools/scale_ui_smoke.mjs'
+      - 'tools/settings_plugins_smoke.mjs'
+      - 'tools/subscriptions_ui_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/usability_journey_smoke.mjs'
+      - 'tools/desktop_interaction_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/mcp_server_smoke.mjs'
       - '.github/workflows/workbench.yml'
 
 concurrency:
@@ -104,3 +137,38 @@ jobs:
         # 前端这份 `clipEngine.ts` 与 Android 的 `WebClipEngine.kt` 服务同一篇文章，规则表必须同源。
         run: python3 tools/check_clip_parity.py
         working-directory: .
+
+  # 13 套浏览器冒烟此前只在本机跑（CI 上缺 agent-browser，run_all_smokes.sh
+  # 打印 SKIP 并 exit 0）。于是验收清单里 19 条「已修缺陷 → 证据测试」的登记，
+  # 在 CI 上**一条断言都不产生**，却仍被算成「已覆盖」——证据被改弱时无人察觉。
+  #
+  # 单独一个 job：它要装浏览器二进制、要起 Vite，失败原因与编译/单测不同；
+  # 混进 verify 步骤会让日志难读，也会拖慢每个 PR 的主门禁。
+  browser-smokes:
+    name: 浏览器冒烟（13 套）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
+      - name: 装 agent-browser（含浏览器二进制）
+        # 少装浏览器二进制时，冒烟会在开页面那一步失败，报错离原因很远。
+        run: |
+          npm install -g agent-browser
+          agent-browser install
+
+      - name: 跑 13 套浏览器冒烟
+        # 不用 run_all_smokes.sh：它缺 agent-browser 时 exit 0，在 CI 上会变成
+        # 「什么都没跑也算成功」。这个脚本自己遍历，缺任何一套都算失败。
+        run: ./tools/ci_run_browser_smokes.sh

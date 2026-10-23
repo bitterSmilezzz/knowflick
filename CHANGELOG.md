@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+- 修复（19 条界面回归证据在 CI 上是空转的）：证据守卫只检查浏览器冒烟**在不在本地列表里**，而 `run_all_smokes.sh` 缺 agent-browser 时 SKIP 并 exit 0——CI 上正好缺它，于是 19 条证据一条断言都不产生却仍算「已覆盖」（测验入口、统计页、AI 出卡链路、.eml 导入、复习闭环、产物可见性等）。现在 `workbench.yml` 新增 `browser-smokes` job，装 agent-browser 与浏览器二进制、起 Vite、逐套跑完 13 套；守卫改为核对「这套冒烟在不在 CI 的浏览器冒烟里」。反向验证过。
+- 修复（CI 触发遗漏）：`tools/mcp-server.mjs`（MCP server 实现，被 smoke spawn 并断言）与 `.github/workflows/android.yml`（守卫的判断依据）都不在任何 workflow 的 paths 里——改它们不会触发 CI，证据被改弱时无人察觉。已补进 paths 并加守卫。
 - 修复（Desktop CI 触发遗漏）：共享持久化模块虽已纳入桌面依赖与测试命令，却未纳入 push / PR 路径过滤。补齐 shared-data、根 Gradle 配置、wrapper、共享资产与图标、CI 切源脚本的触发路径；新增变更路径回归检查，在三平台构建前执行，保留 Android 专属页面不触发冻结桌面的边界。
 
 - 修复（手写/语音面板键盘不可达）：这两个面板是手写 div，没接原生 `<dialog>` 的焦点陷阱与 Escape——实测打开后连按 12 次 Tab 焦点始终在侧栏，面板内按钮全部键盘不可达、Escape 也关不掉。新增 `useModalFocus`：打开时焦点移进面板、Tab 在面板内循环（模态遮住了底层，不循环会走到看不见的地方）、Escape 关闭、关闭后焦点归位。门禁新增对应断言并做了反向验证。
