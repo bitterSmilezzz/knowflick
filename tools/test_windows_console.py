@@ -56,16 +56,20 @@ class WindowsConsoleTest(unittest.TestCase):
     def test_each_check_runs_under_a_cp1252_console(self):
         for name in CANDIDATES:
             with self.subTest(script=name):
+                # **不要用 text=True**：Windows 上子进程的输出是本地编码
+                # （cp1252/GBK）的字节，Python 会用 cp1252 去解码它们——
+                # 遇到中文就抛 UnicodeDecodeError，测试自己先崩了。
+                # 用 bytes 收，自己按 UTF-8 解；解不动就退回 replace。
                 result = subprocess.run(
                     [sys.executable, "-c", f"SCRIPT = {str(TOOLS / name)!r}\n" + CP1252_HARNESS],
                     capture_output=True,
-                    text=True,
                     cwd=str(ROOT),
                 )
+                stderr = result.stderr.decode("utf-8", errors="replace")
                 self.assertNotIn(
                     "UnicodeEncodeError",
-                    result.stderr,
-                    f"{name} 在 cp1252 控制台下崩了：{result.stderr[:300]}",
+                    stderr,
+                    f"{name} 在 cp1252 控制台下崩了：{stderr[:300]}",
                 )
 
     def test_the_guard_itself_catches_a_english_message(self):
@@ -73,11 +77,12 @@ class WindowsConsoleTest(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, str(TOOLS / "check_rust_error_messages.py")],
             capture_output=True,
-            text=True,
             cwd=str(ROOT),
         )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("全中文", result.stdout)
+        stdout = result.stdout.decode("utf-8", errors="replace")
+        stderr = result.stderr.decode("utf-8", errors="replace")
+        self.assertEqual(result.returncode, 0, stdout + stderr)
+        self.assertIn("全中文", stdout)
 
 
 if __name__ == "__main__":
