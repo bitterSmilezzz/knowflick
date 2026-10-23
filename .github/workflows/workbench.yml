@@ -36,6 +36,7 @@ on:
       - 'tools/source_matrix_smoke.mjs'
       - 'tools/usability_journey_smoke.mjs'
       - 'tools/desktop_interaction_smoke.mjs'
+      - 'tools/desktop_external_write_smoke.mjs'
       - 'tools/taste_usability_gate.mjs'
       - 'tools/mcp_smoke.mjs'
       - 'tools/mcp_server_smoke.mjs'

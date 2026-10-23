@@ -49,6 +49,12 @@ SUITES=(
   desktop_interaction_smoke
 )
 
+# 真机专有：需要**已安装并运行**的桌面客户端。浏览器冒烟与 CI 都没有这个条件，
+# 所以单独列出——混进 SUITES 会让「套数」与「浏览器冒烟」这个说法都不准。
+DESKTOP_ONLY_SUITES=(
+  desktop_external_write_smoke
+)
+
 failed=0
 for suite in "${SUITES[@]}"; do
   script="tools/${suite}.mjs"
@@ -65,6 +71,21 @@ for suite in "${SUITES[@]}"; do
   # 两套会抢同一个 agent-browser 服务。实测这样会让 scale 冒烟在连跑时
   # 偶发超时（单跑时最慢 51-76ms，连跑时可能超预算）。给一点间隔。
   sleep 1
+done
+
+# 真机专有那几套：需要已安装并运行的桌面客户端。
+# 条件不满足时它们自己会 SKIP 并说明原因（不假装通过，也不假装失败）。
+for suite in "${DESKTOP_ONLY_SUITES[@]}"; do
+  script="tools/${suite}.mjs"
+  [ -f "$script" ] || { echo "缺少 ${script}，跳过" >&2; continue; }
+  printf '%-30s ' "$suite"
+  if out="$(node "$script" 2>&1)"; then
+    echo "$out" | tail -1
+  else
+    echo "失败"
+    echo "$out" | tail -20
+    failed=1
+  fi
 done
 
 if [ "$failed" -ne 0 ]; then
