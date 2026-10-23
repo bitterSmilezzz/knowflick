@@ -86,5 +86,55 @@ class TauriCommandCheckTest(unittest.TestCase):
         self.assertEqual(problems, [])
 
 
+class CISmokeSuiteDiscoveryTest(unittest.TestCase):
+    """CI 浏览器冒烟的套件名单必须**结构化**地读出来。
+
+    踩过的坑：第一版用全文 grep 判断「某套件在不在 CI 的冒烟里」，
+    于是「把它从执行列表删掉、只在注释里留个名字」也能通过检查——
+    守卫报绿，而 CI 上那一套其实已经不跑了。
+    """
+
+    def suites_from(self, body: str) -> set[str]:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / "tools/ci_run_browser_smokes.sh"
+            script.parent.mkdir(parents=True)
+            script.write_text(body, encoding="utf-8")
+            with patch.object(checker, "ROOT", root):
+                return checker.ci_browser_smoke_suites()
+
+    def test_reads_array_entries(self):
+        suites = self.suites_from(
+            "#!/usr/bin/env bash\nSUITES=(\n  alpha_smoke\n  beta_smoke\n)\n"
+        )
+        self.assertEqual(suites, {"alpha_smoke", "beta_smoke"})
+
+    def test_ignored_comments_are_not_suites(self):
+        suites = self.suites_from(
+            "SUITES=(\n  # alpha_smoke 已移除\n  beta_smoke\n)\n"
+        )
+        self.assertEqual(suites, {"beta_smoke"})
+        self.assertNotIn("alpha_smoke", suites)
+
+    def test_suite_mentioned_only_in_a_comment_is_not_counted(self):
+        suites = self.suites_from(
+            "SUITES=(\n  beta_smoke\n)\n# alpha_smoke 以前跑过\n"
+        )
+        self.assertNotIn("alpha_smoke", suites)
+
+    def test_missing_array_is_an_error_not_a_silent_pass(self):
+        with self.assertRaises(ValueError):
+            self.suites_from("#!/usr/bin/env bash\necho 没有数组\n")
+
+    def test_unparsable_entry_is_an_error(self):
+        with self.assertRaises(ValueError):
+            self.suites_from('SUITES=(\n  "quoted_smoke"\n)\n')
+
+    def test_missing_script_yields_no_suites(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(checker, "ROOT", Path(directory)):
+                self.assertEqual(checker.ci_browser_smoke_suites(), set())
+
+
 if __name__ == "__main__":
     unittest.main()

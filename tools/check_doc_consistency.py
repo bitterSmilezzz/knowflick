@@ -29,6 +29,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+sys.path.insert(0, str(ROOT / "tools"))
+from workflow_paths import matches as _path_matches  # noqa: E402
+from workflow_paths import paths_for as _workflow_paths  # noqa: E402
+
 # 只检查这些：它们描述的是「现在是什么样」，不是历史。
 CURRENT_STATE_DOCS = [
     "README.md",
@@ -207,6 +211,37 @@ def check_evidence(problems: list[str]) -> None:
             problems.append(f"「{label}」的证据在 {rel} 里找不到「{needle}」——测试可能被改弱了")
 
 
+def ci_browser_smoke_suites() -> set[str]:
+    """CI 上**真的会跑**的浏览器冒烟套件名。
+
+    只认 `tools/ci_run_browser_smokes.sh` 里 `SUITES=(...)` 数组的**实际条目**。
+
+    为什么不能全文 grep：注释里提到一个套件名就会让 grep 命中，于是
+    「把它从执行列表里删掉、只在注释里留个名字」这种改动能骗过检查——
+    我第一版就是这么写的，自己踩了一次（同一个坑：判定 wrapper 源时，
+    注释里的官方地址让 grep 误判）。
+
+    只支持当前这套写法（每行一个标识符）。格式变了就**明确报错**，
+    不猜、不假装支持。
+    """
+    script = ROOT / "tools/ci_run_browser_smokes.sh"
+    if not script.exists():
+        return set()
+    text = script.read_text(encoding="utf-8")
+    block = re.search(r"^SUITES=\(\n(.*?)\n\)", text, re.M | re.S)
+    if not block:
+        raise ValueError("ci_run_browser_smokes.sh 里找不到 SUITES=(...) 数组")
+    suites: set[str] = set()
+    for line in block[1].splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue  # 注释不是执行项
+        if not re.fullmatch(r"[a-z0-9_]+", stripped):
+            raise ValueError(f"无法识别的 SUITES 条目：{line!r}")
+        suites.add(stripped)
+    return suites
+
+
 def check_evidence_is_executed(problems: list[str]) -> None:
     """证据测试**确实会被执行**。
 
@@ -224,15 +259,9 @@ def check_evidence_is_executed(problems: list[str]) -> None:
     runner = (ROOT / "tools/run_all_smokes.sh").read_text(encoding="utf-8")
     gate = gate_contents()
     ci = (ROOT / ".github/workflows/android.yml").read_text(encoding="utf-8")
-    # CI 上真正会跑的浏览器冒烟：单独一个 job（workbench.yml 的 browser-smokes），
-    # 用 tools/ci_run_browser_smokes.sh 逐套遍历，缺任何一套都算失败。
-    ci_smokes = ""
-    ci_smokes_script = ROOT / "tools/ci_run_browser_smokes.sh"
-    for candidate in (ROOT / ".github/workflows/workbench.yml", ROOT / ".github/workflows/workbench-release.yml"):
-        if candidate.exists():
-            ci_smokes += candidate.read_text(encoding="utf-8")
-    if ci_smokes_script.exists():
-        ci_smokes += ci_smokes_script.read_text(encoding="utf-8")
+    # CI 上真正会跑的浏览器冒烟：workbench.yml 的 browser-smokes job 用
+    # tools/ci_run_browser_smokes.sh 逐套遍历，缺任何一套都算失败。
+    ci_suites = ci_browser_smoke_suites()
 
     for label, rel, _needle in EVIDENCE_MAP:
         if not rel.endswith((".mjs", ".kt", ".test.ts", ".test.tsx")):
@@ -249,10 +278,10 @@ def check_evidence_is_executed(problems: list[str]) -> None:
                 # 只靠 run_all_smokes 到达：本机跑得到，但要确认 **CI 上也跑得到**——
                 # CI 的 browser-smokes job 用 ci_run_browser_smokes.sh 逐套遍历，
                 # 套件名出现在那里才算 CI 已覆盖。
-                if name not in ci_smokes:
+                if name not in ci_suites:
                     problems.append(
                         f"「{label}」的证据 {rel} 只在本机跑：它不在 CI 的浏览器冒烟"
-                        "（tools/ci_run_browser_smokes.sh 或 workbench workflow）里，"
+                        "（tools/ci_run_browser_smokes.sh 的 SUITES 数组）里，"
                         "CI 上不会被执行——不能算 CI 已覆盖"
                     )
         elif rel.endswith(".kt"):
@@ -406,22 +435,11 @@ def check_ci_trigger_paths(problems: list[str]) -> None:
                 continue
             text = path.read_text(encoding="utf-8")
             for event in ("push", "pull_request"):
-                block = re.search(
-                    rf"^  {event}:\n(.*?)(?=^  \w|^\S|\Z)", text, re.M | re.S
-                )
-                if not block:
-                    continue
-                paths_block = re.search(
-                    r"^    paths:\n((?:^      .*\n?)+)", block[1], re.M
-                )
-                if not paths_block:
-                    continue
-                patterns = re.findall(r"^      - '([^']+)'$", paths_block[1], re.M)
-                if any(
-                    pattern == target
-                    or (pattern.endswith("/**") and target.startswith(pattern[:-3] + "/"))
-                    for pattern in patterns
-                ):
+                try:
+                    patterns = _workflow_paths(text, event)
+                except ValueError:
+                    continue  # 这个事件没有 paths 过滤
+                if any(_path_matches(target, pattern) for pattern in patterns):
                     mentioned = True
         if not mentioned:
             problems.append(

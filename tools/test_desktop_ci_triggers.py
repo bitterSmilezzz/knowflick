@@ -6,44 +6,13 @@ YAML parser or a complete GitHub glob implementation; unsupported patterns fail
 rather than silently claiming coverage.
 """
 from pathlib import Path
-import re
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 
-
-def paths_for(text: str, event: str) -> list[str]:
-    event_block = re.search(
-        rf"^  {event}:\n(.*?)(?=^  \w|^\S|\Z)", text, re.M | re.S
-    )
-    if not event_block:
-        raise ValueError(f"Missing {event} event")
-    block = re.search(
-        r"^    paths:\n((?:^      .*\n?)+)", event_block[1], re.M
-    )
-    if not block:
-        raise ValueError(f"Missing {event}.paths")
-    patterns = []
-    for line in block[1].splitlines():
-        if not line.strip() or line.strip().startswith("#"):
-            continue
-        item = re.fullmatch(r"      - '([^']+)'", line)
-        if not item:
-            raise ValueError(f"Unsupported paths entry: {line}")
-        patterns.append(item[1])
-    return patterns
-
-
-def matches(path: str, pattern: str) -> bool:
-    # Current workflow uses literal paths and trailing /** only.
-    if pattern.endswith('/**'):
-        prefix = pattern[:-3]
-        if any(c in prefix for c in '*?![]{}'):
-            raise ValueError(f"Unsupported glob: {pattern}")
-        return path.startswith(prefix + '/')
-    if any(c in pattern for c in '*?![]{}'):
-        raise ValueError(f"Unsupported glob: {pattern}")
-    return path == pattern
+sys.path.insert(0, str(ROOT / "tools"))
+from workflow_paths import matches, paths_for  # noqa: E402
 
 
 class DesktopCITriggers(unittest.TestCase):
@@ -87,6 +56,13 @@ class DesktopCITriggers(unittest.TestCase):
 
     def test_paths_reader_ignores_comments_and_other_events(self):
         text = "  push:\n    paths:\n      # explanation\n      - 'a/**'\n  pull_request:\n    paths:\n      - 'b/**'\n"
+        self.assertEqual(paths_for(text, 'push'), ['a/**'])
+        self.assertEqual(paths_for(text, 'pull_request'), ['b/**'])
+
+    def test_trailing_comment_on_a_path_entry_is_tolerated(self):
+        # YAML 允许 `- 'path'  # 备注`，GitHub 也认。解析不了就该报错，
+        # 但更该**认得**——否则有人只是加了句说明，门禁就红。
+        text = "  push:\n    paths:\n      - 'a/**'  # 说明\n  pull_request:\n    paths:\n      - 'b/**'\n"
         self.assertEqual(paths_for(text, 'push'), ['a/**'])
         self.assertEqual(paths_for(text, 'pull_request'), ['b/**'])
 

@@ -34,6 +34,7 @@ on:
       - 'shared/icons/**'
       - 'tools/ci_gradle_official_source.sh'
       - 'tools/test_desktop_ci_triggers.py'
+      - 'tools/workflow_paths.py'
       - '.github/workflows/desktop.yml'
   pull_request:
     paths:
