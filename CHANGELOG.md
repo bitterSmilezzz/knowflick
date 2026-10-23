@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 修复（4 条证据指向实现文件，守不住任何东西）：证据表里「Embedding 错误回显密钥」「数据库损坏报错」「统计页没有入口」等 4 条登记指向的是实现文件，而守卫对实现文件只查「文件存在 + 标识在文件里」——那些标识只出现在实现里、任何测试里都没有，于是这 4 条检查永远不可能失败。当时缺陷确实有测试（Rust 的 `corrupt_db_is_reported_not_silently_recreated`、前端 `store.redact.test.ts`、界面冒烟的 `[data-page="stats"]`），只是登记表指错了地方。已改指真正断言行为的测试并加回归锁住。
 - 修复（守卫自己会骗自己）：上一轮给「证据在 CI 上真会跑」加的判据用全文 grep，于是「把套件从执行列表删掉、只在注释里留个名字」和「路径写成 `- 'x'  # 备注`」两种改法都能让守卫报绿，而 CI 上其实已经不跑。改为结构化读取 `SUITES=(...)` 数组、容忍行尾注释，并把两处重复的路径解析抽成共享模块 `tools/workflow_paths.py`。新增 30 项回归（守卫 13 / 解析 11 / 触发 6），都做过反向验证。
 - 修复（19 条界面回归证据在 CI 上是空转的）：证据守卫只检查浏览器冒烟**在不在本地列表里**，而 `run_all_smokes.sh` 缺 agent-browser 时 SKIP 并 exit 0——CI 上正好缺它，于是 19 条证据一条断言都不产生却仍算「已覆盖」（测验入口、统计页、AI 出卡链路、.eml 导入、复习闭环、产物可见性等）。现在 `workbench.yml` 新增 `browser-smokes` job，装 agent-browser 与浏览器二进制、起 Vite、逐套跑完 13 套；守卫改为核对「这套冒烟在不在 CI 的浏览器冒烟里」。反向验证过。
 - 修复（CI 触发遗漏）：`tools/mcp-server.mjs`（MCP server 实现，被 smoke spawn 并断言）与 `.github/workflows/android.yml`（守卫的判断依据）都不在任何 workflow 的 paths 里——改它们不会触发 CI，证据被改弱时无人察觉。已补进 paths 并加守卫。

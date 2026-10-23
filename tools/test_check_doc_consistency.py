@@ -136,5 +136,50 @@ class CISmokeSuiteDiscoveryTest(unittest.TestCase):
                 self.assertEqual(checker.ci_browser_smoke_suites(), set())
 
 
+class EvidenceRegistrationTest(unittest.TestCase):
+    """证据登记必须指向**可执行**的测试。
+
+    踩过的坑：四条登记指向的是**实现文件**（`http.rs` / `db.rs` / `StatsView.tsx`），
+    而守卫对实现文件只查「文件存在 + 标识在文件里」——那些标识**只出现在实现里、
+    任何测试里都没有**，所以这条检查**永远不可能失败**，等于没守。
+
+    现在那四条都指向真正断言该行为的测试/冒烟。这里锁住这个性质：
+    凡是登记为「证据」的文件，标识必须**也出现在测试文件里**。
+    """
+
+    TEST_SUFFIXES = (".test.ts", ".test.tsx", ".kt", ".mjs")
+
+    def test_registrations_point_at_executable_evidence(self):
+        for label, rel, needle in checker.EVIDENCE_MAP:
+            if not rel.endswith((".test.ts", ".test.tsx", ".kt", ".mjs")):
+                continue
+            path = checker.ROOT / rel
+            self.assertTrue(path.exists(), f"「{label}」的证据文件没了：{rel}")
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            self.assertIn(needle, text, f"「{label}」的标识在 {rel} 里找不到")
+
+    def test_no_registration_points_at_a_bare_implementation_file(self):
+        """实现文件当证据 = 守不住任何东西（标识不会出现在测试里）。
+
+        Rust 例外：测试就住在实现文件里（`#[cfg(test)] mod tests`），
+        所以 `.rs` 文件只要**自己带测试模块**且标识落在其中，就算可执行。
+        """
+        offenders = []
+        for label, rel, needle in checker.EVIDENCE_MAP:
+            if rel.endswith(self.TEST_SUFFIXES):
+                continue
+            if rel.endswith(".rs"):
+                text = (checker.ROOT / rel).read_text(encoding="utf-8", errors="ignore")
+                if ("#[cfg(test)]" in text or "mod tests" in text) and needle in text:
+                    continue  # Rust：测试就在这个文件里
+            offenders.append((label, rel))
+        self.assertEqual(
+            offenders,
+            [],
+            "这些登记指向没有测试的实现文件："
+            + "、".join(f"{label}→{rel}" for label, rel in offenders),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
