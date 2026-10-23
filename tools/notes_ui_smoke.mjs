@@ -96,6 +96,11 @@ try {
 
   // 保存 → 落进收件箱，且笔迹写进素材
   await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('保存手写笔记')).click();return true})()");
+  // 回执必须**紧挨着保存**验：提示条 4 秒后自动消失（Workspace 里 notice 的
+  // 定时器），而下面每条断言都要起一次 agent-browser（约 1 秒），
+  // 排在最后轮到它时提示早没了——CI 上真的因此红过（notes_ui_smoke）。
+  // 回执走 .ws-feedback（aria-live 区），不是底部状态栏。
+  await check("document.body.innerText.includes('手写笔记已存入收件箱')", "保存后有明确回执");
   await check("!document.querySelector('.ink-canvas')", "保存后关闭手写板");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));return raw.materials.some(m=>m.sourceType==='ink')})()", "手写笔记落成素材");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));const m=raw.materials.find(x=>x.sourceType==='ink');const meta=JSON.parse(m.metadataJson);return meta.ink.strokes.length===2})()", "笔迹随素材保存");
@@ -104,8 +109,6 @@ try {
   // 只验「素材里有 strokes」不够——笔迹可能在读回时没画出来，用户看到的是空白。
   // 判据用**像素**：canvas 上必须有非透明像素。
   await check("(()=>{const c=document.querySelector('.ws-reader canvas');if(!c)return false;const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;for(let i=3;i<d.length;i+=4){if(d[i]!==0)return true}return false})()", "保存后阅读区真的重绘出笔迹（有非透明像素）");
-  // 回执走 .ws-feedback（aria-live 区），不是底部状态栏。
-  await check("document.body.innerText.includes('手写笔记已存入收件箱')", "保存后有明确回执");
 
   // 空画布不允许保存
   await b("click", '[aria-label="手写笔记"]');
