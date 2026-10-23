@@ -53,8 +53,16 @@
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
 > 本机 Rust 输出为 **89 passed、3 ignored**，共 92 条测试声明。声明数不能当成通过数；
-> 不同平台的实际执行结果以各 runner 日志为准。浏览器冒烟需要 agent-browser 与运行中的 Vite，
-> 缺少条件时明确 SKIP，因此 CI 中的静态检查通过不代表浏览器交互已在 CI 执行。
+> 不同平台的实际执行结果以各 runner 日志为准。
+>
+> **浏览器冒烟现在在 CI 上真的跑**（2026-10-23 起）：`workbench.yml` 有独立的
+> `browser-smokes` job，装 agent-browser 与浏览器二进制、起 Vite、逐套跑完 13 套
+> （`tools/ci_run_browser_smokes.sh`）。此前 CI 上它们是整体 SKIP 的——
+> 验收清单里 19 条「已修缺陷 → 证据测试」的登记因此在 CI 上一条断言都不产生。
+> `run_all_smokes.sh` 仍保留给本机用（它缺 agent-browser 时 exit 0，
+> 所以 CI 不能用它）。
+>
+> 仍**不在** CI 上跑的：真机逐页验证（`real_app_pages.mjs`，需要真实 macOS 窗口）。
 
 ## 逐项对照
 
@@ -86,7 +94,7 @@
 | 外部接口（MCP） | ✅ | `mcp_smoke.mjs`（7 项，在门禁里） |
 | 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时；**时间断言按实测分布定预算**，见 `SMOOTHNESS.md`） |
 | 键盘可达（模态） | ✅ | `taste_usability_gate.mjs`：手写/语音面板打开后焦点进入面板、Tab 在面板内循环、Escape 关闭并归还焦点（此前这些面板键盘完全不可达）。原生 `<dialog>` 的「记录」模态由浏览器提供同样能力 |
-| 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 13 套浏览器冒烟（`run_all_smokes.sh`，也在门禁里）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
+| 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 13 套浏览器冒烟（**CI 上也在跑**：`workbench.yml` 的 `browser-smokes` job）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
 | 数据出口（凭据不外流） | ✅ | `dataEgress.test.ts`（5 项，哨兵密钥跑所有导出路径）+ `store.redact.test.ts`（6 项）+ Rust `http.rs` 的 `redact_secrets`（含走真实 401 服务器的路径级测试） |
 | 凭据存放 | ✅ | 桌面端 `<data_root>/credentials/apiKey.credential`（`store/` 的**兄弟目录**，导出天然带不走）；浏览器端 sessionStorage。不进 SQLite、不进任何导出格式 |
 | 文档与实现一致 | ✅ | `check_doc_consistency.py`（在门禁里）：当前状态类文档里的数字与命令要跟得上实际 |
