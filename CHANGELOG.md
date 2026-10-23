@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 修复（不可撤销的操作没有二次确认）：删除订阅是一个「×」图标按钮（挨着「立即抓取」与开关），点一下就永久删除——`db_delete_subscription` 是硬删除，没有回收站；「清空」手写笔迹同样一点即没，而「撤销」只退一笔。对照之下删除知识卡有二次确认、删除产物有 `window.confirm`，唯独这两处漏了。新增共享的二次确认（`deleteConfirm.ts` 纯函数 + `useDeleteConfirm.ts`），删除卡片与删除订阅共用；确认态**带目标 id**（否则「点了 A 再点 B」会立刻删掉 B）；提示说清不可撤销并四秒自动收回。加守卫 `tools/check_destructive_confirm.py` 与反向验证 `tools/destructive_confirm_reverse_test.py`（四种退化逐个塞进去确认守卫报红）。
 - 测试：独立 MCP 冒烟的三处只读 SQLite 查询明确关闭连接，修复 Windows 清理临时库时报 EBUSY；正常 20 项检查及 6 项断言退化检查已重跑。
 
 - 修复（收件箱里写着英文的 "note"）：素材的 `source_type` 决定界面上的来源标签，`META` 表里没有的类型会**原样显示英文内部名**。MCP 的 `add_material` 在没有链接时写 `source_type = "note"`，于是用户通过 Cursor 存进来的素材来源写着英文的 "note"——而应用内闪念写的是 `manual`（显示「随手灵感」），同一个概念用了两种来源值。两条 MCP 路径改写 `manual`，`META` 补登 `note` 作旧数据兼容，并加守卫 `tools/check_source_labels.py`（限定检查来源字段字面量与简单三元赋值、以及已登记的旧别名；实际 MCP 写入由宿主单测与 stdio 冒烟验证）。

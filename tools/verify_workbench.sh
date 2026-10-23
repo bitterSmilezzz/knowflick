@@ -63,6 +63,7 @@ python3 -m unittest discover -s tools -p test_check_tauri_permissions.py
 python3 -m unittest discover -s tools -p test_check_rust_error_messages.py
 python3 -m unittest discover -s tools -p test_check_frontend_error_text.py
 python3 -m unittest discover -s tools -p test_check_user_facing_content.py
+python3 -m unittest discover -s tools -p test_check_destructive_confirm.py
 python3 -m unittest discover -s tools -p test_check_test_assertions.py
 python3 -m unittest discover -s tools -p test_check_source_labels.py
 python3 -m unittest discover -s tools -p test_windows_console.py
@@ -77,6 +78,10 @@ python3 tools/check_rust_error_messages.py
 python3 tools/check_frontend_error_text.py
 # 会**落进用户数据**的文案也要中文（收件箱里直接显示的那些）。
 python3 tools/check_user_facing_content.py
+# 不可撤销的删除都要有二次确认——「一点即删」用户救不回来。
+python3 tools/check_destructive_confirm.py
+# 这个守卫真的抓得住缺确认的写法吗？把实现改坏，确认守卫会报红。
+python3 tools/destructive_confirm_reverse_test.py
 # 测试里的 expect(...) 都得带 matcher——空断言什么都不检查，测试却照样绿。
 python3 tools/check_test_assertions.py
 # 会被写进库的来源类型都要有中文标签——没登记的类型会显示英文内部名。

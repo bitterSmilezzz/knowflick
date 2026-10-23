@@ -9,6 +9,7 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 import { mailMetadata } from "../../domain/mail";
 import { parseInk, type InkDocument } from "../../domain/ink";
 import { userError } from "./userError";
+import { useDeleteConfirm } from "./useDeleteConfirm";
 
 interface Props {
   entry: Entry;
@@ -49,13 +50,6 @@ export function EntryInspector({
   const [category, setCategory] = useState(entry.category);
   const [tags, setTags] = useState(entry.tags.join(", "));
   const [error, setError] = useState("");
-  // 删除是不可撤销的：第一下只是"请再点一次确认"，四秒后自动收回。
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  useEffect(() => {
-    if (!confirmDelete) return;
-    const timer = window.setTimeout(() => setConfirmDelete(false), 4000);
-    return () => window.clearTimeout(timer);
-  }, [confirmDelete]);
   const titleRef = useRef<HTMLInputElement>(null);
   const resetDraft = () => {
     setTitle(entry.title); setText(entry.text); setCategory(entry.category); setTags(entry.tags.join(", "));
@@ -77,6 +71,14 @@ export function EntryInspector({
       setError(userError(e));
     }
   };
+
+  // 删除是不可撤销的：第一下只是"请再点一次确认"，四秒后自动收回。
+  // 与删除订阅共用同一个 hook——同一个行为只留一份实现。
+  const confirm = useDeleteConfirm((id) => {
+    if (id !== entry.id || !onDelete) return;
+    void run(onDelete);
+  });
+  const confirmDelete = confirm.isArmed(entry.id);
 
   const isCard = entry.kind === "card";
   const card = isCard ? (entry.original as KnowledgeCard) : null;
@@ -314,11 +316,7 @@ export function EntryInspector({
               aria-label={confirmDelete ? "确认删除这张卡片" : "删除这张卡片"}
               title={confirmDelete ? "再点一次即删除，无法撤销" : "删除"}
               disabled={busy || editing}
-              onClick={() => {
-                if (!confirmDelete) { setConfirmDelete(true); return; }
-                setConfirmDelete(false);
-                void run(onDelete);
-              }}
+              onClick={() => confirm.request(entry.id)}
             >
               <Icon name="trash" />
               {confirmDelete ? <span className="ws-danger-text">确认</span> : null}

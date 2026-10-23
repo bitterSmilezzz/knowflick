@@ -82,6 +82,18 @@ try {
   await stroke([[90, 150], [200, 170], [300, 150]]);
   await check("document.querySelector('.ink-canvas').getAttribute('aria-label').includes('2 笔')", "撤销后可继续书写");
 
+  // 「清空」把所有笔迹一次抹掉，**不可撤销**（撤销只退一笔）。
+  // 所以第一下只能进入确认态，笔迹必须还在。
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='清空').click();return true})()");
+  await check("document.querySelector('.ink-canvas').getAttribute('aria-label').includes('2 笔')", "清空前要二次确认（笔迹还在）");
+  await check("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='确认')", "清空第一次点击进入确认态");
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='确认').click();return true})()");
+  await check("document.querySelector('.ink-canvas').getAttribute('aria-label').includes('0 笔')", "再点一次才真的清空");
+  // 清空之后重新写两笔——后面的保存步骤要保存的是有内容的笔记。
+  await stroke([[70, 90], [150, 120], [230, 95]]);
+  await stroke([[90, 190], [180, 215], [270, 185]]);
+  await check("document.querySelector('.ink-canvas').getAttribute('aria-label').includes('2 笔')", "清空后可以重新书写");
+
   // 保存 → 落进收件箱，且笔迹写进素材
   await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('保存手写笔记')).click();return true})()");
   await check("!document.querySelector('.ink-canvas')", "保存后关闭手写板");

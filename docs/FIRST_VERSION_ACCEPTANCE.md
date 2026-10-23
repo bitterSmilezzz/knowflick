@@ -48,7 +48,7 @@
 
 | 层 | 在哪跑 | 覆盖什么 |
 | --- | --- | --- |
-| **门禁（每次提交）** | `verify_workbench.sh` | 前端 430 项 + Rust 测试（通过与忽略分开报告）+ 13 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
+| **门禁（每次提交）** | `verify_workbench.sh` | 前端 441 项 + Rust 测试（通过与忽略分开报告）+ 13 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
 | **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
@@ -70,7 +70,7 @@
 | --- | --- | --- |
 | 剪藏 | ✅ | `clipEngine.test.ts`、`clipEngine.crossend.test.ts`、`fixtures.test.ts`（真实 GBK/UTF-8 页面）、`tools/check_clip_parity.py`（三端一致） |
 | 笔记导入（文件） | ✅ | `import_ui_smoke.mjs`（28 项）、`subscription.test.ts`、`fixtures.test.ts`（真实 DOCX/PPTX/feed） |
-| **手写笔记** | ✅ | `notes_ui_smoke.mjs`（30 项，含「保存后阅读区**真的重绘出笔迹**」——按像素判定非透明像素）、`ink.test.ts`（7 项：归一化、撤销、损坏数据不崩） |
+| **手写笔记** | ✅ | `notes_ui_smoke.mjs`（40 项，含「保存后阅读区**真的重绘出笔迹**」——按像素判定非透明像素，以及「清空笔迹要先点两次」）、`ink.test.ts`（7 项：归一化、撤销、损坏数据不崩） |
 | **语音笔记** | **A** | `notes_ui_smoke.mjs`（用 Chrome 合成麦克风跑完「开始 → 计时前进 → 停止 → 可回放 → 可保存」，并用浏览器解码器确认录到的字节**能解出真实时长与采样率**）、`media.rs`（Rust 侧落盘与读回）。**未验**：物理麦克风、系统权限、桌面附件落盘（见下「还没证据的」） |
 | AI 出卡 | **A** | `workspace_ui_smoke.mjs` **拦截 fetch 注入假模型响应**，验证整条链路：素材 → 请求 → 预览 → 确认 → 落库 → 回溯 materialId。仍然**没有真实模型的调用证据**（需要 API key），但链路本身是验过的 |
 | 刷卡 | ✅ | `desktop_interaction_smoke.mjs`（键盘划走）、`review_ui_smoke.mjs`（19 项：评分写回、间隔算出、掌握度前进、重载后仍在） |
@@ -92,6 +92,7 @@
 | 复习算法两端一致（SM-2 / FSRS） | ✅ | `review.test.ts`、Android `FsrsEngineTest.kt`；参数逐行比对 |
 | Anki TSV 导出（两端同格式） | ✅ | 桌面端 `markdownExport.test.ts` 4 项 + Android `CardExportEngineTest.kt` 4 项，两端格式对齐 |
 | 备份无损往返 | ✅ | `systemBackup.test.ts`、`settings_plugins_smoke.mjs` |
+| 不可撤销操作有二次确认 | ✅ | `check_destructive_confirm.py`（界面上的「一点即删」都要经由确认入口）+ `destructive_confirm_reverse_test.py`（四种退化逐个塞进去确认守卫报红）；共享实现 `deleteConfirm.ts` / `useDeleteConfirm.ts` |
 | 外部接口（MCP） | ✅ | `mcp_smoke.mjs`（8 项；有库分支依赖本机库）；`mcp_server_smoke.mjs`（20 项独立临时库检查）由 6 项反向验证调用，验证正常基线通过、退化以 AssertionError 失败。宿主与 stdio 无链接写入均验证为 manual，旧 note 显示兼容由前端测试覆盖 |
 | 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时；**时间断言按实测分布定预算**，见 `SMOOTHNESS.md`） |
 | 键盘可达（模态） | ✅ | `taste_usability_gate.mjs`：手写/语音面板打开后焦点进入面板、Tab 在面板内循环、Escape 关闭并归还焦点（此前这些面板键盘完全不可达）。原生 `<dialog>` 的「记录」模态由浏览器提供同样能力 |

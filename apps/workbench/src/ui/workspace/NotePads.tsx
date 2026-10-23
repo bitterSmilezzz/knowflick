@@ -4,6 +4,8 @@ import { DesktopOnlyHint } from "./DesktopOnlyHint";
 import { addStroke, clearInk, emptyInk, isEmptyInk, normalizePoint, parseInk, undoStroke, INK_COLORS, INK_WIDTHS, type InkColor, type InkDocument, type InkStroke } from "../../domain/ink";
 import { formatDuration } from "../../domain/ink";
 import { userError } from "./userError";
+import { deleteConfirmLabels } from "./deleteConfirm";
+import { useDeleteConfirm } from "./useDeleteConfirm";
 
 /** 手写板：记录笔迹并交给调用方保存。 */
 export function InkPad({ initial, onCancel, onSave }: {
@@ -21,6 +23,10 @@ export function InkPad({ initial, onCancel, onSave }: {
   const [error, setError] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef<InkStroke | null>(null);
+  // 「清空」把所有笔迹一次抹掉，**不可撤销**（撤销只退一笔）。
+  // 与删除卡片、删除订阅共用同一套二次确认。
+  const confirmClear = useDeleteConfirm(() => setDoc(clearInk));
+  const clearLabels = deleteConfirmLabels("手写笔迹", confirmClear.isArmed("ink"));
 
   const draw = () => {
     const canvas = canvasRef.current;
@@ -100,7 +106,16 @@ export function InkPad({ initial, onCancel, onSave }: {
       </div>
       <div className="ink-actions">
         <button type="button" className="ws-bordered" disabled={busy || isEmptyInk(doc)} onClick={() => setDoc(undoStroke)}>撤销</button>
-        <button type="button" className="ws-bordered" disabled={busy || isEmptyInk(doc)} onClick={() => setDoc(clearInk)}>清空</button>
+        <button
+          type="button"
+          className={confirmClear.isArmed("ink") ? "ws-bordered ws-danger" : "ws-bordered"}
+          aria-label={clearLabels.ariaLabel}
+          title={confirmClear.isArmed("ink") ? clearLabels.title : "清空手写笔迹（不可撤销）"}
+          disabled={busy || isEmptyInk(doc)}
+          onClick={() => confirmClear.request("ink")}
+        >
+          {confirmClear.isArmed("ink") ? clearLabels.badge : "清空"}
+        </button>
       </div>
     </div>
     <canvas

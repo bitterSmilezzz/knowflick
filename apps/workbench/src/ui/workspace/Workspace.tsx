@@ -1027,6 +1027,9 @@ export function Workspace() {
   };
 
   const removeSubscription = async (sub: Subscription) => {
+    // 删除订阅是不可撤销的（`db_delete_subscription` 是硬删除，没有回收站）。
+    // 二次确认由订阅页的删除按钮负责（`requestDelete` → `confirm.request`），
+    // 这里是被确认之后才走到的一步。
     if (inShell()) await dbDeleteSubscription(sub.id, dir);
     setSubscriptions((prev) => prev.filter((s) => s.id !== sub.id));
     setNotice(`已删除订阅：${sub.title}`);

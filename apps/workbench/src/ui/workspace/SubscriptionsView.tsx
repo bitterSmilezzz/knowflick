@@ -11,6 +11,8 @@ import {
   type SubscriptionType,
 } from "../../domain/subscription";
 import { userError } from "./userError";
+import { deleteConfirmLabels } from "./deleteConfirm";
+import { useDeleteConfirm } from "./useDeleteConfirm";
 
 interface Props {
   subscriptions: Subscription[];
@@ -25,6 +27,36 @@ interface Props {
 
 const TYPE_ORDER: SubscriptionType[] = ["rss", "github_release", "github_trending", "tech_board"];
 
+/**
+ * 订阅行的删除按钮。
+ *
+ * 单独抽出来是为了让「接线」可测：服务端渲染看不到点击后的状态，
+ * 所以只验静态标记的话，「点了直接删」的退化版本也能通过测试。
+ * 抽成函数后，测试能直接检查它在**确认态**下的样子。
+ */
+export function subscriptionDeleteButton(
+  sub: Subscription,
+  armed: boolean,
+  onRequest: (sub: Subscription) => void,
+  disabled = false,
+) {
+  const labels = deleteConfirmLabels(sub.title, armed);
+  return (
+    <button
+      type="button"
+      className={armed ? "ws-icon-button ws-danger" : "ws-icon-button"}
+      aria-label={labels.ariaLabel}
+      title={armed ? labels.title : "删除订阅（再点一次即删除，无法撤销）"}
+      disabled={disabled}
+      data-subscription-delete={sub.id}
+      onClick={() => onRequest(sub)}
+    >
+      <Icon name="close" size={14} />
+      {labels.badge ? <span className="ws-danger-text">{labels.badge}</span> : null}
+    </button>
+  );
+}
+
 function formatTime(ms: number | null): string {
   if (!ms) return "从未";
   return new Date(ms).toLocaleString("zh-CN", { hour12: false });
@@ -36,6 +68,16 @@ export function SubscriptionsView({ subscriptions, busy, available, onAdd, onTog
   const [target, setTarget] = useState("");
   const [interval, setIntervalMinutes] = useState(String(DEFAULT_INTERVAL_MINUTES));
   const [error, setError] = useState("");
+  // 删除订阅是不可撤销的（`db_delete_subscription` 是硬删除，没有回收站），
+  // 而这个入口是一个小小的「×」按钮，挨着「立即抓取」与开关——很容易误点。
+  // 所以与删除卡片共用同一套二次确认。
+  const confirm = useDeleteConfirm((id) => {
+    const sub = subscriptions.find((item) => item.id === id);
+    if (sub) void onDelete(sub);
+  });
+  const requestDelete = (sub: Subscription) => {
+    confirm.request(sub.id);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,16 +251,7 @@ export function SubscriptionsView({ subscriptions, busy, available, onAdd, onTog
                         >
                           立即抓取
                         </button>
-                        <button
-                          type="button"
-                          className="ws-icon-button"
-                          aria-label={`删除${sub.title}`}
-                          title="删除订阅"
-                          disabled={busy}
-                          onClick={() => void onDelete(sub)}
-                        >
-                          <Icon name="close" size={14} />
-                        </button>
+                        {subscriptionDeleteButton(sub, confirm.isArmed(sub.id), requestDelete, busy)}
                       </div>
                     </div>
                   );
