@@ -7,9 +7,11 @@ mod mail;
 mod media;
 mod store;
 
+use std::io::Read;
 use std::path::PathBuf;
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -200,31 +202,59 @@ fn notify_library_changed(app: &tauri::AppHandle) {
 /// 而 MCP server（`tools/mcp-server.mjs`）是**独立进程**，它直接写 SQLite：
 /// 两个信号都收不到，界面会一直停在旧状态，用户得重启或切页才看得到新卡片。
 ///
-/// 这里给出库文件与配套 json 的修改时间+大小，界面拿它做**轮询比对**，
-/// 一旦发现外部改动就派发已有的 `knowflick:library-changed`——复用现成的刷新路径。
+/// 这里由界面做**轮询比对**，一旦发现外部改动就派发已有的
+/// `knowflick:library-changed`——复用现成的刷新路径。不引入文件监听依赖：
+/// 轮询 2 秒一次的开销远小于多一个 crate 与它的跨平台坑。
 ///
-/// 不引入文件监听依赖：轮询 2 秒一次的开销远小于多一个 crate 与它的跨平台坑，
-/// 而 SQLite 的写入本来也是低频的。
+/// 签名取**内容指纹**，不是修改时间：Linux 上 inode 时间戳取自 coarse clock，
+/// 粒度是 1/HZ（HZ=250 时约 4ms），而一次 SQLite 写入（含 WAL 回检）常常只要
+/// 2~3ms——两次不同的写入会得到**同一个** mtime，签名不变，外部改动就被漏掉。
+/// 实测：`signature_changes_when_the_database_is_touched` 在 ubuntu runner 上偶发
+/// 失败，`before`/`after` 的 mtime 与大小逐字节相同（那个测试全程只跑了 2ms）；
+/// macOS 的 APFS 时间戳是 ns 精度，本机复现不出来，所以别用「本地是绿的」判断。
+///
+/// 代价是每次轮询都要把库读一遍：库以文本为主，几十 MB 哈希一次约几十毫秒，
+/// 相对 2 秒的间隔可以接受。命令走 `spawn_blocking`，不占 UI 线程。
 #[tauri::command]
-fn db_library_signature(dir: Option<String>) -> Result<String, String> {
+async fn db_library_signature(dir: Option<String>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || library_signature(dir))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// 签名的实际算法。单独抽出来，测试才能直接调（命令版是 async 的）。
+fn library_signature(dir: Option<String>) -> Result<String, String> {
     let path = library_dir(dir);
     let mut parts: Vec<String> = Vec::new();
     for name in ["knowflick.db", "cards.json", "settings.json"] {
         let file = path.join(name);
-        match std::fs::metadata(&file) {
-            Ok(meta) => {
-                let modified = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_millis())
-                    .unwrap_or(0);
-                parts.push(format!("{}:{}:{}", name, modified, meta.len()));
-            }
+        match content_fingerprint(&file) {
+            Ok(fingerprint) => parts.push(format!("{}:{}", name, fingerprint)),
             Err(_) => parts.push(format!("{}:-", name)),
         }
     }
     Ok(parts.join("|"))
+}
+
+/// 内容指纹：SHA-256 的前 8 字节。128 位里取一半，碰撞概率可以忽略，
+/// 签名也还能保持可读（完整哈希太长，排查时看不出任何信息）。
+///
+/// 分块流式读，不一次性读进内存——库可能有几十上百 MB。
+fn content_fingerprint(file: &std::path::Path) -> std::io::Result<String> {
+    let mut handle = std::fs::File::open(file)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let read = handle.read(&mut buf)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buf[..read]);
+    }
+    let digest = hasher.finalize();
+    let mut head = [0u8; 8];
+    head.copy_from_slice(&digest[..8]);
+    Ok(format!("{:016x}", u64::from_be_bytes(head)))
 }
 
 #[tauri::command]
@@ -1111,7 +1141,7 @@ mod library_signature_tests {
             let conn = db::open_db(&db_path).unwrap();
             drop(conn);
         }
-        let before = db_library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        let before = library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
         assert!(before.contains("knowflick.db"), "签名里应含库文件名：{before}");
 
         // 外部写一笔（模拟 MCP server）
@@ -1123,7 +1153,7 @@ mod library_signature_tests {
             ).unwrap();
             drop(conn);
         }
-        let after = db_library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        let after = library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
         assert_ne!(before, after, "库被外部写入后签名必须变化");
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1133,8 +1163,48 @@ mod library_signature_tests {
     fn signature_works_on_an_empty_directory() {
         let dir = std::env::temp_dir().join(format!("kf-sig-empty-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let sig = db_library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        let sig = library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
         assert!(sig.contains("knowflick.db"), "{sig}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 没改库时签名必须稳定——否则界面会一直白刷新。
+    #[test]
+    fn signature_is_stable_when_nothing_changed() {
+        let dir = std::env::temp_dir().join(format!("kf-sig-stable-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("knowflick.db");
+        {
+            let conn = db::open_db(&db_path).unwrap();
+            drop(conn);
+        }
+        let first = library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        let second = library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        assert_eq!(first, second, "库没变，签名必须稳定：不然界面会一直白刷新");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 签名跟的是**内容**，不是 mtime。
+    ///
+    /// 这条把设计钉死：把文件的 mtime 拨到别处，签名必须一个字节都不变。
+    /// 退回 mtime 实现的那个版本会立刻变红——CI 上真的红过（见实现处的注释）。
+    #[test]
+    fn signature_ignores_mtime() {
+        let dir = std::env::temp_dir().join(format!("kf-sig-mtime-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("knowflick.db");
+        std::fs::write(&file, b"some content").unwrap();
+        let before = library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+
+        let handle = std::fs::OpenOptions::new().write(true).open(&file).unwrap();
+        let an_hour_from_now = std::time::SystemTime::now() + std::time::Duration::from_secs(60 * 60);
+        handle
+            .set_times(std::fs::FileTimes::new().set_modified(an_hour_from_now))
+            .unwrap();
+        drop(handle);
+
+        let after = library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
+        assert_eq!(before, after, "签名不该受 mtime 影响——它跟的是内容");
         std::fs::remove_dir_all(&dir).ok();
     }
 }
