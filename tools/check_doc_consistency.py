@@ -20,11 +20,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows_console import emit  # noqa: E402
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -89,18 +91,6 @@ def count_smoke_suites() -> int:
     return len(re.findall(r"^\s+[a-z_]+$", match.group(1), re.M))
 
 
-def emit(text: str) -> None:
-    """打印一段可能含中文的文本。
-
-    Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError
-    （实测在 Windows CI 上把门禁打红了）。所以按 UTF-8 写字节，绕开编码器。
-    """
-    try:
-        print(text)
-    except UnicodeEncodeError:
-        import sys
-        sys.stdout.buffer.write(text.encode("utf-8", errors="replace") + b"\n")
-        sys.stdout.flush()
 
 
 def gate_contents() -> str:

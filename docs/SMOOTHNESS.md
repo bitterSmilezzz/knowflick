@@ -69,6 +69,22 @@
 > 功能实现了、错误也报出来了，但报的是用户看不懂的英文——
 > 从用户角度看，这跟「没有提示」没区别。
 
+**紧接着又踩了两次同一个坑**：新检查脚本 `check_rust_error_messages.py`
+在 Windows CI 上直接打红——`UnicodeEncodeError`，跟上一轮
+`check_tauri_permissions.py` 一模一样。
+
+根因很清楚：**「每个脚本自己写一份 print 防护」**。写第一份时觉得挺好，
+写第二份时就忘了。**新脚本总会忘。**
+
+所以抽成共享模块 `tools/windows_console.py`（`emit()`），
+三个检查脚本都从它导入。再加一条回归 `tools/test_windows_console.py`：
+**所有会打印中文的检查脚本，都必须在 cp1252 控制台下跑通**——
+这条测试直接用 `io.TextIOWrapper(encoding="cp1252")` 模拟 Windows，
+本机就能验，不用等 CI。
+
+> 教训：**同一个坑踩第二次，就该把它变成结构，而不是再补一次。**
+> 「每个脚本自己防护」是结构缺陷，不是疏漏。
+
 ### 整个邮箱功能在桌面端是坏的——命令没进 build.rs 的 AppManifest
 
 这一轮的**最大发现**，而且是**用户完全无法自己绕开**的那种。

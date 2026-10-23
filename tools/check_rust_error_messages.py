@@ -20,6 +20,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows_console import emit  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "apps/workbench/src-tauri/src"
 
@@ -65,12 +68,12 @@ def main() -> int:
                         )
 
     if problems:
-        print("面向用户的错误消息里混着英文：")
+        emit("面向用户的错误消息里混着英文：")
         for p in problems:
-            print(f"  - {p}")
+            emit(f"  - {p}")
         return 1
 
-    print("Rust 侧错误消息全中文：没有英文漏网")
+    emit("Rust 侧错误消息全中文：没有英文漏网")
     return 0
 
 

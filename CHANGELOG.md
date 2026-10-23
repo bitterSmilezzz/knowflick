@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 修复（同一个 cp1252 坑踩了两次）：新加的检查脚本在 Windows CI 上又报 `UnicodeEncodeError`——根因是「每个脚本自己写一份 print 防护」，新脚本总会忘。抽成共享模块 `tools/windows_console.py`（`emit()`），三个检查脚本统一从它导入；再加一条回归 `tools/test_windows_console.py`，**所有会打印中文的检查脚本都必须在 cp1252 控制台下跑通**（本机用 `io.TextIOWrapper(encoding="cp1252")` 模拟，不用等 CI）。
 - 修复（28 条英文错误直接显示给用户）：邮件模块里 24 条校验错误是英文的（`Invalid account email`、`Enter the password again when changing server or username`、`Mail server rejected the request` 等），前端的 `errorText()` 只做密钥脱敏、**不翻译**，于是英文原样显示——用户既看不懂也不知道下一步该做什么。全部改成中文并说清怎么办（不只是翻译字面）；另有 `http.rs` 3 条、`media.rs` 1 条，以及一条 `format!("Invalid account {field}")`（字段名本身也是英文）一并改掉。加守卫 `tools/check_rust_error_messages.py`（扫 `Err`/`anyhow!`/`bail!`/`format!` 里不含中文的消息），已进门禁与 CI，已反向验证。
 - 修复（Windows CI 上新检查直接打红）：`check_tauri_permissions.py` 直接 print 中文，Windows 控制台默认 cp1252 → `UnicodeEncodeError` → 门禁红。改成按 UTF-8 写字节（与 `check_doc_consistency.py` 同一套做法），并在 cp1252 控制台下实测通过。
 - 修复（整个邮箱功能在桌面端是坏的）：Tauri v2 的自定义命令要在三处对上号——`invoke_handler` 注册、`build.rs` 的 `AppManifest` 声明（决定生成哪些权限文件）、`capabilities/*.json` 授权。`build.rs` 只列了 46 个而注册了 59 个，差的 13 个正好是 **9 个 `mail_*`（整个邮箱功能）** + 语音附件读写 + 删产物 + 新加的 `db_library_signature`。没进 build.rs → 没有权限文件 → capability 里授权不了 → 前端调用被 ACL 拒绝，界面上冒英文的「! Command mail_list_accounts not allowed by ACL」。**浏览器冒烟测不到**（浏览器模式不走 Tauri），CI 与打包全绿，只有真机上用到邮箱才炸。已补齐三处，并加守卫 `tools/check_tauri_permissions.py` 静态核对一致性（已进门禁与 desktop CI），已反向验证。

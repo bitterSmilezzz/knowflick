@@ -36,6 +36,8 @@ on:
       - 'tools/test_desktop_ci_triggers.py'
       - 'tools/check_tauri_permissions.py'
       - 'tools/check_rust_error_messages.py'
+      - 'tools/test_windows_console.py'
+      - 'tools/windows_console.py'
       - 'tools/test_check_rust_error_messages.py'
       - 'tools/test_check_tauri_permissions.py'
       - 'tools/workflow_paths.py'
