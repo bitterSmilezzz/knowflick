@@ -53,11 +53,14 @@ python3 -m unittest discover -s tools -p test_check_doc_consistency.py
 python3 -m unittest discover -s tools -p test_workflow_paths.py
 python3 -m unittest discover -s tools -p test_desktop_ci_triggers.py
 python3 -m unittest discover -s tools -p test_check_tauri_permissions.py
+python3 -m unittest discover -s tools -p test_check_rust_error_messages.py
 python3 tools/check_doc_consistency.py
 # Tauri 命令 / build.rs 声明 / capability 授权必须三处一致。
 # 少一处 → 前端调用被 ACL 拒绝（界面上冒英文的「not allowed by ACL」）。
 # 浏览器冒烟测不到这个：浏览器模式根本不走 Tauri。
 python3 tools/check_tauri_permissions.py
+# 面向用户的错误消息必须是中文——英文的界面等于让用户卡住。
+python3 tools/check_rust_error_messages.py
 
 # 全部浏览器冒烟：13 套界面级回归。
 # 它们要真实浏览器与运行中的 Vite，CI 环境两者都没有（脚本会 SKIP）；

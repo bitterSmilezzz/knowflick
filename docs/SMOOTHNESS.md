@@ -21,6 +21,54 @@
 > 顺带一条：MCP server 文档里写的「Tauri 主窗口收到**文件监听**后自动刷新」
 > ——那套监听**从来就不存在**（见下一节）。文档比实现乐观，是会误导人的。
 
+### 28 条英文错误直接显示给用户——界面等于没有提示
+
+上一轮修好了「邮箱功能被 ACL 拒绝」，这轮顺手查「修好之后用户会看到什么」，
+发现邮件模块里 **24 条**校验错误是**英文**的：
+
+- `Invalid account email`（邮箱地址格式不对）
+- `Enter the password again when changing server or username`（换服务器要重输密码）
+- `Mail server rejected the request; check the credentials and folder`
+- `Unsupported media type`
+- `Host must be a DNS name or IP address without scheme or port`
+- ……
+
+前端的 `errorText()` 只做**密钥脱敏**，**不翻译**——于是英文原样显示。
+
+一个中文软件里，用户点「测试连接」后看到一句英文，
+**既看不懂也不知道下一步该做什么**——只能卡住或反复试。
+「界面丝滑」不只是按钮能点，还包括**出错时给得出路**。
+
+全部改成中文，而且不只是翻译字面，要**说清怎么办**：
+
+| 原来 | 现在 |
+| --- | --- |
+| `Invalid account email` | 邮箱地址格式不对，请检查是否写全了 |
+| `Invalid account port` | 端口不对：请填 1 到 65535 之间的数字（IMAP 通常是 993） |
+| `Host must be a DNS name or IP address...` | 服务器地址要填域名或 IP，不能带 https:// 这样的前缀，也不能带端口（端口另有单独一栏） |
+| `Mail server rejected the request...` | 邮件服务器拒绝了这次请求：请检查账号密码与文件夹名（如 INBOX） |
+| `Mail session time limit exceeded` | 这次连接用的时间太长了，已断开；可以调大同步间隔再试 |
+
+另外 `http.rs` 3 条、`media.rs` 1 条也翻了。
+
+还有一条是 `format!` 拼出来的：`format!("Invalid account {field}")`——
+`field` 本身也是英文的（name/email/host）。改成带中文标签的元组
+（`("name", "账号名称", …)`），消息变成
+「账号名称不能为空，且不能超过 200 个字符，也不能含换行等控制字符」。
+
+**守卫**（`tools/check_rust_error_messages.py`）：扫 `Err("…")` / `anyhow!` /
+`bail!` / `format!` 里**不含中文**的消息。判据是「有没有中文」而不是
+「有没有英文」——`UUID` / `IMAP` / `MIME` 出现在中文句子里没问题。
+
+反向验证：把一条改回英文 → 守卫立刻报出那一行。
+
+顺带修了两处**测试断言英文**的地方——它们锁的是实现细节，
+现在改成断言中文（「重新输入密码」「邮件服务器拒绝了这次请求」）。
+
+> 教训：**错误消息是界面的最后一公里。**
+> 功能实现了、错误也报出来了，但报的是用户看不懂的英文——
+> 从用户角度看，这跟「没有提示」没区别。
+
 ### 整个邮箱功能在桌面端是坏的——命令没进 build.rs 的 AppManifest
 
 这一轮的**最大发现**，而且是**用户完全无法自己绕开**的那种。

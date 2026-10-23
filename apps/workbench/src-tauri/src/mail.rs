@@ -146,7 +146,7 @@ fn network_error(_: std::io::Error) -> String {
 fn valid_id(id: &str) -> MailResult<()> {
     match uuid::Uuid::parse_str(id) {
         Ok(parsed) if parsed.to_string() == id => Ok(()),
-        _ => Err("Account id must be a canonical UUID".into()),
+        _ => Err("账号 id 必须是标准 UUID（形如 6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e33）".into()),
     }
 }
 
@@ -160,26 +160,26 @@ fn validate(mut config: MailAccountConfig) -> MailResult<MailAccountConfig> {
     if config.folder.is_empty() {
         config.folder = default_folder();
     }
-    let fields: [(&str, &str, usize); 5] = [
-        ("name", &config.name, 200),
-        ("email", &config.email, 320),
-        ("host", &config.host, 253),
-        ("username", &config.username, 320),
-        ("folder", &config.folder, MAX_FOLDER_LEN),
+    let fields: [(&str, &str, &str, usize); 5] = [
+        ("name", "账号名称", &config.name, 200),
+        ("email", "邮箱地址", &config.email, 320),
+        ("host", "服务器地址", &config.host, 253),
+        ("username", "用户名", &config.username, 320),
+        ("folder", "文件夹名", &config.folder, MAX_FOLDER_LEN),
     ];
-    for (field, value, max) in fields {
+    for (_field, label, value, max) in fields {
         if value.is_empty() || value.len() > max || value.chars().any(char::is_control) {
-            return Err(format!("Invalid account {field}"));
+            return Err(format!("{label}不能为空，且不能超过 {max} 个字符，也不能含换行等控制字符"));
         }
     }
     if !config.email.contains('@') {
-        return Err("Invalid account email".into());
+        return Err("邮箱地址格式不对，请检查是否写全了".into());
     }
     if config.port == 0 {
-        return Err("Invalid account port".into());
+        return Err("端口不对：请填 1 到 65535 之间的数字（IMAP 通常是 993）".into());
     }
     if !(1..=200).contains(&config.sync_limit) {
-        return Err("Sync limit must be between 1 and 200".into());
+        return Err("每次同步的邮件数要在 1 到 200 之间".into());
     }
     if config.sync_interval_minutes != 0 && !(5..=1440).contains(&config.sync_interval_minutes) {
         return Err("自动同步间隔须为 5 至 1440 分钟，或设为 0 关闭".into());
@@ -190,7 +190,7 @@ fn validate(mut config: MailAccountConfig) -> MailResult<MailAccountConfig> {
             .chars()
             .any(|ch| ch.is_whitespace() || "/\\:@[]\"'<>".contains(ch))
     {
-        return Err("Host must be a DNS name or IP address without scheme or port".into());
+        return Err("服务器地址要填域名或 IP，不能带 https:// 这样的前缀，也不能带端口（端口另有单独一栏）".into());
     }
     Ok(config)
 }
@@ -202,21 +202,24 @@ fn credential_path(dir: &Path, id: &str) -> MailResult<PathBuf> {
     let root = dir.join("credentials");
     if let Ok(meta) = fs::symlink_metadata(&root) {
         if !meta.is_dir() || meta.file_type().is_symlink() {
-            return Err("Invalid credentials directory".into());
+            return Err("凭据目录不可用，请检查它的路径与权限".into());
         }
     }
     let path = root.join(format!("mail-{id}"));
     if let Ok(meta) = fs::symlink_metadata(&path) {
         if !meta.is_file() || meta.file_type().is_symlink() {
-            return Err("Invalid credentials file".into());
+            return Err("凭据文件不可用，请检查它的路径与权限".into());
         }
     }
     Ok(path)
 }
 
+/// 换服务器或用户名时要重新输入密码——这句以前是英文的。
+const PASSWORD_REENTRY_HINT: &str = "更换服务器或用户名时需要重新输入密码";
+
 fn validate_password(password: &str) -> MailResult<()> {
     if password.is_empty() || password.len() > 4096 || password.chars().any(char::is_control) {
-        Err("A password of 1..4096 bytes without control characters is required".into())
+        Err("请填写 1 到 4096 字节的密码，且不能包含换行等控制字符".into())
     } else {
         Ok(())
     }
@@ -235,7 +238,7 @@ fn read_password(dir: &Path, id: &str) -> MailResult<String> {
             .permissions()
             .mode();
         if mode & 0o077 != 0 {
-            return Err("Mail credentials must be readable by the owner only".into());
+            return Err("凭据文件只能由本人读取（权限太宽了），请把它改成仅本人可读".into());
         }
     }
     let mut password = String::new();
@@ -446,7 +449,7 @@ pub fn save_account(
             || previous.port != config.port
             || previous.username != config.username
         {
-            return Err("Enter the password again when changing server or username".into());
+            return Err("更换服务器或用户名时需要重新输入密码".into());
         }
         read_password(dir, &config.id)?;
     } else {
@@ -500,7 +503,7 @@ pub fn remove_account(dir: &Path, id: &str) -> MailResult<()> {
     match fs::remove_file(path) {
         Ok(()) => {}
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-        Err(_) => return Err("Cannot remove mail credentials".into()),
+        Err(_) => return Err("凭据文件删不掉，请检查它的权限".into()),
     }
     conn.execute("DELETE FROM mail_accounts WHERE id=?1", [id])
         .map_err(sql_error)?;
@@ -531,7 +534,7 @@ fn test_using(
             || saved.config.port != config.port
             || saved.config.username != config.username
         {
-            return Err("Enter the password again when changing server or username".into());
+            return Err(PASSWORD_REENTRY_HINT.into());
         }
         read_password(dir, &config.id)?
     } else {
@@ -906,14 +909,14 @@ impl Imap {
         };
         let greeting = client.line()?;
         if !greeting.to_ascii_uppercase().starts_with("* OK") {
-            return Err("Mail server rejected the connection".into());
+            return Err("邮件服务器拒绝了连接：请检查服务器地址、端口与网络".into());
         }
         Ok(client)
     }
 
     fn check_deadline(&self) -> MailResult<()> {
         if Instant::now() >= self.deadline {
-            Err("Mail session time limit exceeded".into())
+            Err("这次连接用的时间太长了，已断开；可以调大同步间隔再试".into())
         } else {
             Ok(())
         }
@@ -926,7 +929,7 @@ impl Imap {
             self.check_deadline()?;
             let buffer = self.io.fill_buf().map_err(network_error)?;
             if buffer.is_empty() {
-                return Err("Mail server closed the connection".into());
+                return Err("邮件服务器中途断开了连接，请重试".into());
             }
             let take = buffer
                 .iter()
@@ -935,7 +938,7 @@ impl Imap {
                 .unwrap_or(buffer.len());
             let complete = buffer[take - 1] == b'\n';
             if out.len() + take > MAX_LINE {
-                return Err("Mail response line exceeds the size limit".into());
+                return Err("邮件服务器返回的单行太长，已放弃（内容异常）".into());
             }
             out.extend_from_slice(&buffer[..take]);
             self.io.consume(take);
@@ -964,7 +967,7 @@ impl Imap {
             let line = self.line()?;
             total += line.len();
             if total > MAX_RESPONSE {
-                return Err("Mail response exceeds the size limit".into());
+                return Err("邮件服务器返回的内容太长，已放弃（内容异常）".into());
             }
             if let Some(status) = line.strip_prefix(&format!("{tag} ")) {
                 if status
@@ -974,10 +977,10 @@ impl Imap {
                 {
                     return Ok(response);
                 }
-                return Err("Mail server rejected the request; check the credentials and folder".into());
+                return Err("邮件服务器拒绝了这次请求：请检查账号密码与文件夹名（如 INBOX）".into());
             }
             if line.to_ascii_uppercase().starts_with("* BYE") {
-                return Err("Mail server closed the session".into());
+                return Err("邮件服务器关闭了会话，请重试".into());
             }
             let trimmed = line.trim_end();
             if trimmed.ends_with('}') {
@@ -990,7 +993,7 @@ impl Imap {
                         || total + length > MAX_RESPONSE
                         || !response.literals.is_empty()
                     {
-                        return Err("Mail message or literal exceeds the size limit".into());
+                        return Err("这封邮件（或它的附件）太大，已跳过".into());
                     }
                     let mut body = vec![0u8; length];
                     for chunk in body.chunks_mut(8192) {
@@ -1003,7 +1006,7 @@ impl Imap {
             }
             response.lines.push(line);
         }
-        Err("Too many mail response lines".into())
+        Err("邮件服务器返回的行数过多，已放弃（内容异常）".into())
     }
 
     /// Logs in and opens the folder read-only. Returns UIDVALIDITY and the
@@ -1075,7 +1078,7 @@ impl Imap {
             }
         }
         if !found {
-            return Err("Mail server omitted the search response".into());
+            return Err("邮件服务器的搜索响应里没有结果字段".into());
         }
         let list: Vec<u32> = uids.into_iter().collect();
         Ok(list)
@@ -1113,12 +1116,12 @@ impl Imap {
             .ok_or("Mail server omitted the message body".to_string())?;
         let upper = header.to_ascii_uppercase();
         if !upper.contains("BODY[") {
-            return Err("Mail server returned an unexpected body section".into());
+            return Err("邮件服务器返回了预期之外的内容段".into());
         }
         let all = response.lines.join(" ").to_ascii_uppercase().replace(['(', ')'], " ");
         let tokens: Vec<&str> = all.split_whitespace().collect();
         if token_number(&tokens, "UID") != Some(uid as u64) {
-            return Err("Mail server returned an unexpected message UID".into());
+            return Err("邮件服务器返回了预期之外的邮件编号".into());
         }
         Ok(Some(body))
     }
@@ -1153,7 +1156,7 @@ fn header(mail: &ParsedMail<'_>, name: &str) -> String {
 /// converted to text locally; no remote resource is ever fetched or executed.
 fn body_text(mail: &ParsedMail<'_>, depth: usize, attachments: &mut Vec<String>) -> MailResult<String> {
     if depth > 32 {
-        return Err("Mail MIME nesting exceeds the limit".into());
+        return Err("这封邮件的 MIME 嵌套层数过多，已跳过".into());
     }
     let disposition = mail.get_content_disposition();
     let filename = disposition
@@ -1827,7 +1830,7 @@ Content-Transfer-Encoding: base64\r\n\r\n!!!not base64!!!\r\n"
         let error = test_using(&dir, config(&id, server.port), "wrong-secret", connect_plaintext)
             .expect_err("must fail");
         assert!(!error.contains("wrong-secret"));
-        assert!(error.contains("Mail server rejected"), "unexpected error: {error}");
+        assert!(error.contains("邮件服务器拒绝了这次请求"), "unexpected error: {error}");
     }
 
     #[test]
@@ -1978,7 +1981,8 @@ AAAA\r\n\
         let mut moved = config(&id, 143);
         moved.name = "Renamed".into();
         let error = save_account(&dir, moved, "").expect_err("must fail");
-        assert!(error.contains("password"), "unexpected error: {error}");
+        // 断言的是**中文**消息——界面上的错误是给用户看的，必须是中文。
+        assert!(error.contains("重新输入密码"), "unexpected error: {error}");
     }
 
     #[test]
@@ -2237,3 +2241,7 @@ AAAA\r\n\
         assert_eq!(material_count(&dir), 3);
     }
 }
+
+#[cfg(test)]
+#[path = "mail_error_tests.rs"]
+mod mail_error_tests;

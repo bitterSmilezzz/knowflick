@@ -419,7 +419,7 @@ mod tests {
                         Ok((stream, _)) => break stream,
                         Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
                             if Instant::now() >= deadline {
-                                return Err("Local service did not receive expected request".into());
+                                return Err("本地服务没有收到预期的请求".into());
                             }
                             std::thread::sleep(Duration::from_millis(10));
                         }
@@ -433,9 +433,9 @@ mod tests {
                 loop {
                     let mut buffer = [0; 2048];
                     let size = stream.read(&mut buffer).map_err(|e| e.to_string())?;
-                    if size == 0 { return Err("Incomplete HTTP request".into()); }
+                    if size == 0 { return Err("HTTP 请求不完整".into()); }
                     request.extend_from_slice(&buffer[..size]);
-                    if request.len() > 64 * 1024 { return Err("Oversized HTTP request".into()); }
+                    if request.len() > 64 * 1024 { return Err("HTTP 请求过大".into()); }
                     if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
                         let headers = String::from_utf8_lossy(&request[..end]);
                         let length = headers.lines().find_map(|line| {

@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 修复（28 条英文错误直接显示给用户）：邮件模块里 24 条校验错误是英文的（`Invalid account email`、`Enter the password again when changing server or username`、`Mail server rejected the request` 等），前端的 `errorText()` 只做密钥脱敏、**不翻译**，于是英文原样显示——用户既看不懂也不知道下一步该做什么。全部改成中文并说清怎么办（不只是翻译字面）；另有 `http.rs` 3 条、`media.rs` 1 条，以及一条 `format!("Invalid account {field}")`（字段名本身也是英文）一并改掉。加守卫 `tools/check_rust_error_messages.py`（扫 `Err`/`anyhow!`/`bail!`/`format!` 里不含中文的消息），已进门禁与 CI，已反向验证。
 - 修复（Windows CI 上新检查直接打红）：`check_tauri_permissions.py` 直接 print 中文，Windows 控制台默认 cp1252 → `UnicodeEncodeError` → 门禁红。改成按 UTF-8 写字节（与 `check_doc_consistency.py` 同一套做法），并在 cp1252 控制台下实测通过。
 - 修复（整个邮箱功能在桌面端是坏的）：Tauri v2 的自定义命令要在三处对上号——`invoke_handler` 注册、`build.rs` 的 `AppManifest` 声明（决定生成哪些权限文件）、`capabilities/*.json` 授权。`build.rs` 只列了 46 个而注册了 59 个，差的 13 个正好是 **9 个 `mail_*`（整个邮箱功能）** + 语音附件读写 + 删产物 + 新加的 `db_library_signature`。没进 build.rs → 没有权限文件 → capability 里授权不了 → 前端调用被 ACL 拒绝，界面上冒英文的「! Command mail_list_accounts not allowed by ACL」。**浏览器冒烟测不到**（浏览器模式不走 Tauri），CI 与打包全绿，只有真机上用到邮箱才炸。已补齐三处，并加守卫 `tools/check_tauri_permissions.py` 静态核对一致性（已进门禁与 desktop CI），已反向验证。
 - 修复（真机验证工具从来没跑起来过）：`real_app_pages.mjs` 的锁屏判据是 `raw.includes("ConsoleLocked")`——只看**键名**存在，而 `IOConsoleLocked` 键一直都在（值为 false 时表示没锁），于是**任何时候**都判成「锁屏」→ 永远 SKIP 且理由还是错的。改为按**值**判断后，真机逐页验证第一次真正跑起来（5 项全过）。另外「窗口不在屏幕」的真正原因是它不在当前 Space，要 `AXRaise` 才拽得过来。

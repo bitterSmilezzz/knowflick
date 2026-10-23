@@ -16,6 +16,8 @@ on:
       # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
       - 'tools/check_doc_consistency.py'
       - 'tools/check_tauri_permissions.py'
+      - 'tools/check_rust_error_messages.py'
+      - 'tools/test_check_rust_error_messages.py'
       - 'tools/test_check_tauri_permissions.py'
       - 'tools/check_loopback_parity.mjs'
       - 'tools/test_check_doc_consistency.py'

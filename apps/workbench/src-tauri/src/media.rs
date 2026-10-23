@@ -41,7 +41,7 @@ fn extension(kind: &str, mime: &str) -> Result<&'static str, String> {
         ("image", "image/webp") => Ok("webp"),
         ("image", "image/gif") => Ok("gif"),
         ("image", "image/heic") => Ok("heic"),
-        _ => Err("Unsupported media type".into()),
+        _ => Err("不支持的附件类型".into()),
     }
 }
 

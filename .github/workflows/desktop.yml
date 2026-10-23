@@ -35,6 +35,8 @@ on:
       - 'tools/ci_gradle_official_source.sh'
       - 'tools/test_desktop_ci_triggers.py'
       - 'tools/check_tauri_permissions.py'
+      - 'tools/check_rust_error_messages.py'
+      - 'tools/test_check_rust_error_messages.py'
       - 'tools/test_check_tauri_permissions.py'
       - 'tools/workflow_paths.py'
       - '.github/workflows/desktop.yml'
@@ -101,6 +103,10 @@ jobs:
       - name: 校验 Tauri 命令与权限一致
         shell: bash
         run: python3 tools/check_tauri_permissions.py
+
+      - name: 校验面向用户的错误消息是中文
+        shell: bash
+        run: python3 tools/check_rust_error_messages.py
 
       - name: 配置 JDK 17（Temurin —— 也是打包用的厂商，见 gradle.properties 的说明）
         uses: actions/setup-java@v6
