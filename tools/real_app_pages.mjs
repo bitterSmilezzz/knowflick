@@ -12,7 +12,7 @@
  *
  * 需要：cliclick（brew install cliclick）、已安装并运行的 KnowFlick.app。
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -48,6 +48,26 @@ async function contentRegionHash(file) {
     hash = (hash * 31 + buf[i]) >>> 0;
   }
   return hash;
+}
+
+/**
+ * 屏幕是不是锁着。
+ *
+ * 这条必须有：锁屏时 macOS 的辅助功能层**读不到任何窗口**
+ * （`System Events → position of front window` 报 -1719 无效的索引），
+ * `screencapture -R` 也报 "could not create image from rect"。
+ * 但 `cliclick` 的点击**仍会投递**给应用——于是工具会「点开了页面」，
+ * 截到的却是**锁屏界面**（带时钟，每秒都在变），像素比对永远判定「变了」。
+ * 那是**假通过**，而且是最坏的一种：看起来有证据，其实什么都没验。
+ *
+ * 判据用 `CGSessionScreenIsLocked`（ioreg 的 Root 节点里有这个键就是锁着）。
+ */
+function screenIsLocked() {
+  const raw = execFileSync("ioreg", ["-n", "Root", "-d", "1", "-a"], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return raw.includes("CGSSessionScreenIsLocked") || raw.includes("ConsoleLocked");
 }
 
 /**
@@ -95,6 +115,12 @@ try {
 
   await osascript('tell application "KnowFlick" to activate');
   await sleep(1500);
+  // 锁屏时必须停下：截到的是锁屏界面（带时钟，每秒都变），像素比对会**永远**
+  // 判定「页面变了」——那不是证据，是假通过。锁屏就如实说锁屏。
+  if (screenIsLocked()) {
+    console.log("SKIP 屏幕处于锁屏状态——真机像素比对会截到锁屏界面（时钟一直在变）从而给出假通过；请解锁后重跑");
+    process.exit(0);
+  }
   const origin = await windowOrigin();
   if (!origin) {
     console.log("SKIP 应用没有打开的窗口（进程可能在托盘里）——先从菜单栏或 Dock 打开主窗口");
