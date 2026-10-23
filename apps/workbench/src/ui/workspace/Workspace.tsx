@@ -306,7 +306,12 @@ export function Workspace() {
     let cancelled = false;
     let last = "";
     const check = async () => {
-      if (cancelled || document.hidden) return;
+      // **不要因为窗口失焦就跳过。**
+      // `document.hidden` 在窗口**失焦**时就是 true（不只是最小化时）——
+      // 于是「用户切到别的窗口看看别的东西」期间，界面就一直停在旧状态，
+      // 切回来也不刷新（除非正好赶上一次轮询）。这跟「外部改了库要看得见」矛盾。
+      // 这里的检查只是一次 stat，很便宜；刷新本身由 load() 去合并。
+      if (cancelled) return;
       try {
         const signature = await dbLibrarySignature(dir);
         if (cancelled) return;

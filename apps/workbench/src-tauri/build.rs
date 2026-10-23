@@ -47,6 +47,23 @@ fn main() {
             "local_embed_warm_up",
             "local_embed",
             "db_list_stale_embedding_card_ids",
+            // 下面这些命令之前**没列进来** → tauri-build 不会为它们生成权限文件
+            // → capability 里写 `allow-...` 会直接让构建失败
+            // → 前端调用会被 ACL 拒绝，界面上冒「Command xxx not allowed by ACL」。
+            // 整个邮箱功能、语音附件的存取、产物删除都栽在这上面。
+            "db_delete_artifact",
+            "db_library_signature",
+            "mail_list_accounts",
+            "mail_save_account",
+            "mail_test_account",
+            "mail_remove_account",
+            "mail_sync_account",
+            "mail_sync_history",
+            "mail_list_rejected",
+            "mail_retry_rejected",
+            "mail_sync_due_accounts",
+            "read_media",
+            "save_media",
         ]),
     );
     tauri_build::try_build(attributes).expect("failed to run tauri-build");

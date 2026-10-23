@@ -51,6 +51,51 @@ async function contentRegionHash(file) {
 }
 
 /**
+ * 截图**只截窗口那块区域**，不要整屏。
+ *
+ * 整屏截图会把**别的应用**一起拍进来——本机 DSH 窗口在流式输出，
+ * 整屏指纹**每次都不同**。于是「页面确实变了」这个判据恒真：
+ * 我把「检测外部改动」的逻辑整个废掉，那个断言照样通过（假绿灯）。
+ *
+ * 只截窗口区域，被拍进来的就只有 KnowFlick 自己。
+ */
+async function shootWindow(origin, size, file) {
+  await exec("screencapture", ["-x", "-R", `${origin.x},${origin.y},${size.w},${size.h}`, file]);
+}
+
+/**
+ * 这张截图**确实是 KnowFlick 吗**？
+ *
+ * 判据：KnowFlick 窗口的标题栏区域必须**不是空白的**——窗口被别的应用盖住时，
+ * 那一块拍到的是别人的内容。实测：窗口没抬到最前时，这块拍到的是 DSH 窗口。
+ *
+ * 更硬的判据：截两次，**什么都不做**时指纹必须**稳定**。
+ * 不稳定 = 拍到的不是静止的应用界面（有人在流式输出 / 有动画），指纹不可信。
+ * 这个自证是必须的——上一版就是少了它，整屏指纹恒变、断言恒真。
+ */
+async function captureIsStable(origin, size, dir) {
+  const a = `${dir}/self-a.png`;
+  const b = `${dir}/self-b.png`;
+  await shootWindow(origin, size, a);
+  await sleep(1200);
+  await shootWindow(origin, size, b);
+  const ha = await contentRegionHash(a);
+  const hb = await contentRegionHash(b);
+  return { stable: ha === hb, ha, hb };
+}
+
+/** 窗口尺寸（逻辑像素）。 */
+async function windowSize() {
+  const raw = await osascript(
+    'tell application "System Events" to tell process "knowflick-workbench" to get size of front window',
+  ).catch(() => "");
+  if (!raw || !raw.includes(",")) return null;
+  const [w, h] = raw.split(",").map((s) => Number(s.trim()));
+  if (!w || !h) return null;
+  return { w, h };
+}
+
+/**
  * 屏幕是不是锁着。
  *
  * 这条必须有：锁屏时 macOS 的辅助功能层**读不到任何窗口**
@@ -67,7 +112,17 @@ function screenIsLocked() {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
-  return raw.includes("CGSSessionScreenIsLocked") || raw.includes("ConsoleLocked");
+  // **必须按键的「值」判断，不能按键名存在判断。**
+  //
+  // `IOConsoleLocked` 这个键**一直都在**——它的值是 false 时表示「没锁」。
+  // 原来写的是 `raw.includes("ConsoleLocked")`，只问键名在不在，于是
+  // **任何时候**都判定成「锁屏」：真机逐页验证在这个机器上**从来没跑起来过**，
+  // 而且 SKIP 的理由还是错的（把「窗口不在屏幕上」说成「锁屏」）。
+  //
+  // 真正的锁屏标志是 `CGSSessionScreenIsLocked`——它在时**有值**（true）。
+  if (/<key>CGSSessionScreenIsLocked<\/key>\s*<true\/>/.test(raw)) return true;
+  if (/<key>IOConsoleLocked<\/key>\s*<true\/>/.test(raw)) return true;
+  return false;
 }
 
 /**
@@ -114,7 +169,7 @@ try {
   }
 
   await osascript('tell application "KnowFlick" to activate');
-  await sleep(1500);
+  await sleep(1200);
   // 锁屏时必须停下：截到的是锁屏界面（带时钟，每秒都变），像素比对会**永远**
   // 判定「页面变了」——那不是证据，是假通过。锁屏就如实说锁屏。
   if (screenIsLocked()) {
@@ -126,7 +181,31 @@ try {
     console.log("SKIP 应用没有打开的窗口（进程可能在托盘里）——先从菜单栏或 Dock 打开主窗口");
     process.exit(0);
   }
-  pass(`真机窗口就位（${origin.x}, ${origin.y}）`);
+  const size = await windowSize();
+  if (!size) {
+    console.log("SKIP 读不到窗口尺寸");
+    process.exit(0);
+  }
+
+  // **必须把窗口抬到最前**，否则截到的是盖在它上面的别的应用。
+  // 光 `activate` 不够：实测 activate 之后窗口仍 onscreen=false（不在当前 Space），
+  // `AXRaise` 才把它拽到当前 Space 并置于顶层。
+  await osascript(
+    'tell application "System Events" to tell process "knowflick-workbench" to perform action "AXRaise" of window 1',
+  ).catch(() => {});
+  await sleep(1200);
+
+  // 自证截图可信：什么都不做时，窗口区域的指纹必须**稳定**。
+  // 不稳定说明拍到的不是 KnowFlick（或者它自己在动）——这种指纹不能用来判断页面切换。
+  const self = await captureIsStable(origin, size, outDir);
+  if (!self.stable) {
+    console.log(
+      `SKIP 窗口区域截图不稳定（${self.ha} ≠ ${self.hb}）——` +
+      "拍到的可能不是 KnowFlick（它被别的应用盖住了），指纹不能用来判断页面是否切换；请把应用切到前台再重跑",
+    );
+    process.exit(0);
+  }
+  pass(`真机窗口就位（${origin.x}, ${origin.y}）且截图稳定——可以用它判断页面是否切换`);
 
   // 1. 主线入口在真机窗口里都要能点开，而且**页面确实换了**。
   //    只验证「点击没报错」是不够的——上一版就是这么写错的：
@@ -138,7 +217,7 @@ try {
     await sleep(250);
     await click(origin.x + 105, origin.y + dy);
     await sleep(1100);
-    await exec("screencapture", ["-x", file]);
+    await shootWindow(origin, size, file);
     return contentRegionHash(file);
   };
 
