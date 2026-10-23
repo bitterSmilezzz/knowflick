@@ -75,6 +75,13 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('apps/android/**/*.gradle.kts', 'apps/android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      # CI runner 在美国，wrapper 却要去撞国内镜像——2026-10-23 真出过
+      # 「Verification of Gradle distribution failed」（镜像字节与官方校验和不符）。
+      # 依赖源已经按 CI 环境分流（settings.gradle.kts），wrapper 这层补上。
+      # 校验和保持不变：官方源被篡改一样会被 wrapper 拒绝。
+      - name: Gradle wrapper 改用官方源
+        run: ./tools/ci_gradle_official_source.sh
+
       - name: 显示工具链版本
         run: |
           java -version

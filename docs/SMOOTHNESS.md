@@ -45,6 +45,38 @@
 空白页做同样的动作是 0ms，所以这 60–160ms 确实是应用自己的开销，
 但既不随规模增长，也不是读区。**如实记下，不编原因。**
 
+### CI 的 Gradle wrapper 一直在撞国内镜像——漏了「CI 用官方源」这一步
+
+2026-10-23 一次 Desktop workflow 失败在：
+
+```
+Verification of Gradle distribution failed!
+Expected checksum: 'f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6'
+Actual checksum:   '2f1e12bac5b8ddf52c9ec9a7dd2c5b27422e8b4b00d68ef1b8e74be1747b8b5f'
+```
+
+查下来：仓库里其它依赖源（`settings.gradle.kts`）**已经**做了分流——
+`System.getenv("CI") == null`，CI 用官方源、本地用阿里云镜像。
+但 **wrapper 的 `distributionUrl` 是硬编码在 properties 里的**，Gradle 不支持
+在那里读环境变量——所以**唯独 wrapper 下载**在 CI 里也去撞国内镜像。
+CI runner 在美国，这是绕路，而且镜像一抖动 CI 就挂。
+
+（顺带说明：wrapper 的校验和机制**正确地**拒绝了坏包——它没有静默使用损坏的
+Gradle。问题在于源该选对。镜像今天重新下已恢复，与官方逐字节一致。）
+
+修法：`tools/ci_gradle_official_source.sh` 在 CI 里把 `distributionUrl` 改写成
+官方地址，**校验和保持不变**——完整性照样由 wrapper 自己保证，官方源被篡改
+一样会失败。三个用到 gradlew 的 workflow 都在缓存步骤后插了这一步。
+
+脚本的两个设计点：
+
+- **幂等**：已指向官方源就不动文件（缓存 key 依赖这个文件，不该无谓弄脏）。
+- **异常要响**：文件不存在、或格式变了（没有 `distributionUrl`），一律
+  **exit 1** 并说明原因——绝不静默滑回镜像再挂一次。
+
+> 教训：「CI 用官方源、本地用镜像」这种分流，**每一处下载入口都得单独处理**。
+> 依赖源做了，wrapper 漏了，而漏掉的那处恰好是**最先**执行的那处。
+
 ### 「请用桌面客户端」却没告诉用户怎么去——断链
 
 浏览器体验里有一堆能力用不了：录音落盘、导出 cards.json、全局快捷键、托盘胶囊、
