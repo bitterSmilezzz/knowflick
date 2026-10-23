@@ -148,6 +148,7 @@ EVIDENCE_MAP: list[tuple[str, str, str]] = [
     ("details 折叠失效", "tools/taste_usability_gate.mjs", "最后一行完整可见"),
     ("侧栏四段约定", "tools/taste_usability_gate.mjs", "四段主线分组"),
     ("一级入口数", "tools/taste_usability_gate.mjs", "一级入口"),
+    ("手写/语音面板键盘不可达", "tools/taste_usability_gate.mjs", "焦点应落在面板内"),
     ("测验入口", "tools/workspace_ui_smoke.mjs", "知识测验"),
     ("测验空态措辞", "tools/workspace_ui_smoke.mjs", "没有可以测验的知识卡"),
     ("统计页", "tools/workspace_ui_smoke.mjs", "统计页"),

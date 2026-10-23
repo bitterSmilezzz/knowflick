@@ -81,6 +81,7 @@
 | 备份无损往返 | ✅ | `systemBackup.test.ts`、`settings_plugins_smoke.mjs` |
 | 外部接口（MCP） | ✅ | `mcp_smoke.mjs`（7 项，在门禁里） |
 | 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时） |
+| 键盘可达（模态） | ✅ | `taste_usability_gate.mjs`：手写/语音面板打开后焦点进入面板、Tab 在面板内循环、Escape 关闭并归还焦点（此前这些面板键盘完全不可达）。原生 `<dialog>` 的「记录」模态由浏览器提供同样能力 |
 | 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 13 套浏览器冒烟（`run_all_smokes.sh`，也在门禁里）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
 | 数据出口（凭据不外流） | ✅ | `dataEgress.test.ts`（5 项，哨兵密钥跑所有导出路径）+ `store.redact.test.ts`（6 项）+ Rust `http.rs` 的 `redact_secrets`（含走真实 401 服务器的路径级测试） |
 | 凭据存放 | ✅ | 桌面端 `<data_root>/credentials/apiKey.credential`（`store/` 的**兄弟目录**，导出天然带不走）；浏览器端 sessionStorage。不进 SQLite、不进任何导出格式 |
