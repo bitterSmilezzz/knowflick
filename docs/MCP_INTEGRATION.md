@@ -44,16 +44,32 @@
 | 工具 | 参数 | 说明 |
 |---|---|---|
 | `search_knowledge` | `query`（必填）、`limit`（默认 5，上限 50） | FTS5 全文 + 中文前缀匹配，命中不到时回落 `LIKE`；返回卡片结构化字段 |
+| `search_materials` | `query`（必填）、`limit`（默认 5，上限 50） | 检索**素材**（邮件 / 剪藏 / 导入文档 / 语音与手写笔记）；结果带 `resourceUri`，可按它读全文 |
 | `create_flash_card` | `headline`、`details`（必填），`summary`、`category`、`tags` | 写入 `cards` 表**并同步 `fts_cards` 全文索引** |
-| `add_material` | `title`、`text`（必填），`source_url` | 追加到收件箱（`inbox_status='inbox'`） |
+| `add_material` | `title`、`text`（必填），`source_url` | 追加到收件箱（`inbox_status='inbox'`）**并同步 `fts_materials` 索引** |
 | `get_weekly_briefing` | — | 三板块 Markdown：本周收录聚类 / 关注趋势演变 / 待温故的旧内容 |
 | `get_knowledge_stats` | — | 卡片、收藏、素材、收件箱、认知产物总数与分类分布 |
+
+### 为什么素材检索单列一个工具
+
+`search_knowledge` 只查知识卡，于是外部 Agent 问「上周那封讲 X 的邮件说了什么」**搜不到**——
+而用户在应用里是搜得到的（应用走 `db_search_materials_fts`）。同一份知识库、不同的入口
+能看到的范围不一样，就不算「统一记忆库」。
+
+`search_materials` 的**判定以当前素材内容为准，不以 FTS 索引为准**：索引可能缺
+（旧库升级只补缺失 id）、也可能旧（正文已改写而索引里还是老内容），而 MCP 服务端
+**不依赖桌面端启动**——桌面端才会跑 backfill。于是这里直接扫 `materials` 判定命中：
+慢一点，但不会漏、不会报旧。多词按「每个词都要出现」判定，与 FTS 的 AND 语义一致。
 
 ### 资源（`resources/list` / `resources/read`）
 
 - `knowflick://cards` — 最近 100 张卡片（JSON）
 - `knowflick://materials` — 最近 100 份素材（JSON）
 - `knowflick://briefing` — 周度认知简报（Markdown）
+- `knowflick://materials/{id}` — **单条素材**：正文全文与出处（发件人、附件名等）
+
+`search_materials` 的每条命中都带 `resourceUri`，Agent 据此读回原文——
+搜索命中若读不回原文，就只是「看起来相关」。
 
 未知方法 / 未知工具返回标准 JSON-RPC 错误码（`-32601`），参数缺失返回 `-32602`。
 
@@ -63,9 +79,13 @@
 node tools/mcp_server_smoke.mjs
 ```
 
-这个冒烟脚本会：建一个临时库目录 → 灌入一张卡片 → 用真实 stdio JSON-RPC 驱动 `tools/mcp-server.mjs` → 断言握手、工具清单、FTS5 与中文检索命中 → 调 `create_flash_card` / `add_material` → **重新打开同一个 SQLite 文件**确认卡片、素材与 `fts_cards` 三处都落了 → 断言简报、资源与错误码。跑完删掉临时目录，不碰 `Application Support` 下的真实库。
+这个冒烟脚本会：建一个临时库目录 → 灌入一张卡片与四种索引状态的素材 → 用真实 stdio JSON-RPC 驱动 `tools/mcp-server.mjs` → 断言握手、工具清单、FTS5 与中文检索命中 → 调 `create_flash_card` / `add_material` → **重新打开同一个 SQLite 文件**确认卡片、素材与 `fts_cards` 三处都落了 → 断言素材检索在「索引不全 / 索引过期 / 软删除」三种情况下都判对 → 断言命中结果能按 `resourceUri` 读回全文与出处 → 断言简报、资源与错误码。跑完删掉临时目录，不碰 `Application Support` 下的真实库。
 
-宿主内嵌实现（`apps/workbench/src/domain/mcpServer.ts`）另有一份 9 项单测，覆盖工具 schema、`initialize` 握手、检索、写入回调、统计、错误码与配置片段生成。
+素材检索另有 `node tools/mcp_material_search_reverse_test.mjs`：它把 `tools/mcp-server.mjs`
+**逐个改回缺陷状态**（只看索引、命中不带地址、写入不建索引、软删除照样命中、多词退化成整句 LIKE），
+确认对应断言**会报红**。断言「绿」不等于「在守东西」——这一步把这件事变成可执行的。
+
+宿主内嵌实现（`apps/workbench/src/domain/mcpServer.ts`）另有一份单测，覆盖工具 schema、`initialize` 握手、检索、写入回调、统计、错误码与配置片段生成，以及素材检索与按 id 读回原文。
 
 ## 5. 已知边界
 

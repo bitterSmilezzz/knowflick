@@ -70,10 +70,17 @@ const init = async (call) => {
     const names = (tools.result?.tools ?? []).map((t) => t.name).sort();
     assert.deepEqual(
       names,
-      ["add_material", "create_flash_card", "get_knowledge_stats", "get_weekly_briefing", "search_knowledge"],
+      [
+        "add_material",
+        "create_flash_card",
+        "get_knowledge_stats",
+        "get_weekly_briefing",
+        "search_knowledge",
+        "search_materials",
+      ],
       `工具清单不符：${names}`,
     );
-    pass("五个工具都在", names.join(", "));
+    pass("六个工具都在", names.join(", "));
 
     const created = await call(3, "tools/call", { name: "create_flash_card", arguments: { headline: "x", details: "y" } });
     const text = created.result?.content?.[0]?.text ?? JSON.stringify(created);

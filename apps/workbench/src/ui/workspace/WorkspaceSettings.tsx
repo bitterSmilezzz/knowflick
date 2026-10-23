@@ -565,8 +565,8 @@ export function WorkspaceSettings({
                   <div className="ws-settings-label">
                     <strong>Model Context Protocol (stdio)</strong>
                     <span>
-                      暴露 search_knowledge / create_flash_card / add_material / get_weekly_briefing /
-                      get_knowledge_stats 五个工具，以及 knowflick:// 资源
+                      暴露 search_knowledge / search_materials / create_flash_card / add_material /
+                      get_weekly_briefing / get_knowledge_stats 六个工具，以及 knowflick:// 资源
                     </span>
                   </div>
                   <div className="ws-settings-control">

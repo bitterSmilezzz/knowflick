@@ -86,6 +86,133 @@ function rowToCard(row) {
 const CARD_COLUMNS = `id, material_id, category, headline, summary, details, links_json, tags_json,
   source, is_favorite, review_count, mastery_level, created_at, edited_at`;
 
+/** 素材行 → 带可回读地址的形状（命中之后要能读到原文）。 */
+function rowToMaterialHit(row, excerpt) {
+  const raw = String(row.raw_text ?? "");
+  return {
+    id: row.id,
+    title: row.title,
+    sourceType: row.source_type,
+    sourceUrl: row.source_url ?? null,
+    inboxStatus: row.inbox_status ?? "inbox",
+    /** 命中处附近的片段——开头截断会让「命中在长邮件末尾」看起来毫不相关。 */
+    excerpt,
+    textLength: raw.length,
+    createdAt: row.created_at,
+    /** 按这个地址可以读到这条素材的全文。 */
+    resourceUri: `knowflick://materials/${row.id}`,
+  };
+}
+
+/**
+ * 截一段**命中处附近**的文字。
+ *
+ * 为什么不在开头截：一封长邮件的关键词在第 800 字处，开头 600 字跟问题
+ * 毫无关系——Agent 看到的是一段不相干的引文，于是判断「这条不相关」，
+ * 而它其实正是答案。
+ */
+function excerptAround(text, query, radius = 220) {
+  const raw = String(text ?? "");
+  const trimmed = String(query ?? "").trim();
+  const head = raw.length > radius * 2 ? `${raw.slice(0, radius * 2)}…` : raw;
+  if (!trimmed) return head;
+  const lower = raw.toLowerCase();
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  let at = -1;
+  for (const token of tokens) {
+    const found = lower.indexOf(token.toLowerCase());
+    if (found >= 0 && (at < 0 || found < at)) at = found;
+  }
+  if (at < 0) return head;
+  const start = Math.max(0, at - radius);
+  const end = Math.min(raw.length, at + radius);
+  return `${start > 0 ? "…" : ""}${raw.slice(start, end)}${end < raw.length ? "…" : ""}`;
+}
+
+/**
+ * 搜**素材**（邮件 / 剪藏 / 导入文档 / 笔记…）。
+ *
+ * 为什么要有这个：`search_knowledge` 原来只查知识卡，于是外部 Agent
+ * 问「上周那封讲 X 的邮件说了什么」**搜不到**——而用户在应用里是搜得到的
+ * （应用走 `db_search_materials_fts`，同一个 `fts_materials` 索引）。
+ * 同一份知识库、不同的入口能看到的范围不一样，就不算「统一记忆库」。
+ *
+ * **判定以「当前素材内容」为准，不以 FTS 索引为准。**
+ * 索引可能缺、也可能旧：
+ * - 旧库升级后 `fts_materials` 只补了缺失的 id（`db.rs` 的 backfill），
+ *   老索引里**已删除或已改写**的素材仍留在索引中；
+ * - MCP 服务端**不依赖桌面端启动**（桌面端才会跑 backfill），
+ *   所以「索引是全的」这个前提在这里不成立。
+ * 于是这里直接扫 `materials` 判定命中：慢一点，但**不会漏、不会报旧**。
+ */
+function searchMaterials(query, limit) {
+  const db = openDb(true);
+  try {
+    const trimmed = (query || "").trim();
+    const cap = Number.isFinite(limit) && limit > 0 ? Math.min(50, Math.floor(limit)) : 5;
+    const rows = db
+      .prepare(
+        `SELECT id, source_type, title, source_url, raw_text, inbox_status, created_at
+         FROM materials WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(2000);
+
+    if (!trimmed) {
+      return rows
+        .slice(0, cap)
+        .map((row) => rowToMaterialHit(row, excerptAround(row.raw_text, "")));
+    }
+
+    // 多词按「每个词都要出现」判定——与 FTS 的 AND 语义一致。
+    // （`%整句%` 的 LIKE 兜底会把「release rollout status」判成不匹配
+    //   「release status」，那是索引缺失时最容易踩到的坑。）
+    const tokens = trimmed.split(/\s+/).filter(Boolean);
+    const hits = rows.filter((row) => {
+      const haystack = `${row.title ?? ""}\n${row.raw_text ?? ""}\n${row.source_url ?? ""}`.toLowerCase();
+      return tokens.every((token) => haystack.includes(token.toLowerCase()));
+    });
+    return hits
+      .slice(0, cap)
+      .map((row) => rowToMaterialHit(row, excerptAround(row.raw_text, trimmed)));
+  } finally {
+    db.close();
+  }
+}
+
+/** 按 id 读一条素材的全文与出处。 */
+function readMaterial(id) {
+  const db = openDb(true);
+  try {
+    const row = db
+      .prepare(
+        `SELECT id, source_type, title, source_url, raw_text, inbox_status, created_at, metadata_json
+         FROM materials WHERE id = ? AND is_deleted = 0`
+      )
+      .get(id);
+    if (!row) return null;
+    let provenance = {};
+    try {
+      provenance = JSON.parse(row.metadata_json ?? "{}");
+    } catch {
+      provenance = {};
+    }
+    return {
+      id: row.id,
+      title: row.title,
+      sourceType: row.source_type,
+      sourceUrl: row.source_url ?? null,
+      inboxStatus: row.inbox_status ?? "inbox",
+      createdAt: row.created_at,
+      /** 出处信息：邮件的发件人 / 时间、附件名等都在这里。 */
+      provenance,
+      text: String(row.raw_text ?? ""),
+      resourceUri: `knowflick://materials/${row.id}`,
+    };
+  } finally {
+    db.close();
+  }
+}
+
 /** 检索：FTS5 前缀查询 + LIKE 兜底，与主程序检索语义保持一致。 */
 function searchKnowledge(query, limit) {
   const db = openDb(true);
@@ -266,6 +393,19 @@ function addMaterial(args) {
         media_path, media_size_bytes, metadata_json, inbox_status, created_at, updated_at, is_deleted)
        VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, 0, '{}', 'inbox', ?, ?, 0)`
     ).run(id, sourceUrl ? "web" : "note", title, sourceUrl, text, hash, now, now);
+
+    // 同步素材全文索引（与 Rust 的 save_material 同构，`db.rs`）。
+    // 不做这一步：这条素材在应用里**搜不到**——应用检索走的是 fts_materials，
+    // 而它只会由桌面端写入路径补齐。于是外部 Agent 写进来的东西成了死条目。
+    // 老库可能还没有这张表，那就不写——搜索已改成以当前素材内容为准，
+    // 缺索引只是慢一点，不会漏。
+    try {
+      db.prepare(
+        "INSERT INTO fts_materials (material_id, title, raw_text, source_url) VALUES (?, ?, ?, ?)"
+      ).run(id, title, text, sourceUrl ?? "");
+    } catch {
+      // 没有 fts_materials 表的旧库：跳过索引写入。
+    }
   } finally {
     db.close();
   }
@@ -323,6 +463,20 @@ const TOOLS = [
     },
   },
   {
+    name: "search_materials",
+    description:
+      "在 KnowFlick 的**素材**里检索（邮件 / 网页剪藏 / 导入文档 / 语音与手写笔记）。" +
+      "素材是还没变成知识卡之前的内容——搜不到知识卡时用它。结果带 resourceUri，可按它读全文。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "检索关键词" },
+        limit: { type: "number", description: "返回条数上限，默认 5，最大 50" },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "get_weekly_briefing",
     description: "生成 KnowFlick 周度认知简报（本周收录聚类 / 关注趋势 / 待温故内容）",
     inputSchema: { type: "object", properties: {}, required: [] },
@@ -353,6 +507,22 @@ function handleToolCall(name, args) {
     case "add_material": {
       const created = addMaterial(args ?? {});
       return textResult(`素材已加入收件箱！\nID: ${created.id}\n标题: ${created.title}`);
+    }
+    case "search_materials": {
+      const materials = searchMaterials(args?.query ?? "", args?.limit);
+      return textResult(
+        JSON.stringify(
+          {
+            query: args?.query ?? "",
+            totalFound: materials.length,
+            materials,
+            /** 命中之后按这个地址读全文。 */
+            readHint: "按 materials[].resourceUri 调用 resources/read 读原文",
+          },
+          null,
+          2
+        )
+      );
     }
     case "get_weekly_briefing":
       return textResult(weeklyBriefing());
@@ -397,6 +567,12 @@ function dispatch(request) {
               { uri: "knowflick://cards", name: "知识卡片集合", mimeType: "application/json" },
               { uri: "knowflick://materials", name: "原始素材集合", mimeType: "application/json" },
               { uri: "knowflick://briefing", name: "周度认知简报", mimeType: "text/markdown" },
+              {
+                uri: "knowflick://materials/{id}",
+                name: "单条素材（含全文与出处）",
+                description: "把 {id} 换成素材 id，即可读到那条素材的正文与来源信息。",
+                mimeType: "application/json",
+              },
             ],
           },
         };
@@ -441,6 +617,26 @@ function dispatch(request) {
             jsonrpc: "2.0",
             id,
             result: { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(rows, null, 2) }] },
+          };
+        }
+        // 单条素材：命中之后要能读到原文与出处。
+        // 规范里本来就要求 `knowflick://materials/{id}`（PLUGIN_SPECIFICATION §6）。
+        const materialMatch = /^knowflick:\/\/materials\/(.+)$/.exec(uri);
+        if (materialMatch) {
+          const material = readMaterial(materialMatch[1]);
+          if (!material) {
+            const missing = new Error(`找不到素材: ${materialMatch[1]}`);
+            missing.code = -32602;
+            throw missing;
+          }
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              contents: [
+                { uri, mimeType: "application/json", text: JSON.stringify(material, null, 2) },
+              ],
+            },
           };
         }
         const notFound = new Error(`未知资源: ${uri}`);

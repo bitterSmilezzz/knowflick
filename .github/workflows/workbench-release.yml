@@ -55,6 +55,7 @@ on:
       - 'tools/taste_usability_gate.mjs'
       - 'tools/mcp_smoke.mjs'
       - 'tools/mcp_server_smoke.mjs'
+      - 'tools/mcp_material_search_reverse_test.mjs'
       - 'tools/mcp-server.mjs'
       - 'tools/ci_run_browser_smokes.sh'
       - '.github/workflows/android.yml'

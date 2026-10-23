@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 修复（外部 Agent 搜不到素材——同一份库，两个入口看到的不一样）：`search_knowledge` 只查 `fts_cards`，于是外部 Agent 问「上周那封讲 X 的邮件说了什么」搜不到，而用户在应用里搜得到——同一份知识库、不同入口看到的不一样，就不算统一记忆库。新增 `search_materials` 工具与 `knowflick://materials/{id}` 资源（读回正文全文与出处），命中结果带 `resourceUri`，片段截**命中处附近**而不是开头（长邮件命中在末尾时，原来给的是毫不相干的开场白）。素材检索判定以**当前素材内容**为准而非 FTS 索引（索引可能缺也可能旧，而 MCP 服务端不依赖桌面端启动跑 backfill），多词按「每个词都要出现」判定。`add_material` 同步 `fts_materials` 索引——否则 Agent 写进来的东西在应用里搜不到。
 - 修复（收件箱里一直写着 "(No subject)"）：邮件同步进收件箱时，无主题的邮件落成 `"(No subject)"`、无正文的落成 `"(No readable text body)"`——收件箱条目**直接渲染** `e.title`，所以用户看到的就是这两个英文串。内容和错误消息的区别很关键：错误只在出错时出现，**内容是常态**。已改成中文并加 Rust 测试锁住（反向验证过），另加守卫 `tools/check_user_facing_content.py` 扫会落进用户数据的字段。
 - 修复（半中半英：中文前缀后面跟着底层英文报错）：Rust 里 20 处 `format!("…{e}")` 直接把底层库（std/reqwest）的英文报错拼进用户可见的消息——「下载模型失败: error sending request for url …」。用户看懂了「下载模型失败」但不知道**为什么**、更不知道**下一步**。新增 `src-tauri/src/error_text.rs`，按关键词给出「原因 + 下一步」（连不上服务器 / 磁盘满 / 权限不足 / 证书问题…），原始英文保留在括号里供开发者定位。守卫加了一条：`format!("…{e}…")` 直接拼底层错误即算漏网（它自己抓出了我漏掉的 4 处）。
 - 修复（前端把错误原样交给用户——14 处）：`setError(String(err))` 一点中文都没有，用户看到的是底层库抛的原始字符串，分散在 10 个文件 14 处。新增共享兜底 `apps/workbench/src/ui/workspace/userError.ts`（空错误/纯英文/中文三种情况都有中文说法），14 处全部改走它，并加守卫 `tools/check_frontend_error_text.py`。

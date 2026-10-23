@@ -43,8 +43,8 @@ describe("MCP (Model Context Protocol) 外部代理协议服务", () => {
     },
   ];
 
-  it("定义了 5 个标准 MCP 工具且包含规范的 JSON Schema", () => {
-    expect(MCP_TOOLS.length).toBe(5);
+  it("定义了 6 个标准 MCP 工具且包含规范的 JSON Schema", () => {
+    expect(MCP_TOOLS.length).toBe(6);
     for (const tool of MCP_TOOLS) {
       expect(tool.name).toBeTruthy();
       expect(tool.description).toBeTruthy();
@@ -52,6 +52,7 @@ describe("MCP (Model Context Protocol) 外部代理协议服务", () => {
     }
     const names = MCP_TOOLS.map((t) => t.name);
     expect(names).toContain("search_knowledge");
+    expect(names).toContain("search_materials");
     expect(names).toContain("create_flash_card");
     expect(names).toContain("get_weekly_briefing");
   });
@@ -73,7 +74,74 @@ describe("MCP (Model Context Protocol) 外部代理协议服务", () => {
       { cards, materials }
     );
     const result = resp.result as { tools: unknown[] };
-    expect(result.tools.length).toBe(5);
+    expect(result.tools.length).toBe(6);
+  });
+
+  it("search_materials 命中素材并给出可回读的地址", async () => {
+    const resp = await handleMcpRequest(
+      {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: { name: "search_materials", arguments: { query: "本地优先", limit: 5 } },
+      },
+      { cards, materials }
+    );
+    const result = resp.result as { content: Array<{ text: string }> };
+    const payload = JSON.parse(result.content[0].text) as {
+      totalFound: number;
+      materials: Array<{ id: string; resourceUri: string; excerpt: string }>;
+    };
+    // 搜不到知识卡时用它——素材也要能被外部 Agent 找到。
+    expect(payload.totalFound).toBe(1);
+    expect(payload.materials[0].id).toBe("mcp-mat-1");
+    expect(payload.materials[0].resourceUri).toBe("knowflick://materials/mcp-mat-1");
+  });
+
+  it("多词检索按「每个词都要出现」判定", async () => {
+    const resp = await handleMcpRequest(
+      {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: { name: "search_materials", arguments: { query: "本地 优先", limit: 5 } },
+      },
+      { cards, materials }
+    );
+    const result = resp.result as { content: Array<{ text: string }> };
+    const payload = JSON.parse(result.content[0].text) as { totalFound: number };
+    expect(payload.totalFound).toBe(1);
+
+    const miss = await handleMcpRequest(
+      {
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/call",
+        params: { name: "search_materials", arguments: { query: "本地 不存在的词", limit: 5 } },
+      },
+      { cards, materials }
+    );
+    const missResult = miss.result as { content: Array<{ text: string }> };
+    expect((JSON.parse(missResult.content[0].text) as { totalFound: number }).totalFound).toBe(0);
+  });
+
+  it("按 resourceUri 读回素材全文与出处", async () => {
+    const resp = await handleMcpRequest(
+      { jsonrpc: "2.0", id: 12, method: "resources/read", params: { uri: "knowflick://materials/mcp-mat-1" } },
+      { cards, materials }
+    );
+    const result = resp.result as { contents: Array<{ text: string }> };
+    const payload = JSON.parse(result.contents[0].text) as { id: string; text: string };
+    expect(payload.id).toBe("mcp-mat-1");
+    expect(payload.text).toBe("一个关于本地优先架构的灵感");
+  });
+
+  it("读不存在的素材返回标准错误码", async () => {
+    const resp = await handleMcpRequest(
+      { jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "knowflick://materials/nope" } },
+      { cards, materials }
+    );
+    expect(resp.error?.code).toBe(-32602);
   });
 
   it("search_knowledge 精准命中知识卡并返回结构化文本", async () => {

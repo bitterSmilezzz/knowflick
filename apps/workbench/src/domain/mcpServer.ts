@@ -57,6 +57,20 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     },
   },
   {
+    name: "search_materials",
+    description:
+      "在 KnowFlick 的**素材**里检索（邮件 / 网页剪藏 / 导入文档 / 语音与手写笔记）。" +
+      "素材是还没变成知识卡之前的内容——搜不到知识卡时用它。结果带 resourceUri，可按它读全文。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "检索关键词" },
+        limit: { type: "number", description: "返回结果数量上限，默认 5" },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "get_weekly_briefing",
     description: "生成基于当前知识库的周度认知简报（包含新收知识聚类、演变趋势与温故推荐）",
     inputSchema: {
@@ -75,6 +89,31 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     },
   },
 ];
+
+/**
+ * 截一段**命中处附近**的文字。
+ *
+ * 为什么不在开头截：一封长邮件的关键词在第 800 字处，开头 600 字跟问题
+ * 毫无关系——Agent 看到的是一段不相干的引文，于是判断「这条不相关」，
+ * 而它其实正是答案。
+ */
+function excerptAround(text: string, query: string, radius = 220): string {
+  const raw = text ?? "";
+  const trimmed = (query ?? "").trim();
+  const head = raw.length > radius * 2 ? `${raw.slice(0, radius * 2)}…` : raw;
+  if (!trimmed) return head;
+  const lower = raw.toLocaleLowerCase();
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  let at = -1;
+  for (const token of tokens) {
+    const found = lower.indexOf(token.toLocaleLowerCase());
+    if (found >= 0 && (at < 0 || found < at)) at = found;
+  }
+  if (at < 0) return head;
+  const start = Math.max(0, at - radius);
+  const end = Math.min(raw.length, at + radius);
+  return `${start > 0 ? "…" : ""}${raw.slice(start, end)}${end < raw.length ? "…" : ""}`;
+}
 
 export interface McpRpcRequest {
   jsonrpc: "2.0";
@@ -273,6 +312,56 @@ export async function handleMcpRequest(
           };
         }
 
+        case "search_materials": {
+          const q = String(args.query || "").trim();
+          const limit = typeof args.limit === "number" ? Math.max(1, args.limit) : 5;
+          const tokens = q.toLocaleLowerCase().split(/\s+/).filter(Boolean);
+
+          // 多词按「每个词都要出现」判定——与 stdio 服务端、SQLite FTS 的 AND 语义一致。
+          const matched = tokens.length
+            ? context.materials.filter((m) => {
+                const haystack = `${m.title}\n${m.rawText}\n${m.sourceUrl ?? ""}`.toLocaleLowerCase();
+                return tokens.every((t) => haystack.includes(t));
+              })
+            : context.materials;
+
+          const materials = matched.slice(0, limit).map((m) => ({
+            id: m.id,
+            title: m.title,
+            sourceType: m.sourceType,
+            sourceUrl: m.sourceUrl ?? null,
+            inboxStatus: m.inboxStatus,
+            /** 命中处附近的片段——开头截断会让「命中在长邮件末尾」看起来毫不相关。 */
+            excerpt: excerptAround(m.rawText, q),
+            textLength: m.rawText.length,
+            createdAt: m.createdAt,
+            /** 按这个地址可以读到这条素材的全文。 */
+            resourceUri: `knowflick://materials/${m.id}`,
+          }));
+
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      query: q,
+                      totalFound: materials.length,
+                      materials,
+                      readHint: "按 materials[].resourceUri 调用 resources/read 读原文",
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            },
+          };
+        }
+
         case "get_weekly_briefing": {
           const briefing = generateCognitiveBriefing(context.cards);
           return {
@@ -349,8 +438,69 @@ export async function handleMcpRequest(
               name: "收件箱与原始素材集合",
               mimeType: "application/json",
             },
+            {
+              uri: "knowflick://materials/{id}",
+              name: "单条素材（含全文与出处）",
+              description: "把 {id} 换成素材 id，即可读到那条素材的正文与来源信息。",
+              mimeType: "application/json",
+            },
           ],
         },
+      };
+    }
+
+    case "resources/read": {
+      const uri = String(params?.uri ?? "");
+      // 单条素材：命中之后要能读到原文与出处。
+      // 规范里本来就要求 `knowflick://materials/{id}`（PLUGIN_SPECIFICATION §6）。
+      const materialMatch = /^knowflick:\/\/materials\/(.+)$/.exec(uri);
+      if (materialMatch) {
+        const material = context.materials.find((m) => m.id === materialMatch[1]);
+        if (!material) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32602, message: `找不到素材: ${materialMatch[1]}` },
+          };
+        }
+        let provenance: unknown = {};
+        try {
+          provenance = JSON.parse(material.metadataJson || "{}");
+        } catch {
+          provenance = {};
+        }
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: {
+            contents: [
+              {
+                uri,
+                mimeType: "application/json",
+                text: JSON.stringify(
+                  {
+                    id: material.id,
+                    title: material.title,
+                    sourceType: material.sourceType,
+                    sourceUrl: material.sourceUrl ?? null,
+                    inboxStatus: material.inboxStatus,
+                    createdAt: material.createdAt,
+                    provenance,
+                    text: material.rawText,
+                    resourceUri: `knowflick://materials/${material.id}`,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          },
+        };
+      }
+      return {
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32602, message: `未知资源: ${uri}` },
       };
     }
 
