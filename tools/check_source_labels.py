@@ -13,9 +13,9 @@
 而前端的 tsconfig 没有 Node 类型（`tsc --noEmit` 会红）。所以放这边——
 仓库里已有好几个同类的 Python 守卫。
 
-判据：
-1. 扫出所有**会被写进** `source_type` 的字面量（前端、宿主 MCP、stdio MCP、Rust）；
-2. 每个都要有中文标签——不在 `META` 表里、且不是「网页域名」这类例外，就报出来。
+静态检查范围：sourceType/source_type 字段的直接字面量赋值与简单三元表达式。
+不解析任意 SQL 参数、动态值或复杂控制流；stdio MCP 写入类型由真实协议冒烟验证。
+对已识别的赋值及 META 登记（含旧别名），检查是否有中文标签。
 """
 from __future__ import annotations
 
@@ -44,9 +44,9 @@ ASSIGN = re.compile(
     r"""(?:\s*:\s*["']([a-z][a-z-]*)["'])?"""
 )
 
-# 不是素材来源：卡片、界面状态、文件夹名。
+# 卡片类型与界面状态不属于素材来源；note 是旧素材类型，需要保留检查。
 NOT_A_SOURCE = {
-    "card", "material", "inbox", "archive", "local", "note", "seed", "ai", "imported",
+    "card", "material", "inbox", "archive", "local", "seed", "ai", "imported",
 }
 
 
@@ -97,7 +97,11 @@ def main() -> int:
         return 1
 
     problems: list[str] = []
-    for kind in sorted(written_source_types()):
+    written = written_source_types()
+    if not written:
+        problems.append("没有扫描到来源类型，请检查扫描路径与支持的赋值写法")
+    # 也检查已登记的旧数据别名，避免它不再被写入后就失去检查。
+    for kind in sorted(written | labels.keys()):
         label = labels.get(kind)
         if label is None:
             problems.append(
@@ -112,7 +116,7 @@ def main() -> int:
             emit(f"  - {p}")
         return 1
 
-    emit(f"来源标签都中文：{len(labels)} 个已登记类型全部有中文标签")
+    emit(f"来源标签静态检查通过：识别 {len(written)} 种写入类型，检查 {len(labels)} 个登记标签")
     return 0
 
 

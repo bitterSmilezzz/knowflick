@@ -24,6 +24,8 @@ CANDIDATES = [
     "check_doc_consistency.py",
     "check_tauri_permissions.py",
     "check_rust_error_messages.py",
+    "check_source_labels.py",
+    "check_test_assertions.py",
 ]
 
 CP1252_HARNESS = '''
@@ -65,7 +67,9 @@ class WindowsConsoleTest(unittest.TestCase):
                     capture_output=True,
                     cwd=str(ROOT),
                 )
+                stdout = result.stdout.decode("utf-8", errors="replace")
                 stderr = result.stderr.decode("utf-8", errors="replace")
+                self.assertEqual(result.returncode, 0, stdout + stderr)
                 self.assertNotIn(
                     "UnicodeEncodeError",
                     stderr,

@@ -180,6 +180,23 @@ try {
   }
   pass("转卡后原始素材仍可回溯");
 
+  // 旧 MCP 写入的 note 仍需能在收件箱里正确显示。
+  await ev(`(() => {
+    const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1'));
+    raw.materials.push({ ...raw.materials[0], id: 'legacy-note', sourceType: 'note',
+      sourceUrl: null, metadataJson: '{}', inboxStatus: 'inbox', title: '旧 MCP 素材',
+      rawText: '旧来源类型的正文', updatedAt: Date.now() });
+    localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+    return true;
+  })()`);
+  await b("open", url);
+  await b("wait", "--fn", "!!document.querySelector('.ws-nav-row')");
+  await ev("(() => { [...document.querySelectorAll('.ws-nav-row')].find(e => e.textContent.includes('收件箱')).click(); return true; })()");
+  await b("wait", "--fn", "!!document.querySelector('.ws-entry[data-entry-id=\"legacy-note\"]')");
+  const legacyLabel = await ev("document.querySelector('.ws-entry[data-entry-id=\"legacy-note\"] .ws-entry-source').textContent");
+  assert.equal(legacyLabel, "随手灵感");
+  pass("旧 note 素材在真实收件箱中显示中文来源标签");
+
   console.log(`Source matrix smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});

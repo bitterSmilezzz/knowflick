@@ -134,14 +134,7 @@ describe("来源类型不留英文标签", () => {
     expect(sourceLabel("note", "").label).toBe("随手灵感");
   });
 
-  it("「无链接的素材」在各条路径上写的是同一个类型", () => {
-    // 同一个概念（用户随手记的一条内容），两处写入路径各写各的：
-    // 应用内闪念写 "manual"，MCP 以前写 "note"。
-    // 于是用户在收件箱里看到两条**来源标签不同**的内容——其实是同一种东西。
-    //
-    // 这里锁住「宿主 MCP 写 manual」；stdio MCP（tools/mcp-server.mjs）由
-    // `tools/mcp_server_smoke.mjs` 断言源类型，两边合起来是完整覆盖。
-    expect(sourceLabel("manual", "").label).toBe("随手灵感");
-    expect(sourceLabel("note", "").label).toBe(sourceLabel("manual", "").label);
+  it("旧 note 素材与新 manual 素材显示相同的来源标签", () => {
+    expect(sourceLabel("note", "")).toEqual(sourceLabel("manual", ""));
   });
 });

@@ -210,6 +210,21 @@ describe("MCP (Model Context Protocol) 外部代理协议服务", () => {
     expect(material.title).toBe("外部文章");
     expect(material.inboxStatus).toBe("inbox");
     expect(material.sourceUrl).toBe("https://example.com");
+    expect(material.sourceType).toBe("web");
+
+    onAddMaterial.mockClear();
+    await handleMcpRequest(
+      {
+        jsonrpc: "2.0", id: 15, method: "tools/call",
+        params: { name: "add_material", arguments: { title: "随手记录", text: "没有链接的正文" } },
+      },
+      { cards, materials, onAddMaterial }
+    );
+    expect(onAddMaterial).toHaveBeenCalledTimes(1);
+    const note: RawMaterial = onAddMaterial.mock.calls[0][0];
+    expect(note.sourceType).toBe("manual");
+    expect(note.sourceUrl).toBeNull();
+    expect(note.rawText).toBe("没有链接的正文");
   });
 
   it("get_knowledge_stats 汇总分类分布与收件箱数量", async () => {

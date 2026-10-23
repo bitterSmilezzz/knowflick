@@ -29,6 +29,7 @@ on:
       - 'tools/test_check_source_labels.py'
       - 'tools/check_user_facing_content.py'
       - 'tools/check_test_assertions.py'
+      - 'tools/check_test_assertions.mjs'
       - 'tools/check_source_labels.py'
       - 'tools/test_windows_console.py'
       - 'tools/windows_console.py'

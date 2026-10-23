@@ -15,6 +15,7 @@ on:
       # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
       # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
       - 'tools/check_doc_consistency.py'
+      - 'tools/check_test_assertions.mjs'
       - 'tools/check_tauri_permissions.py'
       - 'tools/check_rust_error_messages.py'
       - 'tools/test_check_frontend_error_text.py'
@@ -69,6 +70,11 @@ on:
       # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
       # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
       - 'tools/check_doc_consistency.py'
+      - 'tools/check_source_labels.py'
+      - 'tools/test_check_source_labels.py'
+      - 'tools/check_test_assertions.py'
+      - 'tools/check_test_assertions.mjs'
+      - 'tools/test_check_test_assertions.py'
       - 'tools/check_loopback_parity.mjs'
       - 'tools/test_check_doc_consistency.py'
       - 'tools/mcp_smoke.mjs'

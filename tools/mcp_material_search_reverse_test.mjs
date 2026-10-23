@@ -30,11 +30,9 @@ function runSmoke() {
     const out = `${error.stdout ?? ""}${error.stderr ?? ""}`;
     return {
       ok: false,
-      message: out
-        .split("\n")
-        .filter((line) => line.includes("AssertionError") || line.includes("PASS"))
-        .slice(-2)
-        .join(" | "),
+      assertionFailure: error.status === 1 && /AssertionError \[ERR_ASSERTION\]/.test(out)
+        && !/SyntaxError|MCP 请求超时/.test(out),
+      message: out.slice(-2000),
     };
   }
 }
@@ -88,6 +86,12 @@ const CASES = [
   },
 ];
 
+const baseline = runSmoke();
+if (!baseline.ok) {
+  console.error("FAIL 正常实现必须先通过 MCP 冒烟\n" + baseline.message);
+  process.exit(1);
+}
+
 let failures = 0;
 try {
   for (const testCase of CASES) {
@@ -102,8 +106,11 @@ try {
     if (result.ok) {
       console.log(`FAIL ${testCase.name} → 断言还是绿的（没守住）`);
       failures++;
+    } else if (!result.assertionFailure) {
+      console.error(`FAIL ${testCase.name} → 子进程失败，但没有可验证的断言失败\n${result.message}`);
+      failures++;
     } else {
-      console.log(`PASS ${testCase.name} → 断言报红了（守住了）`);
+      console.log(`PASS ${testCase.name} → AssertionError 证实断言拒绝退化`);
     }
   }
 } finally {

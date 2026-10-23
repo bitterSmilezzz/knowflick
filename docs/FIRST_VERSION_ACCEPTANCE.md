@@ -52,7 +52,7 @@
 | **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
-> 本机 Rust 输出为 **89 passed、3 ignored**，共 92 条测试声明。声明数不能当成通过数；
+> 最近本机 Rust 输出为 **101 passed、3 ignored**，共 104 条测试声明。声明数不能当成通过数；
 > 不同平台的实际执行结果以各 runner 日志为准。
 >
 > **浏览器冒烟现在在 CI 上真的跑**（2026-10-23 起）：`workbench.yml` 有独立的
@@ -87,12 +87,12 @@
 
 | 能力 | 状态 | 证据 |
 | --- | --- | --- |
-| 来源矩阵（7 种来源进收件箱→被搜到→转成卡→可回溯） | ✅ | `sourceMatrix.test.ts`（7 项，CI 每次跑）+ `source_matrix_smoke.mjs`（5 项，交互层） |
+| 来源矩阵（7 种来源进收件箱→被搜到→转成卡→可回溯） | ✅ | `sourceMatrix.test.ts`（10 项，CI 每次跑）+ `source_matrix_smoke.mjs`（6 项，含旧 note 在真实收件箱中的中文标签） |
 | 跨端契约（`cards.json` 导出与导入） | ✅ | `card.crossend.test.ts` / `CardJsonCrossEndTest.kt`（两端逐字节一致）、`WorkbenchExportImportTest.kt`（真实字节） |
 | 复习算法两端一致（SM-2 / FSRS） | ✅ | `review.test.ts`、Android `FsrsEngineTest.kt`；参数逐行比对 |
 | Anki TSV 导出（两端同格式） | ✅ | 桌面端 `markdownExport.test.ts` 4 项 + Android `CardExportEngineTest.kt` 4 项，两端格式对齐 |
 | 备份无损往返 | ✅ | `systemBackup.test.ts`、`settings_plugins_smoke.mjs` |
-| 外部接口（MCP） | ✅ | `mcp_smoke.mjs`（7 项，在门禁里） |
+| 外部接口（MCP） | ✅ | `mcp_smoke.mjs`（8 项；有库分支依赖本机库）；`mcp_server_smoke.mjs`（20 项独立临时库检查）由 6 项反向验证调用，验证正常基线通过、退化以 AssertionError 失败。宿主与 stdio 无链接写入均验证为 manual，旧 note 显示兼容由前端测试覆盖 |
 | 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时；**时间断言按实测分布定预算**，见 `SMOOTHNESS.md`） |
 | 键盘可达（模态） | ✅ | `taste_usability_gate.mjs`：手写/语音面板打开后焦点进入面板、Tab 在面板内循环、Escape 关闭并归还焦点（此前这些面板键盘完全不可达）。原生 `<dialog>` 的「记录」模态由浏览器提供同样能力 |
 | 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 13 套浏览器冒烟（**CI 上也在跑**：`workbench.yml` 的 `browser-smokes` job）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |

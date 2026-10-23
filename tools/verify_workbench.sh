@@ -27,6 +27,8 @@ cd "$ROOT"
 
 # MCP 是外部 agent 读写这个库的入口，坏掉不会有界面报错——纳入门禁。
 node tools/mcp_smoke.mjs
+# 独立临时库的正常实现也必须通过，不能只运行预期失败的退化版本。
+node tools/mcp_server_smoke.mjs
 
 # MCP 素材检索的断言**真的**能抓住缺陷吗？
 # 断言「绿」不等于「在守东西」——把实现改回缺陷状态，它可能照样绿。
