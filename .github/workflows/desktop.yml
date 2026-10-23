@@ -23,14 +23,34 @@ on:
       - 'apps/android/desktop/**'
       - 'apps/android/shared-ui/**'
       - 'apps/android/domain/**'
+      - 'apps/android/shared-data/**'
+      - 'apps/android/build.gradle.kts'
+      - 'apps/android/settings.gradle.kts'
       - 'apps/android/gradle.properties'
+      - 'apps/android/gradle/**'
+      - 'apps/android/gradlew'
+      - 'apps/android/gradlew.bat'
+      - 'shared/assets/**'
+      - 'shared/icons/**'
+      - 'tools/ci_gradle_official_source.sh'
+      - 'tools/test_desktop_ci_triggers.py'
       - '.github/workflows/desktop.yml'
   pull_request:
     paths:
       - 'apps/android/desktop/**'
       - 'apps/android/shared-ui/**'
       - 'apps/android/domain/**'
+      - 'apps/android/shared-data/**'
+      - 'apps/android/build.gradle.kts'
+      - 'apps/android/settings.gradle.kts'
       - 'apps/android/gradle.properties'
+      - 'apps/android/gradle/**'
+      - 'apps/android/gradlew'
+      - 'apps/android/gradlew.bat'
+      - 'shared/assets/**'
+      - 'shared/icons/**'
+      - 'tools/ci_gradle_official_source.sh'
+      - 'tools/test_desktop_ci_triggers.py'
       - '.github/workflows/desktop.yml'
 
 concurrency:
@@ -67,6 +87,10 @@ jobs:
       ANDROID_SDK_ROOT: ''
     steps:
       - uses: actions/checkout@v7
+
+      - name: 校验桌面依赖变更会触发 CI
+        shell: bash
+        run: python3 -m unittest discover -s tools -p test_desktop_ci_triggers.py
 
       - name: 配置 JDK 17（Temurin —— 也是打包用的厂商，见 gradle.properties 的说明）
         uses: actions/setup-java@v6

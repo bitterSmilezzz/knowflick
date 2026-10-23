@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+- 修复（Desktop CI 触发遗漏）：共享持久化模块虽已纳入桌面依赖与测试命令，却未纳入 push / PR 路径过滤。补齐 shared-data、根 Gradle 配置、wrapper、共享资产与图标、CI 切源脚本的触发路径；新增变更路径回归检查，在三平台构建前执行，保留 Android 专属页面不触发冻结桌面的边界。
+
 - 修复（手写/语音面板键盘不可达）：这两个面板是手写 div，没接原生 `<dialog>` 的焦点陷阱与 Escape——实测打开后连按 12 次 Tab 焦点始终在侧栏，面板内按钮全部键盘不可达、Escape 也关不掉。新增 `useModalFocus`：打开时焦点移进面板、Tab 在面板内循环（模态遮住了底层，不循环会走到看不见的地方）、Escape 关闭、关闭后焦点归位。门禁新增对应断言并做了反向验证。
 - 修复（Windows 档静默少跑）：Windows runner 默认 shell 是 PowerShell，`.sh` 脚本在它里面**既不报错也不执行**——步骤照样绿，wrapper 改写根本没发生，CI 继续用国内镜像。加 `shell: bash`；脚本每次都打印切换结果，靠这条日志才发现。
 - 修复（CI 的 Gradle wrapper 一直撞国内镜像）：依赖源已按 `CI` 环境分流（官方源 / 本地阿里云镜像），但 wrapper 的 `distributionUrl` 是硬编码的，Gradle 不支持在那里读环境变量——唯独这一处没分流，CI runner 在美国却去撞国内镜像，2026-10-23 真因此挂过一次（镜像字节与官方校验和不符）。新增 `tools/ci_gradle_official_source.sh`，在 CI 里改写下载地址而**保持校验和不变**，完整性仍由 wrapper 保证。
