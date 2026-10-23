@@ -341,11 +341,34 @@ try {
     inPanelTabs.every(Boolean),
     `Tab 应始终在面板内循环，跑到了外面：${JSON.stringify(inPanelTabs)}`,
   );
+  // 面板内的控件也要有**可见焦点环**——键盘用户能 Tab 到却看不见焦点在哪，
+  // 等于没有焦点。注意不能用 el.focus() 测：编程式聚焦不触发 :focus-visible，
+  // 必须用真实 Tab 按键。
+  const panelRings = [];
+  for (let i = 0; i < 4; i++) {
+    await browser("press", "Tab");
+    panelRings.push(await evaluate(`(() => {
+      const el = document.activeElement;
+      if (!el || !el.closest('.ws-note-backdrop')) return { outside: true };
+      const cs = getComputedStyle(el);
+      const ring = (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) || cs.boxShadow !== 'none';
+      return {
+        label: (el.textContent || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 12),
+        ring,
+      };
+    })()`));
+  }
+  const panelNoRing = panelRings.filter((r) => !r.outside && !r.ring);
+  assert.equal(
+    panelNoRing.length,
+    0,
+    `面板内 ${panelNoRing.length} 个控件没有可见焦点环：${panelNoRing.map((r) => r.label).join("、")}`,
+  );
   await browser("press", "Escape");
   await new Promise((r) => setTimeout(r, 300));
   const panelClosed = await evaluate("!document.querySelector('.voice-recorder')");
   assert.ok(panelClosed, "Escape 应能关闭语音面板");
-  pass("手写/语音面板键盘可达（焦点进入、Tab 循环、Escape 关闭）");
+  pass("手写/语音面板键盘可达（焦点进入、Tab 循环、有焦点环、Escape 关闭）");
 
   // ---- 版式：侧栏最后一行不被裁切 ----
   const navClip = await evaluate(`(() => {
