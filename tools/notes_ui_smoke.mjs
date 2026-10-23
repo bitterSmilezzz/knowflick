@@ -64,6 +64,10 @@ try {
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));return raw.materials.some(m=>m.sourceType==='ink')})()", "手写笔记落成素材");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));const m=raw.materials.find(x=>x.sourceType==='ink');const meta=JSON.parse(m.metadataJson);return meta.ink.strokes.length===2})()", "笔迹随素材保存");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));const m=raw.materials.find(x=>x.sourceType==='ink');return m.title.includes('手写笔记')&&m.title.includes('2 笔')})()", "手写笔记标题可辨认");
+  // 重绘：保存后阅读区要**真的画出笔迹**，不是摆个空画布。
+  // 只验「素材里有 strokes」不够——笔迹可能在读回时没画出来，用户看到的是空白。
+  // 判据用**像素**：canvas 上必须有非透明像素。
+  await check("(()=>{const c=document.querySelector('.ws-reader canvas');if(!c)return false;const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;for(let i=3;i<d.length;i+=4){if(d[i]!==0)return true}return false})()", "保存后阅读区真的重绘出笔迹（有非透明像素）");
   // 回执走 .ws-feedback（aria-live 区），不是底部状态栏。
   await check("document.body.innerText.includes('手写笔记已存入收件箱')", "保存后有明确回执");
 
