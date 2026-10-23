@@ -61,14 +61,18 @@
 | ADR 承诺 | 状态 | 证据 |
 | --- | --- | --- |
 | 剪藏 | ✅ | `clipEngine.test.ts`、`clipEngine.crossend.test.ts`、`fixtures.test.ts`（真实 GBK/UTF-8 页面）、`tools/check_clip_parity.py`（三端一致） |
-| 笔记导入 | ✅ | `import_ui_smoke.mjs`（27 项）、`subscription.test.ts`、`fixtures.test.ts`（真实 DOCX/PPTX/feed） |
+| 笔记导入（文件） | ✅ | `import_ui_smoke.mjs`（28 项）、`subscription.test.ts`、`fixtures.test.ts`（真实 DOCX/PPTX/feed） |
+| **手写笔记** | ✅ | `notes_ui_smoke.mjs`（30 项，含「保存后阅读区**真的重绘出笔迹**」——按像素判定非透明像素）、`ink.test.ts`（7 项：归一化、撤销、损坏数据不崩） |
+| **语音笔记** | **A** | `notes_ui_smoke.mjs`（用 Chrome 合成麦克风跑完「开始 → 计时前进 → 停止 → 可回放 → 可保存」，并用浏览器解码器确认录到的字节**能解出真实时长与采样率**）、`media.rs`（Rust 侧落盘与读回）。**未验**：物理麦克风、系统权限、桌面附件落盘（见下「还没证据的」） |
 | AI 出卡 | **A** | `workspace_ui_smoke.mjs` **拦截 fetch 注入假模型响应**，验证整条链路：素材 → 请求 → 预览 → 确认 → 落库 → 回溯 materialId。仍然**没有真实模型的调用证据**（需要 API key），但链路本身是验过的 |
 | 刷卡 | ✅ | `desktop_interaction_smoke.mjs`（键盘划走）、`review_ui_smoke.mjs`（19 项：评分写回、间隔算出、掌握度前进、重载后仍在） |
-| 卡库和详情 | ✅ | `workspace_ui_smoke.mjs`（76 处断言）、`EntryInspector.test.tsx` |
+| 卡库和详情 | ✅ | `workspace_ui_smoke.mjs`（90 项）、`EntryInspector.test.tsx` |
 | 收藏和历史 | ✅ | `workspace_ui_smoke.mjs`（收藏、归档、移回收件箱）、`model.test.ts` |
 | 测验 | ✅ | `quizSession` / `review.test.ts`、`review_ui_smoke.mjs`；界面入口见 `workspace_ui_smoke.mjs` |
 | 统计 | ✅ | `StatsView` + `workspace_ui_smoke.mjs`（指标块数量与口径）、Rust `db_get_stats` |
 | 导出 | ✅ | `markdownExport.test.ts`（13 项，含 Anki TSV）、`systemBackup.test.ts`（7 项，无损往返）、`settings_plugins_smoke.mjs`（真实 .kfbackup 导出→恢复） |
+
+> 状态 **A** = 主链路已验，但仍有**依赖外部条件**的一环没验（见文末「还没证据的」）。
 
 ## 横向能力
 
@@ -80,7 +84,7 @@
 | Anki TSV 导出（两端同格式） | ✅ | 桌面端 `markdownExport.test.ts` 4 项 + Android `CardExportEngineTest.kt` 4 项，两端格式对齐 |
 | 备份无损往返 | ✅ | `systemBackup.test.ts`、`settings_plugins_smoke.mjs` |
 | 外部接口（MCP） | ✅ | `mcp_smoke.mjs`（7 项，在门禁里） |
-| 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时） |
+| 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时；**时间断言按实测分布定预算**，见 `SMOOTHNESS.md`） |
 | 键盘可达（模态） | ✅ | `taste_usability_gate.mjs`：手写/语音面板打开后焦点进入面板、Tab 在面板内循环、Escape 关闭并归还焦点（此前这些面板键盘完全不可达）。原生 `<dialog>` 的「记录」模态由浏览器提供同样能力 |
 | 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 13 套浏览器冒烟（`run_all_smokes.sh`，也在门禁里）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
 | 数据出口（凭据不外流） | ✅ | `dataEgress.test.ts`（5 项，哨兵密钥跑所有导出路径）+ `store.redact.test.ts`（6 项）+ Rust `http.rs` 的 `redact_secrets`（含走真实 401 服务器的路径级测试） |
