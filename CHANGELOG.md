@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 补充验证（MCP 的五个工具逐个对着应用真正用的库验过）：`create_flash_card` 写入后 `version=1`/`is_deleted=0` 且 FTS 索引同步、用应用自己的中文前缀匹配式能搜到；`add_material` 写进 `materials` 表且 `inbox_status='inbox'`——它那句「已加入收件箱」是真的。此前 `mcp_smoke.mjs` 只检查了 `add_material` 存在，没真调过它。
 - 修复（外部 Agent 写了卡，界面却看不见）：MCP server 是独立进程、直接写 SQLite，而界面只听两个信号——本应用命令派发的 DOM 事件与浏览器 localStorage 的 storage 事件——**两个都覆盖不到外部写入**，代码里也没有文件监听器（而 MCP server 的文档却写着「主窗口收到文件监听后自动刷新」，那套监听并不存在）。现在轮询库文件签名（修改时间+大小），变了就派发**已有的** `knowflick:library-changed`，复用现成刷新路径。Rust 与前端两侧都有测试，均已反向验证。真机端到端验证因本机窗口不在屏幕上（别的 Space）尚未完成，已如实记在 `SMOOTHNESS.md`；配套的 `tools/desktop_external_write_smoke.mjs` 会先用 `CGWindowList` 确认窗口在屏幕上、再自证截图指纹可信（什么都不写时指纹必须稳定），不满足就 SKIP——因为「截图指纹变了」根本不能证明界面刷新了（不做任何写入时指纹也一直在变）。它列在 `run_all_smokes.sh` 的 `DESKTOP_ONLY_SUITES`（真机专有，CI 与浏览器冒烟没有这个条件）。
 - 修复（不可用的入口看起来还是可用的）：`aria-disabled` 没有浏览器的默认灰化（那来自 `:disabled`），实测「转写」的颜色与可用的「手写」完全相同、opacity 都是 1——看起来完全可用。补了 `aria-disabled` 的样式与悬停排除，并加断言锁住「不可用的入口必须比可用的淡」，已反向验证。
 - 修复（灰掉的入口没人知道为什么）：语音转写插件默认关闭，顶栏「语音转写」与侧栏「转写」用 `disabled` + `title`，而**禁用按钮不接收焦点、不派发鼠标事件**——键盘用户 Tab 不到（实测 14 个控件里从没出现过它）、鼠标点了没反应，连 title 都看不到，界面上就多出一个没人知道为什么灰掉的入口。改用 `aria-disabled`：仍可聚焦，激活时说清原因与下一步（去设置里开启插件），焦点不丢。门禁断言改为锁行为（不可用 / 键盘可达 / 激活后解释），已反向验证。

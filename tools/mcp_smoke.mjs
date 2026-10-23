@@ -116,6 +116,28 @@ if (existsSync(realDb)) {
     const searchText = search.result?.content?.[0]?.text ?? "";
     assert.ok(/MCP 回归探针/.test(searchText), `搜索不到刚写的卡：${searchText.slice(0, 160)}`);
     pass("搜索能找到刚写入的卡");
+
+    // add_material 之前只被查了「工具清单里有没有它」，**从没真调过**。
+    // 它答应的是「已加入收件箱」——那就得验它真的进了 materials 表、
+    // 状态是 inbox、且应用可见（is_deleted = 0）。
+    const mat = await call(7, "tools/call", {
+      name: "add_material",
+      arguments: { title: "MCP 素材回归探针", text: "验证素材写路径" },
+    });
+    const matText = mat.result?.content?.[0]?.text ?? JSON.stringify(mat);
+    assert.ok(/收件箱/.test(matText), `add_material 没报告入箱：${matText.slice(0, 160)}`);
+    const matId = (matText.match(/ID:\s*([0-9a-f-]+)/) || [])[1];
+    assert.ok(matId, `add_material 没给出素材 ID：${matText.slice(0, 160)}`);
+    const { DatabaseSync } = await import("node:sqlite");
+    const check = new DatabaseSync(join(dir, "knowflick.db"), { readOnly: true });
+    const row = check
+      .prepare("SELECT inbox_status, is_deleted, source_type FROM materials WHERE id = ?")
+      .get(matId);
+    check.close();
+    assert.ok(row, "素材没落进 materials 表");
+    assert.equal(row.inbox_status, "inbox", `素材状态不对：${row.inbox_status}`);
+    assert.equal(row.is_deleted, 0, "素材被标记删除，应用看不见");
+    pass("add_material 真的进了收件箱（应用可见）");
   } finally { kill(); }
 } else {
   console.log("SKIP 有库场景（本机没有真实 knowflick.db）");

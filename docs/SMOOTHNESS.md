@@ -3,6 +3,24 @@
 > 目标不是「功能存在」，而是**每一步都不卡、不猜、不等**。
 > 这份文档记录已经量过／修过的地方，以及实测后判定**不需要动**的地方。
 
+### MCP 的写路径经得起查——顺手把五个工具都验了一遍
+
+补完刷新信号后，我把 MCP server 的五个工具逐个对着**应用真正用的那个库**验了一遍
+（复制真实 `knowflick.db` 到临时目录，用 `KNOWFLICK_LIBRARY_DIR` 指过去）：
+
+- `create_flash_card`：写入后 `version=1`、`is_deleted=0`、`source=ai`，
+  **FTS 索引同步插入**；用**应用自己的**匹配式（`"词"*` 前缀）能搜到中文标题；
+- `add_material`：写进 `materials` 表，`inbox_status='inbox'`、`is_deleted=0`
+  ——也就是它那句「素材已加入收件箱！」是**真的**，不是空话；
+- `get_knowledge_stats` / `get_weekly_briefing` / `search_knowledge`：
+  写入后统计与简报都跟得上，搜索能搜到刚写的卡。
+
+之前 `mcp_smoke.mjs` 只在「工具清单」里检查了 `add_material` 的存在，
+**没真的调它**；这轮补上了。
+
+> 顺带一条：MCP server 文档里写的「Tauri 主窗口收到**文件监听**后自动刷新」
+> ——那套监听**从来就不存在**（见下一节）。文档比实现乐观，是会误导人的。
+
 ### 外部 Agent 写了卡，界面却看不见——没有刷新信号
 
 MCP server（`tools/mcp-server.mjs`）是**独立进程**，它直接写 SQLite。外部 Agent
