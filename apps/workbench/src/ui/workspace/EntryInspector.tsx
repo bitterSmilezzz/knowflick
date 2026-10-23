@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Entry } from "./model";
 import { Icon, sourceLabel } from "./Icon";
+import { attachmentBlob, attachmentMime, inlineImageUrl } from "./attachment";
 import { openExternalUrl, readMedia, type RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { estimateTokenCount } from "../../domain/ingest";
@@ -89,9 +90,7 @@ export function EntryInspector({
     if (!material) { setMediaUrl(null); return; }
     // 浏览器体验里图片以内嵌 data URL 存放，没有可读的 media/ 文件。
     if (!path) {
-      let inline: string | null = null;
-      try { inline = JSON.parse(material.metadataJson).dataUrl ?? null; } catch { inline = null; }
-      setMediaUrl(typeof inline === "string" && inline.startsWith("data:image/") ? inline : null);
+      setMediaUrl(inlineImageUrl(material));
       return;
     }
     let disposed = false;
@@ -100,10 +99,7 @@ export function EntryInspector({
     void readMedia(path, dir)
       .then(bytes => {
         if (disposed) return;
-        const mime = material.sourceType === "image"
-          ? (() => { try { return JSON.parse(material.metadataJson).mime as string; } catch { return "image/png"; } })()
-          : (() => { try { return JSON.parse(material.metadataJson).mime as string; } catch { return "audio/webm"; } })();
-        const blob = new Blob([new Uint8Array(bytes)], { type: mime || "application/octet-stream" });
+        const blob = attachmentBlob(bytes, attachmentMime(material));
         created = URL.createObjectURL(blob);
         setMediaUrl(created);
       })

@@ -45,6 +45,32 @@
 空白页做同样的动作是 0ms，所以这 60–160ms 确实是应用自己的开销，
 但既不随规模增长，也不是读区。**如实记下，不编原因。**
 
+### 「存进去的附件读回来对不对」从来没被验过
+
+附件链路（录音 / 手写 / 图片）看着是齐的：Rust 侧 `save_media` / `read_media`
+有测试，库表 `media_path` 的往返也有测试。
+
+但**前端那一环是空的**：`EntryInspector` 读回附件的逻辑活在 `useEffect` 里，
+而它的测试用 `renderToStaticMarkup`——**服务端渲染，不跑 effect**。
+所以「宿主读回来的字节有没有原样变成 Blob」这条**从来没被执行过**。
+
+修法：把这段逻辑抽成纯函数（`ui/workspace/attachment.ts`），不依赖 DOM、
+不依赖 Tauri，node 环境下就能测：
+
+- `attachmentMime` —— 以存盘时记下的 MIME 为准，缺了按来源类型兜底，`metadataJson` 坏了也不崩
+- `attachmentBlob` —— 宿主回来的 `number[]` **原样**变成 Blob（附件是用户自己录的，不能被悄悄改）
+- `inlineImageUrl` —— 浏览器体验里的内嵌图片只认 `data:image/` 开头
+- `hasReadableAttachment` —— 「有 `mediaPath`」不等于「附件还在」
+
+**四条断言都反向验证过**：抹掉读回字节的最后一个 → 字节断言失败；
+MIME 写死 → MIME 断言失败；内嵌图片不查前缀 → 前缀断言失败。
+
+顺带修了一个真问题：`new Blob([uint8])` 在 TS 严格模式下**不合法**
+（`Uint8Array` 的 buffer 可能是 `SharedArrayBuffer`），现在显式拷进新的 `ArrayBuffer`。
+
+> 教训：测试用 SSR 渲染组件时，**只有渲染结果被验了，effect 里的行为一片空白**。
+> 关键路径的逻辑要抽成纯函数，测试环境才盖得住。
+
 ### 真机验证卡在锁屏——而且原工具会给「假通过」
 
 连着两轮把真机逐页验证记成「环境限制未做」。查下来，**原因确实是锁屏**，
