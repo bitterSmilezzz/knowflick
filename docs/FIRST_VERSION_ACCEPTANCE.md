@@ -79,6 +79,7 @@
 | 测验 | ✅ | `quizSession` / `review.test.ts`、`review_ui_smoke.mjs`；界面入口见 `workspace_ui_smoke.mjs` |
 | 统计 | ✅ | `StatsView` + `workspace_ui_smoke.mjs`（指标块数量与口径）、Rust `db_get_stats` |
 | 导出 | ✅ | `markdownExport.test.ts`（13 项，含 Anki TSV）、`systemBackup.test.ts`（7 项，无损往返）、`settings_plugins_smoke.mjs`（真实 .kfbackup 导出→恢复） |
+| **邮箱（收信源）** | **A** | `mailbox_ui_smoke.mjs`（45 项，跑在**浏览器模式**）、Rust `mail.rs`（IMAP 解析与落库）、`check_rust_error_messages.py`（24 条校验错误必须是中文）。**桌面端真机已验**：整个邮箱功能曾因 Tauri 权限清单漏项被 ACL 全拒（界面报英文的 `not allowed by ACL`），已修并加了守卫 `check_tauri_permissions.py`。**未验**：真实 IMAP 服务器上的收信（需账号与网络） |
 
 > 状态 **A** = 主链路已验，但仍有**依赖外部条件**的一环没验（见文末「还没证据的」）。
 
@@ -110,6 +111,10 @@
    仍需在桌面客户端录制、保存、重启后回放，确认内容与附件都保留。
 3. **Windows / Linux 安装后首启**——CI 已构建 msi/deb；尚无安装后完成
    导入 → 刷卡 → 测验 → 导出的验收证据。
+4. **真实 IMAP 服务器上的收信**——邮箱的界面、校验、落库与错误文案都验过了
+   （且修掉了「整个邮箱功能被 ACL 全拒」那个缺陷），但**没有连过真实的
+   IMAP 服务器**：需要一个可用的邮箱账号与网络。IMAP 协议细节（多文件夹、
+   垃圾邮件判定、大附件跳过）目前只有单元测试覆盖。
 
 ## 已补上的（原先空白）
 
