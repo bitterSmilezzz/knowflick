@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
+import { DesktopOnlyHint } from "./DesktopOnlyHint";
 import { addStroke, clearInk, emptyInk, isEmptyInk, normalizePoint, parseInk, undoStroke, INK_COLORS, INK_WIDTHS, type InkColor, type InkDocument, type InkStroke } from "../../domain/ink";
 import { formatDuration } from "../../domain/ink";
 
@@ -204,7 +205,14 @@ export function VoiceRecorder({ onCancel, onSave }: {
       <span className="ws-hint">{state === "recording" ? formatDuration(elapsed) : audio ? formatDuration(audio.durationMs) : "点下面的按钮开始"}</span>
     </div>
     {audio ? <audio className="voice-audio" controls src={audio.url} aria-label="录音回放" /> : null}
-    {error ? <p className="ws-hint voice-error" role="alert">{error}</p> : null}
+    {error ? (
+      <div className="voice-error" role="alert">
+        <p className="ws-hint">{error}</p>
+        {/* 浏览器体验保存不了录音——只说「请用桌面客户端」却没地方去，是断链。
+            这里给一条可点的路。 */}
+        {error.includes("桌面客户端") ? <DesktopOnlyHint /> : null}
+      </div>
+    ) : null}
     <div className="ink-actions">
       <button type="button" className="ws-bordered" disabled={state === "saving"} onClick={onCancel}>取消</button>
       {state === "recording"

@@ -147,6 +147,16 @@ try {
     "/桌面客户端/.test(document.querySelector('.voice-error')?.textContent ?? '')",
     "浏览器里保存录音时说明要去桌面端（不是静默失败）",
   );
+  // 但只说「去桌面客户端」是**断链**：用户被告知要去，却没地方去。
+  // 必须给一条可点的路——否则这句话等于把人堵死。
+  await check(
+    "[...document.querySelectorAll('.voice-error button')].some(b => b.textContent.includes('下载桌面客户端'))",
+    "提示之后就有可点的下载入口（不是只说一句桌面客户端）",
+  );
+  await check(
+    "[...document.querySelectorAll('.voice-error a, .voice-error button')].length > 0",
+    "下载入口是真实可点的元素",
+  );
 
   console.log(`Notes UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }

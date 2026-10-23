@@ -2149,6 +2149,16 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 .voice-audio { width: 100%; }
 .voice-error { color: var(--ink); }
 
+/* 「去桌面端」的入口：被告知要去，却没地方去，是断链。 */
+.ws-desktop-only {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.ws-desktop-only .ws-bordered { width: auto; }
+
 /* ---------- source insights (「越用越懂你」) ---------- */
 
 .ws-insight-panel {

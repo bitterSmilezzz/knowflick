@@ -12,6 +12,7 @@ import { inShell, type RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { SourceInsightPanel } from "./SourceInsightPanel";
 import { Icon } from "./Icon";
+import { DesktopOnlyHint } from "./DesktopOnlyHint";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface WorkspaceSettingsProps {
@@ -264,6 +265,7 @@ export function WorkspaceSettings({
               <div className="ws-settings-card-head"><Icon name="edit" size={15} /><h2>快速记录</h2></div>
               <div className="ws-settings-body">
                 <p className="ws-hint">{inShell() ? "关闭主窗口后仍可从系统托盘呼出胶囊；选择退出会结束应用。" : "全局快捷键与托盘仅在桌面客户端可用。"}</p>
+                <DesktopOnlyHint text="" />
                 {shortcutStatus ? <p className="ws-hint" role={shortcutStatus.registered ? "status" : "alert"}>
                   {shortcutStatus.registered ? `${/Mac/.test(navigator.platform) ? "Option+Space" : shortcutStatus.shortcut} 已注册` : `全局快捷键未注册：${shortcutStatus.error ?? "快捷键可能被其他应用占用"}。请从文件菜单或系统托盘打开胶囊。`}
                 </p> : null}
@@ -528,7 +530,10 @@ export function WorkspaceSettings({
                   ) : (
                     // 浏览器体验没有本地文件系统，导不出文件——说清楚原因，
                     // 好过让这个按钮凭空消失。
-                    <span className="ws-hint">导出 cards.json 需要桌面客户端（浏览器体验没有本地文件系统）。</span>
+                    <>
+                      <span className="ws-hint">导出 cards.json 需要桌面客户端（浏览器体验没有本地文件系统）。</span>
+                      <DesktopOnlyHint text="" />
+                    </>
                   )}
                 </div>
                 <p className="ws-hint" style={{ margin: 0 }}>

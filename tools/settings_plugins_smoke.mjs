@@ -54,6 +54,13 @@ try {
   await clickButton("设置");
   await check('!!document.querySelector(\'[data-page="settings"]\')', "settings page renders");
 
+  // 浏览器体验里多处写着「需要桌面客户端」，但**没告诉用户怎么去**——
+  // 被告知要去却没地方去，是断链。设置页是最显眼的落点，必须给可点的路。
+  await check(
+    '[...document.querySelectorAll(\'[data-hint="desktop-only"] button\')].some(b => b.textContent.includes("下载桌面客户端"))',
+    "设置页给出可点的「下载桌面客户端」入口"
+  );
+
   // 跨端契约：导出与安卓同格式的 cards.json
   await check(
     "document.body.innerText.includes('cards.json')",
