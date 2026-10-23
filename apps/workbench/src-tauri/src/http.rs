@@ -376,16 +376,32 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let body = r#"{"error":{"message":"Incorrect API key provided: {{API_KEY_1uv3bev0}}."}}"#;
         let handle = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 8192];
-                let _ = std::io::Read::read(&mut stream, &mut buf);
-                let response = format!(
-                    "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    body.len(),
-                    body
-                );
-                let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
-            }
+            // 非阻塞 + 截止时间：请求万一没来，这条测试要**快速失败**，
+            // 而不是把整个套件挂死（`asr` 的下载测试就是这么挂过的）。
+            // 同文件里 ipv6 那条与代理绕过那条用的也是这个写法。
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            listener.set_nonblocking(true).unwrap();
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        if std::time::Instant::now() >= deadline {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => return,
+                }
+            };
+            stream.set_nonblocking(false).ok();
+            let mut buf = [0u8; 8192];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+            let response = format!(
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
         });
 
         let runtime = tokio::runtime::Builder::new_current_thread()
