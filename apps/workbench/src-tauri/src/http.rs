@@ -259,7 +259,11 @@ fn bypasses_proxy(url: &reqwest::Url) -> bool {
 /// 按目标地址选客户端：回环直连，其余跟随系统代理。
 ///
 /// `redirect` 只给剪藏用（跟随跳转后再校验最终地址）；模型请求不跟随跳转。
-fn client_for(
+///
+/// `pub(crate)`：模型下载（`asr::download_to_path`）也要用同一套判据——
+/// 它原来自己 `reqwest::Client::builder()` 裸建，回环请求会绕去系统代理，
+/// 在开着代理的机器上直接吃 502（本地模型服务明明起着，下载却失败）。
+pub(crate) fn client_for(
     url: &reqwest::Url,
     timeout: Duration,
     redirect: Option<reqwest::redirect::Policy>,

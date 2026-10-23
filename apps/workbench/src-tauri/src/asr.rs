@@ -101,12 +101,14 @@ where
     let partial = target.with_extension("part");
     let _ = std::fs::remove_file(&partial);
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .build()
-        .map_err(|e| e.to_string())?;
+    // 回环地址必须直连，判据与 http.rs 的其余请求同一套（`client_for`）。
+    // 这台机器可能开着系统代理（公司网络、Clash…），而代理对 127.0.0.1 的
+    // 请求常常直接回 502——本地模型服务明明起着，下载却失败（实测）。
+    let parsed =
+        reqwest::Url::parse(url).map_err(|e| crate::error_text::explain("模型地址无效", &e))?;
+    let client = crate::http::client_for(&parsed, std::time::Duration::from_secs(600), None)?;
     let response = client
-        .get(url)
+        .get(parsed.as_str())
         .header("User-Agent", "KnowFlick/0.1")
         .send()
         .await
@@ -353,13 +355,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// 等一条连接，但**不能无限等**：超时返回 `None`。
+    ///
+    /// 为什么不用裸 `accept()`：本机开着系统代理时，下载请求会绕去代理
+    /// （实测回 502），本地 listener 根本收不到连接——裸 `accept()` 会永久
+    /// 挂住，把整个测试套件拖死（实测卡了 24 分钟）。写法与 `http.rs` 里
+    /// 回环测试的 accept 一致。
+    fn accept_within(
+        listener: &std::net::TcpListener,
+        timeout: std::time::Duration,
+    ) -> Option<std::net::TcpStream> {
+        let deadline = std::time::Instant::now() + timeout;
+        listener.set_nonblocking(true).unwrap();
+        loop {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    // BSD 系（含 macOS）的 accept 会把非阻塞标记一起继承过来。
+                    stream.set_nonblocking(false).ok();
+                    return Some(stream);
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if std::time::Instant::now() >= deadline {
+                        return None;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(e) => panic!("accept 失败：{e}"),
+            }
+        }
+    }
+
     /// 起一个只服务一次的本地 HTTP 服务，用真实 socket 验证下载 → .part → 改名。
     fn serve_once(body: &'static [u8]) -> (String, std::thread::JoinHandle<()>) {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let handle = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
+            let Some(mut stream) = accept_within(&listener, std::time::Duration::from_secs(10)) else {
+                return;
+            };
             let mut buf = [0u8; 1024];
             let _ = stream.read(&mut buf);
             let header = format!(
@@ -401,7 +435,9 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let handle = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
+            let Some(mut stream) = accept_within(&listener, std::time::Duration::from_secs(10)) else {
+                return;
+            };
             let mut buf = [0u8; 1024];
             let _ = stream.read(&mut buf);
             stream
