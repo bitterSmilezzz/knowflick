@@ -78,6 +78,14 @@ const CASES = [
         "return haystack.includes(trimmed.toLowerCase());"
       ),
   },
+  {
+    name: "无链接素材写成未登记的来源类型（界面上显示英文 'note'）",
+    patch: (source) =>
+      source.replace(
+        ').run(id, sourceUrl ? "web" : "manual", title, sourceUrl, text, hash, now, now);',
+        ').run(id, sourceUrl ? "web" : "note", title, sourceUrl, text, hash, now, now);'
+      ),
+  },
 ];
 
 let failures = 0;

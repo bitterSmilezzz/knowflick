@@ -285,7 +285,10 @@ export async function handleMcpRequest(
           const now = Date.now();
           const material: RawMaterial = {
             id: crypto.randomUUID(),
-            sourceType: sourceUrl ? "web" : "note",
+            // 「无链接的素材」用 "manual"——与应用内其它入口（闪念、手动保存）
+            // 写的是同一个类型。以前这里写 "note"，界面上就显示成英文的 "note"，
+            // 而用户在应用里手动记的闪念显示的是「随手灵感」——同一件事两种说法。
+            sourceType: sourceUrl ? "web" : "manual",
             title,
             sourceUrl,
             rawText: text,

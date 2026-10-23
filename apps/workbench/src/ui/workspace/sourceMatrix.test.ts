@@ -97,3 +97,51 @@ describe("来源矩阵：每种来源都有可显示的来源标签", () => {
     expect(sourceLabel("web", "https://example.test/post", "sub-1").label).toBe("订阅");
   });
 });
+
+/**
+ * **所有**会被写进库的来源类型，都要有中文标签。
+ *
+ * 上面那个矩阵只列了 7 种来源，于是漏了一种：MCP 的 `add_material`
+ * 在**没有链接**时写的是 `source_type = "note"`——而 `"note"` 当时
+ * 不在 `META` 表里，界面上就显示成英文的 "note"。
+ *
+ * 用户看到的是：自己通过 Cursor 存进来的一条素材，来源写着 "note"。
+ *
+ * 「扫代码找出所有会被写进的类型」那部分放在
+ * `tools/check_source_labels.py`（Python 守卫）——前端单测读源码要用
+ * `node:fs`，而前端的 tsconfig 没有 Node 类型，`tsc --noEmit` 会红。
+ * 这里只锁**具体几个**类型的标签。
+ */
+describe("来源类型不留英文标签", () => {
+  it("会被写进库的来源类型都有中文标签", () => {
+    // 这几个是实际会被写进 `source_type` 的类型。
+    // 「新增一种来源却忘了登记标签」由 `tools/check_source_labels.py` 兜住。
+    const types = ["manual", "email", "email-digest", "web", "document", "audio", "image", "ink"];
+    // 循环里的断言在**空数组**时会直接通过——所以先钉住「确实有这些」。
+    expect(types.length).toBe(8);
+    for (const type of types) {
+      const { label } = sourceLabel(type, "");
+      expect(
+        /[一-鿿]/.test(label),
+        `来源类型「${type}」的标签是「${label}」——用户看到的是英文内部名`,
+      ).toBe(true);
+    }
+  });
+
+  it("老库里遗留的 note 类型也显示成中文", () => {
+    // 已经在用的库里可能有 source_type = "note" 的旧素材——
+    // 用户不该看到英文的 "note"。
+    expect(sourceLabel("note", "").label).toBe("随手灵感");
+  });
+
+  it("「无链接的素材」在各条路径上写的是同一个类型", () => {
+    // 同一个概念（用户随手记的一条内容），两处写入路径各写各的：
+    // 应用内闪念写 "manual"，MCP 以前写 "note"。
+    // 于是用户在收件箱里看到两条**来源标签不同**的内容——其实是同一种东西。
+    //
+    // 这里锁住「宿主 MCP 写 manual」；stdio MCP（tools/mcp-server.mjs）由
+    // `tools/mcp_server_smoke.mjs` 断言源类型，两边合起来是完整覆盖。
+    expect(sourceLabel("manual", "").label).toBe("随手灵感");
+    expect(sourceLabel("note", "").label).toBe(sourceLabel("manual", "").label);
+  });
+});

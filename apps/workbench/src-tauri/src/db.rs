@@ -269,7 +269,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 #[serde(rename_all = "camelCase")]
 pub struct RawMaterialDto {
     pub id: String,
-    pub source_type: String, // "manual", "web", "note", "document", "audio", "image"
+    pub source_type: String, // "manual", "web", "document", "audio", "image", "ink", "email"
     pub title: String,
     pub source_url: Option<String>,
     pub raw_text: String,

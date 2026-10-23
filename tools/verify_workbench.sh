@@ -61,6 +61,8 @@ python3 -m unittest discover -s tools -p test_check_tauri_permissions.py
 python3 -m unittest discover -s tools -p test_check_rust_error_messages.py
 python3 -m unittest discover -s tools -p test_check_frontend_error_text.py
 python3 -m unittest discover -s tools -p test_check_user_facing_content.py
+python3 -m unittest discover -s tools -p test_check_test_assertions.py
+python3 -m unittest discover -s tools -p test_check_source_labels.py
 python3 -m unittest discover -s tools -p test_windows_console.py
 python3 tools/check_doc_consistency.py
 # Tauri 命令 / build.rs 声明 / capability 授权必须三处一致。
@@ -73,6 +75,10 @@ python3 tools/check_rust_error_messages.py
 python3 tools/check_frontend_error_text.py
 # 会**落进用户数据**的文案也要中文（收件箱里直接显示的那些）。
 python3 tools/check_user_facing_content.py
+# 测试里的 expect(...) 都得带 matcher——空断言什么都不检查，测试却照样绿。
+python3 tools/check_test_assertions.py
+# 会被写进库的来源类型都要有中文标签——没登记的类型会显示英文内部名。
+python3 tools/check_source_labels.py
 
 # 全部浏览器冒烟：13 套界面级回归。
 # 它们要真实浏览器与运行中的 Vite，CI 环境两者都没有（脚本会 SKIP）；

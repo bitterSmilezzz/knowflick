@@ -392,7 +392,7 @@ function addMaterial(args) {
       `INSERT INTO materials (id, source_type, title, source_url, raw_text, cleaned_markdown, content_hash,
         media_path, media_size_bytes, metadata_json, inbox_status, created_at, updated_at, is_deleted)
        VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, 0, '{}', 'inbox', ?, ?, 0)`
-    ).run(id, sourceUrl ? "web" : "note", title, sourceUrl, text, hash, now, now);
+    ).run(id, sourceUrl ? "web" : "manual", title, sourceUrl, text, hash, now, now);
 
     // 同步素材全文索引（与 Rust 的 save_material 同构，`db.rs`）。
     // 不做这一步：这条素材在应用里**搜不到**——应用检索走的是 fts_materials，

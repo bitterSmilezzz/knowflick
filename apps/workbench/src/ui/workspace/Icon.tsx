@@ -69,6 +69,9 @@ export function Icon({
 
 const META: Record<string, { label: string; icon: string }> = {
   manual: { label: "随手灵感", icon: "edit" },
+  // 旧的库里可能有 source_type = "note" 的素材（MCP 的 add_material 以前写这个）。
+  // 现在写入统一用 "manual"，但老数据还在——用户不该看到英文的 "note"。
+  note: { label: "随手灵感", icon: "edit" },
   email: { label: "邮件", icon: "mail" },
   "email-digest": { label: "邮件归纳", icon: "brief" },
   web: { label: "网页剪藏", icon: "note" },

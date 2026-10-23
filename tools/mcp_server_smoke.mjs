@@ -241,11 +241,33 @@ try {
 
   // 写入还要同步全文索引——应用里检索走的是 fts_materials，
   // 不补这一条，Agent 写进来的东西在**应用里**就成了搜不到的死条目。
+  const writtenMaterialId = (material.result.content[0].text.match(/ID:\s*([0-9a-f-]+)/) || [])[1];
   const ftsMaterial = new DatabaseSync(dbPath, { readOnly: true })
     .prepare("SELECT material_id FROM fts_materials WHERE material_id = ?")
-    .get((material.result.content[0].text.match(/ID:\s*([0-9a-f-]+)/) || [])[1]);
+    .get(writtenMaterialId);
   assert.ok(ftsMaterial, "add_material 没有同步 fts_materials 索引");
   pass("add_material 同步素材全文索引（应用里也搜得到）");
+
+  // 写入的来源类型必须是**应用里已登记**的类型——界面上要显示中文标签。
+  // （以前无链接时写的是 "note"，而 "note" 没登记，界面上显示英文的 "note"。）
+  const writtenRow = new DatabaseSync(dbPath, { readOnly: true })
+    .prepare("SELECT source_type FROM materials WHERE id = ?")
+    .get(writtenMaterialId);
+  assert.equal(writtenRow.source_type, "web", "有链接的素材应写成 web");
+  const noUrl = await call("tools/call", {
+    name: "add_material",
+    arguments: { title: "无链接素材", text: "没有来源链接的内容" },
+  });
+  const noUrlId = (noUrl.result.content[0].text.match(/ID:\s*([0-9a-f-]+)/) || [])[1];
+  const noUrlRow = new DatabaseSync(dbPath, { readOnly: true })
+    .prepare("SELECT source_type FROM materials WHERE id = ?")
+    .get(noUrlId);
+  assert.equal(
+    noUrlRow.source_type,
+    "manual",
+    "无链接的素材应写成 manual（应用里显示「随手灵感」）",
+  );
+  pass("add_material 写入的来源类型是应用已登记的类型");
 
   // 索引不全的老库：没进索引的素材**也要能被搜到**。
   // （旧版实现只在 FTS 命中 0 条时才回退，于是「有别的命中」就把它漏了。）
@@ -293,9 +315,9 @@ try {
   const newMaterial = verify.prepare("SELECT inbox_status FROM materials WHERE title = '外部文章'").get();
   verify.close();
   assert.equal(cardCount, 2);
-  // 种子里有 5 条未删除素材（mat-indexed / mat-unindexed / mat-split / mat-stale / 外部文章），
-  // mat-deleted 是软删除，不计入。
-  assert.equal(materialCount, 5);
+  // 种子里有 4 条未删除素材（mat-indexed / mat-unindexed / mat-split / mat-stale），
+  // 加上本轮写入的 2 条（外部文章、无链接素材）；mat-deleted 是软删除，不计入。
+  assert.equal(materialCount, 6);
   assert.equal(ftsCount, 2);
   assert.equal(newCard.headline, "外部 Agent 写入的卡片");
   assert.equal(newMaterial.inbox_status, "inbox");

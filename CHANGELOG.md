@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+- 修复（收件箱里写着英文的 "note"）：素材的 `source_type` 决定界面上的来源标签，`META` 表里没有的类型会**原样显示英文内部名**。MCP 的 `add_material` 在没有链接时写 `source_type = "note"`，于是用户通过 Cursor 存进来的素材来源写着英文的 "note"——而应用内闪念写的是 `manual`（显示「随手灵感」），**同一个概念三种写法**。两条 MCP 路径改写 `manual`，`META` 补登 `note` 作旧数据兼容，并加守卫 `tools/check_source_labels.py`（扫代码找出所有会被写进的 `source_type`，逐个要求有中文标签——手写清单会漏，扫描不会）。
+- 修复（断言「绿」不等于「在守东西」——这次是自己的新测试）：vitest 的 `expect(actual, message)` 后面**不接 matcher 时什么都不检查**，测试照样绿。写来源标签那条断言时漏了 `.toBe(true)`，于是「标签是英文 note」这个真实缺陷绿着过了。新增守卫 `tools/check_test_assertions.py`：所有 `expect(...)` 后面都必须带 matcher。
 - 修复（外部 Agent 搜不到素材——同一份库，两个入口看到的不一样）：`search_knowledge` 只查 `fts_cards`，于是外部 Agent 问「上周那封讲 X 的邮件说了什么」搜不到，而用户在应用里搜得到——同一份知识库、不同入口看到的不一样，就不算统一记忆库。新增 `search_materials` 工具与 `knowflick://materials/{id}` 资源（读回正文全文与出处），命中结果带 `resourceUri`，片段截**命中处附近**而不是开头（长邮件命中在末尾时，原来给的是毫不相干的开场白）。素材检索判定以**当前素材内容**为准而非 FTS 索引（索引可能缺也可能旧，而 MCP 服务端不依赖桌面端启动跑 backfill），多词按「每个词都要出现」判定。`add_material` 同步 `fts_materials` 索引——否则 Agent 写进来的东西在应用里搜不到。
 - 修复（收件箱里一直写着 "(No subject)"）：邮件同步进收件箱时，无主题的邮件落成 `"(No subject)"`、无正文的落成 `"(No readable text body)"`——收件箱条目**直接渲染** `e.title`，所以用户看到的就是这两个英文串。内容和错误消息的区别很关键：错误只在出错时出现，**内容是常态**。已改成中文并加 Rust 测试锁住（反向验证过），另加守卫 `tools/check_user_facing_content.py` 扫会落进用户数据的字段。
 - 修复（半中半英：中文前缀后面跟着底层英文报错）：Rust 里 20 处 `format!("…{e}")` 直接把底层库（std/reqwest）的英文报错拼进用户可见的消息——「下载模型失败: error sending request for url …」。用户看懂了「下载模型失败」但不知道**为什么**、更不知道**下一步**。新增 `src-tauri/src/error_text.rs`，按关键词给出「原因 + 下一步」（连不上服务器 / 磁盘满 / 权限不足 / 证书问题…），原始英文保留在括号里供开发者定位。守卫加了一条：`format!("…{e}…")` 直接拼底层错误即算漏网（它自己抓出了我漏掉的 4 处）。
