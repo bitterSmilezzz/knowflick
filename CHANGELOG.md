@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+- 测试：独立 MCP 冒烟的三处只读 SQLite 查询明确关闭连接，修复 Windows 清理临时库时报 EBUSY；正常 20 项检查及 6 项断言退化检查已重跑。
+
 - 修复（收件箱里写着英文的 "note"）：素材的 `source_type` 决定界面上的来源标签，`META` 表里没有的类型会**原样显示英文内部名**。MCP 的 `add_material` 在没有链接时写 `source_type = "note"`，于是用户通过 Cursor 存进来的素材来源写着英文的 "note"——而应用内闪念写的是 `manual`（显示「随手灵感」），同一个概念用了两种来源值。两条 MCP 路径改写 `manual`，`META` 补登 `note` 作旧数据兼容，并加守卫 `tools/check_source_labels.py`（限定检查来源字段字面量与简单三元赋值、以及已登记的旧别名；实际 MCP 写入由宿主单测与 stdio 冒烟验证）。
 - 修复（断言「绿」不等于「在守东西」——这次是自己的新测试）：vitest 的 `expect(actual, message)` 后面**不接 matcher 时什么都不检查**，测试照样绿。写来源标签那条断言时漏了 `.toBe(true)`，于是「标签是英文 note」这个真实缺陷绿着过了。新增空断言检查；初版正则漏掉了该多行嵌套样本，复核后改用 TypeScript 语法树识别未被本地同名定义遮蔽的 `expect` 与 matcher 链，临时样本覆盖原始缺陷。MCP 反向验证同时要求正常基线通过、退化以 AssertionError 失败。
 - 修复（外部 Agent 搜不到素材——同一份库，两个入口看到的不一样）：`search_knowledge` 只查 `fts_cards`，于是外部 Agent 问「上周那封讲 X 的邮件说了什么」搜不到，而用户在应用里搜得到——同一份知识库、不同入口看到的不一样，就不算统一记忆库。新增 `search_materials` 工具与 `knowflick://materials/{id}` 资源（读回正文全文与出处），命中结果带 `resourceUri`，片段截**命中处附近**而不是开头（长邮件命中在末尾时，原来给的是毫不相干的开场白）。素材检索判定以**当前素材内容**为准而非 FTS 索引（索引可能缺也可能旧，而 MCP 服务端不依赖桌面端启动跑 backfill），多词按「每个词都要出现」判定。`add_material` 同步 `fts_materials` 索引——否则 Agent 写进来的东西在应用里搜不到。

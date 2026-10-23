@@ -27,6 +27,16 @@ function pass(label) {
   console.log(`PASS ${label}`);
 }
 
+// Windows 不允许删除仍有打开连接的数据库，查询结束就明确关闭。
+function readRow(sql, ...params) {
+  const connection = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return connection.prepare(sql).get(...params);
+  } finally {
+    connection.close();
+  }
+}
+
 function seed() {
   const db = new DatabaseSync(dbPath);
   db.exec(`
@@ -242,26 +252,20 @@ try {
   // 写入还要同步全文索引——应用里检索走的是 fts_materials，
   // 不补这一条，Agent 写进来的东西在**应用里**就成了搜不到的死条目。
   const writtenMaterialId = (material.result.content[0].text.match(/ID:\s*([0-9a-f-]+)/) || [])[1];
-  const ftsMaterial = new DatabaseSync(dbPath, { readOnly: true })
-    .prepare("SELECT material_id FROM fts_materials WHERE material_id = ?")
-    .get(writtenMaterialId);
+  const ftsMaterial = readRow("SELECT material_id FROM fts_materials WHERE material_id = ?", writtenMaterialId);
   assert.ok(ftsMaterial, "add_material 没有同步 fts_materials 索引");
   pass("add_material 同步素材全文索引（应用里也搜得到）");
 
   // 写入的来源类型必须是**应用里已登记**的类型——界面上要显示中文标签。
   // （以前无链接时写的是 "note"，而 "note" 没登记，界面上显示英文的 "note"。）
-  const writtenRow = new DatabaseSync(dbPath, { readOnly: true })
-    .prepare("SELECT source_type FROM materials WHERE id = ?")
-    .get(writtenMaterialId);
+  const writtenRow = readRow("SELECT source_type FROM materials WHERE id = ?", writtenMaterialId);
   assert.equal(writtenRow.source_type, "web", "有链接的素材应写成 web");
   const noUrl = await call("tools/call", {
     name: "add_material",
     arguments: { title: "无链接素材", text: "没有来源链接的内容" },
   });
   const noUrlId = (noUrl.result.content[0].text.match(/ID:\s*([0-9a-f-]+)/) || [])[1];
-  const noUrlRow = new DatabaseSync(dbPath, { readOnly: true })
-    .prepare("SELECT source_type FROM materials WHERE id = ?")
-    .get(noUrlId);
+  const noUrlRow = readRow("SELECT source_type FROM materials WHERE id = ?", noUrlId);
   assert.equal(
     noUrlRow.source_type,
     "manual",
