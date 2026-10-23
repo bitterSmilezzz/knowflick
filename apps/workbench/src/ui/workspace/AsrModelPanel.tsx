@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { openExternalUrl } from "../../shell/store";
+import { DESKTOP_DOWNLOAD_URL } from "./DesktopOnlyHint";
 import { listen } from "@tauri-apps/api/event";
 import {
   ASR_MODELS,
@@ -99,7 +101,16 @@ export function AsrModelPanel({ model, onModelChange }: Props) {
         </label>
         <div className="ws-asr-status" data-asr-status={status?.installed ? "installed" : "missing"}>
           {!inShell() ? (
-            <span>语音转写只在桌面客户端可用</span>
+            <div className="ws-desktop-only" data-hint="desktop-only">
+              <span>语音转写只在桌面客户端可用</span>
+              <button
+                type="button"
+                className="ws-bordered"
+                onClick={() => void openExternalUrl(DESKTOP_DOWNLOAD_URL)}
+              >
+                下载桌面客户端
+              </button>
+            </div>
           ) : status?.installed ? (
             <span>
               已安装 · {formatBytes(status.sizeBytes)}

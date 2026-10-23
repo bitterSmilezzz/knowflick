@@ -647,7 +647,7 @@ export function Workspace() {
 
   const fetchPage = async (entry: Entry) =>
     act(async () => {
-      if (!inShell()) throw new Error("浏览器无法跨站抓取。请在桌面客户端抓取，或将正文粘贴到编辑器保存");
+      if (!inShell()) throw new Error("浏览器无法跨站抓取。请在桌面客户端抓取，或将正文粘贴到编辑器保存（桌面客户端下载见设置页）");
       const platform = identifyPlatform(entry.url);
       if (platform === "github") {
         const repo = parseGitHubRepo(entry.url);
