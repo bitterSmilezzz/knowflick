@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 修复（英文错误不直接透给用户）：`MailboxView` 的 `errorText()` 只做密钥脱敏、不翻译——Rust 侧就算全是中文，**万一**还有英文漏网也会原样显示。现在加一道兜底：消息里没有中文就换成「操作未完成：…（这是底层错误，请把这句话反馈给开发者）」，原始信息保留给开发者定位。已加 5 项前端测试并反向验证。
 - 修复（同一个 cp1252 坑踩了两次）：新加的检查脚本在 Windows CI 上又报 `UnicodeEncodeError`——根因是「每个脚本自己写一份 print 防护」，新脚本总会忘。抽成共享模块 `tools/windows_console.py`（`emit()`），三个检查脚本统一从它导入；再加一条回归 `tools/test_windows_console.py`，**所有会打印中文的检查脚本都必须在 cp1252 控制台下跑通**（本机用 `io.TextIOWrapper(encoding="cp1252")` 模拟，不用等 CI）。
 - 修复（28 条英文错误直接显示给用户）：邮件模块里 24 条校验错误是英文的（`Invalid account email`、`Enter the password again when changing server or username`、`Mail server rejected the request` 等），前端的 `errorText()` 只做密钥脱敏、**不翻译**，于是英文原样显示——用户既看不懂也不知道下一步该做什么。全部改成中文并说清怎么办（不只是翻译字面）；另有 `http.rs` 3 条、`media.rs` 1 条，以及一条 `format!("Invalid account {field}")`（字段名本身也是英文）一并改掉。加守卫 `tools/check_rust_error_messages.py`（扫 `Err`/`anyhow!`/`bail!`/`format!` 里不含中文的消息），已进门禁与 CI，已反向验证。
 - 修复（Windows CI 上新检查直接打红）：`check_tauri_permissions.py` 直接 print 中文，Windows 控制台默认 cp1252 → `UnicodeEncodeError` → 门禁红。改成按 UTF-8 写字节（与 `check_doc_consistency.py` 同一套做法），并在 cp1252 控制台下实测通过。

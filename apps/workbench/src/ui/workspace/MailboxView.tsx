@@ -39,10 +39,27 @@ const PRESETS = [
 const STATUS = { all: "全部状态", inbox: "待整理", processed: "已归档", dismissed: "已忽略" } as const;
 type MailStatus = keyof typeof STATUS;
 const formatTime = (value: number | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未同步";
+/**
+ * 错误消息给用户看之前，先脱敏、再确保是中文。
+ *
+ * Rust 侧那 24 条校验错误以前是英文的（`Invalid account email`），
+ * 而这里只做脱敏、**不翻译**——于是英文原样显示。中文软件里冒一句英文，
+ * 用户既看不懂也不知道下一步该做什么。
+ *
+ * 现在 Rust 侧已全部改成中文（守卫 `tools/check_rust_error_messages.py` 盯着），
+ * 这里再加一道**兜底**：万一将来又有英文漏过来，也不直接显示——
+ * 换成一句中文的「操作未完成」，好过给用户一句看不懂的话。
+ */
 function errorText(error: unknown, secrets: string[] = []): string {
   let text = error instanceof Error ? error.message : String(error);
   for (const secret of secrets) if (secret) text = text.split(secret).join("[已隐藏]");
-  return text || "操作未完成，请重试";
+  const trimmed = text.trim();
+  if (!trimmed) return "操作未完成，请重试";
+  // 没有中文 → 多半是英文漏网（或底层库抛的原始错误）。给一句能懂的中文。
+  if (!/[\u4e00-\u9fff]/.test(trimmed)) {
+    return `操作未完成：${trimmed}（这是底层错误，请把这句话反馈给开发者）`;
+  }
+  return trimmed;
 }
 
 function AccountForm({ account, available, busy, onClose, onAction }: {
