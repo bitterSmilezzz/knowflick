@@ -61,6 +61,12 @@ try {
     "document.body.innerText.includes('插件未启用') && document.body.innerText.includes('功能模块与官方插件')",
     "激活不可用的「转写」入口会说明原因与下一步"
   );
+  // 不可用也要**看起来**不可用：浏览器只给 :disabled 默认灰化，aria-disabled 没有。
+  // 不补样式的话，「转写」和旁边可用的「手写 / 语音」长得一模一样（实测颜色相同）。
+  await check(
+    "(()=>{const d=document.querySelector('.ws-capture-mode[aria-label=\"导入音频转写\"]');const e=document.querySelector('.ws-capture-mode[aria-label=\"手写笔记\"]');if(!d||!e)return false;return parseFloat(getComputedStyle(d).opacity) < parseFloat(getComputedStyle(e).opacity)})()",
+    "不可用的「转写」入口看起来也不可用（比可用的淡）"
+  );
 
   // 手写
   await b("click", '[aria-label="手写笔记"]');

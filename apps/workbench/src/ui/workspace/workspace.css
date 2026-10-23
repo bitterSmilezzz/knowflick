@@ -295,11 +295,20 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
     border-color var(--duration) var(--ease);
 }
 
-.ws button:hover:not(:disabled) {
+.ws button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--hover);
 }
 
 .ws button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* aria-disabled 的按钮要**看起来**也不可用。
+   浏览器只给 :disabled 提供默认灰化，aria-disabled 没有——不补这条，
+   「转写」入口会和旁边可用的「手写 / 语音」长得一模一样（实测颜色相同）。
+   注意**不要**加 pointer-events:none：那样点击就不会触发解释。 */
+.ws button[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -325,7 +334,7 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   font-weight: 500;
 }
 
-.ws .ws-primary:hover:not(:disabled) {
+.ws .ws-primary:hover:not(:disabled):not([aria-disabled="true"]) {
   filter: brightness(0.94);
 }
 
@@ -2073,7 +2082,7 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   cursor: pointer;
   transition: background-color var(--duration) var(--ease), color var(--duration) var(--ease);
 }
-.ws-capture-mode:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.ws-capture-mode:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--hover); color: var(--ink); }
 .ws-capture-mode:disabled { opacity: .5; cursor: not-allowed; }
 
 .ws-note-backdrop {
