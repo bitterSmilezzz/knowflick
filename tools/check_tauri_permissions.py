@@ -73,6 +73,20 @@ def frontend_commands() -> set[str]:
     return names
 
 
+def emit(text: str) -> None:
+    """打印一段可能含中文的文本。
+
+    Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError
+    （实测在 Windows CI 上把这个检查打红了）。所以按 UTF-8 写字节，绕开编码器。
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        import sys
+        sys.stdout.buffer.write(text.encode("utf-8", errors="replace") + b"\n")
+        sys.stdout.flush()
+
+
 def main() -> int:
     problems: list[str] = []
 
@@ -105,12 +119,12 @@ def main() -> int:
         )
 
     if problems:
-        print("Tauri 命令与权限对不上：")
+        emit("Tauri 命令与权限对不上：")
         for p in problems:
-            print(f"  - {p}")
+            emit(f"  - {p}")
         return 1
 
-    print(
+    emit(
         f"Tauri 命令与权限一致：{len(registered)} 条命令已注册，"
         f"{len(manifest)} 条在 build.rs 声明，{len(permitted)} 条已授权，"
         f"前端用到的 {len(called)} 条全部覆盖"
