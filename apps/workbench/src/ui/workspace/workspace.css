@@ -1262,6 +1262,13 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 
 /* ---------- feedback ---------- */
 
+/* [hidden] 的默认 display:none 会被下面 .ws-feedback 的 display:flex 覆盖——
+   于是「没有消息时的提示条」照样占一条高度，界面上多出一条空白。
+   和 <details> 折叠失效是同一类问题：组件自己设了 display，把语义属性盖掉了。 */
+[hidden] {
+  display: none !important;
+}
+
 .ws-feedback {
   display: flex;
   align-items: center;

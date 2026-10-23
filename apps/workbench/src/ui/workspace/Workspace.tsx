@@ -1583,7 +1583,26 @@ export function Workspace() {
         />
       ) : null}
 
-      <div className="ws-feedback-host">
+      {/*
+        提示区做成**常驻**的 live region。
+
+        为什么：屏幕阅读器只会播报「已经存在的 live region 里的内容变化」。
+        原来提示条是条件渲染的（`notice ? <div role="status">… : null`），
+        元素在出现的那一刻才插进 DOM——很多读屏软件这时还没挂上监听，
+        提示就**静默地**出现了：视觉用户看得见，屏幕阅读器用户听不到。
+
+        现在：容器一直在，消息节点也一直在（无消息时 `hidden`），
+        文本变化会被 `aria-live="polite"` 捕获。
+        `aria-atomic="true"` 让整条消息一起播报，而不是逐字读。
+      */}
+      <div className="ws-feedback-host" aria-live="polite" aria-atomic="true">
+        <div className="ws-feedback" role="status" hidden={!notice}>
+          <Icon name="check" />
+          <span>{notice}</span>
+          <button aria-label="关闭提示" onClick={() => setNotice("")}>
+            <Icon name="close" />
+          </button>
+        </div>
         {error ? (
           <div className="ws-feedback" role="alert">
             <span>{error}</span>
@@ -1593,15 +1612,6 @@ export function Workspace() {
               </button>
             ) : null}
             <button aria-label="关闭提示" onClick={() => setError("")}>
-              <Icon name="close" />
-            </button>
-          </div>
-        ) : null}
-        {notice ? (
-          <div className="ws-feedback" role="status">
-            <Icon name="check" />
-            <span>{notice}</span>
-            <button aria-label="关闭提示" onClick={() => setNotice("")}>
               <Icon name="close" />
             </button>
           </div>
