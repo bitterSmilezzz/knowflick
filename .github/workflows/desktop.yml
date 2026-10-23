@@ -38,6 +38,8 @@ on:
       - 'tools/check_rust_error_messages.py'
       - 'tools/test_check_frontend_error_text.py'
       - 'tools/check_frontend_error_text.py'
+      - 'tools/test_check_user_facing_content.py'
+      - 'tools/check_user_facing_content.py'
       - 'tools/test_windows_console.py'
       - 'tools/windows_console.py'
       - 'tools/test_check_rust_error_messages.py'
@@ -115,6 +117,10 @@ jobs:
       - name: 校验前端错误展示有中文兜底
         shell: bash
         run: python3 tools/check_frontend_error_text.py
+
+      - name: 校验会落进用户数据的文案是中文
+        shell: bash
+        run: python3 tools/check_user_facing_content.py
 
       - name: 配置 JDK 17（Temurin —— 也是打包用的厂商，见 gradle.properties 的说明）
         uses: actions/setup-java@v6

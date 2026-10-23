@@ -1322,14 +1322,16 @@ fn material_from_mail(
     Ok(Some(RawMaterialDto {
         id: format!("mail-{}", db::calculate_hash(&identity)),
         source_type: "email".into(),
+        // 无主题的邮件在收件箱里显示的就是这个标题——英文的话用户一眼就看出
+        // 「这东西没做好」。所以给中文。
         title: if subject.trim().is_empty() {
-            "(No subject)".into()
+            "（无主题）".into()
         } else {
             subject
         },
         source_url: None,
         raw_text: if body.trim().is_empty() {
-            "(No readable text body)".into()
+            "（这封邮件没有可读的正文，可能只有附件）".into()
         } else {
             body.trim().to_string()
         },
@@ -2245,3 +2247,7 @@ AAAA\r\n\
 #[cfg(test)]
 #[path = "mail_error_tests.rs"]
 mod mail_error_tests;
+
+#[cfg(test)]
+#[path = "mail_content_tests.rs"]
+mod mail_content_tests;

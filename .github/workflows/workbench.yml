@@ -19,6 +19,8 @@ on:
       - 'tools/check_rust_error_messages.py'
       - 'tools/test_check_frontend_error_text.py'
       - 'tools/check_frontend_error_text.py'
+      - 'tools/test_check_user_facing_content.py'
+      - 'tools/check_user_facing_content.py'
       - 'tools/test_windows_console.py'
       - 'tools/windows_console.py'
       - 'tools/test_check_rust_error_messages.py'
