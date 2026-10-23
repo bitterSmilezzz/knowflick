@@ -96,7 +96,7 @@ where
     use std::io::Write;
 
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("创建模型目录失败: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| crate::error_text::explain("创建模型目录失败", &e))?;
     }
     let partial = target.with_extension("part");
     let _ = std::fs::remove_file(&partial);
@@ -110,13 +110,13 @@ where
         .header("User-Agent", "KnowFlick/0.1")
         .send()
         .await
-        .map_err(|e| format!("下载模型失败: {e}"))?;
+        .map_err(|e| crate::error_text::explain("下载模型失败", &e))?;
     if !response.status().is_success() {
         return Err(format!("下载模型失败: HTTP {}", response.status().as_u16()));
     }
     let total = response.content_length().unwrap_or(0);
 
-    let mut file = std::fs::File::create(&partial).map_err(|e| format!("写入模型失败: {e}"))?;
+    let mut file = std::fs::File::create(&partial).map_err(|e| crate::error_text::explain("写入模型失败", &e))?;
     let mut downloaded: u64 = 0;
     let mut response = response;
     loop {
@@ -125,7 +125,7 @@ where
                 if let Err(e) = file.write_all(&chunk) {
                     drop(file);
                     let _ = std::fs::remove_file(&partial);
-                    return Err(format!("写入模型失败: {e}"));
+                    return Err(crate::error_text::explain("写入模型失败", &e));
                 }
                 downloaded += chunk.len() as u64;
                 on_progress(downloaded, total);
@@ -134,14 +134,14 @@ where
             Err(e) => {
                 drop(file);
                 let _ = std::fs::remove_file(&partial);
-                return Err(format!("下载中断: {e}"));
+                return Err(crate::error_text::explain("下载中断", &e));
             }
         }
     }
-    file.flush().map_err(|e| format!("写入模型失败: {e}"))?;
+    file.flush().map_err(|e| crate::error_text::explain("写入模型失败", &e))?;
     drop(file);
 
-    std::fs::rename(&partial, target).map_err(|e| format!("保存模型失败: {e}"))?;
+    std::fs::rename(&partial, target).map_err(|e| crate::error_text::explain("保存模型失败", &e))?;
     Ok(downloaded)
 }
 
@@ -172,7 +172,7 @@ pub fn to_wav_16k_mono(input: &Path) -> Result<PathBuf, String> {
             .arg(input)
             .arg(&out)
             .status()
-            .map_err(|e| format!("调用系统 afconvert 失败: {e}"))?;
+            .map_err(|e| crate::error_text::explain("调用系统 afconvert 失败", &e))?;
         if !status.success() {
             return Err("系统无法转换这段音频（支持 WAV；macOS 上其它格式经 afconvert 转换）".to_string());
         }
@@ -185,7 +185,7 @@ pub fn to_wav_16k_mono(input: &Path) -> Result<PathBuf, String> {
 /// 解析 WAV 的 `data` 块成 f32 采样。只认 16-bit PCM：
 /// 别的位深直接报错，避免拿错解释的数据喂给模型得出乱码文本。
 pub fn read_wav_mono_f32(path: &Path) -> Result<Vec<f32>, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("读取音频失败: {e}"))?;
+    let bytes = std::fs::read(path).map_err(|e| crate::error_text::explain("读取音频失败", &e))?;
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
         return Err("不是合法的 WAV 文件".to_string());
     }
@@ -238,8 +238,8 @@ pub fn transcribe(model_path: &Path, wav_path: &Path) -> Result<TranscriptionRes
         model_path.to_string_lossy().as_ref(),
         WhisperContextParameters::default(),
     )
-    .map_err(|e| format!("加载语音模型失败: {e}"))?;
-    let mut state = ctx.create_state().map_err(|e| format!("初始化推理状态失败: {e}"))?;
+    .map_err(|e| crate::error_text::explain("加载语音模型失败", &e))?;
+    let mut state = ctx.create_state().map_err(|e| crate::error_text::explain("初始化推理状态失败", &e))?;
 
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
     params.set_language(Some("auto"));
@@ -255,7 +255,7 @@ pub fn transcribe(model_path: &Path, wav_path: &Path) -> Result<TranscriptionRes
     let started = std::time::Instant::now();
     state
         .full(params, &samples)
-        .map_err(|e| format!("转写失败: {e}"))?;
+        .map_err(|e| crate::error_text::explain("转写失败", &e))?;
 
     let count = state.full_n_segments();
     let mut text = String::new();

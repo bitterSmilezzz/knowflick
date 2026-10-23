@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { dbListArtifacts, inShell, type Artifact } from "../../shell/store";
+import { userError } from "./userError";
 
 /**
  * 产物库：认知简报等「生成物」的存放处。
@@ -31,7 +32,7 @@ export function ArtifactsView({ dir, cards, onOpenCard, onBack }: {
         : JSON.parse(localStorage.getItem("knowflick.workspace.artifacts") || "[]") as Artifact[];
       setArtifacts(list.filter((item) => !item.isDeleted));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(userError(err));
     } finally {
       setLoading(false);
     }
@@ -56,7 +57,7 @@ export function ArtifactsView({ dir, cards, onOpenCard, onBack }: {
       setArtifacts((current) => current.filter((item) => item.id !== artifact.id));
       if (openId === artifact.id) setOpenId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(userError(err));
     }
   };
 

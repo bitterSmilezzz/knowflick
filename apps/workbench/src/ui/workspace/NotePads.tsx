@@ -3,6 +3,7 @@ import { Icon } from "./Icon";
 import { DesktopOnlyHint } from "./DesktopOnlyHint";
 import { addStroke, clearInk, emptyInk, isEmptyInk, normalizePoint, parseInk, undoStroke, INK_COLORS, INK_WIDTHS, type InkColor, type InkDocument, type InkStroke } from "../../domain/ink";
 import { formatDuration } from "../../domain/ink";
+import { userError } from "./userError";
 
 /** 手写板：记录笔迹并交给调用方保存。 */
 export function InkPad({ initial, onCancel, onSave }: {
@@ -77,7 +78,7 @@ export function InkPad({ initial, onCancel, onSave }: {
     if (busy) return;
     if (isEmptyInk(doc)) { setError("还没有落笔。写几个字再保存。"); return; }
     setBusy(true); setError("");
-    try { await onSave(doc); } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    try { await onSave(doc); } catch (err) { setError(userError(err)); }
     finally { setBusy(false); }
   };
 
@@ -195,7 +196,7 @@ export function VoiceRecorder({ onCancel, onSave }: {
     if (!audio || state === "saving") return;
     setState("saving"); setError("");
     try { await onSave(audio.blob, audio.durationMs); }
-    catch (err) { setError(err instanceof Error ? err.message : String(err)); setState("ready"); }
+    catch (err) { setError(userError(err)); setState("ready"); }
   };
 
   return <div className="voice-recorder" aria-label="语音笔记">

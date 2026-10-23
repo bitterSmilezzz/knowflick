@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { localEmbedStatus, localEmbedWarmUp, inShell, type LocalEmbedStatus } from "../../shell/store";
+import { userError } from "./userError";
 
 /**
  * 本地语义模型管理（M3「本地轻量 Embedding 推理」）。
@@ -21,7 +22,7 @@ export function LocalEmbedPanel() {
         if (!disposed) setStatus(s);
       })
       .catch((err) => {
-        if (!disposed) setError(String(err));
+        if (!disposed) setError(userError(err));
       });
     return () => {
       disposed = true;
@@ -36,7 +37,7 @@ export function LocalEmbedPanel() {
       const next = await localEmbedWarmUp();
       setStatus(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(userError(err));
     } finally {
       setBusy(false);
     }

@@ -8,6 +8,7 @@ import { estimateTokenCount } from "../../domain/ingest";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { mailMetadata } from "../../domain/mail";
 import { parseInk, type InkDocument } from "../../domain/ink";
+import { userError } from "./userError";
 
 interface Props {
   entry: Entry;
@@ -73,7 +74,7 @@ export function EntryInspector({
     try {
       await action();
     } catch (e) {
-      setError(String(e));
+      setError(userError(e));
     }
   };
 

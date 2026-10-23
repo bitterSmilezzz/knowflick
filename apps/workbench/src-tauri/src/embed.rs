@@ -73,13 +73,13 @@ fn engine(data_root: &Path) -> Result<&'static Mutex<fastembed::TextEmbedding>, 
     let shared = INSTANCE.get_or_init(|| {
         use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
         let dir = cache_dir(data_root);
-        std::fs::create_dir_all(&dir).map_err(|e| format!("创建模型缓存目录失败: {e}"))?;
+        std::fs::create_dir_all(&dir).map_err(|e| crate::error_text::explain("创建模型缓存目录失败", &e))?;
         let model = TextEmbedding::try_new(
             InitOptions::new(EmbeddingModel::MultilingualE5Small)
                 .with_cache_dir(dir)
                 .with_show_download_progress(false),
         )
-        .map_err(|e| format!("加载本地嵌入模型失败（先下载模型）: {e}"))?;
+        .map_err(|e| crate::error_text::explain("加载本地嵌入模型失败（先下载模型）", &e))?;
         Ok(Mutex::new(model))
     });
     match shared {
@@ -117,7 +117,7 @@ pub fn embed(
         .map_err(|_| "本地嵌入模型状态异常（锁被污染）".to_string())?;
     guard
         .embed(prepared, None)
-        .map_err(|e| format!("本地嵌入失败: {e}"))
+        .map_err(|e| crate::error_text::explain("本地嵌入失败", &e))
 }
 
 /// 单纯触发一次加载，用于「下载模型」按钮——顺带验证模型真的能跑起来。

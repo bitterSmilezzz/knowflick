@@ -10,6 +10,7 @@ import {
   type AsrModelId,
 } from "../../domain/asr";
 import { asrDownloadModel, asrModelStatus, inShell, type AsrModelStatus } from "../../shell/store";
+import { userError } from "./userError";
 
 interface Props {
   /** 当前选中的模型；来自插件偏好。 */
@@ -38,7 +39,7 @@ export function AsrModelPanel({ model, onModelChange }: Props) {
         if (!disposed) setStatus(s);
       })
       .catch((err) => {
-        if (!disposed) setError(String(err));
+        if (!disposed) setError(userError(err));
       });
     return () => {
       disposed = true;
@@ -70,7 +71,7 @@ export function AsrModelPanel({ model, onModelChange }: Props) {
       setStatus(next);
       setProgress(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(userError(err));
     } finally {
       setDownloading(false);
     }

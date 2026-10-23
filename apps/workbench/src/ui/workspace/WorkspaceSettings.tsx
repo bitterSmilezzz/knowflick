@@ -14,6 +14,7 @@ import { SourceInsightPanel } from "./SourceInsightPanel";
 import { Icon } from "./Icon";
 import { DesktopOnlyHint } from "./DesktopOnlyHint";
 import { invoke } from "@tauri-apps/api/core";
+import { userError } from "./userError";
 
 export interface WorkspaceSettingsProps {
   file: SettingsFile;
@@ -270,7 +271,7 @@ export function WorkspaceSettings({
                   {shortcutStatus.registered ? `${/Mac/.test(navigator.platform) ? "Option+Space" : shortcutStatus.shortcut} 已注册` : `全局快捷键未注册：${shortcutStatus.error ?? "快捷键可能被其他应用占用"}。请从文件菜单或系统托盘打开胶囊。`}
                 </p> : null}
                 {inShell() ? <button type="button" className="ws-bordered" onClick={() => {
-                  void invoke("toggle_capsule").catch(err => { setSaveStatus("error"); setSaveMessage(String(err)); });
+                  void invoke("toggle_capsule").catch(err => { setSaveStatus("error"); setSaveMessage(userError(err)); });
                 }}>打开闪念胶囊</button> : null}
               </div>
             </section>

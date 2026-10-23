@@ -14,6 +14,7 @@ import {
 import { reviewOverview, dueForecast } from "../domain/reviewStats";
 import type { KnowledgeCard } from "../domain/card";
 import { Icon } from "./workspace/Icon";
+import { userError } from "./workspace/userError";
 
 /** 掌握度与到期负荷面板：回答「我学到什么程度了、接下来几天有多少要复习」。 */
 export function ReviewOverviewPanel({ cards }: { cards: KnowledgeCard[] }) {
@@ -123,7 +124,7 @@ export function QuizView({
     setRevealed(false);
     onChange(next)
       .then(() => setIndex((value) => value + 1))
-      .catch((err: unknown) => setError(String(err)));
+      .catch((err: unknown) => setError(userError(err)));
   };
 
   useEffect(() => {

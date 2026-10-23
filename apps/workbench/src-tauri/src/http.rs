@@ -205,7 +205,7 @@ pub async fn request_embeddings(
     }
 
     let parsed: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| format!("解析 Embedding 响应 JSON 失败: {e}"))?;
+        .map_err(|e| crate::error_text::explain("解析 Embedding 响应 JSON 失败", &e))?;
 
     let data = parsed["data"]
         .as_array()

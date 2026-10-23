@@ -1,3 +1,4 @@
+mod error_text;
 mod asr;
 pub mod db;
 mod embed;
@@ -279,9 +280,9 @@ fn db_load_cards(dir: Option<String>, limit: Option<i64>, offset: Option<i64>) -
     if legacy_json_path.exists() {
         if !db::has_migrated_legacy_cards(&conn) && db::is_cards_table_empty(&conn) {
             let text = std::fs::read_to_string(&legacy_json_path)
-                .map_err(|e| format!("读取旧卡库失败，原文件未改动：{e}"))?;
+                .map_err(|e| crate::error_text::explain("读取旧卡库失败，原文件未改动", &e))?;
             db::migrate_legacy_cards_json(&conn, &text)
-                .map_err(|e| format!("迁移旧卡库失败，原文件未改动：{e}"))?;
+                .map_err(|e| crate::error_text::explain("迁移旧卡库失败，原文件未改动", &e))?;
         }
     }
 
@@ -439,7 +440,7 @@ async fn local_embed_warm_up() -> Result<embed::LocalEmbedStatus, String> {
     let root = store::data_root();
     tauri::async_runtime::spawn_blocking(move || embed::warm_up(&root))
         .await
-        .map_err(|e| format!("本地语义模型预热失败: {e}"))?
+        .map_err(|e| crate::error_text::explain("本地语义模型预热失败", &e))?
 }
 
 #[tauri::command]
@@ -449,7 +450,7 @@ async fn local_embed(texts: Vec<String>, is_query: Option<bool>) -> Result<Vec<V
     // 检索路径不允许顺手下载模型：没下载就返回错误，由界面提示去设置里下。
     tauri::async_runtime::spawn_blocking(move || embed::embed(&root, texts, is_query, false))
         .await
-        .map_err(|e| format!("本地嵌入任务失败: {e}"))?
+        .map_err(|e| crate::error_text::explain("本地嵌入任务失败", &e))?
 }
 
 #[derive(serde::Deserialize)]

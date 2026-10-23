@@ -10,6 +10,7 @@ import {
   type Subscription,
   type SubscriptionType,
 } from "../../domain/subscription";
+import { userError } from "./userError";
 
 interface Props {
   subscriptions: Subscription[];
@@ -51,7 +52,7 @@ export function SubscriptionsView({ subscriptions, busy, available, onAdd, onTog
       setTarget("");
       setIntervalMinutes(String(DEFAULT_INTERVAL_MINUTES));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(userError(err));
     }
   };
 

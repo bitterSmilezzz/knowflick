@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+- 修复（半中半英：中文前缀后面跟着底层英文报错）：Rust 里 20 处 `format!("…{e}")` 直接把底层库（std/reqwest）的英文报错拼进用户可见的消息——「下载模型失败: error sending request for url …」。用户看懂了「下载模型失败」但不知道**为什么**、更不知道**下一步**。新增 `src-tauri/src/error_text.rs`，按关键词给出「原因 + 下一步」（连不上服务器 / 磁盘满 / 权限不足 / 证书问题…），原始英文保留在括号里供开发者定位。守卫加了一条：`format!("…{e}…")` 直接拼底层错误即算漏网（它自己抓出了我漏掉的 4 处）。
+- 修复（前端把错误原样交给用户——14 处）：`setError(String(err))` 一点中文都没有，用户看到的是底层库抛的原始字符串，分散在 10 个文件 14 处。新增共享兜底 `apps/workbench/src/ui/workspace/userError.ts`（空错误/纯英文/中文三种情况都有中文说法），14 处全部改走它，并加守卫 `tools/check_frontend_error_text.py`。
 - 修复（英文错误不直接透给用户）：`MailboxView` 的 `errorText()` 只做密钥脱敏、不翻译——Rust 侧就算全是中文，**万一**还有英文漏网也会原样显示。现在加一道兜底：消息里没有中文就换成「操作未完成：…（这是底层错误，请把这句话反馈给开发者）」，原始信息保留给开发者定位。已加 5 项前端测试并反向验证。
 - 修复（Windows CI 上新测试自己先崩了）：`test_windows_console.py` 用 `subprocess(text=True)` 读子进程输出——Windows 上子进程输出是本地编码的字节，Python 按 cp1252 解，遇到中文抛 `UnicodeDecodeError`，测试自己先崩。改成收 bytes 再按 UTF-8 解（解不动退回 replace）。
 - 修复（同一个 cp1252 坑踩了两次）：新加的检查脚本在 Windows CI 上又报 `UnicodeEncodeError`——根因是「每个脚本自己写一份 print 防护」，新脚本总会忘。抽成共享模块 `tools/windows_console.py`（`emit()`），三个检查脚本统一从它导入；再加一条回归 `tools/test_windows_console.py`，**所有会打印中文的检查脚本都必须在 cp1252 控制台下跑通**（本机用 `io.TextIOWrapper(encoding="cp1252")` 模拟，不用等 CI）。

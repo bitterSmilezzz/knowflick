@@ -67,6 +67,25 @@ def main() -> int:
                             f"用户看不懂：{message!r}"
                         )
 
+    # 第二类：**半中半英**——中文前缀后面跟着底层的英文报错。
+    # 「下载模型失败: error sending request for url ...」这种，
+    # 用户看懂了「下载模型失败」，但不知道**为什么**、更不知道**下一步**。
+    for path in sorted(SRC.glob("*.rs")):
+        if path.name.endswith("_tests.rs"):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("//") or stripped.startswith("///"):
+                continue
+            for m in re.finditer(r'format!\(\s*"([^"]*\{e\}[^"]*)"', stripped):
+                message = m.group(1)
+                # 「{e}」是底层错误——直接拼进面向用户的消息里就是半中半英。
+                problems.append(
+                    f"{path.relative_to(ROOT)}:{lineno} 把底层错误 {{e}} 直接拼进消息，"
+                    f"用户会看到半中半英：{message!r}——用 crate::error_text::explain(...) 代替"
+                )
+
     if problems:
         emit("面向用户的错误消息里混着英文：")
         for p in problems:

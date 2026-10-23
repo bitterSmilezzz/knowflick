@@ -8,6 +8,7 @@ import { EmbeddingEngine } from "../domain/embeddingEngine";
 import type { AiSettings } from "../domain/settings";
 import { completionURL, requiresKey } from "../domain/ingest";
 import { Icon } from "./workspace/Icon";
+import { userError } from "./workspace/userError";
 
 interface BriefingProps {
   cards: KnowledgeCard[];
@@ -424,7 +425,7 @@ export function BrainAssistantDrawer({
         },
       ]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(userError(err));
     } finally {
       setLoading(false);
     }

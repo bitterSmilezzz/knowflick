@@ -92,6 +92,7 @@ import { dbLibrarySignature } from "../../shell/store";
 import { EXTERNAL_REFRESH_INTERVAL_MS, externalChangeDetected } from "./externalRefresh";
 import { DisabledEntry } from "./DisabledEntry";
 import "./workspace.css";
+import { userError } from "./userError";
 
 const Briefing = lazy(() => import("../BrainViews").then((m) => ({ default: m.BriefingView })));
 const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.BrainAssistantDrawer })));
@@ -2403,7 +2404,7 @@ export function Workspace() {
                     navigate("library");
                     setSource("card");
                     setNotice(`已存入 ${toSave.length} 张原子知识卡`);
-                  }).catch((e) => setError(String(e)));
+                  }).catch((e) => setError(userError(e)));
                 }}
               >
                 确认保存 ({previewSelectedIds.size} 张)
