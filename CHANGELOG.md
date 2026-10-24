@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+- 修复（换成 emit 的那轮改动本身是坏的）：`emit()` 原来只收一个参数，把 `print` 逐个换成 `emit` 的那轮改动里，10 处调用点按 `print` 的形状传参（多参数或 `file=sys.stderr`），走到就 `TypeError`；`classify_ui_portability.py` 新加的 `Path` 还忘了导入，脚本连启动都启动不了。而回归测试用 `python3 -c` 包一层跑脚本，`sys.path[0]` 变成 cwd，`import taxonomy` 直接 `ModuleNotFoundError`、退出码 1 又被当成「预期失败的守卫」放过——这些毛病它一个都没测出来，测试是绿的。`emit` 改成与 `print` 同签名（`*args/sep/end/file`），机械替换不再改坏调用；回归改用 `PYTHONIOENCODING=cp1252` 按**真实调用方式**跑（`python3 tools/<name>.py`），并断言 stderr 里没有 Traceback——退出码 1 不再能蒙混过去。
+- 修复（库签名会被同一时钟桶里的两次写入骗过）：`db_library_signature` 原来取 mtime(毫秒)+大小，界面轮询它来发现外部进程（MCP server）写库。但 Linux 上 inode 时间戳取自 coarse clock，粒度约 1/HZ（4ms），而一次 SQLite 写入（含 WAL 回检）常常只要 2~3ms——两次不同的写入会得到**同一个** mtime，签名不变，外部改动就被漏掉。实测 ubuntu runner 上该测试偶发失败、失败时整个测试只跑 2ms；macOS 时间戳是 ns 精度，本机连跑 60 次都复现不出来。改成内容指纹（SHA-256 前 8 字节，分块流式读、不整读进内存），命令走 `spawn_blocking` 不占 UI 线程；加两条测试钉死设计：库没变时签名必须稳定（否则界面白刷新）、把 mtime 拨到别处签名必须一个字节都不变（退回 mtime 实现会立刻变红）。
+- 修复（本地模型下载在开代理的机器上吃 502）：`download_to_path` 自己裸建 `reqwest::Client`，没套用 `http.rs`「回环直连、其余跟随系统代理」的判据；本机开着系统代理（127.0.0.1:7897）时，对 127.0.0.1 的下载请求绕去代理、直接回 502——本地模型服务明明起着，下载却失败。改为与全仓其余请求共用 `client_for`（全仓已核对：构造 `reqwest::Client` 的只剩这一处）。
+- 修复（三个测试会把整个套件挂死）：`asr` 的两个下载测试与 `http` 的 401 测试都用裸 `listener.accept()` 等连接，连不上就一直等、`handle.join()` 跟着挂住——实测 `cargo test --lib` 被拖了 24 分钟（CPU 只用 1 秒）。`http.rs` 里另外两条回环测试早就是「非阻塞 accept + 截止时间」的写法，这三处没跟上。修好后全量 Rust 用例从挂死变成一秒内跑完。
+- 测试（notes 冒烟的回执断言挪到保存后第一时间）：「保存后有明确回执」原来排在五条断言之后，而提示条 4 秒自动清除、每条断言要起一次 agent-browser——慢机器上轮到它时提示早没了（CI 上轮询 40 次都没见到；本机 agent-browser 更快，原顺序连跑四次都过、复现不出）。验转瞬即逝的东西，就该在它最确定的时刻验。
 - 修复（不可撤销的操作没有二次确认）：删除订阅是一个「×」图标按钮（挨着「立即抓取」与开关），点一下就永久删除——`db_delete_subscription` 是硬删除，没有回收站；「清空」手写笔迹同样一点即没，而「撤销」只退一笔。对照之下删除知识卡有二次确认、删除产物有 `window.confirm`，唯独这两处漏了。新增共享的二次确认（`deleteConfirm.ts` 纯函数 + `useDeleteConfirm.ts`），删除卡片与删除订阅共用；确认态**带目标 id**（否则「点了 A 再点 B」会立刻删掉 B）；提示说清不可撤销并四秒自动收回。加守卫 `tools/check_destructive_confirm.py` 与反向验证 `tools/destructive_confirm_reverse_test.py`（四种退化逐个塞进去确认守卫报红）。
 - 测试：独立 MCP 冒烟的三处只读 SQLite 查询明确关闭连接，修复 Windows 清理临时库时报 EBUSY；正常 20 项检查及 6 项断言退化检查已重跑。
 

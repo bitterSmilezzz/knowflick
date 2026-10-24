@@ -122,3 +122,10 @@ python3 tools/check_clip_parity.py # 剪藏规则表：Kotlin ↔ TypeScript 逐
   `tools/build_icon.swift`（母版 → iconset，末尾自动调 `iconutil`）与 `tools/verify_icon.swift`（逐像素校验 ICNS 各阶是否与母版一致）
   是**同一套美术流程的本机步骤**：没有别的脚本引用它们，CI 也不跑它们——留着是给「拿到原始美术后照着重做」当参照，不是死代码，别顺手删。
 - 全仓扫描类工作**严禁 head 截断后下「清零」结论**（PR #45 教训）。
+- **别用文件 mtime 判断「内容变没变」**（实测教训）：Linux 的 inode 时间戳取自
+  coarse clock，粒度约 1/HZ（4ms）——两次不同的写入可能拿到**同一个** mtime；
+  而 macOS 是 ns 精度，本机永远复现不出来，CI（ubuntu）上才偶发。
+  `db_library_signature` 因此从 mtime+大小改成内容指纹（SHA-256）。同理：
+  「本地是绿的」不能当作跨平台结论。另一侧的坑：测试里裸 `listener.accept()`
+  会把整个 `cargo test` 挂死（实测 24 分钟）——起本地服务等连接一律用
+  「非阻塞 accept + 截止时间」，`http.rs` 的回环测试是范本。
