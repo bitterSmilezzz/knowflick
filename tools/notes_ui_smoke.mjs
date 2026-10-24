@@ -15,10 +15,11 @@ const ev = async code => { const r = JSON.parse(await b("eval", `JSON.stringify(
 let count = 0;
 async function check(expression, label) {
   for (let n = 0; n < 40; n++) {
-    if (await ev(expression)) { count++; console.log(`PASS ${label}`); return; }
+    if (await ev(expression)) { count++; console.log(`PASS ${label}`); return true; }
     await new Promise(r => setTimeout(r, 100));
   }
   assert.fail(label);
+  return false;
 }
 const stroke = async (points) => b("eval", `(()=>{const c=document.querySelector('.ink-canvas');const r=c.getBoundingClientRect();
   const fire=(t,x,y)=>c.dispatchEvent(new PointerEvent(t,{clientX:r.left+x,clientY:r.top+y,pointerId:1,bubbles:true,buttons:t==='pointerup'?0:1}));
@@ -96,11 +97,34 @@ try {
 
   // 保存 → 落进收件箱，且笔迹写进素材
   await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('保存手写笔记')).click();return true})()");
-  // 回执必须**紧挨着保存**验：提示条 4 秒后自动消失（Workspace 里 notice 的
-  // 定时器），而下面每条断言都要起一次 agent-browser（约 1 秒），
-  // 排在最后轮到它时提示早没了——CI 上真的因此红过（notes_ui_smoke）。
   // 回执走 .ws-feedback（aria-live 区），不是底部状态栏。
-  await check("document.body.innerText.includes('手写笔记已存入收件箱')", "保存后有明确回执");
+  // 提示条 4 秒后自动消失（Workspace 里 notice 的定时器）。**不能**用外层
+  // check() 轮询抓它：每次轮询要起一次 agent-browser（CI 上 250ms~1s），
+  // 40 次轮询的采样间隔可能整个错过 4 秒窗口——CI 上因此红过两次
+  // （977d132 与 cf9e8e9）。改为**页面内**轮询：一次 eval 在浏览器里盯
+  // 6 秒（覆盖提示条完整寿命），抓到与否都带回现场文本。
+  // 不能把 async IIFE 直接交给 ev——JSON.stringify(Promise) 是 "{}"（本文件
+  // 语音段落的既有教训）。先把轮询结果写进 window 标志，再轮读标志。
+  await b("eval", `(() => {
+    window.__inkReceipt = { done: false, found: false, sample: "" };
+    (async () => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < 6000) {
+        if (document.body.innerText.includes("手写笔记已存入收件箱")) {
+          window.__inkReceipt = { done: true, found: true, sample: "" };
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 80));
+      }
+      window.__inkReceipt = { done: true, found: false, sample: document.body.innerText.slice(0, 200) };
+    })();
+    return true;
+  })()`);
+  const receipt = await check("window.__inkReceipt?.done && window.__inkReceipt?.found", "保存后有明确回执");
+  if (!receipt) {
+    const detail = await ev("JSON.stringify(window.__inkReceipt)");
+    console.error(`现场：${detail}`);
+  }
   await check("!document.querySelector('.ink-canvas')", "保存后关闭手写板");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));return raw.materials.some(m=>m.sourceType==='ink')})()", "手写笔记落成素材");
   await check("(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));const m=raw.materials.find(x=>x.sourceType==='ink');const meta=JSON.parse(m.metadataJson);return meta.ink.strokes.length===2})()", "笔迹随素材保存");
