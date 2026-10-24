@@ -108,6 +108,14 @@ try {
   await check("document.querySelectorAll('.nv-entry').length === 1", "按笔记本筛选只显示该本笔记");
   await b("eval", `(()=>{const sel=document.querySelector('.nv-notebook-filter');sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
 
+  // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
+  await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
+  await check(
+    "document.body.innerText.includes('备份恢复失败') && document.body.innerText.includes('本地内容未受影响')",
+    "拖放 .kfbackup 走恢复路径：坏包报错且说明本地未受影响"
+  );
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.length >= 1", "失败的恢复不破坏现有笔记");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});

@@ -1248,7 +1248,7 @@ export function Workspace() {
    * 备份里的条目按 id 写入，本机已有同 id 的会被覆盖，其余保持不动；
    * 设置只在备份里带了 settings.json 时替换。这样误点恢复不会清空本地库。
    */
-  const restoreFromBackup = async (picked: FileList | null) => {
+  const restoreFromBackup = async (picked: FileList | File[] | null) => {
     const chosen = picked?.[0];
     if (!chosen) return;
     try {
@@ -1336,7 +1336,15 @@ export function Workspace() {
       }}
       onDrop={(e) => {
         e.preventDefault();
-        if (e.dataTransfer.files.length && !busy && !loading) void importFiles(e.dataTransfer.files);
+        if (!e.dataTransfer.files.length || busy || loading) return;
+        const backups = Array.from(e.dataTransfer.files).filter(f => /\.kfbackup$/i.test(f.name));
+        if (backups.length) {
+          // 拖放的备份包走恢复而不是导入：同一份文件两个入口只会让人
+          // 猜哪个对——恢复的失败提示也明确说「本地内容未受影响」。
+          void restoreFromBackup(backups);
+          return;
+        }
+        void importFiles(e.dataTransfer.files);
       }}
     >
       <header className="ws-header" data-tauri-drag-region="">
