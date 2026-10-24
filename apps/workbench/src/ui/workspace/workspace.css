@@ -2823,3 +2823,9 @@ body.capsule-window { overflow: hidden; background: transparent; }
 
 .nv-restore { font-size: 11px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
 .nv-entry-trash { cursor: default; }
+.nv-meta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.nv-meta-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.nv-meta-field input { font-size: 12px; width: 150px; }
+.nv-notebook-filter { font-size: 12px; }
+.nv-notebook-badge { font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 6px; color: var(--muted); }
+.nv-tags-line { color: var(--muted); margin-right: 6px; }

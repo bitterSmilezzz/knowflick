@@ -35,6 +35,10 @@ const setNative = (selector, value) => b("eval", `(() => {
 })()`);
 
 try {
+  // 开场清掉笔记与工作区状态：本冒烟假设从空笔记库开始，重复跑必须幂等
+  // （上一轮的残留会让「第一篇笔记」点开旧条目，后续断言全错位）。
+  await b("open", url);
+  await b("eval", "(()=>{localStorage.removeItem('knowflick.notes.v1');localStorage.removeItem('knowflick.workspace.v1');return true})()");
   await b("open", url);
   await check("document.querySelector('.ws-nav-group[aria-label=笔记] .ws-nav-row') !== null", "侧栏出现「笔记」入口");
 
@@ -91,6 +95,18 @@ try {
   await b("eval", "(()=>{document.querySelector('.nv-entry').click();return true})()");
   await setNative(".nv-body", "正文第一段。关键词：北极星计划备忘。\n\n- 列表项一\n- [ ] 待办事项\n\n第二段：续写的内容。");
   await check(`JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision > ${before}`, "内容变化推进修订号");
+
+  // 8. 笔记本与标签（B03）：设置 → 筛选命中 → 徽标可见 → 元数据变化不追加修订
+  const revBeforeMeta = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision");
+  await setNative('[aria-label="笔记本名称"]', "项目A");
+  await check("document.querySelector('.nv-notebook-filter option[value=项目A]') !== null", "笔记本进入筛选列表");
+  await setNative('[aria-label="笔记标签，逗号分隔"]', "工作, 灵感");
+  await check("document.querySelector('.nv-tags-line')?.textContent.includes('#工作')", "标签显示在列表条目上");
+  await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const n=s.notes[0];return n.notebook==='项目A'&&n.tags.includes('灵感')})()`, "笔记本与标签已保存");
+  await check(`JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision === ${revBeforeMeta}`, "元数据变化不追加修订（契约）");
+  await b("eval", `(()=>{const sel=document.querySelector('.nv-notebook-filter');sel.value='项目A';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+  await check("document.querySelectorAll('.nv-entry').length === 1", "按笔记本筛选只显示该本笔记");
+  await b("eval", `(()=>{const sel=document.querySelector('.nv-notebook-filter');sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
 
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {

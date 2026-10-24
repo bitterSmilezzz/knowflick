@@ -49,6 +49,7 @@ export function NotesView({ dir, onStateChange }: Props) {
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [statusNote, setStatusNote] = useState("");
   const [listQuery, setListQuery] = useState("");
+  const [notebookFilter, setNotebookFilter] = useState("");
   const [showTrash, setShowTrash] = useState(false);
   const [kbFormOpen, setKbFormOpen] = useState(false);
   const [kbName, setKbName] = useState("");
@@ -66,10 +67,10 @@ export function NotesView({ dir, onStateChange }: Props) {
     () => listNotes(state, { includeDeleted: true }).filter((n) => n.isDeleted),
     [state]
   );
-  const visible = useMemo(
-    () => (listQuery.trim() ? searchNotes(state, listQuery) : showTrash ? trashedNotes : activeNotes),
-    [state, listQuery, showTrash, activeNotes, trashedNotes]
-  );
+  const visible = useMemo(() => {
+    const base = listQuery.trim() ? searchNotes(state, listQuery) : showTrash ? trashedNotes : activeNotes;
+    return notebookFilter ? base.filter((n) => n.notebook === notebookFilter) : base;
+  }, [state, listQuery, showTrash, activeNotes, trashedNotes, notebookFilter]);
   const selected = state.notes.find((n) => n.id === selectedId) ?? null;
 
   const refresh = useCallback(async () => {
@@ -238,6 +239,17 @@ export function NotesView({ dir, onStateChange }: Props) {
     }
   };
 
+  /** 笔记本/标签等元数据编辑：走同一保存路径（内容不变 → 不追加修订）。 */
+  const saveMeta = async (patch: Partial<Pick<Note, "notebook" | "tags">>) => {
+    if (!selected) return;
+    try {
+      await saveNote({ ...selected, ...patch }, selected.currentRevision, dir);
+      await refresh();
+    } catch (e) {
+      setViewError(`保存笔记属性失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const doCreateKb = async () => {
     const name = kbName.trim();
     if (!name) return;
@@ -308,6 +320,17 @@ export function NotesView({ dir, onStateChange }: Props) {
             onChange={(e) => setListQuery(e.target.value)}
           />
         </label>
+        <select
+          className="nv-notebook-filter"
+          aria-label="按笔记本筛选"
+          value={notebookFilter}
+          onChange={(e) => setNotebookFilter(e.target.value)}
+        >
+          <option value="">全部笔记本</option>
+          {[...new Set(activeNotes.map((n) => n.notebook).filter(Boolean))].map((nb) => (
+            <option key={nb} value={nb ?? ""}>{nb}</option>
+          ))}
+        </select>
         <button
           type="button"
           className="nv-trash-toggle"
@@ -331,8 +354,14 @@ export function NotesView({ dir, onStateChange }: Props) {
                 // 回收站行不是可点开的笔记，是一个带「恢复」按钮的普通行——
                 // 按钮嵌按钮是无效 HTML（嵌套交互元素），读屏与键盘都会出问题。
                 <div key={n.id} className="nv-entry nv-entry-trash" role="option" aria-selected={n.id === selectedId}>
-                  <span className="nv-entry-title">{n.title || "(无标题)"}</span>
-                  <span className="nv-entry-preview">{n.bodyMd.slice(0, 60) || "空笔记"}</span>
+                  <span className="nv-entry-title">
+                    {n.notebook ? <span className="nv-notebook-badge">{n.notebook}</span> : null}
+                    {n.title || "(无标题)"}
+                  </span>
+                  <span className="nv-entry-preview">
+                    {n.tags.length ? <span className="nv-tags-line">{n.tags.map((tg) => `#${tg}`).join(" ")}</span> : null}
+                    {n.bodyMd.slice(0, 60) || "空笔记"}
+                  </span>
                   <span className="nv-entry-meta">
                     <button type="button" className="nv-restore" onClick={() => void doRestore(n.id)}>恢复</button>
                   </span>
@@ -345,8 +374,14 @@ export function NotesView({ dir, onStateChange }: Props) {
                   aria-selected={n.id === selectedId}
                   onClick={() => openNote(n)}
                 >
-                  <span className="nv-entry-title">{n.title || "(无标题)"}</span>
-                  <span className="nv-entry-preview">{n.bodyMd.slice(0, 60) || "空笔记"}</span>
+                  <span className="nv-entry-title">
+                    {n.notebook ? <span className="nv-notebook-badge">{n.notebook}</span> : null}
+                    {n.title || "(无标题)"}
+                  </span>
+                  <span className="nv-entry-preview">
+                    {n.tags.length ? <span className="nv-tags-line">{n.tags.map((tg) => `#${tg}`).join(" ")}</span> : null}
+                    {n.bodyMd.slice(0, 60) || "空笔记"}
+                  </span>
                   <span className="nv-entry-meta">
                     {new Date(n.updatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </span>
@@ -415,6 +450,34 @@ export function NotesView({ dir, onStateChange }: Props) {
               onChange={(e) => onEdit(title, e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") e.currentTarget.blur(); }}
             />
+            {selected ? (
+              <div className="nv-meta-row" aria-label="笔记属性">
+                <label className="nv-meta-field">
+                  <span>笔记本</span>
+                  <input
+                    list="nv-notebooks"
+                    aria-label="笔记本名称"
+                    placeholder="未分组"
+                    value={selected.notebook ?? ""}
+                    onChange={(e) => void saveMeta({ notebook: e.target.value.trim() || null })}
+                  />
+                  <datalist id="nv-notebooks">
+                    {[...new Set(activeNotes.map((n) => n.notebook).filter(Boolean))].map((nb) => (
+                      <option key={nb} value={nb ?? ""} />
+                    ))}
+                  </datalist>
+                </label>
+                <label className="nv-meta-field">
+                  <span>标签</span>
+                  <input
+                    aria-label="笔记标签，逗号分隔"
+                    placeholder="用逗号分隔，如：工作, 灵感"
+                    value={selected.tags.join(", ")}
+                    onChange={(e) => void saveMeta({ tags: e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean) })}
+                  />
+                </label>
+              </div>
+            ) : null}
             {selected ? (
               <div className="nv-kbs" aria-label="所属知识库">
                 <span className="nv-kbs-label">知识库：</span>
