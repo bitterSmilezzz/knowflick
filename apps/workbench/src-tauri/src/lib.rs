@@ -417,6 +417,20 @@ fn note_upsert(app: tauri::AppHandle, dir: Option<String>, note: notes::NoteDto,
 }
 
 #[tauri::command]
+fn note_ensure_from_material(app: tauri::AppHandle, dir: Option<String>, material_id: String) -> Result<notes::NoteSaveOutcome, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let outcome = notes::note_ensure_from_material(&conn, &material_id, now)
+        .map_err(|e| crate::error_text::explain_text("转为笔记失败", &e))?;
+    notify_library_changed(&app);
+    Ok(outcome)
+}
+
+#[tauri::command]
 fn note_get(dir: Option<String>, id: String) -> Result<Option<notes::NoteDto>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
@@ -1113,6 +1127,7 @@ pub fn run() {
             db_search_cards_fts,
             db_save_material,
             note_upsert,
+            note_ensure_from_material,
             note_get,
             note_list,
             note_delete,

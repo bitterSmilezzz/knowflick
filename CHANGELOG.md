@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 功能（R2 第一块：统一笔记模型迁移，路线「原素材不丢，旧卡片 id/评分保留」）：素材详情新增「转为可编辑笔记」——按需把一篇素材映射为一篇可持续编辑的笔记。**幂等**：幂等键是 `source_material_id`，重复触发返回同一篇笔记不造副本；正文取 `cleaned_markdown ?? raw_text`；**原素材不删不改**（映射后的编辑只进笔记修订，不回写原件）；旧卡片与 FSRS 学习进度不受影响；不做全库启动回填（不在启动时阻塞，由用户显式触发）。桌面走 Rust `note_ensure_from_material`（含中文错误），浏览器体验走同一语义的领域函数。
 - 修复（FSRS 间隔在 JSON 往返中丢精度）：`cardFromJson` 用 `asInt` 读 `intervalDays`——非整数返回 null 再落默认 1。FSRS 的间隔本就是小数天（Rust 侧 `interval_days` 是 REAL），小数间隔的卡片在前端读回时被静默改成 1 天。改用 `asDouble`（与 ease/stability 同口径）。模块生命周期的成对场景测试（关 AI/关学习/关语音/全关）顺带钉住了这个字段。
 - 测试（模块生命周期成对场景，R1 工作项 5）：`moduleLifecycle.test.ts` 4 项——关 AI 时笔记/搜索/编辑与数据操作不受开关影响；关学习时卡片与 FSRS 字段原样保留、开关语义（旧键 reviewPluginEnabled 与显式 plugins 键）实测；关语音的开关语义（保存路径在插件判断之前由 Workspace 分支保证）；全关时检索与回收站照常。
 - 功能（R1 工作项 2 收口：附件引用进笔记正文）：正文可用 Markdown 图片语法引用库内附件（`![附件](media/…)`）。渲染走既有轻量 Markdown 渲染器，新增 `resolveAttachment` 注入口——**只认库内相对路径**（media/audio|image|ink 的 UUID 文件），外链图与路径穿越一律回退为文本（与链接的非 http/https 安全口径一致）；附件缺失渲染「附件缺失：<路径>」而不是空图。编码用 FileReader 的 dataURL；编辑器底部新增「插入附件引用」选择器（选项来自有附件的素材）与折叠的正文预览。冒烟扩到 26 项（引用进正文并保存、预览可展开、引用路径参与全文检索）。

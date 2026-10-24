@@ -6,7 +6,7 @@
 //! - 知识库是范围不是副本：成员关系表连接，同一笔记可属多个库，检索按库过滤在 SQL 层；
 //! - 既有 materials/cards 不动，新笔记与旧数据互不覆盖。
 
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -396,6 +396,71 @@ pub fn search_notes(conn: &Connection, query: &str, kb_id: Option<&str>, limit: 
     Ok(out)
 }
 
+/// R2 统一笔记模型迁移的第一块：把一篇既有素材映射为可编辑笔记（惰性、幂等）。
+///
+/// 契约（docs/NOTES_MODEL.md「迁移」与 R2 路线）：原素材不丢、不改动；
+/// 幂等键是 `source_material_id`——同一素材重复映射返回**同一篇**笔记，不造副本；
+/// 正文取 cleaned_markdown ?? raw_text；旧卡片与评分不受影响。
+/// 不做全库一次性回填（不在启动时阻塞）——映射由用户显式触发。
+pub fn note_ensure_from_material(
+    conn: &Connection,
+    material_id: &str,
+    now: i64,
+) -> Result<NoteSaveOutcome, String> {
+    // 已映射过：返回既有笔记（幂等）
+    if let Some(existing) = conn
+        .query_row(
+            &format!("SELECT {NOTE_COLUMNS} FROM notes WHERE source_material_id = ?1 AND is_deleted = 0"),
+            params![material_id],
+            |row| map_note_row(row),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(NoteSaveOutcome { id: existing.id, revision: existing.current_revision, created: false });
+    }
+
+    let material = conn
+        .query_row(
+            "SELECT title, raw_text, cleaned_markdown FROM materials WHERE id = ?1",
+            params![material_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let (title, raw_text, cleaned) = material.ok_or_else(|| format!("找不到素材 {material_id}，可能已被删除"))?;
+
+    let body = cleaned.filter(|c| !c.trim().is_empty()).unwrap_or(raw_text);
+    let note = NoteDto {
+        id: uuid::Uuid::new_v4().to_string(),
+        title,
+        body_md: body,
+        notebook: None,
+        tags_json: "[]".to_string(),
+        is_pinned: false,
+        is_favorite: false,
+        archived_at: None,
+        source_material_id: Some(material_id.to_string()),
+        current_revision: 1,
+        created_at: now,
+        updated_at: now,
+        is_deleted: false,
+        deleted_at: None,
+    };
+    note_upsert(conn, &note, 0, now).map_err(|e| match e {
+        NoteSaveError::Conflict { current_revision } => {
+            format!("笔记修订冲突（当前修订 {current_revision}）——该素材可能刚被映射过，请刷新")
+        }
+        NoteSaveError::Db(err) => err.to_string(),
+    })
+}
+
 // ---------- 测试：契约的每一条都要有断言钉着 ----------
 
 #[cfg(test)]
@@ -510,6 +575,61 @@ mod tests {
         // 同名库拒绝、空名拒绝
         assert!(kb_create(&conn, "kb2", "项目 A", "", 1500).is_err());
         assert!(kb_create(&conn, "kb3", "  ", "", 1500).is_err());
+    }
+
+    /// R2 映射：素材 → 笔记，幂等；原素材与旧卡片不受影响；映射后可编辑。
+    #[test]
+    fn material_maps_to_note_idempotently_and_original_survives() {
+        let conn = temp_db("m2n");
+        conn.execute(
+            "INSERT INTO materials (id, source_type, title, raw_text, cleaned_markdown, content_hash,
+             metadata_json, inbox_status, created_at, updated_at)
+             VALUES ('m1','web','网页标题','原始全文','清理后的正文','h1','{}','inbox',1,1)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO cards (id, material_id, category, headline, summary, details, links_json, tags_json,
+             source, created_at, updated_at, repetition, interval_days, ease_factor, stability, difficulty)
+             VALUES ('c1','m1','x','旧卡','摘要','正文','[]','[]','imported',1,1, 3, 5.5, 2.8, 4.2, 5.1)",
+            [],
+        ).unwrap();
+
+        let out = note_ensure_from_material(&conn, "m1", 1000).unwrap();
+        assert!(out.created, "首次映射是新建");
+        assert_eq!(out.revision, 1);
+
+        // 幂等：再映射一次返回同一篇，不造副本
+        let again = note_ensure_from_material(&conn, "m1", 2000).unwrap();
+        assert!(!again.created && again.id == out.id);
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM notes WHERE source_material_id = 'm1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // 正文优先 cleaned_markdown；标题来自素材
+        let note = note_get(&conn, &out.id).unwrap().unwrap();
+        assert_eq!(note.title, "网页标题");
+        assert_eq!(note.body_md, "清理后的正文");
+        assert_eq!(note.source_material_id.as_deref(), Some("m1"));
+
+        // 原素材与旧卡片（含 FSRS 字段）不受影响
+        let mat: i64 = conn.query_row("SELECT COUNT(*) FROM materials WHERE id='m1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(mat, 1);
+        let fsrs: (i64, f64) = conn
+            .query_row("SELECT repetition, interval_days FROM cards WHERE id='c1'", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(fsrs, (3, 5.5));
+
+        // 映射后的笔记可编辑（修订推进），原素材仍是原样
+        let mut edited = note.clone();
+        edited.body_md = "清理后的正文\n\n用户续写的一段。".to_string();
+        let e2 = note_upsert(&conn, &edited, note.current_revision, 3000).unwrap();
+        assert_eq!(e2.revision, 2);
+        let raw_now: String = conn.query_row("SELECT raw_text FROM materials WHERE id='m1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(raw_now, "原始全文", "映射编辑不回写素材原件");
+
+        // 不存在的素材报中文错
+        assert!(note_ensure_from_material(&conn, "ghost", 4000).is_err());
     }
 
     /// 老库（只有旧表）打开后建笔记：迁移路径不丢旧数据、新表即建即用。

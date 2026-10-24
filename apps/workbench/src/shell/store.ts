@@ -219,6 +219,10 @@ export function noteUpsert(note: object, baseRevision: number, dir?: string): Pr
   return invoke("note_upsert", { dir: dir ?? null, note, baseRevision });
 }
 
+export function noteEnsureFromMaterial(materialId: string, dir?: string): Promise<NoteSaveOutcomeShell> {
+  return invoke("note_ensure_from_material", { dir: dir ?? null, materialId });
+}
+
 export function noteGet(id: string, dir?: string): Promise<object | null> {
   return invoke("note_get", { dir: dir ?? null, id });
 }

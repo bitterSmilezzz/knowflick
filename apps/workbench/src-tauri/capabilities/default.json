@@ -29,6 +29,7 @@
     "allow-db-save-card-embeddings-batch",
     "allow-db-save-material",
     "allow-note-upsert",
+    "allow-note-ensure-from-material",
     "allow-note-get",
     "allow-note-list",
     "allow-note-delete",

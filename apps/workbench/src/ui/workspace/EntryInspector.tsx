@@ -19,6 +19,8 @@ interface Props {
   onSave: (title: string, text: string, category: string, tags: string[]) => Promise<void>;
   onArchive: () => Promise<void>;
   onConvert: () => Promise<void>;
+  /** R2：把这篇素材映射为一篇可持续编辑的笔记（幂等）。 */
+  onEnsureNote?: () => Promise<void>;
   onAi: () => Promise<void>;
   onFetch: () => Promise<void>;
   onFavorite: () => Promise<void>;
@@ -36,6 +38,7 @@ export function EntryInspector({
   onSave,
   onArchive,
   onConvert,
+  onEnsureNote,
   onAi,
   onFetch,
   onFavorite,
@@ -278,6 +281,11 @@ export function EntryInspector({
                     <button className="ws-bordered" disabled={busy} onClick={() => (aiReady ? void run(onAi) : onSettings())}>
                       <Icon name="ask" size={14} /> {aiReady ? "AI 提炼卡片" : "配置 AI"}
                     </button>
+                    {onEnsureNote ? (
+                      <button className="ws-bordered" disabled={busy} onClick={() => void run(onEnsureNote)}>
+                        <Icon name="note" size={14} /> 转为可编辑笔记
+                      </button>
+                    ) : null}
                     {entry.url ? (
                       <button className="ws-bordered" disabled={busy} onClick={() => void run(onFetch)}>
                         <Icon name="note" size={14} /> 抓取正文

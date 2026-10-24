@@ -13,6 +13,7 @@ import {
   loadStore,
   readMedia,
   noteDelete,
+  noteEnsureFromMaterial,
   noteList,
   noteRestore,
   noteUpsert,
@@ -26,6 +27,7 @@ import {
   addNoteToKb as domainAddToKb,
   createKnowledgeBase as domainCreateKb,
   deleteNote as domainDeleteNote,
+  createNoteDraft,
   emptyNotesState,
   restoreNote as domainRestoreNote,
   noteFromJson,
@@ -186,6 +188,25 @@ export async function saveNote(note: Note, baseRevision: number, dir: string): P
   }
   const { state, outcome } = domainUpsert(browserNotes(), note, baseRevision);
   browserNotesWrite(state);
+  return outcome;
+}
+
+export async function ensureNoteFromMaterial(
+  material: { id: string; title: string; rawText: string; cleanedMarkdown?: string | null },
+  dir: string
+): Promise<NoteSaveOutcome> {
+  if (inShell()) return noteEnsureFromMaterial(material.id, dir);
+  const state = browserNotes();
+  const existing = state.notes.find((n) => n.sourceMaterialId === material.id && !n.isDeleted);
+  if (existing) return { id: existing.id, revision: existing.currentRevision, created: false };
+  const note: Note = {
+    ...createNoteDraft(Date.now()),
+    title: material.title,
+    bodyMd: (material.cleanedMarkdown && material.cleanedMarkdown.trim()) || material.rawText,
+    sourceMaterialId: material.id,
+  };
+  const { state: next, outcome } = domainUpsert(state, note, 0);
+  browserNotesWrite(next);
   return outcome;
 }
 

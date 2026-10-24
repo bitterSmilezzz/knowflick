@@ -20,6 +20,7 @@ fn main() {
             "db_search_cards_fts",
             "db_save_material",
             "note_upsert",
+            "note_ensure_from_material",
             "note_get",
             "note_list",
             "note_delete",

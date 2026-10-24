@@ -58,6 +58,7 @@ import { SubscriptionsView } from "./SubscriptionsView";
 import { NotesView } from "./NotesView";
 import type { NotesState } from "../../domain/note";
 import { restoreNotesBundle } from "./notesRestore";
+import { ensureNoteFromMaterial } from "./repository";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
 import { StatsView } from "./StatsView";
@@ -1991,6 +1992,18 @@ export function Workspace() {
                 saveEntry(selected, title, text, category, entryTags)
               }
               onConvert={() => convert(selected)}
+              onEnsureNote={async () => {
+                const current = selected;
+                if (!current || current.kind !== "material") return;
+                // current 已窄化为 RawMaterial（Entry 的 original 在 material 分支就是它）
+                const material = current.original as RawMaterial;
+                const outcome = await ensureNoteFromMaterial(
+                  { id: material.id, title: material.title, rawText: material.rawText, cleanedMarkdown: material.cleanedMarkdown },
+                  dir
+                );
+                await load(true);
+                setNotice(`已转为可编辑笔记（${outcome.created ? "新建" : `已有 · 修订 ${outcome.revision}`}），在「笔记」里继续写。`);
+              }}
               onAi={() => aiTransform(selected)}
               onFetch={() => fetchPage(selected)}
               onArchive={() =>
