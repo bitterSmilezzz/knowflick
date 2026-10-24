@@ -54,6 +54,11 @@ const CAUSES: &[(&str, &str)] = &[
         "磁盘满了——请清理一些空间后重试",
     ),
     (
+        // SQLite 满盘报的是这句（实测 rusqlite 在库目录写满时的错误文本）
+        "database or disk is full",
+        "磁盘满了——请清理一些空间后重试",
+    ),
+    (
         "is a directory",
         "这里是个文件夹，不是文件——请选具体的文件",
     ),
@@ -111,6 +116,19 @@ pub fn explain_text(what: &str, raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// 命令层把 rusqlite 的英文透传交给 explain_text 包装（lib.rs 笔记命令族）。
+    /// 静态守卫只扫字面量，看不见透传——这条测试守住包装结果真的可读。
+    #[test]
+    fn command_wrapper_explains_disk_error_in_chinese() {
+        let out = super::explain_text("笔记保存失败", "disk I/O error");
+        assert!(out.contains("笔记保存失败"), "{out}");
+        // 模块约定：原始英文以「原始信息：…」保留供定位，主体必须是中文说法。
+        assert!(out.contains("原始信息：disk I/O error"), "原始信息要保留：{out}");
+        let full = super::explain_text("移入回收站失败", "database or disk is full");
+        assert!(full.contains("移入回收站失败"), "{full}");
+        assert!(full.contains("磁盘") || full.contains("空间"), "磁盘满要说到原因：{full}");
+    }
+
     use super::*;
 
     #[test]

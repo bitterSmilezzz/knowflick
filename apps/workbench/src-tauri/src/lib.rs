@@ -407,7 +407,10 @@ fn note_upsert(app: tauri::AppHandle, dir: Option<String>, note: notes::NoteDto,
         notes::NoteSaveError::Conflict { current_revision } => {
             format!("内容已在别处更新（当前修订 {current_revision}），请刷新后重试，不要直接覆盖")
         }
-        notes::NoteSaveError::Db(err) => err.to_string(),
+        // rusqlite 的原始错误是英文（"disk I/O error"）——静态守卫扫不到透传，
+        // 但用户会在「保存失败：…」里看到它。explain_text 按关键词给出
+        // 中文原因与下一步（R1 退出门槛：磁盘写失败要有可解释的结果）。
+        notes::NoteSaveError::Db(err) => crate::error_text::explain_text("笔记保存失败", &err.to_string()),
     })?;
     notify_library_changed(&app);
     Ok(outcome)
@@ -417,14 +420,14 @@ fn note_upsert(app: tauri::AppHandle, dir: Option<String>, note: notes::NoteDto,
 fn note_get(dir: Option<String>, id: String) -> Result<Option<notes::NoteDto>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::note_get(&conn, &id).map_err(|e| e.to_string())
+    notes::note_get(&conn, &id).map_err(|e| crate::error_text::explain_text("读取笔记失败", &e.to_string()))
 }
 
 #[tauri::command]
 fn note_list(dir: Option<String>, include_deleted: Option<bool>, limit: Option<i64>) -> Result<Vec<notes::NoteDto>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::note_list(&conn, include_deleted.unwrap_or(false), limit.unwrap_or(500)).map_err(|e| e.to_string())
+    notes::note_list(&conn, include_deleted.unwrap_or(false), limit.unwrap_or(500)).map_err(|e| crate::error_text::explain_text("读取笔记列表失败", &e.to_string()))
 }
 
 #[tauri::command]
@@ -435,7 +438,7 @@ fn note_delete(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
-    let deleted = notes::note_delete(&conn, &id, now).map_err(|e| e.to_string())?;
+    let deleted = notes::note_delete(&conn, &id, now).map_err(|e| crate::error_text::explain_text("移入回收站失败", &e.to_string()))?;
     notify_library_changed(&app);
     Ok(deleted)
 }
@@ -444,7 +447,7 @@ fn note_delete(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result
 fn note_restore(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    let restored = notes::note_restore(&conn, &id).map_err(|e| e.to_string())?;
+    let restored = notes::note_restore(&conn, &id).map_err(|e| crate::error_text::explain_text("恢复笔记失败", &e.to_string()))?;
     notify_library_changed(&app);
     Ok(restored)
 }
@@ -453,7 +456,7 @@ fn note_restore(app: tauri::AppHandle, dir: Option<String>, id: String) -> Resul
 fn note_search(dir: Option<String>, query: String, kb_id: Option<String>, limit: Option<i64>) -> Result<Vec<notes::NoteDto>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::search_notes(&conn, &query, kb_id.as_deref(), limit.unwrap_or(50)).map_err(|e| e.to_string())
+    notes::search_notes(&conn, &query, kb_id.as_deref(), limit.unwrap_or(50)).map_err(|e| crate::error_text::explain_text("搜索笔记失败", &e.to_string()))
 }
 
 #[tauri::command]
@@ -473,7 +476,7 @@ fn kb_create(app: tauri::AppHandle, dir: Option<String>, id: String, name: Strin
 fn kb_list(dir: Option<String>) -> Result<Vec<notes::KnowledgeBaseDto>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::kb_list(&conn).map_err(|e| e.to_string())
+    notes::kb_list(&conn).map_err(|e| crate::error_text::explain_text("读取知识库列表失败", &e.to_string()))
 }
 
 #[tauri::command]
@@ -493,14 +496,14 @@ fn kb_add_note(app: tauri::AppHandle, dir: Option<String>, kb_id: String, note_i
 fn kb_membership(dir: Option<String>) -> Result<std::collections::HashMap<String, i64>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::kb_membership_map(&conn).map_err(|e| e.to_string())
+    notes::kb_membership_map(&conn).map_err(|e| crate::error_text::explain_text("读取知识库成员失败", &e.to_string()))
 }
 
 #[tauri::command]
 fn kb_remove_note(app: tauri::AppHandle, dir: Option<String>, kb_id: String, note_id: String) -> Result<(), String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::kb_remove_note(&conn, &kb_id, &note_id).map_err(|e| e.to_string())?;
+    notes::kb_remove_note(&conn, &kb_id, &note_id).map_err(|e| crate::error_text::explain_text("移出知识库失败", &e.to_string()))?;
     notify_library_changed(&app);
     Ok(())
 }
