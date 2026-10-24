@@ -451,12 +451,22 @@ MCP server 两个都发不出去（它不是 Tauri 命令，也不写 localStora
 
 MCP server 自己的文档写着「Tauri 主窗口收到文件监听后自动刷新」——**那套监听并不存在**。
 
-修法：不引入文件监听依赖（多一个 crate 与它的跨平台坑），改为**轮询库文件签名**——
-库文件与两份 json 的「修改时间 + 大小」。变了就派发**已有的**
-`knowflick:library-changed`，复用现成的刷新路径。
+修法：不引入文件监听依赖（多一个 crate 与它的跨平台坑），改为**轮询库文件签名**。
+变了就派发**已有的** `knowflick:library-changed`，复用现成的刷新路径。
 
+签名最初取「修改时间 + 大小」，后来发现**会被同一时钟桶里的两次写入骗过**：
+Linux 的 inode 时间戳取自 coarse clock，粒度约 1/HZ（4ms），而一次 SQLite
+写入（含 WAL 回检）常常只要 2~3ms——两次不同的写入可能拿到**同一个** mtime，
+签名不变、外部改动被漏掉（ubuntu runner 上 `signature_changes_when_the_database_is_touched`
+偶发失败、失败时整个测试只跑 2ms；macOS 是 ns 精度，本机连跑 60 次都复现不出）。
+已改成**内容指纹**（SHA-256 前 8 字节，分块流式读），命令走 `spawn_blocking`
+不占 UI 线程；实测本机真实库（204 KB）全库哈希 1ms，每 2 秒轮询一次约单核 0.05%。
 新增 `db_library_signature` 命令（Rust）与 `externalRefresh.ts`（前端判定逻辑）。
 Rust 侧测试证明签名确实能看出外部写入；前端测试覆盖「变了才刷新、首次只建基线」。
+
+换内容指纹后**真机端到端重跑过**（2026-10-24，本机打 release 包运行
+`desktop_external_write_smoke`）：7 项全过——外部进程直写 SQLite、桌面界面
+自动刷新，无需切页或重启。
 
 反向验证：签名退化成只报文件名 → Rust 测试报「库被外部写入后签名必须变化」；
 把命令从 `invoke_handler` 去掉 → 门禁报「前端 invoke 但 Rust 没注册——运行时会抛错」。
