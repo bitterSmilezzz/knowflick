@@ -6,6 +6,8 @@
 
 ## 仓库定位
 
+**产品规划更新（2026-10-24）**：新增笔记、知识库、应用、来源接入、个人记忆或前端导航时，先读 [产品重规划](docs/product/README.md)，再按其中链接读取对应能力、界面、数据或路线章节。[ADR-0004](docs/adr/0004-notes-knowledge-applications.md) 记录本次范围扩展：笔记成为一等资产，旧“不做长文编辑”的范围限制已更新；既有功能保留。R0–R5 是新路线，方案不等于已实现。下文 ADR-0002 的平台分工与既有验证规则继续适用。
+
 KnowFlick 是多端学习工作台。**活计划是 [ADR-0002](docs/adr/0002-desktop-web-split-from-android.md)**：Windows / Linux / macOS 与稍后的网页共用一份 Web 界面（Vite + React + TypeScript）加 Tauri 壳；Android 单独留在现有 Kotlin / Compose。iOS 先不做。两套共享 `cards.json` 与 `settings.json` 的结构，不共享界面。
 
 现状里的 Kotlin 共享模块仍然在：`apps/android` 的 `:app`、`:domain`、`:shared-data`、`:shared-ui`，外加已冻住的 `:desktop`（JVM + Skiko）。`:desktop` 不再加功能，第一套闭环跑通之前不删。Swift/SwiftUI 的 `apps/mac` 已删除，不要恢复。`shared/assets` 仍是契约与底图。
