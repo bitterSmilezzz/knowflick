@@ -7,6 +7,8 @@
 //!   with the same size, so a half-written recording is never referenced.
 //! - Only the app's own directory is served; the path returned to the UI is
 //!   relative to the library, so a moved library keeps working.
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -17,6 +19,22 @@ pub const MAX_AUDIO: usize = 64 * 1024 * 1024;
 pub const MAX_INK: usize = 8 * 1024 * 1024;
 /// Screenshots and photos pasted into the library.
 pub const MAX_IMAGE: usize = 16 * 1024 * 1024;
+
+/// IPC 上的附件字节走 base64 字符串。
+///
+/// 以前 `Vec<u8>` 会被 JSON 序列化成**数字数组**：5 MB 录音变成 ~18 MB 的
+/// `[123,10,...]` 文本，两侧再各花几十毫秒逐个数字解析——附件越多
+/// （备份导出要读**全部**附件）放大越狠。base64 只放大 1.33 倍，
+/// serde 对字符串是 memcpy 级的。这也是 Tauri 官方文档给的建议
+/// （Android 上 raw payload 不可用时「用 base64，仍比数字数组高效」）。
+pub fn encode_b64(bytes: &[u8]) -> String {
+    BASE64.encode(bytes)
+}
+
+/// 解不开的 base64 是 IPC 契约被破坏，不是用户操作问题——但消息仍要说人话。
+pub fn decode_b64(text: &str) -> Result<Vec<u8>, String> {
+    BASE64.decode(text).map_err(|_| "附件数据无效，无法解码".to_string())
+}
 
 fn kind_dir(dir: &Path, kind: &str) -> Result<PathBuf, String> {
     let folder = match kind {
@@ -124,6 +142,23 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("knowflick-media-{tag}-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// IPC 契约：字节 ↔ base64 必须无损往返（含空串与全 256 个字节值）。
+    #[test]
+    fn b64_round_trips_losslessly() {
+        let all_bytes: Vec<u8> = (0..=255u8).collect();
+        for payload in [Vec::new(), vec![0u8], all_bytes, b"fake webm bytes".to_vec()] {
+            let encoded = encode_b64(&payload);
+            assert_eq!(decode_b64(&encoded).expect("decode"), payload);
+        }
+    }
+
+    /// 解不开的 base64 要报中文错误（这条消息会落到界面上）。
+    #[test]
+    fn b64_decode_rejects_garbage_with_a_chinese_message() {
+        let err = decode_b64("这不是 base64!!!").expect_err("该报错");
+        assert!(err.contains("附件数据无效"), "{err}");
     }
 
     #[test]

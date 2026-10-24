@@ -122,6 +122,12 @@ python3 tools/check_clip_parity.py # 剪藏规则表：Kotlin ↔ TypeScript 逐
   `tools/build_icon.swift`（母版 → iconset，末尾自动调 `iconutil`）与 `tools/verify_icon.swift`（逐像素校验 ICNS 各阶是否与母版一致）
   是**同一套美术流程的本机步骤**：没有别的脚本引用它们，CI 也不跑它们——留着是给「拿到原始美术后照着重做」当参照，不是死代码，别顺手删。
 - 全仓扫描类工作**严禁 head 截断后下「清零」结论**（PR #45 教训）。
+- **真机自动化验证的两类坑**（实测教训，media IPC 改 base64 那轮踩的）：
+  ① `cliclick` 的鼠标事件**只发给前台应用**——窗口 AXRaise 过不代表它 key，事件全落在了当时前台的别的窗口上；
+  需要真实指针（画笔拖动）前先 `osascript activate`，普通按钮直接走 AX 的 `AXPress`（不需要焦点）。
+  ② **视觉模型读截图会幻觉**——对着截图问「有没有成功回执」它能逐字编出一条不存在的回执，连数字都编。
+  真机验证的证据只认三种：AX 树里的文本/计数（`Swift` 走 `AXUIElement` 能拿按钮坐标与 aria-label）、
+  文件系统、数据库；截图只当辅助。
 - **别用文件 mtime 判断「内容变没变」**（实测教训）：Linux 的 inode 时间戳取自
   coarse clock，粒度约 1/HZ（4ms）——两次不同的写入可能拿到**同一个** mtime；
   而 macOS 是 ns 精度，本机永远复现不出来，CI（ubuntu）上才偶发。

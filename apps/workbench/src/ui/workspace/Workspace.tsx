@@ -1091,7 +1091,7 @@ export function Workspace() {
     for (const m of items) {
       if (!m.mediaPath) continue;
       if (media.has(m.mediaPath)) continue;
-      try { media.set(m.mediaPath, new Uint8Array(await readMedia(m.mediaPath, dir))); } catch { /* 跳过缺失附件 */ }
+      try { media.set(m.mediaPath, await readMedia(m.mediaPath, dir)); } catch { /* 跳过缺失附件 */ }
     }
     return media;
   };

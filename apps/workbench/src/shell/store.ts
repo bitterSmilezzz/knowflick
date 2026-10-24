@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { base64ToBytes, bytesToBase64 } from "./base64";
 import type { KnowledgeCard } from "../domain/card";
 
 export interface RawMaterial {
@@ -361,9 +362,12 @@ export function asrTranscribe(path: string, model?: string): Promise<Transcripti
 /**
  * 保存一条笔记附件（录音 / 手写），返回库内相对路径。
  * 文件名由宿主生成，前端只决定类型与内容。
+ *
+ * 字节在 IPC 边界转 base64（见 ./base64）：数字数组会把 5 MB 录音放大成
+ * ~18 MB 的 JSON，备份导出读全部附件时跟着库一起长。
  */
-export function saveMedia(kind: "audio" | "ink" | "image", mime: string, data: Uint8Array, dir?: string): Promise<string> {
-  return invoke("save_media", { dir: dir ?? null, kind, mime, data: Array.from(data) });
+export async function saveMedia(kind: "audio" | "ink" | "image", mime: string, data: Uint8Array, dir?: string): Promise<string> {
+  return invoke("save_media", { dir: dir ?? null, kind, mime, dataB64: await bytesToBase64(data) });
 }
 
 /**
@@ -376,8 +380,9 @@ export function dbLibrarySignature(dir?: string): Promise<string> {
   return invoke("db_library_signature", { dir: dir ?? null });
 }
 
-export function readMedia(relative: string, dir?: string): Promise<number[]> {
-  return invoke("read_media", { dir: dir ?? null, relative });
+export async function readMedia(relative: string, dir?: string): Promise<Uint8Array> {
+  const b64 = await invoke<string>("read_media", { dir: dir ?? null, relative });
+  return base64ToBytes(b64);
 }
 
 export async function pickAudioFile(): Promise<string | null> {

@@ -142,16 +142,20 @@ fn open_url(url: String) -> Result<(), String> {
     open::that(trimmed).map_err(|err| err.to_string())
 }
 
+// 附件字节走 base64 而不是 `Vec<u8>`：后者会被 JSON 序列化成数字数组，
+// 5 MB 录音放大成 ~18 MB 文本、两侧逐数字解析；备份导出要读全部附件，
+// 放大跟着库一起长。base64 只放大 1.33 倍（理由与实测见 media.rs）。
 #[tauri::command]
-fn save_media(dir: Option<String>, kind: String, mime: String, data: Vec<u8>) -> Result<String, String> {
+fn save_media(dir: Option<String>, kind: String, mime: String, data_b64: String) -> Result<String, String> {
     let path = library_dir(dir);
-    media::save_media(&path, &kind, &mime, &data)
+    let bytes = media::decode_b64(&data_b64)?;
+    media::save_media(&path, &kind, &mime, &bytes)
 }
 
 #[tauri::command]
-fn read_media(dir: Option<String>, relative: String) -> Result<Vec<u8>, String> {
+fn read_media(dir: Option<String>, relative: String) -> Result<String, String> {
     let path = library_dir(dir);
-    media::read_media(&path, &relative)
+    Ok(media::encode_b64(&media::read_media(&path, &relative)?))
 }
 
 #[tauri::command]
