@@ -17,6 +17,25 @@ describe("MarkdownRenderer", () => {
     expect(html).not.toContain('href="file:');
     expect(html).toContain('href="https://example.com"');
   });
+  it("renders in-library media attachments only with a resolver; falls back to text otherwise", () => {
+    const md = "![手写](media/ink/a.json) ![外链](https://x/y.png) ![穿越](../../../etc/passwd)";
+    // 无 resolver（详情区老用法）：全部回退为文本，不出现 <img>
+    const plain = renderToStaticMarkup(<MarkdownRenderer text={md} />);
+    expect(plain).not.toContain("<img");
+    // 有 resolver：只解析库内相对路径；外链与路径穿越都不给 <img>
+    const withResolver = renderToStaticMarkup(
+      <MarkdownRenderer text={md} resolveAttachment={(p) => (p.startsWith("media/") ? "blob:x" : null)} />
+    );
+    expect(withResolver).toContain('<img src="blob:x"');
+    expect((withResolver.match(/<img/g) || []).length).toBe(1);
+    // resolver 返回 null（附件真缺失）→ 渲染明确的「缺失」文案而不是空 <img>
+    const missing = renderToStaticMarkup(
+      <MarkdownRenderer text="![手写](media/ink/missing.json)" resolveAttachment={() => null} />
+    );
+    expect(missing).toContain("附件缺失：media/ink/missing.json");
+    expect(missing).not.toContain("<img");
+  });
+
   it("renders empty div for empty text", () => {
     const el = MarkdownRenderer({ text: "" });
     expect(React.isValidElement(el)).toBe(true);

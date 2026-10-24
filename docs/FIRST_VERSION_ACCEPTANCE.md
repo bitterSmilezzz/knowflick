@@ -48,7 +48,7 @@
 
 | 层 | 在哪跑 | 覆盖什么 |
 | --- | --- | --- |
-| **门禁（每次提交）** | `verify_workbench.sh` | 前端 451 项 + Rust 测试（通过与忽略分开报告）+ 14 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
+| **门禁（每次提交）** | `verify_workbench.sh` | 前端 452 项 + Rust 测试（通过与忽略分开报告）+ 14 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
 | **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
@@ -68,7 +68,7 @@
 
 | ADR 承诺 | 状态 | 证据 |
 | --- | --- | --- |
-| **可持续编辑笔记（R1 切片）** | ✅ | `notes_editor_smoke.mjs`（22 项：新建可写、自动保存、刷新恢复、修订推进、回收站删/恢复、入知识库、搜索命中正文、笔记本与标签的组织与筛选、元数据不追加修订）；领域契约 Rust `notes.rs` 5 项 + `note.test.ts` 5 项（修订冲突、库内检索不串库、老库迁移）；备份 v2 往返 `systemBackup.test.ts` |
+| **可持续编辑笔记（R1 切片）** | ✅ | `notes_editor_smoke.mjs`（26 项：新建可写、自动保存、刷新恢复、修订推进、回收站删/恢复、入知识库、搜索命中正文、笔记本与标签的组织与筛选、元数据不追加修订、附件引用进正文且引用可搜）；领域契约 Rust `notes.rs` 5 项 + `note.test.ts` 5 项（修订冲突、库内检索不串库、老库迁移）；备份 v2 往返 `systemBackup.test.ts` |
 | 剪藏 | ✅ | `clipEngine.test.ts`、`clipEngine.crossend.test.ts`、`fixtures.test.ts`（真实 GBK/UTF-8 页面）、`tools/check_clip_parity.py`（三端一致） |
 | 笔记导入（文件） | ✅ | `import_ui_smoke.mjs`（28 项）、`subscription.test.ts`、`fixtures.test.ts`（真实 DOCX/PPTX/feed） |
 | **手写笔记** | ✅ | `notes_ui_smoke.mjs`（40 项，含「保存后阅读区**真的重绘出笔迹**」——按像素判定非透明像素，以及「清空笔迹要先点两次」）、`ink.test.ts`（7 项：归一化、撤销、损坏数据不崩） |

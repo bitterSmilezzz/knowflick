@@ -2147,7 +2147,13 @@ export function Workspace() {
                 />
               ) : null}
               {page === "notes" ? (
-                <NotesView dir={dir} onStateChange={setNotesState} />
+                <NotesView
+                  dir={dir}
+                  attachableMedia={materials
+                    .filter((m) => m.mediaPath)
+                    .map((m) => ({ path: m.mediaPath as string, label: m.title }))}
+                  onStateChange={setNotesState}
+                />
               ) : null}
               {page === "mail" ? (
                 <MailboxView

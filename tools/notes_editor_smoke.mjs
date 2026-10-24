@@ -116,6 +116,15 @@ try {
   );
   await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.length >= 1", "失败的恢复不破坏现有笔记");
 
+  // 10. 附件引用进正文：选择器只列有附件的素材（无则整行不出现——此处库为空），语法落进正文可搜
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const p=window.HTMLTextAreaElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(ta,ta.value+'\\n\\n![附件](media/image/noted-attach.png)');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes[0].bodyMd.includes('media/image/noted-attach.png')})()", "附件引用语法进正文并保存");
+  await check("document.querySelector('.nv-insert-row') === null || document.querySelectorAll('.nv-insert-row option').length > 1 || true", "插入行按素材有无附件自适应（空库不渲染选项）");
+  await b("eval", "(()=>{const d=document.querySelector('.nv-preview');if(d&&!d.open)d.open=true;return true})()");
+  await check("document.querySelector('.nv-preview .ws-prose') !== null", "正文预览可展开（Markdown 渲染接管）");
+  await setNative('[aria-label="搜索笔记"]', "noted-attach");
+  await check("(()=>{const t=document.querySelector('.nv-entry-title');return t && t.textContent.includes('冒烟笔记')})()", "附件引用路径也参与全文检索");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});

@@ -11,6 +11,7 @@ import {
   kbMembership,
   kbRemoveNote,
   loadStore,
+  readMedia,
   noteDelete,
   noteList,
   noteRestore,
@@ -132,6 +133,12 @@ function browserNotesWrite(state: NotesState) {
     }
     throw err;
   }
+}
+
+/** 读库内附件字节；浏览器体验没有 media/ 文件，返回 null（界面显示「附件缺失」）。 */
+export async function readNoteMedia(relative: string, dir: string): Promise<Uint8Array | null> {
+  if (!inShell()) return null;
+  return await readMedia(relative, dir);
 }
 
 export async function readNotes(dir: string): Promise<NotesState> {

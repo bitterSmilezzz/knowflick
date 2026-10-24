@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addNoteToKnowledgeBase,
   createKnowledgeBaseNamed,
+  readNoteMedia,
   deleteNoteById,
   readNotes,
   removeNoteFromKnowledgeBase,
@@ -21,6 +22,7 @@ import {
 import { emptyNotesState } from "../../domain/note";
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 /**
  * 笔记工作面（R1 首个纵向切片）——契约见 docs/NOTES_MODEL.md「界面契约」：
@@ -34,13 +36,22 @@ const AUTOSAVE_DELAY_MS = 800;
 
 type SaveStatus = "saved" | "saving" | "dirty" | "conflict" | "error";
 
+interface AttachableMedia {
+  /** 库内相对路径（media/...），正文引用用的就是它。 */
+  path: string;
+  /** 界面选择列表里显示的标题。 */
+  label: string;
+}
+
 interface Props {
   dir: string;
+  /** 有媒体附件的素材（库内路径+标题）：「插入附件引用」的选项来源。 */
+  attachableMedia: AttachableMedia[];
   /** Workspace 用最新快照来导出备份；笔记状态由本视图自治加载。 */
   onStateChange?: (state: NotesState) => void;
 }
 
-export function NotesView({ dir, onStateChange }: Props) {
+export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
   const [state, setState] = useState<NotesState>(emptyNotesState);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -141,6 +152,43 @@ export function NotesView({ dir, onStateChange }: Props) {
     },
     [flushSave]
   );
+
+  // 正文里引用的库内附件 → objectURL。按内容路径缓存，卸载统一释放；
+  // resolver 只认这份缓存：拿不到说明附件缺失，渲染「附件缺失」文案。
+  const [objectUrls, setObjectUrls] = useState<Map<string, string | null>>(new Map());
+  const mediaRefs = useMemo(
+    () => [...new Set([...body.matchAll(/!\[[^\]]*\]\((media\/(?:audio|image|ink)\/[A-Za-z0-9._-]+)\)/g)].map((m) => m[1]))],
+    [body]
+  );
+  useEffect(() => {
+    let disposed = false;
+    const created: string[] = [];
+    void (async () => {
+      const next = new Map<string, string | null>();
+      for (const ref of mediaRefs) {
+        if (objectUrls.has(ref)) next.set(ref, objectUrls.get(ref) ?? null);
+        else {
+          try {
+            const bytes = await readNoteMedia(ref, dir);
+            if (!bytes) next.set(ref, null);
+            else {
+              const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: ref.endsWith(".json") ? "image/svg+xml" : "application/octet-stream" }));
+              created.push(url);
+              next.set(ref, url);
+            }
+          } catch {
+            next.set(ref, null);
+          }
+        }
+      }
+      if (disposed) { for (const u of created) URL.revokeObjectURL(u); return; }
+      for (const [old, url] of objectUrls) if (!next.has(old) && url) URL.revokeObjectURL(url);
+      setObjectUrls(next);
+    })();
+    return () => { disposed = true; };
+    // objectUrls 只作为缓存读取（避免重复加载），不作为触发器
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaRefs, dir]);
 
   // 最新草稿的只读快照：冲保存的地方（卸载/关窗）从这里取值，
   // 不把 title/body 写进 effect 依赖——否则每次按键都会重跑 effect，
@@ -271,6 +319,14 @@ export function NotesView({ dir, onStateChange }: Props) {
     } catch (e) {
       setViewError(`加入知识库失败：${String(e)}`);
     }
+  };
+
+  const insertAttachment = (path: string) => {
+    if (!noteRef.current) return;
+    const anchor = body;
+    const insertAt = anchor.length; // 正文末尾追加（textarea 无 selection 暴露时最不惊讶）
+    const nextBody = `${anchor.slice(0, insertAt)}${anchor && !anchor.endsWith("\n") ? "\n\n" : ""}![附件](${path})\n`;
+    onEdit(title, nextBody);
   };
 
   const doRemoveFromKb = async (kbId: string) => {
@@ -450,6 +506,30 @@ export function NotesView({ dir, onStateChange }: Props) {
               onChange={(e) => onEdit(title, e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") e.currentTarget.blur(); }}
             />
+            {attachableMedia.length > 0 ? (
+              <div className="nv-insert-row" aria-label="插入附件引用">
+                <span className="nv-kbs-label">插入附件引用：</span>
+                <select
+                  className="nv-kb-select"
+                  aria-label="选择要引用的附件"
+                  value=""
+                  onChange={(e) => { if (e.target.value) { insertAttachment(e.target.value); } }}
+                >
+                  <option value="">选择素材附件…</option>
+                  {attachableMedia.map((m) => (
+                    <option key={m.path} value={m.path}>{m.label}</option>
+                  ))}
+                </select>
+                <span className="ws-hint">插入后以 `![附件](media/…)` 引用，保存即随笔记全文可搜。</span>
+              </div>
+            ) : null}
+            <details className="nv-preview" aria-label="正文预览">
+              <summary>预览</summary>
+              <MarkdownRenderer
+                text={body}
+                resolveAttachment={(p) => objectUrls.get(p) ?? null}
+              />
+            </details>
             {selected ? (
               <div className="nv-meta-row" aria-label="笔记属性">
                 <label className="nv-meta-field">
