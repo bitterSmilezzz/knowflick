@@ -1350,30 +1350,12 @@ export function Workspace() {
             {pageTitle}
             {selected && isCollection ? ` / ${selected.category}` : ""}
           </span>
+          {/* 顶栏只留「导出备份」一个全局动作。语音转写与侧栏「记录方式」里的
+              「转写」是同一个动作（transcribeAudio）——四段收敛清理顶栏时侧栏
+              还没有「转写」，后来笔记软件本体把三个记法收进侧栏，这里就成了
+              重复入口（插件关闭时甚至是两个灰按钮各解释一遍）。
+              见 docs/UI_CONSOLIDATION.md「顶栏」一节。 */}
           <div className="ws-toolbar-actions">
-            {/* 同上：插件没开时用 aria-disabled 而不是 disabled，
-                让它仍可聚焦、点了会说明原因与下一步。 */}
-            {asrEnabled ? (
-              <button
-                className="ws-icon-button"
-                aria-label="语音转写"
-                title="语音转写（本地 Whisper）"
-                disabled={loading || busy}
-                onClick={() => void transcribeAudio()}
-              >
-                <Icon name="mic" />
-              </button>
-            ) : (
-              <DisabledEntry
-                className="ws-icon-button"
-                label="语音转写"
-                reason="语音转写插件未启用"
-                hint="到设置 →「功能模块与官方插件」里开启"
-                onExplain={(message) => setNotice(message)}
-              >
-                <Icon name="mic" />
-              </DisabledEntry>
-            )}
             <button
               className="ws-icon-button"
               aria-label="导出备份"

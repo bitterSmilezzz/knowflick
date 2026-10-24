@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- 精简（顶栏「语音转写」与侧栏「转写」是同一个动作）：两处都调 `transcribeAudio()`、同屏常驻——四段收敛清理顶栏时侧栏还没有「转写」，后来笔记软件本体把三个记法收进侧栏「记录方式」，重复就这么被重新引入；插件关闭时甚至是**两个灰按钮各解释一遍**「为什么不可用」（上一轮修 aria-disabled 时已经观察到这对重复，只修了禁用模式没动重复本身）。删掉顶栏那个，顶栏只剩「导出备份」一个全局动作；功能不减——侧栏入口带文字标签、同一函数、同一插件开关行为。冒烟的行为断言（存在、不可用时可被发现、键盘可达、激活说清原因）全部保留，选择器改钉侧栏入口。
 - 修复（换成 emit 的那轮改动本身是坏的）：`emit()` 原来只收一个参数，把 `print` 逐个换成 `emit` 的那轮改动里，10 处调用点按 `print` 的形状传参（多参数或 `file=sys.stderr`），走到就 `TypeError`；`classify_ui_portability.py` 新加的 `Path` 还忘了导入，脚本连启动都启动不了。而回归测试用 `python3 -c` 包一层跑脚本，`sys.path[0]` 变成 cwd，`import taxonomy` 直接 `ModuleNotFoundError`、退出码 1 又被当成「预期失败的守卫」放过——这些毛病它一个都没测出来，测试是绿的。`emit` 改成与 `print` 同签名（`*args/sep/end/file`），机械替换不再改坏调用；回归改用 `PYTHONIOENCODING=cp1252` 按**真实调用方式**跑（`python3 tools/<name>.py`），并断言 stderr 里没有 Traceback——退出码 1 不再能蒙混过去。
 - 修复（库签名会被同一时钟桶里的两次写入骗过）：`db_library_signature` 原来取 mtime(毫秒)+大小，界面轮询它来发现外部进程（MCP server）写库。但 Linux 上 inode 时间戳取自 coarse clock，粒度约 1/HZ（4ms），而一次 SQLite 写入（含 WAL 回检）常常只要 2~3ms——两次不同的写入会得到**同一个** mtime，签名不变，外部改动就被漏掉。实测 ubuntu runner 上该测试偶发失败、失败时整个测试只跑 2ms；macOS 时间戳是 ns 精度，本机连跑 60 次都复现不出来。改成内容指纹（SHA-256 前 8 字节，分块流式读、不整读进内存），命令走 `spawn_blocking` 不占 UI 线程；加两条测试钉死设计：库没变时签名必须稳定（否则界面白刷新）、把 mtime 拨到别处签名必须一个字节都不变（退回 mtime 实现会立刻变红）。实测本机真实库（204 KB）全库哈希 1ms。真机端到端重跑（release 包 + `desktop_external_write_smoke`）7 项全过：外部进程直写 SQLite、界面自动刷新。
 - 修复（本地模型下载在开代理的机器上吃 502）：`download_to_path` 自己裸建 `reqwest::Client`，没套用 `http.rs`「回环直连、其余跟随系统代理」的判据；本机开着系统代理（127.0.0.1:7897）时，对 127.0.0.1 的下载请求绕去代理、直接回 502——本地模型服务明明起着，下载却失败。改为与全仓其余请求共用 `client_for`（全仓已核对：构造 `reqwest::Client` 的只剩这一处）。
