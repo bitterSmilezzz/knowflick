@@ -140,9 +140,9 @@ EVIDENCE_MAP: list[tuple[str, str, str]] = [
     ("恢复丢弃空标题", "apps/workbench/src/domain/restoreRules.test.ts", "空标题"),
     ("模型输出带引用编号", "apps/workbench/src/domain/ingest.aiPreview.test.ts", "引用编号"),
     ("details 折叠失效", "tools/taste_usability_gate.mjs", "最后一行完整可见"),
-    # R1 起笔记升为一等目的地（ADR-0004 / docs/NOTES_MODEL.md），分组为
-    # 「笔记 + 四段主线」；三入口导航落地时随门禁断言一起收敛。
-    ("侧栏分组约定", "tools/taste_usability_gate.mjs", "笔记 + 四段主线」分组"),
+    # 三入口导航（R1，UI_SPEC 桌面主导航 + ADR-0004）：笔记/知识库/应用。
+    ("侧栏三入口", "tools/taste_usability_gate.mjs", "侧栏按三入口分组"),
+    ("路由对照自动检查", "tools/taste_usability_gate.mjs", "旧入口迁移后仍可达"),
     ("一级入口数", "tools/taste_usability_gate.mjs", "一级入口"),
     ("手写/语音面板键盘不可达", "tools/taste_usability_gate.mjs", "焦点应落在面板内"),
     ("测验入口", "tools/workspace_ui_smoke.mjs", "知识测验"),

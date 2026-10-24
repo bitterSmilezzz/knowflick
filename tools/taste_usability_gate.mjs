@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 const exec = promisify(execFile);
 const session = "knowflick-taste-gate";
 const url = process.env.KNOWFLICK_UI_URL || "http://localhost:1420";
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /**
  * agent-browser 是否可用。
@@ -384,17 +385,59 @@ try {
   assert.ok(navClip.ok, `侧栏最后一行被裁切 ${navClip.over}px`);
   pass("侧栏滚到底时最后一行完整可见");
 
-  // ---- 侧栏分组：笔记 + 四段主线（R1 起笔记是一等资产，docs/NOTES_MODEL.md 与 ADR-0004）----
-  // 四段收敛（17834ea）钉的是「来源→收件箱→知识库→应用」；产品重规划把可持续编辑的
-  // 笔记升为第一目的地，R1 切片先以独立组挂在最前，三入口导航（笔记/知识库/应用）
-  // 是下一批——届时这份断言跟着收敛为三段。
+  // ---- 侧栏三入口（R1，UI_SPEC「桌面主导航」+ ADR-0004）----
+  // 一级目的地只有 笔记 / 知识库 / 应用。原四段收敛（17834ea）的「来源」「收件箱」
+  // 已并入「笔记」——采集手段与处理状态不是产品层。
   const nav = await evaluate(`(() => ({
     groups: [...document.querySelectorAll('.ws-group-label')].map(e => e.textContent.trim()),
     topLevel: [...document.querySelectorAll('.ws-nav-group > .ws-nav-row:not(.ws-nav-details .ws-nav-row)')].map(e => e.textContent.trim()),
     collapsible: [...document.querySelectorAll('.ws-nav-summary')].map(e => e.textContent.trim()),
+    allRows: [...document.querySelectorAll('.ws-nav-row, .ws-nav-action')].map(e => e.textContent.trim()),
   }))()`);
-  assert.deepEqual(nav.groups, ["笔记", "来源", "收件箱", "知识库", "应用"], `侧栏应按「笔记 + 四段主线」分组：${nav.groups}`);
-  pass("侧栏按「笔记 + 四段主线」分组");
+  assert.deepEqual(nav.groups, ["笔记", "知识库", "应用"], `侧栏应按三入口分组：${nav.groups}`);
+  pass("侧栏按三入口分组（笔记/知识库/应用）");
+
+  // ---- 路由对照：旧入口迁移后必须仍可达（UI_SPEC「旧入口迁移」要求自动检查）----
+  // 每个旧目的地 → 现在所在的组。断了任何一条 = 导航重排弄丢了能力入口。
+  const ROUTE_MAP = [
+    ["全部笔记", "笔记"], ["收件箱", "笔记"], ["邮箱", "笔记"], ["订阅源", "笔记"], ["导入文件", "笔记"],
+    ["全部知识", "知识库"], ["收藏", "知识库"], ["已归档", "知识库"],
+    ["知识问答", "应用"], ["认知简报", "应用"], ["产物库", "应用"], ["统计", "应用"], ["知识测验", "应用"],
+    // 温故复习按插件开关渲染（UI_SPEC：模块关闭不占空位；已有学习用户升级后固定可达）。
+    // 对照语义是「开关开着时必须出现」，不是无条件常驻。
+    ["温故复习", "应用", { pluginGated: true }],
+    ["设置", "__bottom"],
+  ];
+  let pluginOn = nav.allRows.some(row => row.includes("温故复习"));
+  if (!pluginOn) {
+    // 前面的段落可能清过 localStorage，插件回到默认关。对照不能只「跳过」——
+    // 显式打开开关重载，验证门控入口在 ON 时真的出现（UI_SPEC：已有学习用户
+    // 升级后学习入口固定可达）。
+    await browser("eval", `(() => {
+      const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}');
+      const settings = raw.settings ? JSON.parse(raw.settings) : {};
+      settings.reviewPluginEnabled = true;
+      raw.settings = JSON.stringify(settings);  // 改完要序列化写回，不是只改内存对象
+      raw.materials = raw.materials || [];
+      raw.cards = raw.cards || [];
+      localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw));
+      location.reload();
+      return true;
+    })()`);
+    await sleep(1200);
+    const again = await evaluate(`[...document.querySelectorAll('.ws-nav-row')].some(e => e.textContent.includes('温故复习'))`);
+    assert.ok(again, "复习插件打开后「温故复习」入口没有出现——门控语义断了");
+    pluginOn = true;
+    // location.reload() 之后 DOM 是新的，nav.allRows 是重载前的旧快照——重新抓。
+    nav.allRows = await evaluate(`[...document.querySelectorAll('.ws-nav-row, .ws-nav-action')].map(e => e.textContent.trim())`);
+    nav.collapsible = await evaluate(`[...document.querySelectorAll('.ws-nav-summary')].map(e => e.textContent.trim())`);
+  }
+  for (const [label, _group, opts = {}] of ROUTE_MAP) {
+    const present = nav.allRows.some(row => row.includes(label)) || nav.collapsible.some(c => c.includes(label));
+    if (opts.pluginGated && !pluginOn && !present) continue;
+    assert.ok(present, `旧入口「${label}」在新导航里找不到了——路由对照断了`);
+  }
+  pass(`路由对照：${ROUTE_MAP.length} 个旧入口迁移后仍可达（含插件 ON 语义实测）`);
 
   // ---- 组标签的文字要跟在三角指示器后面，不能被推到最右 ----
   // .ws-group-label 是 justify-content: space-between（为的是标签右侧放计数）。

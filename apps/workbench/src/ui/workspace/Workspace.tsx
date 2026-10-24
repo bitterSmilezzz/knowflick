@@ -287,6 +287,15 @@ export function Workspace() {
     };
   }, [load]);
 
+  // 页面切换时把当前导航行滚进可视区。「应用」段在滚动区里，小窗口下会被
+  // 藏住——此前靠「点击的按钮获焦点后浏览器自动滚动」兜着，程序化导航
+  // （快捷键、深链接）兜不住；CI 的 Linux 字体行高更大时点击路径也红过
+  // （workspace_ui_smoke「小窗口下知识测验仍可见」）。这里把保证做实。
+  useEffect(() => {
+    const row = workspaceRef.current?.querySelector<HTMLElement>('.ws-nav-row[aria-current="page"]');
+    row?.scrollIntoView({ block: "nearest" });
+  }, [page]);
+
   useEffect(() => {
     const changed = () => { void load(true); };
     const storageChanged = (e: StorageEvent) => { if (e.key === "knowflick.workspace.v1") changed(); };
@@ -1446,8 +1455,10 @@ export function Workspace() {
           {/* 侧栏只回答一个问题：我在流水线的哪一段。
               「来源 → 收件箱 → 知识库 → 应用」是产品主线；收藏/归档/分类是
               库的筛选条件，折叠在知识库下面，不再和主线抢同一层。 */}
-          {/* R1 笔记（docs/NOTES_MODEL.md）：可持续编辑的笔记是一等资产。
-              三入口导航（笔记/知识库/应用）在下一批；这里先以独立入口挂出。 */}
+          {/* 三入口导航（R1，UI_SPEC「桌面主导航」+ ADR-0004）：一级目的地只有
+              笔记 / 知识库 / 应用。原「来源」与「收件箱」并入笔记——邮箱、订阅、
+              导入是笔记的采集手段，收件箱是笔记的处理状态，都不是与笔记并列的
+              产品层（旧四段结构的迁移对照见 docs/UI_CONSOLIDATION.md）。 */}
           <nav className="ws-nav-group" aria-label="笔记">
             <p className="ws-group-label">笔记</p>
             <button
@@ -1458,10 +1469,14 @@ export function Workspace() {
               <Icon name="edit" /><span>全部笔记</span>
               <span className="ws-count">{notesState.notes.filter(n => !n.isDeleted).length}</span>
             </button>
-          </nav>
-
-          <nav className="ws-nav-group" aria-label="来源">
-            <p className="ws-group-label">来源</p>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "inbox" ? "page" : undefined}
+              onClick={() => navigate("inbox")}
+            >
+              <Icon name="inbox" /><span>收件箱</span>
+              <span className="ws-count">{counts.inbox}</span>
+            </button>
             <button className="ws-nav-row" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigate("mail")}>
               <Icon name="mail" /><span>邮箱</span>
               <span className="ws-count">{materials.filter(m => m.sourceType === "email" && m.inboxStatus === "inbox").length}</span>
@@ -1470,22 +1485,9 @@ export function Workspace() {
               <Icon name="inbox" /><span>订阅源</span>
               <span className="ws-count">{subscriptions.length}</span>
             </button>
-            {/* 导入是「来源」段里的动作，不是又一个目的地；样式区别于导航行，
-               一级入口因此仍然只数目的地。 */}
+            {/* 导入是动作不是目的地；样式区别于导航行。 */}
             <button className="ws-nav-action" onClick={() => importRef.current?.click()} disabled={loading || busy}>
               <Icon name="upload" /><span>导入文件</span>
-            </button>
-          </nav>
-
-          <nav className="ws-nav-group" aria-label="收件箱">
-            <p className="ws-group-label">收件箱</p>
-            <button
-              className="ws-nav-row"
-              aria-current={page === "inbox" ? "page" : undefined}
-              onClick={() => navigate("inbox")}
-            >
-              <Icon name="inbox" /><span>收件箱</span>
-              <span className="ws-count">{counts.inbox}</span>
             </button>
           </nav>
 
