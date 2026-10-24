@@ -581,6 +581,25 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             body,
             tokenize = 'unicode61 remove_diacritics 2'
         );
+
+        -- 笔记正文分块（R2）：检索命中可以按块回原件（char_start/char_end）。
+        -- content_revision 与 note_revisions 的修订号对齐——过期分块不写回索引。
+        CREATE TABLE IF NOT EXISTS note_chunks (
+            note_id            TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            chunk_index        INTEGER NOT NULL,
+            content            TEXT NOT NULL,
+            char_start         INTEGER NOT NULL,
+            char_end           INTEGER NOT NULL,
+            content_revision   INTEGER NOT NULL,
+            PRIMARY KEY (note_id, chunk_index)
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_note_chunks USING fts5(
+            note_id UNINDEXED,
+            chunk_index UNINDEXED,
+            content,
+            tokenize = 'unicode61 remove_diacritics 2'
+        );
         "#,
     )?;
 

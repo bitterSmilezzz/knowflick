@@ -35,6 +35,7 @@
     "allow-note-delete",
     "allow-note-restore",
     "allow-note-search",
+    "allow-note-search-chunks",
     "allow-kb-create",
     "allow-kb-list",
     "allow-kb-add-note",

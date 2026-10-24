@@ -26,6 +26,7 @@ fn main() {
             "note_delete",
             "note_restore",
             "note_search",
+            "note_search_chunks",
             "kb_create",
             "kb_list",
             "kb_add_note",

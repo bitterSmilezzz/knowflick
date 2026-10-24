@@ -6,6 +6,7 @@
 //! - 知识库是范围不是副本：成员关系表连接，同一笔记可属多个库，检索按库过滤在 SQL 层；
 //! - 既有 materials/cards 不动，新笔记与旧数据互不覆盖。
 
+use crate::chunker::chunk_markdown;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 
@@ -156,6 +157,7 @@ pub fn note_upsert(conn: &Connection, note: &NoteDto, base_revision: i64, now: i
                     params![note.id, next_revision, note.title, note.body_md, now],
                 )
                 .map_err(NoteSaveError::Db)?;
+                rebuild_note_chunks(&tx, &note.id, &note.body_md, next_revision).map_err(NoteSaveError::Db)?;
                 // FTS 可见性以库内删除态为准，不信客户端 DTO——回收站里的笔记
                 // 即使被 upsert 改了正文，也不该借机回到检索（检索的 JOIN 也会挡，
                 // 这里让索引本身保持一致）。
@@ -193,11 +195,104 @@ pub fn note_upsert(conn: &Connection, note: &NoteDto, base_revision: i64, now: i
                 params![note.id, note.title, note.body_md, now],
             )
             .map_err(NoteSaveError::Db)?;
+            rebuild_note_chunks(&tx, &note.id, &note.body_md, 1).map_err(NoteSaveError::Db)?;
             sync_note_fts(&tx, &note.id, &note.title, &note.body_md, false).map_err(NoteSaveError::Db)?;
             tx.commit().map_err(NoteSaveError::Db)?;
             Ok(NoteSaveOutcome { id: note.id.clone(), revision: 1, created: true })
         }
     }
+}
+
+/// 重建一篇笔记的分块与分块 FTS（upsert 事务内调用；修订号随写）。
+fn rebuild_note_chunks(tx: &Connection, note_id: &str, body: &str, revision: i64) -> Result<()> {
+    tx.execute("DELETE FROM note_chunks WHERE note_id = ?1", params![note_id])?;
+    tx.execute("DELETE FROM fts_note_chunks WHERE note_id = ?1", params![note_id])?;
+    for chunk in chunk_markdown(body) {
+        tx.execute(
+            "INSERT INTO note_chunks (note_id, chunk_index, content, char_start, char_end, content_revision)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![note_id, chunk.index as i64, chunk.content, chunk.char_start as i64, chunk.char_end as i64, revision],
+        )?;
+        tx.execute(
+            "INSERT INTO fts_note_chunks (note_id, chunk_index, content) VALUES (?1, ?2, ?3)",
+            params![note_id, chunk.index as i64, chunk.content],
+        )?;
+    }
+    Ok(())
+}
+
+/// 分块检索：命中块 + 父笔记标题 + 原文偏移——禁止切片后无法回原件。
+/// 返回 (note_id, chunk_index, 片段, char_start, char_end)。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteChunkHit {
+    pub note_id: String,
+    pub chunk_index: i64,
+    pub content: String,
+    pub char_start: i64,
+    pub char_end: i64,
+    pub note_title: String,
+}
+
+pub fn search_note_chunks(conn: &Connection, query: &str, limit: i64) -> Result<Vec<NoteChunkHit>> {
+    let clean = query.trim();
+    if clean.is_empty() {
+        return Ok(Vec::new());
+    }
+    let match_query = clean
+        .split_whitespace()
+        .map(|w| format!("\"{}\"", w.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    let mut stmt = conn.prepare(
+        "SELECT f.note_id, f.chunk_index, f.content, n.char_start, n.char_end, n2.title
+         FROM fts_note_chunks f
+         JOIN note_chunks n ON n.note_id = f.note_id AND n.chunk_index = f.chunk_index
+         JOIN notes n2 ON n2.id = f.note_id
+         WHERE n2.is_deleted = 0 AND fts_note_chunks MATCH ?1
+         ORDER BY bm25(fts_note_chunks) ASC LIMIT ?2",
+    )?;
+    let mut out = Vec::new();
+    {
+        let rows = stmt.query_map(params![match_query, limit], |row| {
+            Ok(NoteChunkHit {
+                note_id: row.get(0)?,
+                chunk_index: row.get(1)?,
+                content: row.get(2)?,
+                char_start: row.get(3)?,
+                char_end: row.get(4)?,
+                note_title: row.get(5)?,
+            })
+        })?;
+        for r in rows {
+            out.push(r?);
+        }
+    }
+    if out.is_empty() {
+        // unicode61 把连续中文切成整段 token，词在句中时 FTS 前缀匹配不上——
+        // 与素材检索同一坑，LIKE 兜底（限制在 note_chunks，JOIN notes 保删除语义）。
+        let wildcard = format!("%{}%", clean);
+        let mut stmt = conn.prepare(
+            "SELECT n.note_id, n.chunk_index, n.content, n.char_start, n.char_end, n2.title
+             FROM note_chunks n JOIN notes n2 ON n2.id = n.note_id
+             WHERE n2.is_deleted = 0 AND n.content LIKE ?1
+             ORDER BY n2.updated_at DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![wildcard, limit], |row| {
+            Ok(NoteChunkHit {
+                note_id: row.get(0)?,
+                chunk_index: row.get(1)?,
+                content: row.get(2)?,
+                char_start: row.get(3)?,
+                char_end: row.get(4)?,
+                note_title: row.get(5)?,
+            })
+        })?;
+        for r in rows {
+            out.push(r?);
+        }
+    }
+    Ok(out)
 }
 
 fn sync_note_fts(conn: &Connection, id: &str, title: &str, body: &str, deleted: bool) -> Result<()> {
@@ -245,11 +340,12 @@ pub fn note_delete(conn: &Connection, id: &str, now: i64) -> Result<bool> {
         return Ok(false);
     }
     tx.execute("DELETE FROM fts_notes WHERE note_id = ?1", params![id])?;
+    tx.execute("DELETE FROM fts_note_chunks WHERE note_id = ?1", params![id])?;
     tx.commit()?;
     Ok(true)
 }
 
-/// 从回收站恢复：回填 FTS，重新可检索。修订号与历史不变。
+/// 从回收站恢复：回填 FTS 与分块索引，重新可检索。修订号与历史不变。
 pub fn note_restore(conn: &Connection, id: &str) -> Result<bool> {
     let note = match note_get(conn, id)? {
         Some(n) if n.is_deleted => n,
@@ -261,6 +357,7 @@ pub fn note_restore(conn: &Connection, id: &str) -> Result<bool> {
         "INSERT INTO fts_notes (note_id, title, body) VALUES (?1, ?2, ?3)",
         params![note.id, note.title, note.body_md],
     )?;
+    rebuild_note_chunks(&tx, &note.id, &note.body_md, note.current_revision)?;
     tx.commit()?;
     Ok(true)
 }
@@ -575,6 +672,41 @@ mod tests {
         // 同名库拒绝、空名拒绝
         assert!(kb_create(&conn, "kb2", "项目 A", "", 1500).is_err());
         assert!(kb_create(&conn, "kb3", "  ", "", 1500).is_err());
+    }
+
+    /// 分块：保存时按正文重建、修订号随写；检索命中块可回原件（偏移）；
+    /// 回收站里搜不到块；恢复后回来。
+    #[test]
+    fn chunks_rebuild_on_revision_and_support_located_search() {
+        let conn = temp_db("chunks");
+        note_upsert(&conn, &draft("n1", "长文", "关于北极项目的第一段。"), 0, 1000).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM note_chunks WHERE note_id='n1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        note_upsert(&conn, &draft("n1", "长文", "关于北极项目的第一段。\n\n关于南极项目的新段落，内容足够长以形成独立的分块内容，加上更多文字确保它确实是一个单独的段落边界处理。"), 1, 2000).unwrap();
+        let rev: i64 = conn
+            .query_row("SELECT MAX(content_revision) FROM note_chunks WHERE note_id='n1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rev, 2, "分块的 content_revision 跟随修订");
+
+        // 检索命中块：带 note 标题与原文偏移
+        let hits = search_note_chunks(&conn, "南极项目", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].note_id, "n1");
+        assert_eq!(hits[0].note_title, "长文");
+        assert!(hits[0].char_start < hits[0].char_end);
+        let body = note_get(&conn, "n1").unwrap().unwrap().body_md;
+        let chars: Vec<char> = body.chars().collect();
+        let slice: String = chars[hits[0].char_start as usize..hits[0].char_end as usize].iter().collect();
+        assert!(slice.contains("南极项目"), "块范围必须能在原文里找到命中内容");
+
+        // 回收站：块搜不到；恢复后回来
+        note_delete(&conn, "n1", 3000).unwrap();
+        assert!(search_note_chunks(&conn, "南极项目", 10).unwrap().is_empty());
+        note_restore(&conn, "n1").unwrap();
+        assert_eq!(search_note_chunks(&conn, "南极项目", 10).unwrap().len(), 1);
     }
 
     /// R2 映射：素材 → 笔记，幂等；原素材与旧卡片不受影响；映射后可编辑。

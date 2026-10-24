@@ -1,3 +1,4 @@
+mod chunker;
 mod error_text;
 mod asr;
 pub mod db;
@@ -483,6 +484,14 @@ fn note_search(dir: Option<String>, query: String, kb_id: Option<String>, limit:
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
     notes::search_notes(&conn, &query, kb_id.as_deref(), limit.unwrap_or(50)).map_err(|e| crate::error_text::explain_text("搜索笔记失败", &e.to_string()))
+}
+
+#[tauri::command]
+fn note_search_chunks(query: String, limit: Option<i64>) -> Result<Vec<notes::NoteChunkHit>, String> {
+    let dir: Option<String> = None;
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::search_note_chunks(&conn, &query, limit.unwrap_or(20)).map_err(|e| crate::error_text::explain_text("搜索笔记片段失败", &e.to_string()))
 }
 
 #[tauri::command]
@@ -1145,6 +1154,7 @@ pub fn run() {
             note_delete,
             note_restore,
             note_search,
+            note_search_chunks,
             kb_create,
             kb_list,
             kb_add_note,
