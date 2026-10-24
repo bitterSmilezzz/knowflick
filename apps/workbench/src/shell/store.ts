@@ -223,6 +223,14 @@ export function noteEnsureFromMaterial(materialId: string, dir?: string): Promis
   return invoke("note_ensure_from_material", { dir: dir ?? null, materialId });
 }
 
+export function readImportReport(dir?: string): Promise<string | null> {
+  return invoke("read_import_report", { dir: dir ?? null });
+}
+
+export function saveImportReport(text: string, dir?: string): Promise<void> {
+  return invoke("save_import_report", { dir: dir ?? null, text });
+}
+
 export function noteGet(id: string, dir?: string): Promise<object | null> {
   return invoke("note_get", { dir: dir ?? null, id });
 }

@@ -31,6 +31,8 @@ fn main() {
             "kb_add_note",
             "kb_remove_note",
             "kb_membership",
+            "read_import_report",
+            "save_import_report",
             "db_list_materials",
             "db_update_material_status",
             "db_get_stats",

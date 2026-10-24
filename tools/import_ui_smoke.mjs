@@ -46,6 +46,13 @@ try {
   await check("document.body.innerText.includes('weird.xyz')", "失败文件被点名");
   await check("document.body.innerText.includes('暂不支持这种格式')", "失败原因可读");
   await check("document.body.innerText.includes('已导入 2 条')", "给出成功条数汇总");
+  // R2 导入向导：转换报告持久化——刷新后还能回看（不再是转瞬即逝的提示条）
+  await check("document.querySelector('.nv-import-report') !== null", "导入报告出现在侧栏");
+  await check("document.body.innerText.includes('weird.xyz（暂不支持这种格式）') || [...document.querySelectorAll('.nv-report-failed')].some(e=>e.textContent.includes('weird.xyz'))", "报告含失败项与原因");
+  await b("eval", "location.reload(); true");
+  await new Promise((r) => setTimeout(r, 1200));
+  await check("document.querySelector('.nv-import-report') !== null", "刷新后报告仍在（持久化）");
+  await check("[...document.querySelectorAll('.nv-report-ok')].some(e=>e.textContent.includes('第一份'))", "报告含成功条目（按素材标题）");
   await check("!document.body.innerText.includes('导入未全部完成')", "不再用「整批失败」的口吻");
 
   // 全部失败时仍给出明确结论，而不是静默

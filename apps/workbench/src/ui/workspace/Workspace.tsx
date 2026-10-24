@@ -58,7 +58,8 @@ import { SubscriptionsView } from "./SubscriptionsView";
 import { NotesView } from "./NotesView";
 import type { NotesState } from "../../domain/note";
 import { restoreNotesBundle } from "./notesRestore";
-import { ensureNoteFromMaterial } from "./repository";
+import { ensureNoteFromMaterial, readLastImportReport, saveLastImportReport } from "./repository";
+import { buildImportReport, reportLines, type ImportReport } from "../../domain/importReport";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
 import { StatsView } from "./StatsView";
@@ -136,6 +137,7 @@ export function Workspace() {
   const [capture, setCapture] = useState(false);
   const [notePad, setNotePad] = useState<"ink" | "voice" | null>(null);
   const [notesState, setNotesState] = useState<NotesState>({ notes: [], knowledgeBases: [], membership: {} });
+  const [lastImportReport, setLastImportReport] = useState<ImportReport | null>(null);
   // 手写/语音面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱
   // 与 Escape 处理——实测 Tab 进不去、Escape 无效。用这个钩子补上。
   const notePadRef = useRef<HTMLDivElement | null>(null);
@@ -271,6 +273,7 @@ export function Workspace() {
       setFile(data.file);
       setApiKey(data.apiKey);
       setDir(data.dir);
+      setLastImportReport(await readLastImportReport(data.dir));
     } catch (e) {
       if (current === revision.current) {
         setErrorText(`读取知识库失败：${String(e)}`);
@@ -836,6 +839,10 @@ export function Workspace() {
           }
         }
         if (ok.length) navigate("library");
+        // R2 导入向导：转换报告持久化——提示条 4 秒消失后，「哪几个失败、
+        // 为什么」还能在导入区回看（roadmap R2 明确把转换报告列为交付物）。
+        await saveLastImportReport(buildImportReport({ ok, skipped, failed }), dir);
+        setLastImportReport(buildImportReport({ ok, skipped, failed }));
         const parts: string[] = [];
         if (ok.length) parts.push(`已导入 ${ok.length} 条`);
         if (skipped.length) parts.push(`${skipped.length} 个与库里内容相同已跳过`);
@@ -1498,6 +1505,15 @@ export function Workspace() {
             <button className="ws-nav-action" onClick={() => importRef.current?.click()} disabled={loading || busy}>
               <Icon name="upload" /><span>导入文件</span>
             </button>
+            {lastImportReport ? (
+              <details className="ws-nav-details nv-import-report">
+                <summary className="ws-nav-summary">上次导入报告<span className="ws-count">{lastImportReport.ok.length + lastImportReport.skipped.length + lastImportReport.failed.length}</span></summary>
+                {reportLines(lastImportReport).map((line, i) => (
+                  <p key={i} className={`nv-report-line nv-report-${line.kind}`}>{line.text}</p>
+                ))}
+                <p className="ws-hint">{new Date(lastImportReport.at).toLocaleString("zh-CN")}</p>
+              </details>
+            ) : null}
           </nav>
 
           <nav className="ws-nav-group" aria-label="知识库">

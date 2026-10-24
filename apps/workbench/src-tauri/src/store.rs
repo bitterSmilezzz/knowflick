@@ -72,6 +72,16 @@ pub fn read_library(dir: &Path) -> Result<LibraryFiles, String> {
     })
 }
 
+/// 最近一次导入的转换报告（R2 导入向导）：JSON 文本，损坏按无报告处理。
+pub fn read_import_report(dir: &Path) -> Result<Option<String>, String> {
+    read_optional(&dir.join("import_report.json"))
+}
+
+pub fn save_import_report(dir: &Path, text: &str) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|err| err.to_string())?;
+    atomic_write(&dir.join("import_report.json"), text.as_bytes())
+}
+
 pub fn save_search_history(dir: &Path, text: &str) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|err| err.to_string())?;
     atomic_write(&dir.join("search_history.json"), text.as_bytes())

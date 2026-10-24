@@ -2829,3 +2829,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-notebook-filter { font-size: 12px; }
 .nv-notebook-badge { font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 6px; color: var(--muted); }
 .nv-tags-line { color: var(--muted); margin-right: 6px; }
+.nv-import-report { margin: 2px 0 4px; }
+.nv-report-line { font-size: 11px; margin: 2px 0; padding: 0 0 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nv-report-ok { color: var(--muted); }
+.nv-report-skipped { color: var(--muted); font-style: italic; }
+.nv-report-failed { color: #b3261e; }

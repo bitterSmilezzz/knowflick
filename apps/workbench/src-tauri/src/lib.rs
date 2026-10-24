@@ -56,6 +56,18 @@ fn save_settings(dir: String, text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn read_import_report(dir: Option<String>) -> Result<Option<String>, String> {
+    let path = library_dir(dir);
+    store::read_import_report(&path)
+}
+
+#[tauri::command]
+fn save_import_report(dir: Option<String>, text: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    store::save_import_report(&path, &text)
+}
+
+#[tauri::command]
 fn save_search_history(dir: String, text: String) -> Result<(), String> {
     let path = db::resolve_library_dir(Some(&dir));
     store::save_search_history(path.as_path(), &text)
@@ -1138,6 +1150,8 @@ pub fn run() {
             kb_add_note,
             kb_remove_note,
             kb_membership,
+            read_import_report,
+            save_import_report,
             db_list_materials,
             db_update_material_status,
             db_get_stats,

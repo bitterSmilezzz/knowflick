@@ -40,6 +40,8 @@
     "allow-kb-add-note",
     "allow-kb-remove-note",
     "allow-kb-membership",
+    "allow-read-import-report",
+    "allow-save-import-report",
     "allow-db-save-subscription",
     "allow-db-search-cards-fts",
     "allow-db-search-cards-hybrid",

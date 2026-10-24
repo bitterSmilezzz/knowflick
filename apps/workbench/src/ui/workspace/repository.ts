@@ -11,6 +11,8 @@ import {
   kbMembership,
   kbRemoveNote,
   loadStore,
+  readImportReport,
+  saveImportReport,
   readMedia,
   noteDelete,
   noteEnsureFromMaterial,
@@ -22,6 +24,7 @@ import {
   writeApiKey,
   type RawMaterial,
 } from "../../shell/store";
+import { parseImportReport, serializeImportReport, type ImportReport } from "../../domain/importReport";
 import {
   NoteConflictError,
   addNoteToKb as domainAddToKb,
@@ -208,6 +211,21 @@ export async function ensureNoteFromMaterial(
   const { state: next, outcome } = domainUpsert(state, note, 0);
   browserNotesWrite(next);
   return outcome;
+}
+
+// ---------- 导入转换报告（R2 导入向导；桌面 meta 文件，浏览器 localStorage） ----------
+
+const reportKey = "knowflick.importReport.v1";
+
+export async function readLastImportReport(dir: string) {
+  const raw = inShell() ? await readImportReport(dir) : localStorage.getItem(reportKey);
+  return parseImportReport(raw);
+}
+
+export async function saveLastImportReport(report: ImportReport, dir: string): Promise<void> {
+  const text = serializeImportReport(report);
+  if (inShell()) { await saveImportReport(text, dir); return; }
+  localStorage.setItem(reportKey, text);
 }
 
 export async function deleteNoteById(id: string, dir: string): Promise<void> {
