@@ -151,6 +151,23 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 export class EmbeddingEngine {
   constructor(private config: EmbeddingConfig = {}) {}
 
+  /**
+   * 最近一次 embedTexts 实际使用的向量空间身份。
+   * 落库时用它而不是猜测——回退路径（API 失败转本地、本地失败转哈希）
+   * 改变了空间，向量与身份必须同步，否则不同空间的向量会混算。
+   */
+  private lastIdentity: { provider: string; model: string } = { provider: "hash", model: "char-ngram-128" };
+
+  /**
+   * 向量空间身份（R2 版本化）：同维度不同 provider/model 的向量不混算，
+   * 所以每次落库/检索/标脏都带上「这个引擎用的是谁」。
+   * API 路径的 model 是 embeddingModel 或按 providerId 的默认表；
+   * 本地路径（whisper 风格的 ONNX 模型）按本地模型名报。
+   */
+  identity(): { provider: string; model: string } {
+    return this.lastIdentity;
+  }
+
   updateConfig(config: EmbeddingConfig) {
     this.config = { ...this.config, ...config };
   }
@@ -179,6 +196,7 @@ export class EmbeddingEngine {
           this.config.embeddingModel ||
           (this.config.providerId ? DEFAULT_EMBEDDING_MODELS[this.config.providerId] : undefined) ||
           "text-embedding-3-small";
+        this.lastIdentity = { provider: this.config.providerId || "api", model };
         return await requestEmbeddings(endpoint, this.config.apiKey!, model, texts);
       } catch (err) {
         console.warn("[EmbeddingEngine] API 嵌入生成失败，尝试本地语义模型:", err);
@@ -187,12 +205,15 @@ export class EmbeddingEngine {
 
     if (inShell() && (await this.localModelReady())) {
       try {
-        return await localEmbed(texts, isQuery);
+        const vectors = await localEmbed(texts, isQuery);
+        this.lastIdentity = { provider: "local", model: "multilingual-e5-small" };
+        return vectors;
       } catch (err) {
         console.warn("[EmbeddingEngine] 本地语义模型不可用，回退到哈希投影:", err);
       }
     }
 
+    this.lastIdentity = { provider: "hash", model: "char-ngram-128" };
     return texts.map((t) => localSemanticHashEmbedding(t, 128));
   }
 
@@ -264,14 +285,14 @@ export async function syncCardEmbeddings(
         embedding: embeddings[idx],
       }));
 
-      await dbSaveCardEmbeddingsBatch(items, options.dir);
+      await dbSaveCardEmbeddingsBatch(items, engine.identity(), options.dir);
       indexedCount += items.length;
       options.onProgress?.(indexedCount, cards.length);
     }
 
     // 维度已知且与旧向量不同：这些卡片重算一遍，否则它们在检索里永远匹配不到。
     if (dim > 0) {
-      const stale = await dbListStaleEmbeddingCardIds(dim, batchSize, options.dir);
+      const stale = await dbListStaleEmbeddingCardIds(dim, engine.identity(), batchSize, options.dir);
       const staleCards = stale
         .map((id) => cards.find((c) => c.id === id))
         .filter((c): c is KnowledgeCard => !!c);
@@ -280,6 +301,7 @@ export async function syncCardEmbeddings(
         const embeddings = await engine.embedTexts(texts);
         await dbSaveCardEmbeddingsBatch(
           staleCards.map((card, idx) => ({ cardId: card.id, embedding: embeddings[idx] })),
+          engine.identity(),
           options.dir
         );
         indexedCount += staleCards.length;

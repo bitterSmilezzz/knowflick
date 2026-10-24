@@ -568,23 +568,31 @@ fn db_list_artifacts(dir: Option<String>, limit: Option<i64>) -> Result<Vec<db::
 }
 
 #[tauri::command]
-fn db_save_card_embedding(dir: Option<String>, card_id: String, embedding: Vec<f32>) -> Result<(), String> {
+fn db_save_card_embedding(dir: Option<String>, card_id: String, embedding: Vec<f32>, provider: Option<String>, model: Option<String>) -> Result<(), String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
-    db::save_card_embedding(&conn, &card_id, &embedding).map_err(|e| e.to_string())
+    db::save_card_embedding(&conn, &card_id, &embedding, provider.as_deref().unwrap_or(""), model.as_deref().unwrap_or("")).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn db_search_cards_vector(
     dir: Option<String>,
     query_embedding: Vec<f32>,
+    provider: Option<String>,
+    model: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<(db::KnowledgeCardDto, f32)>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
-    db::search_cards_vector(&conn, &query_embedding, limit.unwrap_or(10)).map_err(|e| e.to_string())
+    db::search_cards_vector(
+        &conn,
+        &query_embedding,
+        provider.as_deref().unwrap_or(""),
+        model.as_deref().unwrap_or(""),
+        limit.unwrap_or(10),
+    ).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -592,6 +600,8 @@ fn db_search_cards_hybrid(
     dir: Option<String>,
     query_text: String,
     query_embedding: Option<Vec<f32>>,
+    provider: Option<String>,
+    model: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<db::KnowledgeCardDto>, String> {
     let path = library_dir(dir);
@@ -601,6 +611,8 @@ fn db_search_cards_hybrid(
         &conn,
         &query_text,
         query_embedding.as_deref(),
+        provider.as_deref().unwrap_or(""),
+        model.as_deref().unwrap_or(""),
         limit.unwrap_or(10),
     )
     .map_err(|e| e.to_string())
@@ -645,11 +657,11 @@ pub struct EmbeddingBatchItemV2 {
 }
 
 #[tauri::command]
-fn db_list_stale_embedding_card_ids(dir: Option<String>, dim: i64, limit: Option<i64>) -> Result<Vec<String>, String> {
+fn db_list_stale_embedding_card_ids(dir: Option<String>, dim: i64, provider: Option<String>, model: Option<String>, limit: Option<i64>) -> Result<Vec<String>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
-    db::list_stale_embedding_card_ids(&conn, dim, limit.unwrap_or(100)).map_err(|e| e.to_string())
+    db::list_stale_embedding_card_ids(&conn, dim, provider.as_deref().unwrap_or(""), model.as_deref().unwrap_or(""), limit.unwrap_or(100)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -771,12 +783,14 @@ pub struct CardEmbeddingBatchItem {
 fn db_save_card_embeddings_batch(
     dir: Option<String>,
     items: Vec<CardEmbeddingBatchItem>,
+    provider: Option<String>,
+    model: Option<String>,
 ) -> Result<(), String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
     let mut conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
     let pairs: Vec<(String, Vec<f32>)> = items.into_iter().map(|it| (it.card_id, it.embedding)).collect();
-    db::save_card_embeddings_batch(&mut conn, &pairs).map_err(|e| e.to_string())
+    db::save_card_embeddings_batch(&mut conn, &pairs, provider.as_deref().unwrap_or(""), model.as_deref().unwrap_or("")).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

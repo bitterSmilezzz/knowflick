@@ -312,17 +312,24 @@ export function dbListArtifacts(limit?: number, dir?: string): Promise<Artifact[
   return invoke("db_list_artifacts", { dir: dir ?? null, limit: limit ?? 50 });
 }
 
-export function dbSaveCardEmbedding(cardId: string, embedding: number[], dir?: string): Promise<void> {
-  return invoke("db_save_card_embedding", { dir: dir ?? null, cardId, embedding });
+/** 向量空间身份（R2）：同维度不同 provider/model 的向量不混算。 */
+export interface EmbeddingIdentity {
+  provider: string;
+  model: string;
 }
 
-export function dbSearchCardsVector(queryEmbedding: number[], limit?: number, dir?: string): Promise<Array<[KnowledgeCard, number]>> {
-  return invoke("db_search_cards_vector", { dir: dir ?? null, queryEmbedding, limit: limit ?? 10 });
+export function dbSaveCardEmbedding(cardId: string, embedding: number[], identity?: EmbeddingIdentity, dir?: string): Promise<void> {
+  return invoke("db_save_card_embedding", { dir: dir ?? null, cardId, embedding, provider: identity?.provider ?? "", model: identity?.model ?? "" });
+}
+
+export function dbSearchCardsVector(queryEmbedding: number[], identity?: EmbeddingIdentity, limit?: number, dir?: string): Promise<Array<[KnowledgeCard, number]>> {
+  return invoke("db_search_cards_vector", { dir: dir ?? null, queryEmbedding, provider: identity?.provider ?? "", model: identity?.model ?? "", limit: limit ?? 10 });
 }
 
 export function dbSearchCardsHybrid(
   queryText: string,
   queryEmbedding?: number[] | null,
+  identity?: EmbeddingIdentity,
   limit?: number,
   dir?: string
 ): Promise<KnowledgeCard[]> {
@@ -330,6 +337,8 @@ export function dbSearchCardsHybrid(
     dir: dir ?? null,
     queryText,
     queryEmbedding: queryEmbedding ?? null,
+    provider: identity?.provider ?? "",
+    model: identity?.model ?? "",
     limit: limit ?? 10,
   });
 }
@@ -340,10 +349,11 @@ export function dbListUnembeddedCardIds(limit?: number, dir?: string): Promise<s
 
 export function dbSaveCardEmbeddingsBatch(
   items: Array<{ cardId: string; embedding: number[] }>,
+  identity?: EmbeddingIdentity,
   dir?: string
 ): Promise<void> {
   const payload = items.map((it) => ({ card_id: it.cardId, embedding: it.embedding }));
-  return invoke("db_save_card_embeddings_batch", { dir: dir ?? null, items: payload });
+  return invoke("db_save_card_embeddings_batch", { dir: dir ?? null, items: payload, provider: identity?.provider ?? "", model: identity?.model ?? "" });
 }
 
 export function requestEmbeddings(
@@ -474,6 +484,6 @@ export function localEmbed(texts: string[], isQuery = false): Promise<number[][]
   return invoke("local_embed", { texts, isQuery });
 }
 
-export function dbListStaleEmbeddingCardIds(dim: number, limit?: number, dir?: string): Promise<string[]> {
-  return invoke("db_list_stale_embedding_card_ids", { dir: dir ?? null, dim, limit: limit ?? 100 });
+export function dbListStaleEmbeddingCardIds(dim: number, identity?: EmbeddingIdentity, limit?: number, dir?: string): Promise<string[]> {
+  return invoke("db_list_stale_embedding_card_ids", { dir: dir ?? null, dim, provider: identity?.provider ?? "", model: identity?.model ?? "", limit: limit ?? 100 });
 }

@@ -305,7 +305,7 @@ export function BrainAssistantDrawer({
           apiKey,
         });
         const queryVec = await engine.embedText(q, true);
-        const hybridHits = await dbSearchCardsHybrid(q, queryVec, 6);
+        const hybridHits = await dbSearchCardsHybrid(q, queryVec, engine.identity(), 6);
         if (hybridHits.length > 0) {
           matched = hybridHits.slice(0, 4);
         }

@@ -515,7 +515,12 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             card_id             TEXT PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,
             dim                 INTEGER NOT NULL,
             embedding           BLOB NOT NULL,
-            updated_at          INTEGER NOT NULL
+            updated_at          INTEGER NOT NULL,
+            -- 向量空间身份（R2 版本化）：只比同 (provider, model, dim) 的向量。
+            -- 旧库无这两列，由下方 ALTER 平滑补齐（默认 '' 表示未知来源，
+            -- 换模型后按「过期」重算，不与已知身份混算）。
+            provider            TEXT NOT NULL DEFAULT '',
+            model               TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS subscriptions (
@@ -616,6 +621,22 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
     }
     if !has_edited_at {
         let _ = conn.execute("ALTER TABLE cards ADD COLUMN edited_at INTEGER", []);
+    }
+
+    // 向量空间身份列（R2 版本化）：老库平滑补齐
+    let mut has_provider = false;
+    let mut stmt = conn.prepare("PRAGMA table_info(card_embeddings)")?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let col_name: String = row.get(1)?;
+        if col_name == "provider" {
+            has_provider = true;
+            break;
+        }
+    }
+    if !has_provider {
+        let _ = conn.execute("ALTER TABLE card_embeddings ADD COLUMN provider TEXT NOT NULL DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE card_embeddings ADD COLUMN model TEXT NOT NULL DEFAULT ''", []);
     }
 
     Ok(())
@@ -1347,7 +1368,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
-pub fn save_card_embedding(conn: &Connection, card_id: &str, embedding: &[f32]) -> Result<()> {
+pub fn save_card_embedding(conn: &Connection, card_id: &str, embedding: &[f32], provider: &str, model: &str) -> Result<()> {
     let mut bytes = Vec::with_capacity(embedding.len() * 4);
     for &val in embedding {
         bytes.extend_from_slice(&val.to_le_bytes());
@@ -1355,14 +1376,16 @@ pub fn save_card_embedding(conn: &Connection, card_id: &str, embedding: &[f32]) 
     let now = chrono_or_epoch_now();
     conn.execute(
         r#"
-        INSERT INTO card_embeddings (card_id, dim, embedding, updated_at)
-        VALUES (?1, ?2, ?3, ?4)
+        INSERT INTO card_embeddings (card_id, dim, embedding, updated_at, provider, model)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
         ON CONFLICT(card_id) DO UPDATE SET
             dim = excluded.dim,
             embedding = excluded.embedding,
-            updated_at = excluded.updated_at
+            updated_at = excluded.updated_at,
+            provider = excluded.provider,
+            model = excluded.model
         "#,
-        params![card_id, embedding.len() as i64, bytes, now],
+        params![card_id, embedding.len() as i64, bytes, now, provider, model],
     )?;
     Ok(())
 }
@@ -1383,16 +1406,17 @@ pub fn list_unembedded_card_ids(conn: &Connection, limit: i64) -> Result<Vec<Str
     Ok(ids)
 }
 
-/// 列出「有向量但维度对不上」的卡片：换嵌入引擎后这些向量已经失效，需要重算。
-pub fn list_stale_embedding_card_ids(conn: &Connection, dim: i64, limit: i64) -> Result<Vec<String>> {
+/// 列出「向量身份与当前引擎不匹配」的卡片：维度或 provider/model 对不上
+/// 都算过期（同维度不同模型不混算，LOCAL_DATA_AND_AI），需要重算。
+pub fn list_stale_embedding_card_ids(conn: &Connection, dim: i64, provider: &str, model: &str, limit: i64) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
         "SELECT c.id FROM cards c
          INNER JOIN card_embeddings e ON c.id = e.card_id
-         WHERE c.is_deleted = 0 AND e.dim <> ?1
+         WHERE c.is_deleted = 0 AND (e.dim <> ?1 OR e.provider <> ?2 OR e.model <> ?3)
          ORDER BY c.created_at DESC
-         LIMIT ?2",
+         LIMIT ?4",
     )?;
-    let rows = stmt.query_map(params![dim, limit], |r| r.get(0))?;
+    let rows = stmt.query_map(params![dim, provider, model, limit], |r| r.get(0))?;
     let mut ids = Vec::new();
     for r in rows {
         ids.push(r?);
@@ -1403,6 +1427,8 @@ pub fn list_stale_embedding_card_ids(conn: &Connection, dim: i64, limit: i64) ->
 pub fn save_card_embeddings_batch(
     conn: &mut Connection,
     items: &[(String, Vec<f32>)],
+    provider: &str,
+    model: &str,
 ) -> Result<()> {
     let tx = conn.transaction()?;
     let now = chrono_or_epoch_now();
@@ -1413,14 +1439,16 @@ pub fn save_card_embeddings_batch(
         }
         tx.execute(
             r#"
-            INSERT INTO card_embeddings (card_id, dim, embedding, updated_at)
-            VALUES (?1, ?2, ?3, ?4)
+            INSERT INTO card_embeddings (card_id, dim, embedding, updated_at, provider, model)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             ON CONFLICT(card_id) DO UPDATE SET
                 dim = excluded.dim,
                 embedding = excluded.embedding,
-                updated_at = excluded.updated_at
+                updated_at = excluded.updated_at,
+                provider = excluded.provider,
+                model = excluded.model
             "#,
-            params![card_id, embedding.len() as i64, bytes, now],
+            params![card_id, embedding.len() as i64, bytes, now, provider, model],
         )?;
     }
     tx.commit()?;
@@ -1430,6 +1458,8 @@ pub fn save_card_embeddings_batch(
 pub fn search_cards_vector(
     conn: &Connection,
     query_embedding: &[f32],
+    provider: &str,
+    model: &str,
     limit: usize,
 ) -> Result<Vec<(KnowledgeCardDto, f32)>> {
     if query_embedding.is_empty() {
@@ -1439,17 +1469,17 @@ pub fn search_cards_vector(
     // 第一步只取 (card_id, 向量)：暴力扫描的代价在解码与余弦，不在把整行卡片字段
     // 组装成 DTO。万条规模下先扫向量再按 id 取回前 N 条，比逐行 map_card_row 快得多。
     //
-    // 只比同维度的向量：哈希投影（128 维）与本地/远程模型（384 维等）不在同一空间，
-    // 混着算余弦只会得到无意义的 0。
+    // 只比同一向量空间的向量：维度相同但 provider/model 不同也不混算
+    // （LOCAL_DATA_AND_AI：「同维度不同模型也不混算」）。
     let mut scored: Vec<(String, f32)> = Vec::new();
     {
         let mut stmt = conn.prepare(
             "SELECT e.card_id, e.embedding
              FROM card_embeddings e
              JOIN cards c ON c.id = e.card_id
-             WHERE c.is_deleted = 0 AND e.dim = ?1",
+             WHERE c.is_deleted = 0 AND e.dim = ?1 AND e.provider = ?2 AND e.model = ?3",
         )?;
-        let mut rows = stmt.query(params![query_embedding.len() as i64])?;
+        let mut rows = stmt.query(params![query_embedding.len() as i64, provider, model])?;
         while let Some(row) = rows.next()? {
             let card_id: String = row.get(0)?;
             let bytes: Vec<u8> = row.get(1)?;
@@ -1498,6 +1528,8 @@ pub fn search_cards_hybrid(
     conn: &Connection,
     query_text: &str,
     query_embedding: Option<&[f32]>,
+    provider: &str,
+    model: &str,
     limit: usize,
 ) -> Result<Vec<KnowledgeCardDto>> {
     let k = 60.0f32;
@@ -1517,7 +1549,7 @@ pub fn search_cards_hybrid(
     // 2. 向量相似度排序
     if let Some(emb) = query_embedding {
         if !emb.is_empty() {
-            let vec_results = search_cards_vector(conn, emb, limit * 2).unwrap_or_default();
+            let vec_results = search_cards_vector(conn, emb, provider, model, limit * 2).unwrap_or_default();
             for (rank, (card, _sim)) in vec_results.into_iter().enumerate() {
                 let contrib = 1.0 / (k + rank as f32 + 1.0);
                 let entry = rrf_scores.entry(card.id.clone()).or_insert_with(|| (card, 0.0));
@@ -1771,20 +1803,37 @@ mod tests {
         };
         upsert_card(&conn, &card).unwrap();
 
+        const PROVIDER: &str = "local";
+        const MODEL_A: &str = "model-a";
+        const MODEL_B: &str = "model-b";
+
         // 先存 128 维（哈希投影）
-        save_card_embeddings_batch(&mut conn, &[("dim-card-1".to_string(), vec![0.1; 128])]).unwrap();
-        assert_eq!(search_cards_vector(&conn, &[0.1; 128], 10).unwrap().len(), 1);
+        save_card_embeddings_batch(&mut conn, &[("dim-card-1".to_string(), vec![0.1; 128])], PROVIDER, MODEL_A).unwrap();
+        assert_eq!(search_cards_vector(&conn, &[0.1; 128], PROVIDER, MODEL_A, 10).unwrap().len(), 1);
         // 用 384 维查询时不该命中 128 维的向量
-        assert!(search_cards_vector(&conn, &[0.1; 384], 10).unwrap().is_empty());
-        assert_eq!(list_stale_embedding_card_ids(&conn, 384, 10).unwrap(), vec!["dim-card-1".to_string()]);
-        assert!(list_stale_embedding_card_ids(&conn, 128, 10).unwrap().is_empty());
+        assert!(search_cards_vector(&conn, &[0.1; 384], PROVIDER, MODEL_A, 10).unwrap().is_empty());
+        assert_eq!(list_stale_embedding_card_ids(&conn, 384, PROVIDER, MODEL_A, 10).unwrap(), vec!["dim-card-1".to_string()]);
+        assert!(list_stale_embedding_card_ids(&conn, 128, PROVIDER, MODEL_A, 10).unwrap().is_empty());
 
         // 重算成 384 维后反过来：128 维查询不再命中，也不再算「脏」
-        save_card_embeddings_batch(&mut conn, &[("dim-card-1".to_string(), vec![0.1; 384])]).unwrap();
-        assert!(search_cards_vector(&conn, &[0.1; 128], 10).unwrap().is_empty());
-        assert_eq!(search_cards_vector(&conn, &[0.1; 384], 10).unwrap().len(), 1);
-        assert!(list_stale_embedding_card_ids(&conn, 384, 10).unwrap().is_empty());
+        save_card_embeddings_batch(&mut conn, &[("dim-card-1".to_string(), vec![0.1; 384])], PROVIDER, MODEL_A).unwrap();
+        assert!(search_cards_vector(&conn, &[0.1; 128], PROVIDER, MODEL_A, 10).unwrap().is_empty());
+        assert_eq!(search_cards_vector(&conn, &[0.1; 384], PROVIDER, MODEL_A, 10).unwrap().len(), 1);
+        assert!(list_stale_embedding_card_ids(&conn, 384, PROVIDER, MODEL_A, 10).unwrap().is_empty());
         assert!(list_unembedded_card_ids(&conn, 10).unwrap().is_empty());
+
+        // R2 向量空间版本化：**同维度不同模型也不混算**（LOCAL_DATA_AND_AI）。
+        // MODEL_A 的 384 维向量在 MODEL_B 的查询里不可见，且按「过期」重算。
+        assert!(search_cards_vector(&conn, &[0.1; 384], PROVIDER, MODEL_B, 10).unwrap().is_empty(), "同维度不同模型不混算");
+        assert_eq!(list_stale_embedding_card_ids(&conn, 384, PROVIDER, MODEL_B, 10).unwrap(), vec!["dim-card-1".to_string()]);
+        save_card_embeddings_batch(&mut conn, &[("dim-card-1".to_string(), vec![0.2; 384])], PROVIDER, MODEL_B).unwrap();
+        assert_eq!(search_cards_vector(&conn, &[0.1; 384], PROVIDER, MODEL_B, 10).unwrap().len(), 1);
+        assert!(search_cards_vector(&conn, &[0.1; 384], PROVIDER, MODEL_A, 10).unwrap().is_empty(), "切模型后旧身份的向量不可见");
+        // 身份写进了行里（可审计）
+        let (prov, mdl): (String, String) = conn
+            .query_row("SELECT provider, model FROM card_embeddings WHERE card_id='dim-card-1'", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!((prov.as_str(), mdl.as_str()), (PROVIDER, MODEL_B));
     }
 
     /// PLUGIN_SPECIFICATION §5 的检索门禁：万条卡片下混合检索首屏 ≤ 30 ms。
@@ -1850,14 +1899,14 @@ mod tests {
             })
             .collect();
         let mut conn = conn;
-        save_card_embeddings_batch(&mut conn, &items).unwrap();
+        save_card_embeddings_batch(&mut conn, &items, "bench", "bench-model").unwrap();
 
         let query_vec = vec![0.05f32; 384];
 
         // 预热一次，避免把首次 prepared statement 编译算进延迟
         let _ = search_cards_fts(&conn, "向量检索", 20).unwrap();
-        let _ = search_cards_vector(&conn, &query_vec, 20).unwrap();
-        let _ = search_cards_hybrid(&conn, "向量检索", Some(&query_vec), 20).unwrap();
+        let _ = search_cards_vector(&conn, &query_vec, "bench", "bench-model", 20).unwrap();
+        let _ = search_cards_hybrid(&conn, "向量检索", Some(&query_vec), "bench", "bench-model", 20).unwrap();
 
         let measure = |label: &str, runs: usize, mut f: Box<dyn FnMut() + '_>| {
             let started = std::time::Instant::now();
@@ -1873,10 +1922,10 @@ mod tests {
             let _ = search_cards_fts(&conn, "向量检索", 20).unwrap();
         }));
         let vector = measure("向量余弦扫描", 20, Box::new(|| {
-            let _ = search_cards_vector(&conn, &query_vec, 20).unwrap();
+            let _ = search_cards_vector(&conn, &query_vec, "", "", 20).unwrap();
         }));
         let hybrid = measure("混合 RRF", 20, Box::new(|| {
-            let _ = search_cards_hybrid(&conn, "向量检索", Some(&query_vec), 20).unwrap();
+            let _ = search_cards_hybrid(&conn, "向量检索", Some(&query_vec), "", "", 20).unwrap();
         }));
 
         // 规范要求首屏 ≤ 30 ms；debug 构建下放宽到 120 ms，release 下应远低于 30。
@@ -2474,6 +2523,8 @@ mod tests {
                 ("card-vec-1".to_string(), vec![0.9, 0.1, 0.0, 0.0]),
                 ("card-vec-2".to_string(), vec![0.0, 0.1, 0.9, 0.8]),
             ],
+            "",
+            "",
         )
         .unwrap();
         let conn = conn_mut;
@@ -2484,13 +2535,13 @@ mod tests {
 
         // 3. 纯向量检索：查询更接近 c1
         let query_vec = vec![0.85, 0.15, 0.0, 0.0];
-        let vec_hits = search_cards_vector(&conn, &query_vec, 2).unwrap();
+        let vec_hits = search_cards_vector(&conn, &query_vec, "", "", 2).unwrap();
         assert_eq!(vec_hits.len(), 2);
         assert_eq!(vec_hits[0].0.id, "card-vec-1");
         assert!(vec_hits[0].1 > 0.9);
 
         // 4. 混合检索 RRF：FTS 命中 + 向量命中融合
-        let hybrid_hits = search_cards_hybrid(&conn, "SQLite", Some(&query_vec), 2).unwrap();
+        let hybrid_hits = search_cards_hybrid(&conn, "SQLite", Some(&query_vec), "", "", 2).unwrap();
         assert_eq!(hybrid_hits.len(), 2);
         assert_eq!(hybrid_hits[0].id, "card-vec-1");
     }
