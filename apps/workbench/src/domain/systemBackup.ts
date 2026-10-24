@@ -1,13 +1,16 @@
 import type { KnowledgeCard } from "./card";
 import { cardFromJson } from "./card";
 import type { RawMaterial, Artifact } from "../shell/store";
+import type { KnowledgeBase, Note } from "./note";
+import { noteFromJson } from "./note";
 import type { SettingsFile } from "./settings";
 import { parseSettings, encodeSettings } from "./settings";
 import { createZipArchive } from "./markdownExport";
 
 export interface BackupManifest {
   format: "knowflick-backup";
-  schemaVersion: 1;
+  /** v2 起携带 notes.json / knowledge_bases.json（契约 docs/NOTES_MODEL.md）。 */
+  schemaVersion: number;
   appName: string;
   appVersion: string;
   exportedAt: number;
@@ -17,6 +20,8 @@ export interface BackupManifest {
     materials: number;
     artifacts: number;
     media: number;
+    notes?: number;
+    knowledgeBases?: number;
   };
   checksums: Record<string, string>;
 }
@@ -29,6 +34,11 @@ export interface RestoredBackup {
   artifacts: Artifact[];
   /** 附件字节，键是库内相对路径（如 media/audio/x.webm）。旧备份里为空。 */
   media: Map<string, Uint8Array>;
+  /** 笔记与知识库（v2 包）。v1 旧包为空数组——读取端按“有就恢复”兼容。 */
+  notes: Note[];
+  knowledgeBases: KnowledgeBase[];
+  /** `${kbId}\n${noteId}` → addedAt；与 notes/knowledgeBases 同为 v2 字段。 */
+  kbMembership: Record<string, number>;
 }
 
 /** 简易快速确定性哈希校验和（基于 FNV-1a） */
@@ -49,7 +59,10 @@ export function createKfBackupArchive(
   cards: KnowledgeCard[],
   settingsFile: SettingsFile,
   artifacts: Artifact[] = [],
-  media: Map<string, Uint8Array> = new Map()
+  media: Map<string, Uint8Array> = new Map(),
+  notes: Note[] = [],
+  knowledgeBases: KnowledgeBase[] = [],
+  kbMembership: Record<string, number> = {}
 ): Uint8Array {
   const now = Date.now();
   const cardsStr = JSON.stringify(cards, null, 2);
@@ -61,9 +74,12 @@ export function createKfBackupArchive(
   const settingsStr = stripSecrets(encodeSettings(settingsFile));
   const artifactsStr = JSON.stringify(artifacts, null, 2);
 
+  const notesStr = JSON.stringify(notes, null, 2);
+  const kbsStr = JSON.stringify({ knowledgeBases, membership: kbMembership }, null, 2);
+
   const manifest: BackupManifest = {
     format: "knowflick-backup",
-    schemaVersion: 1,
+    schemaVersion: 2,
     appName: "KnowFlick",
     appVersion: "0.1.0",
     exportedAt: now,
@@ -73,12 +89,16 @@ export function createKfBackupArchive(
       materials: materials.length,
       artifacts: artifacts.length,
       media: media.size,
+      notes: notes.length,
+      knowledgeBases: knowledgeBases.length,
     },
     checksums: {
       "cards.json": computeChecksum(cardsStr),
       "materials.json": computeChecksum(materialsStr),
       "settings.json": computeChecksum(settingsStr),
       "artifacts.json": computeChecksum(artifactsStr),
+      "notes.json": computeChecksum(notesStr),
+      "knowledge_bases.json": computeChecksum(kbsStr),
     },
   };
 
@@ -90,6 +110,8 @@ export function createKfBackupArchive(
     { path: "materials.json", data: materialsStr },
     { path: "settings.json", data: settingsStr },
     { path: "artifacts.json", data: artifactsStr },
+    { path: "notes.json", data: notesStr },
+    { path: "knowledge_bases.json", data: kbsStr },
     // 附件（录音 / 图片 / 手写笔迹）随包带走：只带 mediaPath 字符串不带字节，
     // 恢复到另一台机器后就是一批指向空处的引用。
     ...[...media].map(([path, bytes]) => ({ path, data: bytes })),
@@ -178,6 +200,8 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
           artifacts: artifacts.length,
           // 旧版单一 JSON 格式没有附件位。
           media: 0,
+          notes: 0,
+          knowledgeBases: 0,
         },
         checksums: {},
       },
@@ -186,6 +210,9 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
       settings,
       artifacts,
       media: new Map(),
+      notes: [],
+      knowledgeBases: [],
+      kbMembership: {},
     };
   }
 
@@ -234,6 +261,18 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
     media.set(name, data);
   }
 
+  // 5. 读取笔记与知识库（v2 包；v1 旧包没有这两个文件 → 空集，读取端按“有就恢复”兼容）
+  const notesRaw = files.get("notes.json") ?? "[]";
+  const rawNotes = JSON.parse(notesRaw) as unknown[];
+  const notes = Array.isArray(rawNotes) ? rawNotes.map(noteFromJson) : [];
+  const kbsRaw = files.get("knowledge_bases.json") ?? "{}";
+  const kbsParsed = JSON.parse(kbsRaw) as {
+    knowledgeBases?: unknown[];
+    membership?: Record<string, number>;
+  };
+  const knowledgeBases = (Array.isArray(kbsParsed.knowledgeBases) ? kbsParsed.knowledgeBases : []) as KnowledgeBase[];
+  const kbMembership = kbsParsed.membership ?? {};
+
   return {
     manifest,
     cards,
@@ -241,6 +280,9 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
     settings,
     artifacts,
     media,
+    notes,
+    knowledgeBases,
+    kbMembership,
   };
 }
 
@@ -273,9 +315,12 @@ export function downloadKfBackup(
   cards: KnowledgeCard[],
   settingsFile: SettingsFile,
   artifacts: Artifact[] = [],
-  media: Map<string, Uint8Array> = new Map()
+  media: Map<string, Uint8Array> = new Map(),
+  notes: Note[] = [],
+  knowledgeBases: KnowledgeBase[] = [],
+  kbMembership: Record<string, number> = {}
 ): void {
-  const bytes = createKfBackupArchive(materials, cards, settingsFile, artifacts, media);
+  const bytes = createKfBackupArchive(materials, cards, settingsFile, artifacts, media, notes, knowledgeBases, kbMembership);
   // 复制到独立的 ArrayBuffer：createZipArchive 返回的缓冲区类型是 ArrayBufferLike，
   // 在 TS 的 BlobPart 约束下不能直接当 BlobPart 用（SharedArrayBuffer 不兼容）。
   const copy = new Uint8Array(bytes.length);

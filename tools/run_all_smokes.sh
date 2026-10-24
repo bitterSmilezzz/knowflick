@@ -39,6 +39,7 @@ SUITES=(
   brain_ui_smoke
   import_ui_smoke
   notes_ui_smoke
+  notes_editor_smoke
   mailbox_ui_smoke
   review_ui_smoke
   scale_ui_smoke

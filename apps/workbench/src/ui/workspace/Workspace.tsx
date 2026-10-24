@@ -55,6 +55,9 @@ import { CaptureDialog } from "./CaptureDialog";
 import { WorkspaceSettings } from "./WorkspaceSettings";
 import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
+import { NotesView } from "./NotesView";
+import type { NotesState } from "../../domain/note";
+import { restoreNotesBundle } from "./notesRestore";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
 import { StatsView } from "./StatsView";
@@ -99,10 +102,11 @@ const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.B
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "briefing" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
+type Page = Collection | "settings" | "notes" | "briefing" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
+  notes: "笔记",
   briefing: "认知简报",
   brain: "知识问答",
   review: "温故复习",
@@ -130,6 +134,7 @@ export function Workspace() {
   const [source, setSource] = useState("all");
   const [capture, setCapture] = useState(false);
   const [notePad, setNotePad] = useState<"ink" | "voice" | null>(null);
+  const [notesState, setNotesState] = useState<NotesState>({ notes: [], knowledgeBases: [], membership: {} });
   // 手写/语音面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱
   // 与 Escape 处理——实测 Tab 进不去、Escape 无效。用这个钩子补上。
   const notePadRef = useRef<HTMLDivElement | null>(null);
@@ -1274,13 +1279,17 @@ export function Workspace() {
           if (inShell()) await dbSaveArtifact(art, dir);
           total++;
         }
+        // 笔记与知识库（v2 包）：同 id 已存在 → 以备份覆盖（与素材/卡片的恢复语义一致）；
+        // 不存在 → 新建。恢复条数计入回执。
+        const restoredNotes = await restoreNotesBundle(restored.notes, restored.knowledgeBases, restored.kbMembership, dir);
+        total += restoredNotes;
         if (restored.settings) {
           await storePreferences(restored.settings, apiKey, dir);
           setFile(restored.settings);
         }
         setNotice(
           `备份恢复完成：${restored.cards.length} 张卡片、${restored.materials.length} 份素材` +
-            `、${restored.artifacts.length} 条认知产物` +
+            `、${restored.artifacts.length} 条认知产物、${restored.notes.length} 篇笔记、${restored.knowledgeBases.length} 个知识库` +
             (restored.settings ? "、设置已还原" : "") +
             `（共 ${total} 条）`
         );
@@ -1367,19 +1376,19 @@ export function Workspace() {
                 void (async () => {
                   const media = await collectBackupMedia(materials);
                   if (!inShell()) {
-                    downloadKfBackup(materials, cards, file, [], media);
+                    downloadKfBackup(materials, cards, file, [], media, notesState.notes, notesState.knowledgeBases, notesState.membership);
                     setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片、设置与附件，不含 API 密钥");
                     return;
                   }
                   try {
                     const arts = await dbListArtifacts(1000, dir);
-                    downloadKfBackup(materials, cards, file, arts, media);
+                    downloadKfBackup(materials, cards, file, arts, media, notesState.notes, notesState.knowledgeBases, notesState.membership);
                     setNotice(
                       `已导出完整备份包 (.kfbackup)：${cards.length} 张卡片、${materials.length} 份素材、` +
                         `${arts.length} 条认知产物、${media.size} 个附件，不含 API 密钥`
                     );
                   } catch {
-                    downloadKfBackup(materials, cards, file, [], media);
+                    downloadKfBackup(materials, cards, file, [], media, notesState.notes, notesState.knowledgeBases, notesState.membership);
                     setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片、设置与附件，不含 API 密钥");
                   }
                 })();
@@ -1437,6 +1446,20 @@ export function Workspace() {
           {/* 侧栏只回答一个问题：我在流水线的哪一段。
               「来源 → 收件箱 → 知识库 → 应用」是产品主线；收藏/归档/分类是
               库的筛选条件，折叠在知识库下面，不再和主线抢同一层。 */}
+          {/* R1 笔记（docs/NOTES_MODEL.md）：可持续编辑的笔记是一等资产。
+              三入口导航（笔记/知识库/应用）在下一批；这里先以独立入口挂出。 */}
+          <nav className="ws-nav-group" aria-label="笔记">
+            <p className="ws-group-label">笔记</p>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "notes" ? "page" : undefined}
+              onClick={() => navigate("notes")}
+            >
+              <Icon name="edit" /><span>全部笔记</span>
+              <span className="ws-count">{notesState.notes.filter(n => !n.isDeleted).length}</span>
+            </button>
+          </nav>
+
           <nav className="ws-nav-group" aria-label="来源">
             <p className="ws-group-label">来源</p>
             <button className="ws-nav-row" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigate("mail")}>
@@ -2072,14 +2095,14 @@ export function Workspace() {
                     void (async () => {
                       const media = await collectBackupMedia(materials);
                       if (!inShell()) {
-                        downloadKfBackup(materials, cards, file, [], media);
+                        downloadKfBackup(materials, cards, file, [], media, notesState.notes, notesState.knowledgeBases, notesState.membership);
                         return;
                       }
                       try {
                         const arts = await dbListArtifacts(1000, dir);
-                        downloadKfBackup(materials, cards, file, arts, media);
+                        downloadKfBackup(materials, cards, file, arts, media, notesState.notes, notesState.knowledgeBases, notesState.membership);
                       } catch {
-                        downloadKfBackup(materials, cards, file, [], media);
+                        downloadKfBackup(materials, cards, file, [], media, notesState.notes, notesState.knowledgeBases, notesState.membership);
                       }
                     })();
                   }}
@@ -2112,6 +2135,9 @@ export function Workspace() {
                   onOpenCard={(cardId) => { navigate("library"); setSelectedId(cardId); setSource("card"); }}
                   onBack={() => navigate("briefing")}
                 />
+              ) : null}
+              {page === "notes" ? (
+                <NotesView dir={dir} onStateChange={setNotesState} />
               ) : null}
               {page === "mail" ? (
                 <MailboxView

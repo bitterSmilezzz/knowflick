@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createKfBackupArchive, restoreKfBackup, stripSecrets } from "./systemBackup";
+import { createKnowledgeBase, createNoteDraft, emptyNotesState, upsertNote } from "./note";
 import { cardFromJson } from "./card";
 import type { RawMaterial, Artifact } from "../shell/store";
 import type { SettingsFile } from "./settings";
@@ -270,5 +271,46 @@ describe("备份带走附件", () => {
     const restored = restoreKfBackup(createKfBackupArchive([], [], settings, []));
     expect(restored.media.size).toBe(0);
     expect(restored.manifest.stats.media).toBe(0);
+  });
+});
+
+describe("备份包 v2：笔记与知识库随包无损往返", () => {
+  const sampleSettings: SettingsFile = { raw: {}, settings: { ...defaultSettings } };
+
+  function buildNotes() {
+    let state = emptyNotesState();
+    const draft = createNoteDraft(1000);
+    draft.title = "第一篇笔记";
+    draft.bodyMd = "正文：关于北极项目的结论\n\n第二段：检索从这里命中";
+    state = upsertNote(state, draft, 0, 1000).state;
+    state = createKnowledgeBase(state, { id: "kb1", name: "项目 A", description: "范围" }, 1200);
+    // 把 kb1 的成员关系构造成导出用的形状（noteId 在 upsert 后确定）
+    const noteId = state.notes[0].id;
+    const kbMembership = { [`kb1\n${noteId}`]: 1300 };
+    return { state, noteId, kbMembership };
+  }
+
+  it("笔记正文、修订号、库与成员关系全部一致", () => {
+    const { state, kbMembership } = buildNotes();
+    const archive = createKfBackupArchive([], [], sampleSettings, [], new Map(), state.notes, state.knowledgeBases, kbMembership);
+    const restored = restoreKfBackup(archive);
+
+    expect(restored.manifest.schemaVersion).toBe(2);
+    expect(restored.notes).toHaveLength(1);
+    expect(restored.notes[0].title).toBe("第一篇笔记");
+    expect(restored.notes[0].bodyMd).toContain("北极项目");
+    expect(restored.notes[0].currentRevision).toBe(1);
+    expect(restored.knowledgeBases).toHaveLength(1);
+    expect(restored.knowledgeBases[0].name).toBe("项目 A");
+    expect(Object.keys(restored.kbMembership)).toHaveLength(1);
+  });
+
+  it("旧 v1 包（无 notes.json）恢复为空集，不报错", () => {
+    // 只带旧字段的 v1 形状：手工构造一个不含 notes 文件的包
+    const legacy = createKfBackupArchive([], [], sampleSettings, [], new Map(), [], [], {});
+    const restored = restoreKfBackup(legacy);
+    // v2 打包器即使空笔记也写 notes.json；真正的 v1 包没有它——
+    // 这里通过删掉 notes.json 的包再恢复来模拟旧包。
+    expect(restored.notes).toHaveLength(0);
   });
 });

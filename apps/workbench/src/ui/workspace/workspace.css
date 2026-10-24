@@ -2726,3 +2726,100 @@ body.capsule-window { overflow: hidden; background: transparent; }
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ---------- 笔记工作面（R1，docs/NOTES_MODEL.md 界面契约） ---------- */
+
+.nv-root {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+}
+.nv-list {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 10px;
+  gap: 8px;
+}
+.nv-list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nv-list-head h1 { font-size: 16px; margin: 0; }
+.nv-trash-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.nv-trash-toggle[aria-pressed="true"] { color: var(--ink); }
+.nv-error { color: #b3261e; font-size: 12px; margin: 0; white-space: pre-wrap; }
+.nv-entries { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+.nv-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.nv-entry[aria-selected="true"] { border-color: var(--line); background: var(--sunken); }
+.nv-entry-title { font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nv-entry-preview { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nv-entry-meta { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+.nv-restore { color: var(--accent, #4c6ef5); cursor: pointer; }
+.nv-editor { display: flex; flex-direction: column; min-height: 0; padding: 16px 20px; gap: 8px; }
+.nv-editor-head { display: flex; align-items: center; gap: 10px; }
+.nv-title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 700;
+  border: none;
+  background: none;
+  color: var(--ink);
+  outline: none;
+  padding: 4px 0;
+}
+.nv-title:focus { border-bottom: 1px solid var(--line); }
+.nv-status { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.nv-status-saving, .nv-status-dirty { color: var(--muted); }
+.nv-status-conflict, .nv-status-error { color: #b3261e; font-weight: 600; }
+.nv-status-note { font-size: 12px; color: var(--muted); margin: 0; display: flex; align-items: center; gap: 8px; }
+.nv-body {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper, transparent);
+  color: var(--ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 14px;
+  outline: none;
+}
+.nv-kbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.nv-kbs-label { color: var(--muted); }
+.nv-kb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.nv-kb-chip button { background: none; border: none; cursor: pointer; color: var(--muted); display: inline-flex; padding: 0; }
+.nv-kb-select { font-size: 12px; }
+.nv-kb-form { display: inline-flex; gap: 4px; align-items: center; }
+.nv-kb-form input { font-size: 12px; width: 120px; }
+.nv-confirm { color: #b3261e; border-color: #b3261e; }
+
+.nv-restore { font-size: 11px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
+.nv-entry-trash { cursor: default; }

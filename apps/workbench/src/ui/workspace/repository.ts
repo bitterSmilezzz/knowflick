@@ -1,5 +1,40 @@
 import { invoke } from "@tauri-apps/api/core";
-import { dbListMaterials, dbLoadCards, dbSaveMaterial, dbUpsertCard, inShell, loadStore, readApiKey, saveSettings, writeApiKey, type RawMaterial } from "../../shell/store";
+import {
+  dbListMaterials,
+  dbLoadCards,
+  dbSaveMaterial,
+  dbUpsertCard,
+  inShell,
+  kbAddNote,
+  kbCreate,
+  kbList,
+  kbMembership,
+  kbRemoveNote,
+  loadStore,
+  noteDelete,
+  noteList,
+  noteRestore,
+  noteUpsert,
+  readApiKey,
+  saveSettings,
+  writeApiKey,
+  type RawMaterial,
+} from "../../shell/store";
+import {
+  NoteConflictError,
+  addNoteToKb as domainAddToKb,
+  createKnowledgeBase as domainCreateKb,
+  deleteNote as domainDeleteNote,
+  emptyNotesState,
+  restoreNote as domainRestoreNote,
+  noteFromJson,
+  removeNoteFromKb as domainRemoveFromKb,
+  upsertNote as domainUpsert,
+  type KnowledgeBase,
+  type Note,
+  type NoteSaveOutcome,
+  type NotesState,
+} from "../../domain/note";
 import type { KnowledgeCard } from "../../domain/card";
 import { encodeSettings, parseSettings, type SettingsFile } from "../../domain/settings";
 
@@ -67,4 +102,107 @@ export async function storePreferences(file: SettingsFile, key: string, dir: str
   if (inShell()) { await saveSettings(dir, encodeSettings(file)); await writeApiKey(dir, key); return; }
   browserWrite({ ...browserData(), settings: encodeSettings(file) });
   sessionStorage.setItem("knowflick.workspace.key", key);
+}
+
+// ---------- 笔记与知识库（R1）：桌面走 SQLite 命令，浏览器体验走领域纯函数 + localStorage ----------
+
+const notesKey = "knowflick.notes.v1";
+
+function browserNotes(): NotesState {
+  const raw = localStorage.getItem(notesKey);
+  if (!raw) return emptyNotesState();
+  try {
+    const parsed = JSON.parse(raw) as Partial<NotesState>;
+    return {
+      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
+      knowledgeBases: Array.isArray(parsed.knowledgeBases) ? parsed.knowledgeBases : [],
+      membership: parsed.membership ?? {},
+    };
+  } catch {
+    return emptyNotesState();
+  }
+}
+
+function browserNotesWrite(state: NotesState) {
+  try {
+    localStorage.setItem(notesKey, JSON.stringify(state));
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "QuotaExceededError") {
+      throw new Error("浏览器存储已满，这次改动没能保存。导出备份后清理内容，或改用桌面客户端。");
+    }
+    throw err;
+  }
+}
+
+export async function readNotes(dir: string): Promise<NotesState> {
+  if (!inShell()) return browserNotes();
+  const [notes, kbs, membership] = await Promise.all([noteList(false, dir, 10000), kbList(dir), kbMembership(dir)]);
+  return {
+    notes: notes.map(noteFromJson),
+    knowledgeBases: kbs as KnowledgeBase[],
+    membership,
+  };
+}
+
+/** 保存笔记：修订冲突统一抛 NoteConflictError（两种实现同一语义）。 */
+export async function saveNote(note: Note, baseRevision: number, dir: string): Promise<NoteSaveOutcome> {
+  if (inShell()) {
+    try {
+      return await noteUpsert(
+        {
+          id: note.id,
+          title: note.title,
+          bodyMd: note.bodyMd,
+          notebook: note.notebook,
+          tagsJson: JSON.stringify(note.tags),
+          isPinned: note.isPinned,
+          isFavorite: note.isFavorite,
+          archivedAt: note.archivedAt,
+          sourceMaterialId: note.sourceMaterialId,
+          currentRevision: note.currentRevision,
+          createdAt: note.createdAt,
+          updatedAt: note.updatedAt,
+          isDeleted: note.isDeleted,
+          deletedAt: note.deletedAt,
+        },
+        baseRevision,
+        dir
+      );
+    } catch (err) {
+      // Rust 侧冲突消息带「当前修订 N」——还原成带结构的错误，界面才能给出
+      // 「内容已在别处更新」而不是一句英文异常。
+      const message = err instanceof Error ? err.message : String(err);
+      const m = message.match(/当前修订 (\d+)/);
+      if (m) throw new NoteConflictError(Number(m[1]));
+      throw err;
+    }
+  }
+  const { state, outcome } = domainUpsert(browserNotes(), note, baseRevision);
+  browserNotesWrite(state);
+  return outcome;
+}
+
+export async function deleteNoteById(id: string, dir: string): Promise<void> {
+  if (inShell()) { await noteDelete(id, dir); return; }
+  browserNotesWrite(domainDeleteNote(browserNotes(), id));
+}
+
+export async function restoreNoteById(id: string, dir: string): Promise<void> {
+  if (inShell()) { await noteRestore(id, dir); return; }
+  browserNotesWrite(domainRestoreNote(browserNotes(), id));
+}
+
+export async function createKnowledgeBaseNamed(id: string, name: string, description: string, dir: string): Promise<void> {
+  if (inShell()) { await kbCreate(id, name, description, dir); return; }
+  browserNotesWrite(domainCreateKb(browserNotes(), { id, name, description }));
+}
+
+export async function addNoteToKnowledgeBase(kbId: string, noteId: string, dir: string): Promise<void> {
+  if (inShell()) { await kbAddNote(kbId, noteId, dir); return; }
+  browserNotesWrite(domainAddToKb(browserNotes(), kbId, noteId));
+}
+
+export async function removeNoteFromKnowledgeBase(kbId: string, noteId: string, dir: string): Promise<void> {
+  if (inShell()) { await kbRemoveNote(kbId, noteId, dir); return; }
+  browserNotesWrite(domainRemoveFromKb(browserNotes(), kbId, noteId));
 }

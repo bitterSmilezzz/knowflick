@@ -384,14 +384,17 @@ try {
   assert.ok(navClip.ok, `侧栏最后一行被裁切 ${navClip.over}px`);
   pass("侧栏滚到底时最后一行完整可见");
 
-  // ---- 侧栏只讲四段主线，子筛选折叠不抢层级 ----
+  // ---- 侧栏分组：笔记 + 四段主线（R1 起笔记是一等资产，docs/NOTES_MODEL.md 与 ADR-0004）----
+  // 四段收敛（17834ea）钉的是「来源→收件箱→知识库→应用」；产品重规划把可持续编辑的
+  // 笔记升为第一目的地，R1 切片先以独立组挂在最前，三入口导航（笔记/知识库/应用）
+  // 是下一批——届时这份断言跟着收敛为三段。
   const nav = await evaluate(`(() => ({
     groups: [...document.querySelectorAll('.ws-group-label')].map(e => e.textContent.trim()),
     topLevel: [...document.querySelectorAll('.ws-nav-group > .ws-nav-row:not(.ws-nav-details .ws-nav-row)')].map(e => e.textContent.trim()),
     collapsible: [...document.querySelectorAll('.ws-nav-summary')].map(e => e.textContent.trim()),
   }))()`);
-  assert.deepEqual(nav.groups, ["来源", "收件箱", "知识库", "应用"], `侧栏应按四段主线分组：${nav.groups}`);
-  pass("侧栏按四段主线分组");
+  assert.deepEqual(nav.groups, ["笔记", "来源", "收件箱", "知识库", "应用"], `侧栏应按「笔记 + 四段主线」分组：${nav.groups}`);
+  pass("侧栏按「笔记 + 四段主线」分组");
 
   // ---- 组标签的文字要跟在三角指示器后面，不能被推到最右 ----
   // .ws-group-label 是 justify-content: space-between（为的是标签右侧放计数）。

@@ -5,6 +5,7 @@ mod embed;
 mod http;
 mod mail;
 mod media;
+mod notes;
 mod store;
 
 use std::io::Read;
@@ -390,6 +391,118 @@ fn db_get_stats(dir: Option<String>) -> Result<db::DbStatsDto, String> {
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
     db::get_db_stats(&conn).map_err(|e| e.to_string())
+}
+
+// ---------- 笔记与知识库（R1，契约 docs/NOTES_MODEL.md）----------
+
+#[tauri::command]
+fn note_upsert(app: tauri::AppHandle, dir: Option<String>, note: notes::NoteDto, base_revision: i64) -> Result<notes::NoteSaveOutcome, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let outcome = notes::note_upsert(&conn, &note, base_revision, now).map_err(|e| match e {
+        notes::NoteSaveError::Conflict { current_revision } => {
+            format!("内容已在别处更新（当前修订 {current_revision}），请刷新后重试，不要直接覆盖")
+        }
+        notes::NoteSaveError::Db(err) => err.to_string(),
+    })?;
+    notify_library_changed(&app);
+    Ok(outcome)
+}
+
+#[tauri::command]
+fn note_get(dir: Option<String>, id: String) -> Result<Option<notes::NoteDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::note_get(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn note_list(dir: Option<String>, include_deleted: Option<bool>, limit: Option<i64>) -> Result<Vec<notes::NoteDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::note_list(&conn, include_deleted.unwrap_or(false), limit.unwrap_or(500)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn note_delete(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let deleted = notes::note_delete(&conn, &id, now).map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    Ok(deleted)
+}
+
+#[tauri::command]
+fn note_restore(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let restored = notes::note_restore(&conn, &id).map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    Ok(restored)
+}
+
+#[tauri::command]
+fn note_search(dir: Option<String>, query: String, kb_id: Option<String>, limit: Option<i64>) -> Result<Vec<notes::NoteDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::search_notes(&conn, &query, kb_id.as_deref(), limit.unwrap_or(50)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn kb_create(app: tauri::AppHandle, dir: Option<String>, id: String, name: String, description: Option<String>) -> Result<(), String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    notes::kb_create(&conn, &id, &name, description.as_deref().unwrap_or(""), now)?;
+    notify_library_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn kb_list(dir: Option<String>) -> Result<Vec<notes::KnowledgeBaseDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::kb_list(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn kb_add_note(app: tauri::AppHandle, dir: Option<String>, kb_id: String, note_id: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    notes::kb_add_note(&conn, &kb_id, &note_id, now)?;
+    notify_library_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn kb_membership(dir: Option<String>) -> Result<std::collections::HashMap<String, i64>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::kb_membership_map(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn kb_remove_note(app: tauri::AppHandle, dir: Option<String>, kb_id: String, note_id: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::kb_remove_note(&conn, &kb_id, &note_id).map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -996,6 +1109,17 @@ pub fn run() {
             db_delete_card,
             db_search_cards_fts,
             db_save_material,
+            note_upsert,
+            note_get,
+            note_list,
+            note_delete,
+            note_restore,
+            note_search,
+            kb_create,
+            kb_list,
+            kb_add_note,
+            kb_remove_note,
+            kb_membership,
             db_list_materials,
             db_update_material_status,
             db_get_stats,

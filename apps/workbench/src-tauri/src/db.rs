@@ -528,6 +528,59 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             is_active           INTEGER NOT NULL DEFAULT 1,
             created_at          INTEGER NOT NULL
         );
+
+        -- 笔记与知识库（R1，契约见 docs/NOTES_MODEL.md）：全部增量添加，
+        -- 既有 materials/cards 不动，老库打开即得新表。
+        CREATE TABLE IF NOT EXISTS notes (
+            id                  TEXT PRIMARY KEY,
+            title               TEXT NOT NULL DEFAULT '',
+            body_md             TEXT NOT NULL DEFAULT '',
+            notebook            TEXT,
+            tags_json           TEXT NOT NULL DEFAULT '[]',
+            is_pinned           INTEGER NOT NULL DEFAULT 0,
+            is_favorite         INTEGER NOT NULL DEFAULT 0,
+            archived_at         INTEGER,
+            source_material_id  TEXT REFERENCES materials(id) ON DELETE SET NULL,
+            current_revision    INTEGER NOT NULL DEFAULT 1,
+            created_at          INTEGER NOT NULL,
+            updated_at          INTEGER NOT NULL,
+            is_deleted          INTEGER NOT NULL DEFAULT 0,
+            deleted_at          INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_notes_deleted ON notes(is_deleted, deleted_at);
+
+        CREATE TABLE IF NOT EXISTS note_revisions (
+            note_id             TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            revision            INTEGER NOT NULL,
+            title               TEXT NOT NULL DEFAULT '',
+            body_md             TEXT NOT NULL DEFAULT '',
+            saved_at            INTEGER NOT NULL,
+            PRIMARY KEY (note_id, revision)
+        );
+
+        CREATE TABLE IF NOT EXISTS knowledge_bases (
+            id                  TEXT PRIMARY KEY,
+            name                TEXT NOT NULL,
+            description         TEXT NOT NULL DEFAULT '',
+            created_at          INTEGER NOT NULL,
+            updated_at          INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS kb_membership (
+            kb_id               TEXT NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+            note_id             TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            added_at            INTEGER NOT NULL,
+            PRIMARY KEY (kb_id, note_id)
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_notes USING fts5(
+            note_id UNINDEXED,
+            title,
+            body,
+            tokenize = 'unicode61 remove_diacritics 2'
+        );
         "#,
     )?;
 

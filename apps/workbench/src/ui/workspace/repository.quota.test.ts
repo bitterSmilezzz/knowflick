@@ -46,7 +46,7 @@ describe("浏览器库配额", () => {
     stubStorage(true);
     const { storeMaterial } = await import("./repository");
     await expect(storeMaterial(material, "")).rejects.toThrow(/浏览器存储已满.*没能保存/);
-  });
+  }, 15_000); // 全套并行收集时机器忙，默认 5s 偶发超时（先例：慢测试给足超时 065834f）
 
   // 本机 Node 有 sessionStorage、CI 的没有；这个 stub 让两种环境走同一条路。
   it("配额正常时照常保存", async () => {

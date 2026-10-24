@@ -211,6 +211,54 @@ export function dbSearchCardsFts(query: string, dir?: string, limit?: number): P
   return invoke("db_search_cards_fts", { dir: dir ?? null, query, limit: limit ?? null });
 }
 
+// ---------- 笔记与知识库（R1，契约 docs/NOTES_MODEL.md） ----------
+
+export interface NoteSaveOutcomeShell { id: string; revision: number; created: boolean }
+
+export function noteUpsert(note: object, baseRevision: number, dir?: string): Promise<NoteSaveOutcomeShell> {
+  return invoke("note_upsert", { dir: dir ?? null, note, baseRevision });
+}
+
+export function noteGet(id: string, dir?: string): Promise<object | null> {
+  return invoke("note_get", { dir: dir ?? null, id });
+}
+
+export function noteList(includeDeleted: boolean, dir?: string, limit?: number): Promise<object[]> {
+  return invoke("note_list", { dir: dir ?? null, includeDeleted, limit: limit ?? null });
+}
+
+export function noteDelete(id: string, dir?: string): Promise<boolean> {
+  return invoke("note_delete", { dir: dir ?? null, id });
+}
+
+export function noteRestore(id: string, dir?: string): Promise<boolean> {
+  return invoke("note_restore", { dir: dir ?? null, id });
+}
+
+export function noteSearch(query: string, kbId: string | null, dir?: string, limit?: number): Promise<object[]> {
+  return invoke("note_search", { dir: dir ?? null, query, kbId, limit: limit ?? null });
+}
+
+export function kbCreate(id: string, name: string, description: string, dir?: string): Promise<void> {
+  return invoke("kb_create", { dir: dir ?? null, id, name, description });
+}
+
+export function kbList(dir?: string): Promise<object[]> {
+  return invoke("kb_list", { dir: dir ?? null });
+}
+
+export function kbAddNote(kbId: string, noteId: string, dir?: string): Promise<void> {
+  return invoke("kb_add_note", { dir: dir ?? null, kbId, noteId });
+}
+
+export function kbRemoveNote(kbId: string, noteId: string, dir?: string): Promise<void> {
+  return invoke("kb_remove_note", { dir: dir ?? null, kbId, noteId });
+}
+
+export function kbMembership(dir?: string): Promise<Record<string, number>> {
+  return invoke("kb_membership", { dir: dir ?? null });
+}
+
 export function dbSaveMaterial(material: RawMaterial, dir?: string): Promise<void> {
   return invoke("db_save_material", { dir: dir ?? null, material });
 }
