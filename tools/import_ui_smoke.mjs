@@ -34,7 +34,7 @@ try {
   await ev(`(() => {
     const input = document.querySelector('input[data-role=import-files]');
     const dt = new DataTransfer();
-    dt.items.add(new File(['# 第一份\\n\\n正文一'], 'note-a.md', { type: 'text/markdown' }));
+    dt.items.add(new File(['# 第一份' + String.fromCharCode(10, 10) + '北极星项目的周报：本周完成了检索模块的性能优化。' + String.fromCharCode(10, 10) + '万条数据下延迟从 33ms 降到 13.6ms，这是页内计时口径。' + String.fromCharCode(10, 10) + '下周开始做语义索引，先覆盖中英混合语料。' + String.fromCharCode(10, 10) + '另外记录一下构建产物体积的变化，供后续对照。'], 'note-a.md', { type: 'text/markdown' }));
     dt.items.add(new File(['不支持的类型'], 'weird.xyz', { type: 'application/octet-stream' }));
     dt.items.add(new File(['# 第二份\\n\\n正文二'], 'note-b.md', { type: 'text/markdown' }));
     input.files = dt.files;
@@ -53,6 +53,16 @@ try {
   await new Promise((r) => setTimeout(r, 1200));
   await check("document.querySelector('.nv-import-report') !== null", "刷新后报告仍在（持久化）");
   await check("[...document.querySelectorAll('.nv-report-ok')].some(e=>e.textContent.includes('第一份'))", "报告含成功条目（按素材标题）");
+  // C04 近似重复候选：导入与库内文字相近的内容 → 只提示、不自动删
+  await ev(`(() => {
+    const input = document.querySelector('input[data-role=import-files]');
+    const dt = new DataTransfer();
+    dt.items.add(new File(['# 近似改写' + String.fromCharCode(10, 10) + '北极星项目的周报：本周完成了检索方面的性能优化工作。' + String.fromCharCode(10, 10) + '万条记录下延迟从 33ms 降至 13.6ms，这是页内计时的口径。' + String.fromCharCode(10, 10) + '下周开始做语义索引，先覆盖中英混合的语料。'], 'near.md', { type: 'text/markdown' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await check("document.body.innerText.includes('疑似近似重复') && document.body.innerText.includes('未自动删除')", "近似重复只提示不自动删");
   await check("!document.body.innerText.includes('导入未全部完成')", "不再用「整批失败」的口吻");
 
   // 全部失败时仍给出明确结论，而不是静默

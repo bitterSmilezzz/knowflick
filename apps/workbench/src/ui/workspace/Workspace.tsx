@@ -71,6 +71,7 @@ import { imageMimeOf, mediaMimeOfExtension } from "../../domain/mediaMime";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
 import { existingKeys } from "../../domain/contentHash";
+import { findNearDuplicates } from "../../domain/nearDuplicate";
 import { emailBodyForAi, makeMailDigestMetadata, type MailDigestSource } from "../../domain/mail";
 import { sourceInsights } from "../../domain/insights";
 import { mailSyncDueAccounts } from "../../shell/mail";
@@ -824,6 +825,7 @@ export function Workspace() {
     const ok: string[] = [];
     const skipped: string[] = [];
     const failed: Array<{ name: string; reason: string }> = [];
+    const nearDupeHints: string[] = [];
     // 库里已有的指纹：同一个文件导入两次不该变成两份。
     // 图片按「文件名 + 字节数」判重（见 existingKeys），否则第二次拖同一个
     // 文件会因为库里只留了 contentHash 而再进来一份。
@@ -833,7 +835,7 @@ export function Workspace() {
         for (const [index, f] of list.entries()) {
           setNotice(`正在导入 ${index + 1}/${list.length}：${f.name}`);
           try {
-            await importOneFile(f, ok, skipped, seen);
+            await importOneFile(f, ok, skipped, seen, nearDupeHints);
           } catch (err) {
             failed.push({ name: f.name, reason: err instanceof Error ? err.message : String(err) });
           }
@@ -841,8 +843,12 @@ export function Workspace() {
         if (ok.length) navigate("library");
         // R2 导入向导：转换报告持久化——提示条 4 秒消失后，「哪几个失败、
         // 为什么」还能在导入区回看（roadmap R2 明确把转换报告列为交付物）。
-        await saveLastImportReport(buildImportReport({ ok, skipped, failed }), dir);
-        setLastImportReport(buildImportReport({ ok, skipped, failed }));
+        const report = buildImportReport({ ok, skipped, failed });
+        await saveLastImportReport(report, dir);
+        setLastImportReport(report);
+        if (nearDupeHints.length) {
+          setError(`疑似近似重复（未自动删除，请确认）：${nearDupeHints.join("；")}`);
+        }
         const parts: string[] = [];
         if (ok.length) parts.push(`已导入 ${ok.length} 条`);
         if (skipped.length) parts.push(`${skipped.length} 个与库里内容相同已跳过`);
@@ -862,7 +868,7 @@ export function Workspace() {
   };
 
   /** 处理单个文件；成功时往 `ok` 里追加标题。失败由调用方收集。 */
-  const importOneFile = async (f: File, ok: string[], skipped: string[], seen: Set<string>) => {
+  const importOneFile = async (f: File, ok: string[], skipped: string[], seen: Set<string>, nearDupeHints: string[]) => {
     const IMAGE = /\.(png|jpe?g|webp|gif|heic)$/i;
     if (f.size > 32 * 1024 * 1024) throw new Error("超过 32 MB");
     if (IMAGE.test(f.name)) {
@@ -976,6 +982,17 @@ export function Workspace() {
     if (m.contentHash) seen.add(m.contentHash);
     await updateMaterial(m);
     ok.push(doc.title);
+    // C04 近似重复候选：只提示、不自动删——两个相似观点可能时间/立场/项目
+    // 不同。列给用户，去留由用户决定（候选保留双方独立出处）。
+    const dupes = findNearDuplicates(
+      m.rawText,
+      materials
+        .filter((x) => x.id !== m.id)
+        .map((x) => ({ id: x.id, title: x.title, body: x.rawText }))
+    );
+    for (const d of dupes.slice(0, 3)) {
+      nearDupeHints.push(`「${doc.title}」与库内「${d.title}」文字相近，请自行确认是否重复`);
+    }
   };
 
   /**
