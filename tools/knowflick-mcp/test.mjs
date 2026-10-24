@@ -14,7 +14,7 @@ import test from "node:test";
 import { rpcClient } from "./test-client.mjs";
 import { fileURLToPath } from "node:url";
 
-import { browseMap, createLibraryReader, createSearcher, indexTaxonomy, learningPath, loadLibrary, stageCard, stats } from "./lib.mjs";
+import { browseMap, createLibraryReader, createSearcher, defaultCardsPath, indexTaxonomy, learningPath, loadLibrary, stageCard, stats } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TAXONOMY = path.join(HERE, "..", "..", "shared", "assets", "taxonomy_map.json");
@@ -52,6 +52,26 @@ function fixtureLibrary(t) {
   fs.writeFileSync(cardsFile, JSON.stringify(CARDS));
   return { ...loadLibrary({ cardsFile, taxonomyFile: TAXONOMY }), allowWrite: true };
 }
+
+test("路径：默认卡库优先 store/，旧 mac 位置只作兜底", () => {
+  const both = fs.mkdtempSync(path.join(os.tmpdir(), "kf-path-"));
+  fs.mkdirSync(path.join(both, "store"), { recursive: true });
+  fs.writeFileSync(path.join(both, "store", "cards.json"), "[]");
+  assert.equal(defaultCardsPath(both), path.join(both, "store", "cards.json"));
+
+  // 两处都有时现行布局赢——旧文件只是 mac 时代的遗留
+  fs.writeFileSync(path.join(both, "cards.json"), "[]");
+  assert.equal(defaultCardsPath(both), path.join(both, "store", "cards.json"));
+
+  // 只有旧位置时兜底用它，否则老用户的库会被判成「找不到卡片库」
+  const legacy = fs.mkdtempSync(path.join(os.tmpdir(), "kf-path-legacy-"));
+  fs.writeFileSync(path.join(legacy, "cards.json"), "[]");
+  assert.equal(defaultCardsPath(legacy), path.join(legacy, "cards.json"));
+
+  // 两处都没有时给出的是**现行**位置，报错信息才有指导意义
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), "kf-path-empty-"));
+  assert.equal(defaultCardsPath(empty), path.join(empty, "store", "cards.json"));
+});
 
 test("检索：中文 N-Gram 命中正确卡片并给出摘要", (t) => {
   const library = fixtureLibrary(t);

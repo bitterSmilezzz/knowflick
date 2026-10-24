@@ -67,7 +67,19 @@ object CardJson {
             if (numeric != null) epochToMillis(numeric) else CardJson.decodeDate(it.content)
         }
 
-    private fun JsonObject.intField(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull
+    /**
+     * 读整数字段。
+     *
+     * 桌面端把 intervalDays 定义成 f64，导出的是 0.0 这样的 double；
+     * 只认 intOrNull 会让它读成 null，再被 `?: 1` 兜底成 1 天——
+     * 两端之间搬一次卡，复习间隔就被人不知鬼不觉地改了。
+     * 所以 double 也要接受：取整数部分（天数语义）。
+     */
+    private fun JsonObject.intField(key: String): Int? {
+        val prim = this[key] as? JsonPrimitive ?: return null
+        // 这个 kotlinx 版本没有 doubleOrNull，按原文解析即可（`0.0` / `1.0`）。
+        return prim.intOrNull ?: prim.content.toDoubleOrNull()?.toInt()
+    }
 
     private fun JsonObject.boolField(key: String): Boolean? = (this[key] as? JsonPrimitive)?.booleanOrNull
 
@@ -115,8 +127,8 @@ object CardJson {
             level = obj.intField("level")?.takeIf { it in 1..5 },
             track = obj.str("track")?.takeIf { it.isNotBlank() },
             orderKey = obj.str("orderKey")?.takeIf { it.isNotBlank() },
-            prereq = (obj["prereq"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
-                ?: emptyList(),
+            prereq = (obj["prereq"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList(),
+            tags = (obj["tags"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList(),
         )
     }
 
@@ -159,6 +171,11 @@ object CardJson {
         card.orderKey?.let { put("orderKey", it) }
         if (card.prereq.isNotEmpty()) {
             put("prereq", JsonArray(card.prereq.map { JsonPrimitive(it) }))
+        }
+        // 与前端 cardToJson 一致：空标签不写键（写空数组会让两端规范化输出不一致）。
+        // 有标签时才写，保证标签能跨端保真。
+        if (card.tags.isNotEmpty()) {
+            put("tags", JsonArray(card.tags.map { JsonPrimitive(it) }))
         }
     }
 

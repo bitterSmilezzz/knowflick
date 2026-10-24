@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-local-embed"
+description = "Enables the local_embed command without any pre-configured scope."
+commands.allow = ["local_embed"]
+
+[[permission]]
+identifier = "deny-local-embed"
+description = "Denies the local_embed command without any pre-configured scope."
+commands.deny = ["local_embed"]

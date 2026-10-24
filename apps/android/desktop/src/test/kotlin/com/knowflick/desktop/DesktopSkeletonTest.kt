@@ -7,10 +7,17 @@ import androidx.compose.ui.test.runComposeUiTest
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
 import com.knowflick.app.data.ChatSessionStorage
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
+import com.knowflick.app.domain.ArchiveExportFormat
+import com.knowflick.app.domain.ArchiveExportScope
 import com.knowflick.app.ui.DesktopBackgroundImageCache
 import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.PaperTheme
+import com.knowflick.app.ui.common.ArchiveExportCancelled
+import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import java.nio.file.attribute.PosixFilePermission
 import kotlin.test.assertEquals
@@ -505,5 +512,51 @@ class DesktopSkeletonTest {
 
         onNodeWithText("收藏 1").assertExists()
         onNodeWithText("桌面宿主已接上共享领域层").assertExists()
+    }
+
+    /** 桌面导出写的是共享引擎的字节；用户取消另存为时不报失败。 */
+    @Test
+    fun desktopExportWritesSharedEngineBytesAndCancelStaysQuiet() = runBlocking {
+        val cards = DomainBridge.sampleCards()
+        val dir = Files.createTempDirectory("kf-desktop-export").toFile()
+        val exporter = DesktopArchiveExporter(pickSaveFile = { _, name -> File(dir, name) })
+
+        val saved = exporter.export(
+            scope = ArchiveExportScope.ALL,
+            format = ArchiveExportFormat.JSON_ARCHIVE,
+            cards = cards,
+            settingsJson = null,
+        )
+
+        val path = saved.getOrThrow()
+        val text = File(path).readText()
+        assertTrue(path.contains("knowflick_cards_"), path)
+        assertTrue(text.contains("桌面宿主已接上共享领域层"), text.take(200))
+        assertFalse(exporter.canShare)
+        assertEquals("另存为", exporter.saveLabel)
+
+        val cancelled = DesktopArchiveExporter(pickSaveFile = { _, _ -> null }).export(
+            scope = ArchiveExportScope.FAVORITES,
+            format = ArchiveExportFormat.JSON_ARCHIVE,
+            cards = cards,
+            settingsJson = null,
+        )
+        assertTrue(cancelled.exceptionOrNull() is ArchiveExportCancelled)
+    }
+
+    /** 刷卡页打开的就是共享导出面板：另存为在，系统分享不在。 */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun backupExportSheetOnDesktopHidesShare() = runComposeUiTest {
+        val (model, dir) = tempModel("kf-desktop-export-ui")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = hostState(model, dir)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        state.openBackupExport()
+        onNodeWithText("数据归档与全量备份").assertExists()
+        onNodeWithText("另存为").assertExists()
+        onAllNodesWithText("系统分享").assertCountEquals(0)
     }
 }

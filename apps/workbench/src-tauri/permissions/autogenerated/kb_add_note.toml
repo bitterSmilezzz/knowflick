@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-kb-add-note"
+description = "Enables the kb_add_note command without any pre-configured scope."
+commands.allow = ["kb_add_note"]
+
+[[permission]]
+identifier = "deny-kb-add-note"
+description = "Denies the kb_add_note command without any pre-configured scope."
+commands.deny = ["kb_add_note"]

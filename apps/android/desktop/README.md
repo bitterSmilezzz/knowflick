@@ -25,12 +25,13 @@ Kotlin JVM + Compose Multiplatform 宿主。它与 Android 端共用同一份**�
 | 详情页 | ❌ 尚未迁入共享模块（点击卡片只给提示） |
 | 应用图标 | ❌ 未接入（三端各需 `.icns` / `.ico` / `.png`） |
 
-总目标与决策见 [ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)；
-界面分档进度见 [UI_EXTRACTION](../../../docs/windows-route/UI_EXTRACTION.md)。
+总目标与决策见 [ADR-0002](../../../docs/adr/0002-desktop-web-split-from-android.md)——它把桌面第一套定为
+`apps/workbench`（Web + Tauri），所以 `:desktop` **冻住不加功能**；[ADR-0001](../../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)
+是这条线的前身，已由它替代。界面分档进度见 [UI_EXTRACTION](../../../docs/windows-route/UI_EXTRACTION.md)。
 
 ## 安装包图标
 
-三端图标由 `tools/generate_app_icons.py` 从**唯一一份美术**（`apps/mac/Resources/AppIcon.iconset`）
+三端图标由 `tools/generate_app_icons.py` 从**唯一一份美术**（`shared/icons/AppIcon.iconset`）
 派生到 `shared/icons/`（`.icns` / `.ico` / `.png`）。打包任务依赖 `verifyAppIcons`，缺失时会直接失败并给出生成命令。
 
 ## 发布附件

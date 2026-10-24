@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-save-material"
+description = "Enables the db_save_material command without any pre-configured scope."
+commands.allow = ["db_save_material"]
+
+[[permission]]
+identifier = "deny-db-save-material"
+description = "Denies the db_save_material command without any pre-configured scope."
+commands.deny = ["db_save_material"]

@@ -114,13 +114,16 @@ object WebClipEngine {
         "pagination", "search", "toolbar", "tags", "reply", "vote", "toc",
     )
 
-    /** 整行命中即丢弃的样板文案（只在短行上生效，避免误伤正文里的同名句子） */
+    /** 整行命中即丢弃的样板文案（只在短行上生效，避免误伤正文里的同名句子）。
+     *  ⚠️ 表里的 token **必须全部小写**：`isJunkLine` 先把整行 `lowercase()` 再比对，
+     *  写成大写的那条永远匹配不上（`APP下载` / `Cookie` / `JavaScript` 就这样空转过一段时间，
+     *  直到与 workbench 侧的规则表对照才发现）。有回归钉着。 */
     private val JUNK_TOKENS = listOf(
         "版权所有", "保留所有权利", "未经授权", "未经许可", "转载至", "文章来源",
-        "登录查看", "扫码下载", "APP下载", "关注我们", "扫码关注", "分享到", "打赏",
+        "登录查看", "扫码下载", "app下载", "关注我们", "扫码关注", "分享到", "打赏",
         "相关推荐", "相关阅读", "下一篇", "上一篇", "返回列表", "返回顶部", "阅读原文",
-        "查看原文", "订阅本文", "评论区", "Cookie", "隐私政策", "用户协议", "登录",
-        "注册", "广告", "JavaScript", "copyright", "all rights reserved", "privacy",
+        "查看原文", "订阅本文", "评论区", "cookie", "隐私政策", "用户协议", "登录",
+        "注册", "广告", "javascript", "copyright", "all rights reserved", "privacy",
         "terms of", "sign in", "log in", "subscribe", "newsletter", "advertisement",
         "enable javascript",
     )
@@ -132,6 +135,11 @@ object WebClipEngine {
 
     /** 元信息行长上限 */
     private const val META_LINE_CHARACTERS = 160
+
+    /** 嗅探 `<meta charset>` 的窗口（字节）。**三处实现必须一致**：这里、`clipEngine.ts` 与
+     *  Tauri 壳的 `http.rs`——`tools/check_clip_parity.py` 会比对。HTML 规范要求字符编码声明
+     *  完整出现在文档前 1024 字节内，中文站那批 GBK/Big5 也都在这个范围内声明。 */
+    private const val META_SNIFF_BYTES = 1024
 
     private val NAMED_ENTITIES: Map<String, Char> = mapOf(
         "amp" to '&', "lt" to '<', "gt" to '>', "quot" to '"', "apos" to '\'',
@@ -582,10 +590,10 @@ object WebClipEngine {
 
     // MARK: - 字符集
 
-    /** 按「HTTP 头 charset → 前 1024 字节里的 `<meta charset>` → UTF-8」的优先级解码页面字节。
+    /** 按「HTTP 头 charset → 前 `META_SNIFF_BYTES` 字节里的 `<meta charset>` → UTF-8」的优先级解码页面字节。
      *  中文站仍有一批输出 GBK/GB2312/Big5，硬按 UTF-8 读会得到一串 ``，正文抽取也就废了。 */
     fun decodeHTML(bytes: ByteArray, contentType: String?): String {
-        val head = String(bytes, 0, minOf(1024, bytes.size), Charsets.ISO_8859_1)
+        val head = String(bytes, 0, minOf(META_SNIFF_BYTES, bytes.size), Charsets.ISO_8859_1)
         val name = charsetFromContentType(contentType) ?: charsetFromHead(head)
         if (name != null) {
             val charset = try {

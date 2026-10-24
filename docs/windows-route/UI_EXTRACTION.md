@@ -107,8 +107,14 @@ B 档从最初的 8 个降到 3 个。
    或 `:shared-data`；
 4. **平台动作继续抽象**：文件选择/归档导入导出已落地（见下），还剩**底图资源、剪贴板、
    系统分享、Toast**；这些是 `SettingsScreen` / `DetailScreen` 等屏的解锁条件；
-5. **安装包图标**：三端各需 `.icns` / `.ico` / `.png`，仓库已有 mac 的 `AppIcon.iconset` 与 Android 侧图标，
-   接入时同样要避免三份手工维护。
+5. **安装包图标**：三端各需 `.icns` / `.ico` / `.png`。美术源已挪到 `shared/icons/AppIcon.iconset/`，
+   `tools/generate_app_icons.py` 一路派生；`apps/workbench`（第一套桌面）另有自己的
+   `npx tauri icon` 产物。要避免的是同一张美术手工维护出多份。
+
+> **2026-10-13 注**：本文件记录的是 [ADR-0001](../../adr/0001-desktop-tri-platform-shared-kotlin.md)
+> 那条「桌面与安卓共用一份 Kotlin 界面」路线的迁移过程。该路线已由
+> [ADR-0002](../../adr/0002-desktop-web-split-from-android.md) 替代（桌面第一套改走 `apps/workbench`
+> 的 Web 界面），下面的推进计划与分档表**只作过程记录**；已落地的共享代码仍被 Android 与冻住的 `:desktop` 使用。
 
 ## 7. 平台动作（B 档第一块，已落地）
 

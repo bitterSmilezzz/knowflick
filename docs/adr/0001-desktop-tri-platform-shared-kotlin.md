@@ -1,6 +1,6 @@
 # ADR-0001：桌面三端与 Android 共用一份 Kotlin / Compose 代码
 
-- 状态：**已接受**（2026-10-11）；「Swift mac 端处置」已由[第一原则](../../AGENTS.md)（一套开发，多处发布）判定为**收敛而非并存**，见 §5
+- 状态：**已接受，其中「桌面与 Android 共用界面」这一活计划已由 [ADR-0002](0002-desktop-web-split-from-android.md) 替代**（2026-10-13）。本文保留为当时的实测与已落地代码的记录。Swift mac 端已删除。`:desktop` 冻住，见 0002。
 - 决策人：项目所有者
 - 相关：`docs/windows-route/` 四份实测卷宗 · [MULTI_PLATFORM.md](../MULTI_PLATFORM.md) · [CONTEXT.md](../../CONTEXT.md)
 

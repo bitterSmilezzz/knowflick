@@ -1,260 +1,159 @@
 # KnowFlick
 
+> **2026-10-24 新产品规划**：[笔记 → 知识库 → 应用](docs/product/README.md)。包含能力目录、桌面/移动/平板界面、数据与 AI 方案及 R0–R5 路线；它描述目标与建议，下方版本说明仍描述既有产品。
+
 <div align="center">
 
-**macOS 个人学习工作台 — 阅读、复习与知识管理**
+**多端学习工作台 — 剪藏、提炼、复习**
 
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
-[![Swift](https://img.shields.io/badge/Swift-6.0-orange?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
-[![SwiftUI](https://img.shields.io/badge/SwiftUI-%E5%8E%9F%E7%94%9F-blue?logo=swift&logoColor=white)](https://github.com/bitterSmilezzz/knowflick)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/bitterSmilezzz/knowflick?include_prereleases&logo=github)](https://github.com/bitterSmilezzz/knowflick/releases)
-
-<img src="assets/screenshot.png" width="720" alt="KnowFlick 旧版沉浸刷卡界面（当前默认首页为学习工作台）"/>
 
 </div>
 
 ---
 
-KnowFlick 是用 SwiftUI 编写的 macOS 个人学习工作台（最低支持 macOS 14）。从今日目标开始阅读，完成后进入复习安排；在知识库搜索、分类、编辑和导出自己的卡片。沉浸刷卡、AI 追问与知识星图仍可从工作台进入。卡片全部来自你自己的积累——网页剪藏、笔记导入，或配置兼容的 AI 服务生成新卡。
+KnowFlick 把「你收藏的内容」变成「你能复习的卡片」。知识全部来自你自己的积累：**网页剪藏**、**笔记导入**，或配置一个兼容 OpenAI 的端点让 **AI 出卡**。仓库不自带卡片库——**空库是正常起点**，任何启动路径都不会往库里灌内容。
 
-工作台的具体操作、复习规则与数据口径见 [学习工作台说明](docs/LEARNING_WORKSPACE.md)。
+## 端与分工
 
-Android 端是同仓库内的独立原生应用（Kotlin + Jetpack Compose），构建、安装与发版见 [Android 端说明](apps/android/README.md)。
+按交互形态分两套（活计划见 [ADR-0002](docs/adr/0002-desktop-web-split-from-android.md)）：
+
+| 套 | 端 | 技术 | 目录 |
+| --- | --- | --- | --- |
+| 第一套 | Windows / Linux / macOS（以及稍后的网页） | 一份 Web 界面（Vite + React + TypeScript）+ Tauri 壳 | `apps/workbench` |
+| 第二套 | Android | Kotlin + Jetpack Compose | `apps/android` |
+| — | iOS | 未定，先不做 | — |
+
+两套**共享数据文件，不共享界面代码**：同一个数据目录、同一份 `cards.json` / `settings.json` 结构，拷过去就能打开，中间不经转换。
+
+> 沿革：Swift / SwiftUI 的 `apps/mac` 已删除。[ADR-0001](docs/adr/0001-desktop-tri-platform-shared-kotlin.md) 那条「桌面与安卓共用一份 Kotlin 界面」不再是活计划；它留下的 Kotlin 共享模块（`:domain` / `:shared-data` / `:shared-ui`）原样保留，Android 继续用，冻住的 JVM 桌面宿主 `:desktop` 不再加功能。
 
 ## 当前版本
 
-- [macOS v0.2.0](https://github.com/bitterSmilezzz/knowflick/releases/tag/v0.2.0)：学习工作台与统计布局优化、侧栏折叠及悬停提示、搜索状态与保存反馈修复。[发布说明](docs/MAC_RELEASE_0.2.0.md)
-- [Android v0.10.3](https://github.com/bitterSmilezzz/knowflick/releases/tag/android-v0.10.3)：筛选与主题优化、跨日和时区刷新、统计边界与语音控制器持有修复。[发布说明](docs/ANDROID_RELEASE_0.10.3.md)
-- [本地 MCP / CLI 使用说明](tools/knowflick-mcp/README.md)：检索、地图、学习路径与人工确认暂存；自动刷新卡库并保护并发写入。
+| 端 | 版本 | 状态 |
+| --- | --- | --- |
+| Android | `android-v0.10.3` | 已发布([发布记录](docs/ANDROID_RELEASE_0.10.3.md)) |
+| 第一套桌面（`apps/workbench`） | v0.1.0 | 学习闭环可用,见下 |
+| 冻结的 JVM 桌面（`:desktop`） | `desktop-v0.1.0` | 不再加功能,发布通道与上面那条独立 |
 
-## 功能
+完整演进见 [CHANGELOG.md](CHANGELOG.md)。
 
-- **今日学习**：可调整每日目标、进度、下一篇阅读与主题掌握情况。
-- **复习计划**：按阅读时间和回忆反馈安排到期队列，显示未来复习日期。
-- **知识管理**：全文搜索、主题和状态筛选、保留学习记录的内容编辑、导出当前结果。
-- **可折叠导航**：今日学习、复习计划、知识库在同一窗口切换，窄窗口自动收起导航文字。
+## 第一套桌面 · v0.1
 
-- **双重画报外观模式（深色 / 浅色 / 跟随系统）**：深度适配 macOS 原生外观，提供暗色人文画报与浅色典雅画报两种完整排版风格。窗口画布、毛玻璃质感、42 类柔和光晕、弹窗与卡片阴影全量动态演算；顶栏提供快捷切换胶囊按钮，设置页可随时设定默认偏好
-- **暗色人文画报风（Dark Editorial）**：以原生宋体（Songti SC Black）为主标题字模，辅以高透气衬线正文排版，多阶非线性动态遮罩（DynamicScrim），带来沉浸式出版物级阅读质感
-- **千卡千面智能背景与严格防重算法（Strict Min-Distance Deduplication）**：精选 42 套高品质暗黑杂志风摄影底图（覆盖科技、前沿物理、生命科学、地球生态、商业金融与人文哲学细分领域），采用严格同图距离排布算法（Min-Distance Greedy Layout），保证连续刷卡时相同底图至少相隔 5 张以上（可见栈 3 张卡片 100% 底图各异），划卡平滑出队不打散既有队列，带来张张不同、各美其美的沉浸式视觉享受；主窗体环境光晕随顶卡与划卡飞出动画实时流转
-- **触觉与 3D 动力学**：macOS 触控板震动实体反馈（达阈值震动、松手磁吸回弹、刷卡确认）；手势 1:1 跟手与 3D 俯仰透视；底层卡片平滑上浮放大，极速丝滑无闪烁（Flying Card Overlay）
-- **原生应用图标**：黑曜石磨砂底盘与琥珀金「K」卡片交叠，完美契合 macOS Sonoma / Sequoia 超椭圆原生规范
-- **随机刷卡**：从本地卡片库随机抽取，左右划快速浏览
-- **详情 + 链接**：按 `⏎` 展开水墨晕染大图与详情、查看卡片化来源链接；详情页内可连续刷卡（点操作自动切下一张，`←`/`→` 直接切换）
-- **历史记录**：自动保存浏览历史，图文画报流卡片呈现，随时回看（支持按感兴趣/不喜欢筛选）
-- **撤销**：`⌘Z` 撤销上一张卡片
-- **分类自定义**：设置页可增删改分类（名称 + 内容方向描述，支持分类专属色微标预览），内置「冷知识」分类作为未归类内容的兜底；AI 生成按每个分类的内容方向产出对应领域卡片
-- **主流 AI 服务商一键预设**：内置 DeepSeek、硅基流动 (SiliconFlow)、Kimi (月之暗面)、智谱 GLM、OpenAI、本地私有 Ollama，自动补全 Base URL 与热门模型，只需填入 Key 即可使用（Ollama 免填 Key），同时支持「自定义」模式连接任意兼容端点
-- **AI 智能生成**：卡片不足或想开拓新领域时自动补充新卡；流式生成、够数即停，自动做分类规范化与近重复去重
-- **卡库进度与重置**：设置页实时显示卡库探索进度，支持一键重置卡堆重新体验（预置库退役后，App 不再随版本灌注内置卡片）
-- **来源配置**：设置页可开关「AI 生成内容」这一信息来源（关闭后只刷你自己剪藏/导入的卡片），并配置 AI 引用站点偏好（生成内容与检索链接都优先这些站点）
-- **AI 内容标记**：AI 生成的卡片在正面显示橙色徽章、详情页显示核实提示条，可一键关闭
-- **偏好过滤**：设置里多选偏好分类，刷卡队列优先偏好分类，刷完自动回退其他分类
-- **学习统计**：杂志专栏风呈现——已刷/感兴趣率/连续天数 + 分类双轨条形图 + 近 7 天渐变趋势柱状图
-- **健壮模态路由**：采用单一状态入口模态调度（ActiveSheet），彻底根治 macOS SwiftUI 多弹窗覆盖失效
+学习闭环已经能用：剪藏、笔记导入、AI 出卡、刷卡、卡库与详情、收藏与历史、测验（SM-2 / FSRS）、统计、导入导出。
 
-## 键盘快捷键
+- **刷卡**：摄影底图卡面，拖拽或 `←` / `→` 划走；卡面显示分类、标题与摘要
+- **剪藏**：贴 URL → 抓正文预览 → AI 提炼成卡片 → 选卡入库（抓取在壳里做，绕开浏览器同源策略）
+- **测验**：四档自评驱动间隔重复，档位与 Android 同一套 SM-2 / FSRS 规则
+- **导入导出**：导入认 ZIP 与 JSON；导出的「另存为」选 `.zip` 得备份包（卡片 + 设置），选 `.json` 得裸 `cards.json`
+- 快捷键与其余操作见应用内「帮助」面板
 
-**系统菜单命令（任何界面可用；需要当前卡片的命令在卡堆为空时不可用）**
+第一版**不含**：语音朗读、磨耳朵、知识星图、卡片追问、海报导出、局域网同步、桌面微件、学习地图。
 
-| 快捷键 | 功能 |
-| --- | --- |
-| `⌘F` | 全局智能搜索与全文检索（支持拼音） |
-| `⌘J` | 向卡片追问（AI 伴学导师深入探讨） |
-| `⌘P` | 语音朗读 / 暂停（当前卡片） |
-| `⌥⌘P` | 打开听书控制台 |
-| `⇧⌘P` | 开启 / 退出磨耳朵连续播报 |
-| `⌘K` | 开启沉浸式知识测验 |
-| `⌘G` | 探索全景知识星图与引力链 |
-| `⌘B` | 打开知识收藏阁（沉淀笔记） |
-| `⌘S` | 生成并导出分享海报 |
-| `⌘N` | AI 生成 3 张新知识 |
-| `⌘?` | 快捷键帮助面板 |
-| `⌘,` | 打开偏好设置 |
+### 下载安装
 
-**沉浸刷卡界面**
+从 [Releases](https://github.com/bitterSmilezzz/knowflick/releases) 下载 `KnowFlick-Workbench-<版本>-<系统>.<扩展名>`：macOS 是 `.dmg`、Windows 是 `.msi`、Linux 是 `.deb`。
 
-| 快捷键 | 功能 |
-| --- | --- |
-| `←` / `→` | 不喜欢 / 感兴趣（划走） |
-| `⏎` | 展开卡片详情与来源链接 |
-| `⌘Z` | 撤销上一张卡片 |
-| `Esc` | 关闭当前弹出的面板 |
+> 未签名应用首次打开可能被系统拦下：macOS 在「系统设置 → 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine /Applications/KnowFlick.app`；Windows 在 SmartScreen 提示里选「更多信息 → 仍要运行」。
 
-**详情页内**
+### 构建与运行
 
-| 快捷键 | 功能 |
-| --- | --- |
-| `⌘J` | 向当前知识卡片深入探讨追问 |
-| `⌘P` | 朗读 / 暂停全文语音 |
-| `⌘D` | 收藏 / 取消收藏当前卡片 |
-| `⏎` 或 `Esc` | 关闭详情 |
-| `←` / `→` | 切换上一张历史卡片 / 下一张待刷卡片（刷卡区进入时） |
+需要 Node 22+ 与 Rust 工具链（开发机不必装 Android SDK）：
 
-**测验面板内**
+```sh
+cd apps/workbench
+npm install
+npm run tauri dev                       # 开发（起 Tauri 窗口 + 前端 dev server）
+npm run dev                             # 只起前端，http://localhost:1420（无壳能力）
 
-| 快捷键 | 功能 |
-| --- | --- |
-| `空格` / `⏎` | 翻转卡片（查看背面答案与解析） |
-| `⌘1` / `⌘2` / `⌘3` | 自评：没想起来 / 犹豫想起 / 熟练掌握 |
-| `Esc` | 退出当前测验 |
+cd ../..
+./tools/verify_workbench.sh             # 门禁：npm test + tsc + cargo test + 冒烟套件
+cd apps/workbench && npm run tauri build -- --bundles dmg   # 本系统那一档安装包
 
-## 下载安装
-
-从 [Releases](https://github.com/bitterSmilezzz/knowflick/releases) 页面下载最新 `KnowFlick.app.zip`，解压后拖入「应用程序」即可。
-
-> 提示：未签名应用首次打开时，若被 Gatekeeper 拦截，请在「系统设置 → 隐私与安全性」中点击「仍要打开」；或执行 `xattr -dr com.apple.quarantine /Applications/KnowFlick.app`。
-
-## 构建与运行
-
-需要 Swift 6.0+ 工具链（生产代码保持 Swift 5 语言模式），部署最低版本仍为 macOS 14。
-
-### 质量检查
-
-```bash
-./tools/test.sh
+# 门禁里还包含 14 套浏览器冒烟（界面级回归）。它们要真实浏览器与运行中的 Vite，
+# 所以开着一个 dev server 时才会跑；缺工具就明确 SKIP，不会让门禁红掉。
+npm run dev &                            # 另开一个终端：前端 dev server
+./tools/run_all_smokes.sh                # 只跑浏览器冒烟
 ```
 
-测试使用 Swift Testing，脚本兼容 Xcode 与 Command Line Tools 的框架路径。
-覆盖分类、统计、文件恢复、密钥编码隔离、刷卡状态、追问会话、API 传输与星图。
-网络测试通过本地 URLProtocol 替身执行，不请求真实 AI 服务。
-文档中的测试计数为 `@Test` 声明数（参数化用例运行时会展开为多条）。
+三端安装包**不在本机出**：Tauri 与 jpackage 一样不支持交叉编译。打 tag `workbench-v<版本>` 触发
+[workbench-release.yml](.github/workflows/workbench-release.yml)，三台 runner 各构建一档、各过一遍门禁，
+再由 `tools/assemble_workbench_release.sh` 统一命名、附到 Release。
 
-```bash
-# 图标构建链路（build_icon 自动调用 iconutil 打包 ICNS，随后逐像素校验）
-swift tools/build_icon.swift apps/mac/Resources/AppIcon-artwork.png /tmp/icon-check
-swift tools/verify_icon.swift /tmp/icon-check/AppIcon.icns /tmp/icon-check/AppIcon.png
+## Android 端
 
-# 课程导入脚本单元测试
-python3 tools/test_import_lessons.py
-```
+`apps/android`（Kotlin + Jetpack Compose，最低 Android 8.0 / API 26）保持现状，功能面比第一套桌面宽：除学习闭环外，还有语音朗读与磨耳朵、知识星图、局域网同步、桌面微件等。
 
-### 语音配置
+构建、安装、模块划分与发版见 [Android 端说明](apps/android/README.md)。
 
-语音与聊天模型独立配置。默认使用 macOS 系统语音；设置页可以保存多套语音配置，每次启用一套，服务不可用时回退系统声音。
+## AI 服务
 
-- 云端：填写 HTTPS Base URL、TTS 模型、音色和独立 API Key。兼容 `/v1/audio/speech` 的服务，例如硅基流动 CosyVoice/MOSS-TTSD。
-- 本地：运行 Kokoro-FastAPI、CosyVoice 网关或其他兼容服务，填写 `http://127.0.0.1:<端口>/v1`，不需要 API Key。
-- 模型文件由本地语音服务加载，不直接放进 KnowFlick.app；这样避免应用体积和内存被模型权重占满。API Key 只进 Keychain。
+两套都**只连你自己的端点**：不做 KnowFlick 账号、不代管模型、不代理你的请求。
 
-### Android 端
+- **第一套桌面**：设置页填 Base URL / 模型 / API Key，可「测试连接」。密钥存在数据目录旁的单独文件里（仅本机用户可读的明文文件，**未接系统钥匙串**，如实告知强度）。
+- **Android**：除自填端点外另有内置服务商预设（DeepSeek、硅基流动、Kimi、智谱 GLM、阿里云百炼、OpenAI、本地 Ollama 等），密钥走 Android Keystore。
 
-Android 端的实施边界和语音协议见 [apps/android/README.md](apps/android/README.md)，发布记录见 [docs/](docs/)。
-
-### 直接运行（开发）
-
-```bash
-cd apps/mac
-swift run
-```
-
-### 打包成 .app
-
-```bash
-cd apps/mac
-./build_app.sh
-```
-
-脚本会执行 `swift build -c release`，并把可执行文件、`Info.plist` 和资源 bundle 手工组装为 `dist/KnowFlick.app`（无需 Xcode 工程）。需要完整 Xcode（SwiftUI 宏依赖其工具链插件）。
-
-### 安装使用
-
-- 双击 `dist/KnowFlick.app` 直接运行；或
-- 把它拖到 `/Applications` 后从「启动台」/「应用程序」打开
-
-## AI 服务配置（开箱即用）
-
-在应用内点击右上角「偏好设置」（齿轮图标），在「AI 驱动服务」卡片中选择服务商预设（已清晰划分为**在线 API 服务**与**本地部署运行**）：
-
-### 1. 在线 API 服务
-| 服务商预设 | 默认 Base URL | 推荐模型 | 说明 |
-| --- | --- | --- | --- |
-| **DeepSeek (官方)** | `https://api.deepseek.com` | `deepseek-chat`, `deepseek-reasoner` | 官方高性价比模型，填入 API Key 即可 |
-| **硅基流动 (SiliconFlow)** | `https://api.siliconflow.cn/v1` | `deepseek-ai/DeepSeek-V3`, `Qwen/Qwen2.5-7B-Instruct` | 汇聚主流满血大模型，填入 Key 即可 |
-| **Kimi (月之暗面)** | `https://api.moonshot.cn/v1` | `moonshot-v1-8k`, `moonshot-v1-32k` | 长文本与中文常识理解，填入 Key 即可 |
-| **智谱 GLM / BigModel** | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash`, `glm-4-plus`, `glm-5.2` | 智谱 AI 开放平台，填入 Key 即可 |
-| **阿里云百炼 (通义千问)** | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus`, `qwen-max`, `qwen-turbo` | 阿里云 DashScope 官方兼容端点 |
-| **OpenCode Go** | `https://opencode.ai/zen/go/v1` | `deepseek-v4-flash`, `glm-5.2`, `kimi-k3` | OpenCode 开发者中转，汇聚主流前沿模型 |
-| **基元律动 (TokenRhythm)** | `https://tokenrhythm.studio/v1` | `deepseek-v4-flash`, `glm-5.2`, `qwen3.8-max` | TokenRhythm 高并发聚合云端服务 |
-| **小米 MiMo (Xiaomi)** | `https://api.xiaomimimo.com/v1` | `mimo-v2.5`, `mimo-v2.5-pro` | 小米大模型开放平台云端端点 |
-| **LongCat (长猫科技)** | `https://api.longcat.chat/openai` | `LongCat-2.0` | 长猫科技大模型服务平台端点 |
-| **蚂蚁百灵 (AntDigital)** | `https://maas-api.antdigital.com/v1` | `ling-3.0-flash-fin`, `deepseek-v4-flash` | 蚂蚁数科百灵大模型开放平台 |
-| **NVIDIA NIM** | `https://integrate.api.nvidia.com/v1` | `deepseek-ai/deepseek-v4-flash-0731` | 英伟达开发者微服务推理平台 |
-| **AMD 开发者平台** | `https://developer.amd.com.cn/radeon/api/v1` | `DeepSeek-V4-Flash`, `Qwen3.8-Flash-Next` | AMD 开发者中心开源大模型端点 |
-| **OpenAI (官方)** | `https://api.openai.com/v1` | `gpt-4o-mini`, `gpt-4o` | 官方 GPT 系列端点，填入 Key 即可 |
-
-### 2. 本地部署运行
-| 服务商预设 | 默认 Base URL | 推荐模型 | 说明 |
-| --- | --- | --- | --- |
-| **Ollama (本地私有)** | `http://localhost:11434/v1` | `qwen2.5:7b`, `deepseek-r1:7b`, `llama3.1:8b` | 本地私有离线运行，**无需 API Key** |
-| **本地代理网关 (:31415)** | `http://127.0.0.1:31415/v1` | `auto`, `fusion`, `gemini-3.6-flash` | 本机聚合网关端口，**无需 API Key** |
-
-### 3. 自定义
-| 服务商预设 | 默认 Base URL | 推荐模型 | 说明 |
-| --- | --- | --- | --- |
-| **自定义服务商** | 自定义端点地址 | 自定义模型名 | 适配任意第三方 OpenAI 兼容端点或中转站 |
-
-- **安全存储**：API Key **绝不写入本地明文 JSON 文件**，只存入 macOS 原生钥匙串（Keychain）中。
-- **即选即用**：切换预设时，Base URL 与推荐模型列表自动联动填入，免去查文档与手动输入的不便。
-- **连通性测试**：配置完成后可点击「测试连通性」一键校验端点与密钥是否工作正常。
-- **自定义分类与偏好**：设置面板中可增删改分类、多选偏好分类，并可设置 AI 优先引用的权威信源站点。
+两套都用「一次请求拿回若干候选卡 → 分类规范化 → 标题去重 → 内容长度门槛」，AI 生成的卡片带可关闭的来源标记。差别在传输：Android 走 SSE 流式（够数即停、另有近重复抑制），第一套桌面是一次性请求。
 
 ## 数据存储
 
-| 内容 | 位置 |
+两套共用同一套文件结构，只是数据目录不同：
+
+| 平台 | 数据目录 |
 | --- | --- |
-| 卡片数据（含历史） | `~/Library/Application Support/KnowFlick/cards.json` |
-| 卡片备份（上一版轮转） | `~/Library/Application Support/KnowFlick/cards.backup.json` |
-| AI 设置（base_url / model） | `~/Library/Application Support/KnowFlick/settings.json` |
-| 追问聊天会话 | `~/Library/Application Support/KnowFlick/chat_sessions.json` |
-| AI 密钥 | macOS 钥匙串（Keychain） |
+| Windows | `%APPDATA%\KnowFlick\store` |
+| macOS | `~/Library/Application Support/KnowFlick/store` |
+| Linux | `$XDG_DATA_HOME/KnowFlick/store`（默认 `~/.local/share/KnowFlick/store`） |
+| Android | 应用私有目录 `filesDir/store`（需 root 或走导出才能直接看到） |
 
-**知识内容全部由你自己积累**：网页剪藏（URL → 抽正文 → AI 提炼成卡片）、笔记导入、AI 按分类生成。应用不再内置任何卡片库——空库是正常起点，任何启动路径都不会往库里灌内容。
+目录里的文件：`cards.json`（主库）、`cards.backup.json` / `cards.backup.2.json`（两代轮转备份）、`settings.json`、`search_history.json`。
+API 密钥不在这些文件里——它在数据目录旁的 `credentials/` 下单独一个文件，**不进卡片 JSON、不进设置 JSON、不进导出包**。
 
-卡片背景图来自 [Unsplash](https://unsplash.com)（Unsplash License，可免费商用），已做压暗与底部渐变处理以保证文字可读性；自定义分类自动复用内置视觉资源（按分类名稳定映射）。
+> **从已删除的 macOS 端（Swift 版）搬数据**：那一版把 `cards.json` / `settings.json` 直接放在数据目录**根下**，而现在的两套都读 `store/` 子目录。把文件移进 `store/` 即可——结构相同，中间不需要转换。（实测本机就是这样：根下留着旧的 `cards.json` / `settings.json`，两套读的是 `store/`。）
+
+卡片背景图来自 [Unsplash](https://unsplash.com)（Unsplash License，可免费商用），共 42 张，按领域分池，已做压暗与底部渐变处理以保证文字可读性。
+
+## 让 Agent 查你的卡库（MCP / CLI）
+
+[`tools/knowflick-mcp/`](tools/knowflick-mcp/README.md) 是个零第三方依赖的 MCP 服务器：Qoder / Claude Desktop / Cursor 这类支持 MCP 的 Agent 可以把你的卡库当知识源来检索、看学科地图与学习路径；同一份逻辑也提供命令行入口（`kf.mjs`），给连不上 MCP 的场合用。
+
+默认**只读**卡库；需要沉淀新卡时追加到同目录的 `staged_cards.json`（与 `cards.json` 同构），由 App 的导入界面**人工确认**——不存在 Agent 静默改库。CLI 与 MCP 的结果由测试断言逐条一致。
 
 ## 项目结构
 
-多端仓库：各端应用位于 `apps/`，跨端共享内容位于 `shared/`。分支模型、版本号与发版流程见 [多端协作规范](docs/MULTI_PLATFORM.md)。
+多端仓库：各端应用在 `apps/`，跨端共享内容在 `shared/`。分支模型、版本号与发版流程见[多端协作规范](docs/MULTI_PLATFORM.md)。
 
 ```
 KnowFlick/
-├── apps/                    # 各端应用（独立构建，互不依赖）
-│   ├── mac/                 # macOS 端
-│   │   ├── Package.swift        # SwiftPM 清单（macOS 14+）
-│   │   ├── build_app.sh         # 打包脚本 → dist/KnowFlick.app
-│   │   ├── Resources/           # 原生应用图标（AppIcon.icns / AppIcon.png）
-│   │   ├── Sources/
-│   │   │   ├── KnowFlick/           # 应用层
-│   │   │   │   ├── KnowFlickApp.swift   # 应用生命周期入口
-│   │   │   │   └── Views/               # 刷卡、详情、历史、设置、设计系统 Token、触觉辅助
-│   │   │   └── KnowFlickCore/       # 核心业务逻辑（独立跨平台/可测）
-│   │   │       ├── Models/              # 卡片 / 分类 / AI 设置模型
-│   │   │       ├── Services/            # AI 服务、钥匙串存取
-│   │   │       ├── Stores/              # AppStore 应用状态、卡片持久化
-│   │   │       ├── Stats/               # 纯函数统计与趋势计算
-│   │   │       └── Resources/           # 由 tools/sync_shared_assets.sh 从 shared/assets 同步（不入 Git）
-│   │   └── Tests/               # Swift Testing 用例
+├── apps/
+│   ├── workbench/           # 第一套桌面：Vite + React + Tauri（Windows / Linux / macOS）
+│   │   ├── src/domain/          # 卡片、卡库、排列、间隔重复、统计、搜索、剪藏抽取、笔记解析（含 Vitest 单测）
+│   │   ├── src/ui/ · src/shell/ # 界面组件与壳能力封装（文件对话框、网络、凭据）
+│   │   └── src-tauri/           # Rust 壳：数据目录、原子写与备份轮转、正文抓取、AI 请求、导出
 │   └── android/             # Android 端（Gradle + Compose）
-├── shared/assets/           # 跨端共享资产（唯一事实来源）
-│   ├── taxonomy_map.json    # 学科契约（三处事实来源之一）
-│   └── bg/*.webp            # 分类底图
-├── tools/                   # 跨端脚本：test.sh / build_android.sh / sync_shared_assets.sh / lint_shell_vars.sh / test_import_lessons.py / import_lessons.py / build_icon / verify_icon
-├── docs/                    # 多端协作规范、各端发布记录与评审报告
-├── assets/                  # README 截图等展示资源
+│       ├── domain/              # :domain — KMP 领域层（jvm + androidTarget）
+│       ├── shared-data/         # :shared-data — 持久化与归档导入导出
+│       ├── shared-ui/           # :shared-ui — Compose 共享界面层
+│       ├── desktop/             # :desktop — 已冻住的 JVM 桌面宿主，不再加功能
+│       └── app/                 # :app — Android 装配层
+├── shared/
+│   ├── assets/              # 跨端共享资产（唯一事实来源）：taxonomy_map.json、bg/*.webp
+│   └── icons/               # 安装包图标：派生的 .icns / .ico / .png（美术源 iconset 不入 Git）
+├── tools/                   # 跨端脚本：verify_workbench.sh / build_android.sh / check_taxonomy.py / assemble_*_release.sh / generate_app_icons.py
+├── docs/                    # ADR、多端协作规范、发布记录与评审报告
+├── assets/                  # README 展示资源
 ├── CHANGELOG.md             # 完整版本更新日志
-├── CONTEXT.md               # 领域词汇表（架构评审与实现的统一语言）
-└── dist/                    # 构建产物（不入 Git）
+└── CONTEXT.md               # 领域词汇表（架构评审与实现的统一语言）
 ```
-
-## 更新日志
-
-详见 [CHANGELOG.md](CHANGELOG.md) 查看完整的版本迭代与演进记录。
 
 ## 技术说明
 
-- 纯 SwiftPM 工程，无 Xcode 工程文件；`swift build -c release` 即可编译
-- 双 target 结构：`KnowFlickCore`（模型/服务/存储/统计，可测试）+ `KnowFlick`（App 入口与视图）+ `KnowFlickCoreTests`
-- 共享资源（分类底图）经 `tools/sync_shared_assets.sh` 从 `shared/assets` 同步进资源目录，两端共用同一份文件；背景图由 `CoreResources.bundle` 定位、经 ImageIO 降采样解码后缓存
-- 目标平台：macOS 14.0+（Apple Silicon / Intel 均可）
+- **第一套桌面**：Vite + React + TypeScript 写界面，Tauri 2 的 Rust 壳只做窗口、本机文件、系统菜单与网络代理；卡片规则（抽取、排列、间隔重复、统计）全写在 Web 这一层，Rust 侧只搬字节、管文件。
+- **Android**：原生 Kotlin + Compose。与框架无关的领域逻辑收在 `:domain`（KMP），持久化在 `:shared-data`，界面在 `:shared-ui` 与 `:app`。
+- **契约**：`shared/assets/taxonomy_map.json` 是学科契约的唯一事实来源，`python3 tools/check_taxonomy.py` 在 CI 上校验它与各端内嵌表一致。
+- **共享底图不落副本**：两端都直接读 `shared/assets/bg/`（Android 走 Gradle `assets.srcDirs`，第一套桌面走 Vite `publicDir`），仓库里不留第二份。
+
+## 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md)。

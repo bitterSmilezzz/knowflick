@@ -55,6 +55,41 @@ class MainActivity : ComponentActivity() {
     private var detailCardId by mutableStateOf<String?>(null)
     private var detailReturnScreen by mutableStateOf(Screen.DECK)
 
+    /** 笔记导入：读入文本后交给共享面板解析，不在这里写库。 */
+    private val notesFilePicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        lifecycleScope.launch {
+            val loaded = runCatching {
+                withContext(Dispatchers.IO) {
+                    val name = uri.lastPathSegment ?: "note"
+                    val text = contentResolver.openInputStream(uri)?.use { input ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        val max = com.knowflick.app.data.NoteImport.MAX_BYTES
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > max) error("导入文件过大，当前最多支持 ${max / 1024 / 1024} MB。")
+                            out.write(buffer, 0, read)
+                        }
+                        out.toString(Charsets.UTF_8.name())
+                    } ?: error("无法读取文件")
+                    name to text
+                }
+            }
+            loaded.fold(
+                onSuccess = { (name, text) -> viewModel.acceptNotesFile(name, text) },
+                onFailure = { error ->
+                    android.widget.Toast.makeText(this@MainActivity, error.message ?: "读取文件失败", android.widget.Toast.LENGTH_SHORT).show()
+                },
+            )
+        }
+    }
+
     /** 知识库导入：选择 ZIP 备份包 / JSON 镜像文件并执行智能探测与预览 */
     private val importFilePicker = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -85,6 +120,8 @@ class MainActivity : ComponentActivity() {
             // 共享界面里的「轻量提示」走宿主提供的实现：Android = 系统 Toast，
             // 与迁移前共享屏里直接 Toast 的用户可见行为完全一致（不提供则静默）。
             com.knowflick.app.ui.common.ProvideToastNotifier {
+            // 导出面板的落地方式（写 Downloads / 系统分享）也由宿主提供
+            com.knowflick.app.data.ProvideAndroidArchiveExporter {
             KnowFlickTheme(paperTheme = viewModel.currentPaperTheme) {
                 val libraryState = rememberSaveableStateHolder()
                 Box(
@@ -117,6 +154,8 @@ class MainActivity : ComponentActivity() {
                                 onOpenGraph = { screen = Screen.GRAPH },
                                 onOpenMap = { screen = Screen.MAP },
                                 onOpenClip = { viewModel.openClipSheet() },
+                                onOpenNotesImport = { viewModel.openNotesImport() },
+                                onOpenHelp = { viewModel.openHelp() },
                                 studyScopeLabel = viewModel.studyScope.describe(),
                                 onOpenSync = { viewModel.openSyncSheet() },
                                 isGenerating = viewModel.isGenerating,
@@ -470,8 +509,33 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // 网页剪藏面板（分享链接与手动粘贴同一条路径）
+                    if (viewModel.showNotesImport) {
+                        com.knowflick.app.ui.NotesImportSheet(
+                            aiConfigured = viewModel.settings.isConfigured,
+                            existingCards = viewModel.model.store.cards,
+                            incomingFileName = viewModel.notesFileName,
+                            incomingFileText = viewModel.notesFileText,
+                            onParseRules = { text, fileName -> com.knowflick.app.data.NoteImport.parse(text, fileName) },
+                            onTransform = { note -> viewModel.transformClipNote(note) },
+                            onImport = { cards, insertAtTop -> viewModel.importClippedCards(cards, insertAtTop) },
+                            onPickFile = {
+                                notesFilePicker.launch(arrayOf("text/*", "application/json", "*/*"))
+                            },
+                            onClose = viewModel::closeNotesImport,
+                        )
+                    }
+                    if (viewModel.showHelp) {
+                        com.knowflick.app.ui.HelpSheet(onClose = viewModel::closeHelp)
+                    }
                     if (viewModel.showClipSheet) {
-                        com.knowflick.app.ui.clip.ClipSheet(viewModel = viewModel)
+                        com.knowflick.app.ui.ClipSheet(
+                            initialText = viewModel.clipSeed,
+                            aiConfigured = viewModel.settings.isConfigured,
+                            onFetch = { text -> com.knowflick.app.data.WebClipFetcher.clip(text) },
+                            onTransform = { note -> viewModel.transformClipNote(note) },
+                            onImport = { cards, insertAtTop -> viewModel.importClippedCards(cards, insertAtTop) },
+                            onClose = viewModel::closeClipSheet,
+                        )
                     }
 
                     if (viewModel.showSyncSheet) {
@@ -502,6 +566,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             }
+            } // ProvideAndroidArchiveExporter
         }
     }
 

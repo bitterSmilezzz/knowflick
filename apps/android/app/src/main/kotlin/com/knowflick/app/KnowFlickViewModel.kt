@@ -707,130 +707,73 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // ---------- 网页剪藏（浏览时随手把文章收进知识库） ----------
-
-    /** 剪藏面板的四个阶段：面板上的按钮可用性与文案都由它驱动 */
-    enum class ClipStage { INPUT, FETCHING, READY, EXTRACTING }
+    // ---------- 网页剪藏 ----------
+    // 三步交互在共享 `ClipSheet` 里。这里只提供打开面板、AI 提炼和确认后的入库。
 
     var showClipSheet by mutableStateOf(false)
         private set
 
-    /** 用户粘贴或从浏览器分享来的文本（可能是「正文 + 链接」混排） */
-    var clipInput by mutableStateOf("")
+    /** 分享进来的原始文本。面板打开时若非空会自动抓取一次。 */
+    var clipSeed by mutableStateOf("")
         private set
 
-    var clipStage by mutableStateOf(ClipStage.INPUT)
-        private set
-
-    var clipDigest by mutableStateOf<com.knowflick.app.domain.WebClipDigest?>(null)
-        private set
-
-    var clipNotice by mutableStateOf<String?>(null)
-        private set
-
-    /** 失败原因与提示分开：提示是信息（灰色），失败要显眼（橙色），混在一个字段里小屏上会被读成同一种东西 */
-    var clipError by mutableStateOf<String?>(null)
-        private set
-
-    private var clipJob: kotlinx.coroutines.Job? = null
-
-    /** 打开剪藏面板；带 `sharedText` 时直接开始抓取（分享入口的默认期望是「不用我再点一次」） */
     fun openClipSheet(sharedText: String? = null) {
+        clipSeed = sharedText.orEmpty()
         showClipSheet = true
-        clipNotice = null
-        clipError = null
-        clipDigest = null
-        clipStage = ClipStage.INPUT
-        if (!sharedText.isNullOrBlank()) {
-            clipInput = sharedText
-            runClipFetch()
-        }
     }
 
     fun closeClipSheet() {
-        clipJob?.cancel()
-        clipJob = null
         showClipSheet = false
-        clipStage = ClipStage.INPUT
-        clipDigest = null
-        clipNotice = null
-        clipError = null
+        clipSeed = ""
     }
 
-    fun updateClipInput(text: String) {
-        clipInput = text
-        if (clipStage == ClipStage.FETCHING || clipStage == ClipStage.EXTRACTING) return
-        clipStage = ClipStage.INPUT
-        clipDigest = null
-        clipNotice = null
-        clipError = null
+    suspend fun transformClipNote(note: String): List<KnowledgeCard> {
+        if (!settings.isConfigured) error("请先在设置里配置 AI 服务")
+        return aiService.transformNoteToCards(
+            settings = settings,
+            apiKey = currentApiKey(),
+            note = note,
+        )
     }
 
-    /** 抓取并抽正文。网络与解析都在 IO 线程，面板不阻塞 */
-    fun runClipFetch() {
-        val text = clipInput.trim()
-        if (text.isEmpty()) {
-            clipError = "先粘贴或分享一个网页链接"
-            return
-        }
-        clipJob?.cancel()
-        clipStage = ClipStage.FETCHING
-        clipDigest = null
-        clipNotice = null
-        clipError = null
-        clipJob = viewModelScope.launch {
-            try {
-                val digest = com.knowflick.app.data.WebClipFetcher.clip(text)
-                clipDigest = digest
-                clipStage = ClipStage.READY
-                clipNotice = if (digest.truncated) "正文较长，已按行截取前 ${digest.text.length} 字用于提炼" else null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: com.knowflick.app.domain.WebClipException) {
-                clipStage = ClipStage.INPUT
-                clipError = e.message
-            } catch (e: Exception) {
-                clipStage = ClipStage.INPUT
-                clipError = "取不到这个页面：${e.message ?: "网络异常"}"
-            }
-        }
+    /** 确认导入选中的卡片。返回给面板展示的结果文案。 */
+    fun importClippedCards(cards: List<KnowledgeCard>, insertAtTop: Boolean): String {
+        var added = 0
+        mutate { added = model.store.addCards(cards, insertAtTop = insertAtTop) }
+        val skipped = cards.size - added
+        return "导入完成：新增 $added 张，跳过重复卡 $skipped 张。"
     }
 
-    /** 用 AI 把剪藏正文提炼成卡片并置顶入堆（人工确认这一步之后才写库） */
-    fun clipToCards() {
-        val digest = clipDigest ?: return
-        if (clipStage == ClipStage.EXTRACTING) return
-        if (!settings.isConfigured) {
-            clipError = "请先在设置里配置 AI 服务"
-            return
-        }
-        clipJob?.cancel()
-        clipStage = ClipStage.EXTRACTING
-        clipNotice = null
-        clipError = null
-        clipJob = viewModelScope.launch {
-            try {
-                val transformedCards = aiService.transformNoteToCards(
-                    settings = settings,
-                    apiKey = currentApiKey(),
-                    note = digest.aiNote,
-                )
-                val cards = digest.attributing(transformedCards)
-                mutate { model.store.addCards(cards, insertAtTop = true) }
-                generateNotice = "已剪藏《${digest.siteName}》并生成 ${cards.size} 张卡片 ✓"
-                showClipSheet = false
-                clipStage = ClipStage.INPUT
-                clipDigest = null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: AiError) {
-                clipStage = ClipStage.READY
-                clipError = e.message
-            } catch (e: Exception) {
-                clipStage = ClipStage.READY
-                clipError = "提炼失败：${e.message}"
-            }
-        }
+    var showNotesImport by mutableStateOf(false)
+        private set
+    var notesFileName by mutableStateOf<String?>(null)
+        private set
+    var notesFileText by mutableStateOf<String?>(null)
+        private set
+    var showHelp by mutableStateOf(false)
+        private set
+
+    fun openNotesImport() {
+        showNotesImport = true
+    }
+
+    fun closeNotesImport() {
+        showNotesImport = false
+        notesFileName = null
+        notesFileText = null
+    }
+
+    fun acceptNotesFile(name: String, text: String) {
+        notesFileName = name
+        notesFileText = text
+    }
+
+    fun openHelp() {
+        showHelp = true
+    }
+
+    fun closeHelp() {
+        showHelp = false
     }
 
     // ---------- 卡片 AI 伴学与深度追问 ----------

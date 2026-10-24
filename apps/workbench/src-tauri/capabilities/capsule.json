@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "capsule",
+  "description": "快速记录闪念胶囊窗口最小权限：仅允许隐藏窗口与保存素材",
+  "windows": ["quick-capture"],
+  "permissions": [
+    "core:default",
+    "allow-hide-capsule",
+    "allow-db-save-material"
+  ]
+}

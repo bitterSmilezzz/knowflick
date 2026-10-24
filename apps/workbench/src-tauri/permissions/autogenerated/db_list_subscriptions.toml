@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-list-subscriptions"
+description = "Enables the db_list_subscriptions command without any pre-configured scope."
+commands.allow = ["db_list_subscriptions"]
+
+[[permission]]
+identifier = "deny-db-list-subscriptions"
+description = "Denies the db_list_subscriptions command without any pre-configured scope."
+commands.deny = ["db_list_subscriptions"]

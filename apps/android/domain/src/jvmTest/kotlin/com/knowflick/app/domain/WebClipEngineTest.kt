@@ -10,9 +10,10 @@ import org.junit.Test
 /**
  * 网页剪藏内核测试。
  *
- * 断言的是**双端共同契约**：期望值全部写成字面量，且夹具 HTML 与 mac 端
- * `WebClipEngineTests.swift` 逐字相同。同一链接在手机与桌面必须抽出同样的标题与正文，
- * 任何一端改规则而没有同步，这里或那里会红。
+ * 断言的是**规则表契约**：期望值全部写成字面量。同一份规则今天有两套实现——这里的
+ * Kotlin（`WebClipEngine.kt`，Android 用）与 workbench 侧的 TypeScript（`clipEngine.ts`）——
+ * 两边的 token 表与阈值必须逐条相同；任何一端改规则而没同步，这里或那边会红。
+ * （Swift 那份随 `apps/mac` 删除；历史夹具与本文件曾逐字相同。）
  */
 class WebClipEngineTest {
 
@@ -259,6 +260,26 @@ class WebClipEngineTest {
         val html = "<html><head><script>var x = 1;</script></head><body><p>这一段的文字必须被正常抽取出来。</p></body></html>"
         val digest = WebClipEngine.digest(html, WebClipEngine.validatedLink("https://g.test/"))
         assertTrue(digest?.text?.contains("这一段的文字") == true)
+    }
+
+    @Test
+    fun junkLineTokensMatchRegardlessOfLetterCase() {
+        // 回归：`isJunkLine` 先把整行 `lowercase()` 再比对，所以 JUNK_TOKENS 里若有大写字母，
+        // 那条就永远匹配不上——同一页在这里留下样板行，而 workbench 侧（表里写的是小写）会丢掉。
+        val html = """
+        <html><body><article>
+        <p>这是正文的第一段，它需要足够长以通过短行过滤规则的检查。</p>
+        <p>APP下载 我们的客户端应用</p>
+        <p>Cookie 与隐私设置说明</p>
+        <p>JavaScript 需要开启才能继续</p>
+        </article></body></html>
+        """.trimIndent()
+        val digest = WebClipEngine.digest(html, WebClipEngine.validatedLink("https://h.test/"))
+            ?: return fail("应能抽到正文")
+        assertTrue("正文本身不能被丢掉：${digest.text}", digest.text.contains("这是正文的第一段"))
+        assertFalse("样板行应被丢弃：${digest.text}", digest.text.contains("APP下载"))
+        assertFalse("样板行应被丢弃：${digest.text}", digest.text.contains("Cookie"))
+        assertFalse("样板行应被丢弃：${digest.text}", digest.text.contains("JavaScript"))
     }
 
     // MARK: - 字符集

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mail-sync-history"
+description = "Enables the mail_sync_history command without any pre-configured scope."
+commands.allow = ["mail_sync_history"]
+
+[[permission]]
+identifier = "deny-mail-sync-history"
+description = "Denies the mail_sync_history command without any pre-configured scope."
+commands.deny = ["mail_sync_history"]
