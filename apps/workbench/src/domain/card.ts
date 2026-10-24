@@ -142,7 +142,8 @@ export function cardFromJson(value: unknown, now = Date.now()): KnowledgeCard {
     masteryLevel: asInt(obj.masteryLevel) ?? 0,
     lastReviewedAt: decodeDate(obj.lastReviewedAt),
     repetition: asInt(obj.repetition) ?? 0,
-    intervalDays: asInt(obj.intervalDays) ?? 1,
+    // interval 是小数天（FSRS），Rust 侧是 REAL——按 asInt 会被 5.5 丢成默认 1
+    intervalDays: asDouble(obj.intervalDays) ?? 1,
     easeFactor: asDouble(obj.easeFactor) ?? 2.5,
     stability: asDouble(obj.stability) ?? 0,
     difficulty: asDouble(obj.difficulty) ?? 0,
