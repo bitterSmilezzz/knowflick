@@ -30,7 +30,7 @@ describe("文字近似的重复候选（C04：候选、不自动删）", () => {
       { id: "far", title: "较像", body: close },
       { id: "same", title: "相同", body: original },
     ]);
-    expect(candidates.length).toBeGreaterThan(0, "两个相近条目都应成为候选——空数组会让下面的循环空过");
+    expect(candidates.length, "两个相近条目都应成为候选——空数组会让下面的循环空过").toBeGreaterThan(0);
     for (let i = 1; i < candidates.length; i++) {
       expect(candidates[i].distance).toBeGreaterThanOrEqual(candidates[i - 1].distance);
     }
