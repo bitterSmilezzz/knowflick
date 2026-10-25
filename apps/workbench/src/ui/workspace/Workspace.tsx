@@ -58,7 +58,7 @@ import { SubscriptionsView } from "./SubscriptionsView";
 import { NotesView } from "./NotesView";
 import type { NotesState } from "../../domain/note";
 import type { Goal } from "../../shell/store";
-import { restoreNotesBundle } from "./notesRestore";
+import { executeRestore, restoreFailuresToMarkdown, summarizeRestore } from "./backupRestore";
 import { backupCopyToDirectory, webdavUploadBackup } from "../../shell/store";
 import { createKfBackupArchive } from "../../domain/systemBackup";
 import { activeGoals, ensureNoteFromMaterial, readLastImportReport, readNotes, saveLastImportReport } from "./repository";
@@ -68,7 +68,6 @@ import { ArtifactsView } from "./ArtifactsView";
 import { StatsView } from "./StatsView";
 import { setSoundEffectsEnabled } from "../../shell/sounds";
 import { parseNotesFile } from "../../domain/notes";
-import { restorableArtifacts, restorableCards, restorableMaterials } from "../../domain/restoreRules";
 import { parseEml } from "./emlParser";
 import { imageMimeOf, mediaMimeOfExtension } from "../../domain/mediaMime";
 import { InkPad, VoiceRecorder } from "./NotePads";
@@ -1303,70 +1302,65 @@ export function Workspace() {
         const buffer = new Uint8Array(await chosen.arrayBuffer());
         const isZip = /\.kfbackup$/i.test(chosen.name) || (buffer[0] === 0x50 && buffer[1] === 0x4b);
         const restored = restoreKfBackup(isZip ? buffer : new TextDecoder().decode(buffer));
-        // 附件先写回本机再落素材行：素材里的 mediaPath 是库内相对路径，
-        // 换一台机器后必须重新落盘，否则就是一批指向空处的引用。
-        const restoredMedia = new Map<string, string>();
-        for (const [rel, bytes] of restored.media) {
+        // T05（KF-007）：恢复走一致性服务——附件先暂存、素材逐条处置、
+        // 失败逐条记录，回执区分完整恢复与部分恢复（不再一律写「未受影响」）。
+        const stager = async (rel: string, bytes: Uint8Array): Promise<string> => {
+          // media 只接受白名单 MIME，必须按扩展名还原，否则每一条都会被判失败。
+          const ext = rel.split(".").pop()?.toLowerCase() ?? "";
+          const mime = mediaMimeOfExtension(ext);
+          if (!mime) throw new Error(`不支持的附件类型（${ext || "无扩展名"}）`);
+          const kind = rel.startsWith("media/image/") ? "image" : rel.startsWith("media/ink/") ? "ink" : "audio";
+          return await saveMedia(kind as "audio" | "ink" | "image", mime, bytes, dir);
+        };
+        const report = await executeRestore(restored, dir, stager, {
+          updateMaterial: (m) => updateMaterial(m),
+          updateCard: (c) => updateCard(c),
+          saveArtifact: inShell() ? (a) => dbSaveArtifact(a, dir) : undefined,
+          saveSettings: restored.settings ? (s) => storePreferences(s, apiKey, dir) : undefined,
+        });
+        const summary = summarizeRestore(report);
+        if (report.failures.length > 0) {
+          console.warn("[备份恢复] 部分条目未能写入：", report.failures);
+        }
+        if (report.partial) {
+          setError(
+            `备份恢复是**部分完成**：${summary}。${report.failures.length} 条未能写入` +
+            "——本地内容已经改变，不会自动回滚。失败明细已复制到剪贴板（也可在控制台查看）。",
+          );
+          // 失败明细要给用户能带走的东西：复制到剪贴板 + 存进本地文件供下载
           try {
-            // media 只接受白名单 MIME，必须按扩展名还原，否则每一条都会被判失败。
-            const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-            const mime = mediaMimeOfExtension(ext);
-            const kind = rel.startsWith("media/image/") ? "image" : rel.startsWith("media/ink/") ? "ink" : "audio";
-            if (!mime) return;
-            const saved = await saveMedia(kind as "audio" | "ink" | "image", mime, bytes, dir);
-            restoredMedia.set(rel, saved);
-          } catch { /* 单个附件失败不阻断整份备份恢复 */ }
-        }
-        let total = 0;
-        // 「哪些条目该被放回去」的判定在 domain/restoreRules.ts ——
-        // 那里有单测钉着（曾经是静默丢数据的地方，不能只有浏览器层的证据）。
-        for (const m of restorableMaterials(restored.materials)) {
-          const mediaPath = m.mediaPath ? restoredMedia.get(m.mediaPath) ?? null : m.mediaPath;
-          await updateMaterial({ ...m, mediaPath, mediaSizeBytes: m.mediaSizeBytes || 0 });
-          total++;
-        }
-        for (const c of restorableCards(restored.cards)) {
-          await updateCard(c);
-          total++;
-        }
-        // 认知产物是 Layer 3，只在桌面端有 SQLite 表；浏览器体验模式没有这层，跳过。
-        for (const art of restorableArtifacts(restored.artifacts)) {
-          if (inShell()) await dbSaveArtifact(art, dir);
-          total++;
-        }
-        // 笔记与知识库（v2 包）：走恢复专用写入——修订号/时间/删除态按包保留，
-        // 处置逐条上报（新增/更新/保留本地较新/已一致/失败），不再吞错假计数。
-        const report = await restoreNotesBundle(restored.notes, restored.knowledgeBases, restored.kbMembership, dir);
-        total += report.notes.created + report.notes.updated;
-        const noteSummary =
-          `笔记：新增 ${report.notes.created}、更新 ${report.notes.updated}` +
-          (report.notes.skippedLocalNewer ? `、保留本地较新 ${report.notes.skippedLocalNewer}` : "") +
-          (report.notes.skippedDivergent ? `、同修订分歧保留本地 ${report.notes.skippedDivergent}` : "") +
-          (report.notes.current ? `、已一致 ${report.notes.current}` : "");
-        const failedCount =
-          report.notes.failed.length + report.knowledgeBases.failed.length + report.membership.failed.length;
-        if (failedCount > 0) {
-          console.warn("[备份恢复] 部分条目未能写入：", {
-            notes: report.notes.failed,
-            knowledgeBases: report.knowledgeBases.failed,
-            membership: report.membership.failed,
-          });
+            const md = restoreFailuresToMarkdown(report);
+            await navigator.clipboard?.writeText(md);
+          } catch {
+            /* 剪贴板不可用时不阻断 */
+          }
+          try {
+            const blob = new Blob([restoreFailuresToMarkdown(report)], { type: "text/markdown" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "knowflick-restore-failures.md";
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+          } catch {
+            /* 下载不可用时至少还有剪贴板与控制台 */
+          }
+        } else {
+          setNotice(`备份恢复完成：${summary}`);
         }
         if (restored.settings) {
-          await storePreferences(restored.settings, apiKey, dir);
-          setFile(restored.settings);
+          // 设置已由恢复服务写入；同步界面状态
+          const next = await readWorkspace();
+          setFile(next.file);
+          setApiKey(next.apiKey);
         }
-        setNotice(
-          `备份恢复完成：${restored.cards.length} 张卡片、${restored.materials.length} 份素材` +
-            `、${restored.artifacts.length} 条认知产物；${noteSummary}` +
-            `；知识库：新建 ${report.knowledgeBases.created}、并入已有 ${report.knowledgeBases.mapped}` +
-            `；成员关系：新增 ${report.membership.added}` +
-            (failedCount > 0 ? `。有 ${failedCount} 条未能写入，明细在控制台——这不是完整恢复。` : "") +
-            (restored.settings ? "。设置已还原" : "")
-        );
+        await load(true);
+        return;
       });
     } catch (e) {
-      setError(`备份恢复失败，本地内容未受影响：${String(e)}`);
+      // 外层错误只覆盖「还没开始写」的阶段（解包/校验失败）。
+      // 一旦开始写，错误由恢复服务逐条捕获并写进报告——这里不再谎称「未受影响」。
+      setError(`备份恢复失败：${String(e)}（尚未写入任何内容）`);
     }
   };
 

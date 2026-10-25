@@ -111,8 +111,10 @@ try {
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(
-    "document.body.innerText.includes('备份恢复失败') && document.body.innerText.includes('本地内容未受影响')",
-    "拖放 .kfbackup 走恢复路径：坏包报错且说明本地未受影响"
+    // T05（KF-007）：坏包在**写入之前**就被校验拦下，回执如实说明「尚未写入任何内容」——
+    // 不再笼统写「本地内容未受影响」（那一说法在写入中途失败时是假的）。
+    "document.body.innerText.includes('备份恢复失败') && document.body.innerText.includes('尚未写入任何内容')",
+    "拖放 .kfbackup 走恢复路径：坏包报错且说明尚未写入任何内容"
   );
   await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.length >= 1", "失败的恢复不破坏现有笔记");
 
