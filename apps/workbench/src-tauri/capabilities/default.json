@@ -60,6 +60,7 @@
     "allow-project-archive-cmd",
     "allow-project-member-list",
     "allow-project-export-markdown-cmd",
+    "allow-project-export-snapshot",
     "allow-profile-claim-add",
     "allow-profile-claims-active",
     "allow-profile-claim-confirm",

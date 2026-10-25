@@ -343,6 +343,10 @@ export function projectArchive(projectId: string, dir?: string): Promise<boolean
   return invoke("project_archive_cmd", { projectId, dir: dir ?? null });
 }
 
+export function projectExportSnapshot(projectId: string, dir?: string): Promise<import("../domain/projectSkill").ProjectSkillSnapshot> {
+  return invoke("project_export_snapshot", { projectId, dir: dir ?? null });
+}
+
 export function projectExportMarkdown(projectId: string, dir?: string): Promise<string> {
   return invoke("project_export_markdown_cmd", { projectId, dir: dir ?? null });
 }

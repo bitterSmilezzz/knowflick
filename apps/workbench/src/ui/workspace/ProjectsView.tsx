@@ -4,6 +4,7 @@ import {
   projectArchive,
   projectCreate,
   projectExportMarkdown,
+  projectExportSnapshot,
   projectList,
   projectMemberList,
   projectRemoveNote,
@@ -12,6 +13,8 @@ import {
 } from "../../shell/store";
 import { inShell } from "../../shell/store";
 import { Icon } from "./Icon";
+import { buildProjectSkillPackage } from "../../domain/projectSkill";
+import { getVersion } from "@tauri-apps/api/app";
 
 /**
  * 项目记忆视图（R4/D06 的 UI 入口）。
@@ -33,6 +36,8 @@ export function ProjectsView({ dir, notes }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [members, setMembers] = useState<ProjectMemberShell[]>([]);
+  const [memberOwner, setMemberOwner] = useState("");
+  const [memberVersion, setMemberVersion] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -42,6 +47,7 @@ export function ProjectsView({ dir, notes }: Props) {
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
+    if (!inShell()) return;
     try {
       const list = await projectList(showArchived, dir);
       setProjects(list);
@@ -57,19 +63,22 @@ export function ProjectsView({ dir, notes }: Props) {
 
   // 选中项目 → 只读这个项目的成员（不读别的项目）
   useEffect(() => {
-    if (!selectedId) {
+    setMembers([]);
+    setMemberOwner("");
+    if (!inShell() || !selectedId) {
       setMembers([]);
       return;
     }
     let cancelled = false;
     void projectMemberList(selectedId, dir)
-      .then((rows) => { if (!cancelled) setMembers(rows); })
+      .then((rows) => { if (!cancelled) { setMembers(rows); setMemberOwner(`${dir}\n${selectedId}`); } })
       .catch((e) => { if (!cancelled) setError(`读取项目成员失败：${e instanceof Error ? e.message : String(e)}`); });
     return () => { cancelled = true; };
-  }, [selectedId, dir]);
+  }, [selectedId, dir, memberVersion]);
 
   const selected = useMemo(() => projects.find((p) => p.id === selectedId) ?? null, [projects, selectedId]);
-  const memberIds = useMemo(() => new Set(members.map((m) => m.noteId)), [members]);
+  const visibleMembers = memberOwner === `${dir}\n${selectedId}` ? members : [];
+  const memberIds = new Set(visibleMembers.map((m) => m.noteId));
   const addable = useMemo(
     () => notes.filter((n) => !memberIds.has(n.id)).slice(0, 50),
     [notes, memberIds]
@@ -81,6 +90,7 @@ export function ProjectsView({ dir, notes }: Props) {
     setMessage("");
     try {
       await fn();
+      setMemberVersion((v) => v + 1);
       setMessage(ok);
       await refresh();
     } catch (e) {
@@ -105,6 +115,26 @@ export function ProjectsView({ dir, notes }: Props) {
       await projectArchive(selected.id, dir);
       setSelectedId(null);
     }, "项目已封存——封存的项目不再导出，也不进默认列表");
+  };
+
+  const doSkillExport = () => {
+    if (!selected || selected.archivedAt !== null) return;
+    const projectId = selected.id;
+    void run(async () => {
+      const [snapshot, appVersion] = await Promise.all([
+        projectExportSnapshot(projectId, dir), getVersion(),
+      ]);
+      const pkg = buildProjectSkillPackage(snapshot, { appVersion });
+      const copy = new Uint8Array(pkg.archive.length);
+      copy.set(pkg.archive);
+      const url = URL.createObjectURL(new Blob([copy.buffer], { type: "application/zip" }));
+      try {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = pkg.fileName;
+        a.click();
+      } finally { setTimeout(() => URL.revokeObjectURL(url), 2000); }
+    }, "项目技能包已生成：仅包含该项目有效成员的静态副本，安装说明在包内 README.md。");
   };
 
   const doExport = () => {
@@ -201,8 +231,11 @@ export function ProjectsView({ dir, notes }: Props) {
               <div className="ws-projects-detail-head">
                 <h2>{selected.name}</h2>
                 <div className="ws-projects-actions">
-                  <button type="button" className="ws-bordered" disabled={busy} onClick={() => void doExport()}>
+                  <button type="button" className="ws-bordered" disabled={busy || selected.archivedAt !== null} onClick={() => void doExport()}>
                     导出项目记忆包
+                  </button>
+                  <button type="button" className="ws-bordered" disabled={busy || selected.archivedAt !== null} onClick={doSkillExport}>
+                    导出 Claude Code 技能包
                   </button>
                   {selected.archivedAt ? null : (
                     <button type="button" className="ws-bordered" disabled={busy} onClick={() => void doArchive()}>
@@ -247,11 +280,11 @@ export function ProjectsView({ dir, notes }: Props) {
               </div>
 
               <div className="ws-projects-members">
-                <h3>成员笔记（{members.length}）</h3>
-                {members.length === 0 ? (
+                <h3>成员笔记（{visibleMembers.length}）</h3>
+                {visibleMembers.length === 0 ? (
                   <p className="ws-hint">这个项目还没有成员笔记。</p>
                 ) : (
-                  members.map((m) => (
+                  visibleMembers.map((m) => (
                     <div key={m.noteId} className="ws-projects-member">
                       <div className="ws-projects-member-main">
                         <strong>{m.title || "无标题笔记"}</strong>

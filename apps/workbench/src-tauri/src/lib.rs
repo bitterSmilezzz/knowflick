@@ -803,6 +803,13 @@ fn project_archive_cmd(app: tauri::AppHandle, dir: Option<String>, project_id: S
 }
 
 #[tauri::command]
+fn project_export_snapshot(dir: Option<String>, project_id: String) -> Result<notes::ProjectExportSnapshot, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::project_export_snapshot(&conn, &project_id)
+}
+
+#[tauri::command]
 fn project_export_markdown_cmd(dir: Option<String>, project_id: String) -> Result<String, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
@@ -1641,6 +1648,7 @@ pub fn run() {
             project_archive_cmd,
             project_member_list,
             project_export_markdown_cmd,
+            project_export_snapshot,
             profile_claim_add,
             profile_claims_active,
             profile_claim_confirm,

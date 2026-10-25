@@ -1549,6 +1549,39 @@ pub fn project_archive(conn: &Connection, project_id: &str, now: i64) -> Result<
     Ok(changed > 0)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectExportSnapshot {
+    pub project: ProjectDto,
+    pub members: Vec<NoteDto>,
+}
+
+/// The read transaction binds the project state and member contents to one snapshot.
+pub fn project_export_snapshot(conn: &Connection, project_id: &str) -> Result<ProjectExportSnapshot, String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let project = tx.query_row(
+        "SELECT id, name, description, created_at, updated_at, archived_at FROM projects WHERE id = ?1",
+        params![project_id],
+        |row| Ok(ProjectDto {
+            id: row.get(0)?, name: row.get(1)?, description: row.get(2)?,
+            created_at: row.get(3)?, updated_at: row.get(4)?, archived_at: row.get(5)?,
+        }),
+    ).optional().map_err(|e| e.to_string())?.ok_or_else(|| "项目不存在".to_string())?;
+    if project.archived_at.is_some() {
+        return Err(format!("项目「{}」已封存，禁止导出技能包", project.name));
+    }
+    let members = {
+        let mut stmt = tx.prepare(&format!(
+            "SELECT {NOTE_COLUMNS} FROM notes WHERE is_deleted = 0 AND id IN
+             (SELECT note_id FROM project_members WHERE project_id = ?1) ORDER BY id"
+        )).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![project_id], map_note_row).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>>>().map_err(|e| e.to_string())?
+    };
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(ProjectExportSnapshot { project, members })
+}
+
 /// 按项目导出 Markdown 上下文（E07 第一步：给外部 AI 工具的项目记忆包）。
 /// 含项目说明 + 成员笔记全文（未删除的）+ 来源清单（note 的 source_material
 /// 可回溯处）。封存项目导出返回错误（不悄悄导旧上下文）。
@@ -1586,17 +1619,17 @@ pub fn project_export_markdown(conn: &Connection, project_id: &str) -> Result<St
     }
 
     let mut out = String::new();
-    out.push_str(&format!("# 项目：{}\\n\\n", project.0));
+    out.push_str(&format!("# 项目：{}\n\n", project.0));
     if !project.1.is_empty() {
-        out.push_str(&format!("{}\\n\\n", project.1));
+        out.push_str(&format!("{}\n\n", project.1));
     }
-    out.push_str(&format!("导出时间：{} ｜ 成员笔记 {} 篇\\n\\n---\\n\\n", chrono_date_label(), notes.len()));
+    out.push_str(&format!("导出时间：{} ｜ 成员笔记 {} 篇\n\n---\n\n", chrono_date_label(), notes.len()));
     for (i, (title, body, source)) in notes.iter().enumerate() {
-        out.push_str(&format!("## 笔记 {}：{}\\n\\n{}\\n\\n", i + 1, title, body));
+        out.push_str(&format!("## 笔记 {}：{}\n\n{}\n\n", i + 1, title, body));
         if let Some(material_id) = source {
-            out.push_str(&format!("（来源素材：{material_id}，可在应用中回溯原文）\\n\\n"));
+            out.push_str(&format!("（来源素材：{material_id}，可在应用中回溯原文）\n\n"));
         }
-        out.push_str("---\\n\\n");
+        out.push_str("---\n\n");
     }
     Ok(out)
 }
@@ -1715,6 +1748,41 @@ mod project_tests {
         let md = project_export_markdown(&conn, "p1").unwrap();
         assert!(!md.contains("正文"), "软删的成员笔记不进导出");
         assert!(md.contains("成员笔记 0 篇"));
+    }
+
+    #[test]
+    fn project_export_snapshot_scoped_membership_and_archive_guard() {
+        let conn = temp_db("export-snapshot");
+        note_upsert(&conn, &draft("n1", "项目A决策", "采用Tauri"), 0, 1000).unwrap();
+        note_upsert(&conn, &draft("n2", "项目B记录", "别的机密"), 0, 1050).unwrap();
+        note_upsert(&conn, &draft("n3", "项目A已删", "过时信息"), 0, 1100).unwrap();
+
+        project_create(&conn, "p_a", "项目A", "说明A", 1200).unwrap();
+        project_create(&conn, "p_b", "项目B", "说明B", 1250).unwrap();
+
+        project_add_note(&conn, "p_a", "n1", 1300).unwrap();
+        project_add_note(&conn, "p_a", "n3", 1320).unwrap();
+        project_add_note(&conn, "p_b", "n2", 1350).unwrap();
+
+        // 软删成员 n3
+        note_delete(&conn, "n3", 1400).unwrap();
+
+        // 项目A快照：只含自身成员且排除已删除
+        let snap_a = project_export_snapshot(&conn, "p_a").unwrap();
+        assert_eq!(snap_a.project.id, "p_a");
+        assert_eq!(snap_a.project.name, "项目A");
+        assert_eq!(snap_a.members.len(), 1);
+        assert_eq!(snap_a.members[0].id, "n1");
+        assert_eq!(snap_a.members[0].body_md, "采用Tauri");
+
+        // 项目B快照：只有项目B成员，不能串入项目A
+        let snap_b = project_export_snapshot(&conn, "p_b").unwrap();
+        assert_eq!(snap_b.members.len(), 1);
+        assert_eq!(snap_b.members[0].id, "n2");
+
+        // 封存项目拒绝导出快照
+        project_archive(&conn, "p_a", 1500).unwrap();
+        assert!(project_export_snapshot(&conn, "p_a").is_err());
     }
 }
 
