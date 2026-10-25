@@ -315,6 +315,9 @@ pub struct ArtifactDto {
     pub content_markdown: String,
     #[serde(default)]
     pub source_card_ids: Vec<String>,
+    /// R4/D07：创作草稿的证据可能来自笔记（与卡片分开存）。
+    #[serde(default)]
+    pub source_note_ids: Vec<String>,
     pub date_scope_start: Option<i64>,
     pub date_scope_end: Option<i64>,
     pub created_at: i64,
@@ -504,6 +507,9 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             title               TEXT NOT NULL,
             content_markdown    TEXT NOT NULL,
             source_card_ids     TEXT NOT NULL DEFAULT '[]',
+            -- R4/D07 创作草稿的证据可能来自笔记（不只是卡片）——单列分开，
+            -- 免得产物视图把笔记 id 当成卡片 id 去找（找不到就显示「已删除的卡片」）。
+            source_note_ids     TEXT NOT NULL DEFAULT '[]',
             date_scope_start    INTEGER,
             date_scope_end      INTEGER,
             created_at          INTEGER NOT NULL,
@@ -719,6 +725,23 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
     if !has_provider {
         let _ = conn.execute("ALTER TABLE card_embeddings ADD COLUMN provider TEXT NOT NULL DEFAULT ''", []);
         let _ = conn.execute("ALTER TABLE card_embeddings ADD COLUMN model TEXT NOT NULL DEFAULT ''", []);
+    }
+
+    // 产物证据里的笔记 id 列（R4/D07）：老库平滑补齐
+    let mut has_source_note_ids = false;
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(artifacts)")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let col_name: String = row.get(1)?;
+            if col_name == "source_note_ids" {
+                has_source_note_ids = true;
+                break;
+            }
+        }
+    }
+    if !has_source_note_ids {
+        let _ = conn.execute("ALTER TABLE artifacts ADD COLUMN source_note_ids TEXT NOT NULL DEFAULT '[]'", []);
     }
 
     Ok(())
@@ -1388,17 +1411,20 @@ pub fn delete_subscription(conn: &Connection, id: &str) -> Result<()> {
 pub fn save_artifact(conn: &Connection, artifact: &ArtifactDto) -> Result<()> {
     let source_ids_json = serde_json::to_string(&artifact.source_card_ids)
         .unwrap_or_else(|_| "[]".to_string());
+    let source_note_ids_json = serde_json::to_string(&artifact.source_note_ids)
+        .unwrap_or_else(|_| "[]".to_string());
     conn.execute(
         r#"
         INSERT INTO artifacts (
             id, artifact_type, title, content_markdown, source_card_ids,
-            date_scope_start, date_scope_end, created_at, updated_at, is_deleted
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)
+            date_scope_start, date_scope_end, created_at, updated_at, is_deleted, source_note_ids
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10)
         ON CONFLICT(id) DO UPDATE SET
             artifact_type = excluded.artifact_type,
             title = excluded.title,
             content_markdown = excluded.content_markdown,
             source_card_ids = excluded.source_card_ids,
+            source_note_ids = excluded.source_note_ids,
             date_scope_start = excluded.date_scope_start,
             date_scope_end = excluded.date_scope_end,
             updated_at = excluded.updated_at,
@@ -1414,6 +1440,7 @@ pub fn save_artifact(conn: &Connection, artifact: &ArtifactDto) -> Result<()> {
             artifact.date_scope_end,
             artifact.created_at,
             artifact.updated_at,
+            source_note_ids_json,
         ],
     )?;
     Ok(())
@@ -1428,23 +1455,26 @@ pub fn delete_artifact(conn: &Connection, id: &str) -> Result<()> {
 
 pub fn list_artifacts(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<ArtifactDto>> {
     let mut stmt = conn.prepare(
-        "SELECT id, artifact_type, title, content_markdown, source_card_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted
+        "SELECT id, artifact_type, title, content_markdown, source_card_ids, source_note_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted
          FROM artifacts WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
     )?;
     let rows = stmt.query_map(params![limit, offset], |row| {
         let source_ids_str: String = row.get(4)?;
         let source_ids: Vec<String> = serde_json::from_str(&source_ids_str).unwrap_or_default();
-        let is_del_int: i64 = row.get(9)?;
+        let source_note_ids_str: String = row.get(5)?;
+        let source_note_ids: Vec<String> = serde_json::from_str(&source_note_ids_str).unwrap_or_default();
+        let is_del_int: i64 = row.get(10)?;
         Ok(ArtifactDto {
             id: row.get(0)?,
             artifact_type: row.get(1)?,
             title: row.get(2)?,
             content_markdown: row.get(3)?,
             source_card_ids: source_ids,
-            date_scope_start: row.get(5)?,
-            date_scope_end: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+            source_note_ids: source_note_ids,
+            date_scope_start: row.get(6)?,
+            date_scope_end: row.get(7)?,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
             is_deleted: is_del_int != 0,
         })
     })?;
@@ -2605,6 +2635,7 @@ mod tests {
             title: "认知简报 · 第 42 周".to_string(),
             content_markdown: "# 认知简报\n\n- 本周新增卡片: 12条".to_string(),
             source_card_ids: vec!["card-1".to_string(), "card-2".to_string()],
+            source_note_ids: vec!["note-1".to_string()],
             date_scope_start: Some(1700000000000),
             date_scope_end: Some(1700000604800),
             created_at: 1700000605000,
@@ -2619,6 +2650,8 @@ mod tests {
         assert_eq!(list[0].id, "artifact-1");
         assert_eq!(list[0].title, "认知简报 · 第 42 周");
         assert_eq!(list[0].source_card_ids, vec!["card-1".to_string(), "card-2".to_string()]);
+        // R4/D07：创作草稿的证据来自笔记时，与卡片分开存（视图分别渲染）
+        assert_eq!(list[0].source_note_ids, vec!["note-1".to_string()]);
 
         // 测试幂等更新
         let mut updated = artifact.clone();

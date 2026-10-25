@@ -48,7 +48,7 @@
 
 | 层 | 在哪跑 | 覆盖什么 |
 | --- | --- | --- |
-| **门禁（每次提交）** | `verify_workbench.sh` | 前端 545 项 + Rust 测试（通过与忽略分开报告）+ 15 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
+| **门禁（每次提交）** | `verify_workbench.sh` | 前端 552 项 + Rust 测试（通过与忽略分开报告）+ 16 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
 | **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
@@ -97,7 +97,7 @@
 | 外部接口（MCP） | ✅ | `mcp_smoke.mjs`（8 项；有库分支依赖本机库）；`mcp_server_smoke.mjs`（20 项独立临时库检查）由 6 项反向验证调用，验证正常基线通过、退化以 AssertionError 失败。宿主与 stdio 无链接写入均验证为 manual，旧 note 显示兼容由前端测试覆盖 |
 | 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时；**时间断言按实测分布定预算**，见 `SMOOTHNESS.md`） |
 | 键盘可达（模态） | ✅ | `taste_usability_gate.mjs`：手写/语音面板打开后焦点进入面板、Tab 在面板内循环、Escape 关闭并归还焦点（此前这些面板键盘完全不可达）。原生 `<dialog>` 的「记录」模态由浏览器提供同样能力 |
-| 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 15 套浏览器冒烟（**CI 上也在跑**：`workbench.yml` 的 `browser-smokes` job）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
+| 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 16 套浏览器冒烟（**CI 上也在跑**：`workbench.yml` 的 `browser-smokes` job）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
 | 数据出口（凭据不外流） | ✅ | `dataEgress.test.ts`（5 项，哨兵密钥跑所有导出路径）+ `store.redact.test.ts`（6 项）+ Rust `http.rs` 的 `redact_secrets`（含走真实 401 服务器的路径级测试） |
 | 凭据存放 | ✅ | 桌面端 `<data_root>/credentials/apiKey.credential`（`store/` 的**兄弟目录**，导出天然带不走）；浏览器端 sessionStorage。不进 SQLite、不进任何导出格式 |
 | 文档与实现一致 | ✅ | `check_doc_consistency.py`（在门禁里）：当前状态类文档里的数字与命令要跟得上实际 |

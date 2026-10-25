@@ -108,11 +108,12 @@ const ReviewFactsView = lazy(() => import("./ReviewFactsView").then((m) => ({ de
 const ProfileGovernanceView = lazy(() => import("./ProfileGovernanceView").then((m) => ({ default: m.ProfileGovernanceView })));
 const GoalsView = lazy(() => import("./GoalsView").then((m) => ({ default: m.GoalsView })));
 const ProjectsView = lazy(() => import("./ProjectsView").then((m) => ({ default: m.ProjectsView })));
+const CreativeView = lazy(() => import("./CreativeView").then((m) => ({ default: m.CreativeView })));
 const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.BrainAssistantDrawer })));
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "notes" | "briefing" | "review-facts" | "profile" | "goals" | "projects" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
+type Page = Collection | "settings" | "notes" | "briefing" | "review-facts" | "profile" | "goals" | "projects" | "creative" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
@@ -120,6 +121,7 @@ const PAGE_TITLES: Record<string, string> = {
   profile: "我的记忆",
   goals: "目标",
   projects: "项目记忆",
+  creative: "创作台",
   notes: "笔记",
   briefing: "认知简报",
   brain: "知识问答",
@@ -1719,6 +1721,14 @@ export function Workspace() {
             >
               <Icon name="folder" /><span>项目记忆</span>
             </button>
+            {/* R4/D07：创作工作台（证据 → 大纲 → 修改 → 导出；不代发）。 */}
+            <button
+              className="ws-nav-row"
+              aria-current={page === "creative" ? "page" : undefined}
+              onClick={() => navigate("creative")}
+            >
+              <Icon name="edit" /><span>创作台</span>
+            </button>
             </details>
             {/* 温故复习是**高频入口**（每天都要用），不跟着「应用」一起折叠——
                 折叠起来用户就找不到每天要点开的那个按钮了。 */}
@@ -2307,7 +2317,9 @@ export function Workspace() {
                 <ArtifactsView
                   dir={dir}
                   cards={cards}
+                  notes={notesState.notes.map((n) => ({ id: n.id, title: n.title }))}
                   onOpenCard={(cardId) => { navigate("library"); setSelectedId(cardId); setSource("card"); }}
+                  onOpenNote={openNoteById}
                   onBack={() => navigate("briefing")}
                 />
               ) : null}
@@ -2374,6 +2386,9 @@ export function Workspace() {
               {page === "goals" ? <GoalsView dir={dir} materials={materials} /> : null}
               {page === "projects" ? (
                 <ProjectsView dir={dir} notes={notesState.notes.map((n) => ({ id: n.id, title: n.title }))} />
+              ) : null}
+              {page === "creative" ? (
+                <CreativeView dir={dir} cards={cards} notes={notesState.notes} />
               ) : null}
               {page === "brain" ? (
                 <Assistant

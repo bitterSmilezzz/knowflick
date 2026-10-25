@@ -511,6 +511,8 @@ export interface Artifact {
   title: string;
   contentMarkdown: string;
   sourceCardIds: string[];
+  /** R4/D07：创作草稿的证据可能来自笔记（与卡片分开存，视图分别渲染）。 */
+  sourceNoteIds?: string[];
   dateScopeStart?: number | null;
   dateScopeEnd?: number | null;
   createdAt: number;

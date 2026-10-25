@@ -10,11 +10,15 @@ import { userError } from "./userError";
  * 界面上没有入口——存进去的东西只有导出备份才看得见。现在它是应用阶段
  * 的一等页面，能列出、查看、复制、删除。
  */
-export function ArtifactsView({ dir, cards, onOpenCard, onBack }: {
+export function ArtifactsView({ dir, cards, notes = [], onOpenCard, onOpenNote, onBack }: {
   dir: string;
   /** 当前卡片库：用来把 sourceCardIds 解析成可点的标题。 */
   cards: Array<{ id: string; headline: string }>;
+  /** 当前笔记库：创作草稿的证据可能来自笔记（R4/D07）。 */
+  notes?: Array<{ id: string; title: string }>;
   onOpenCard: (cardId: string) => void;
+  /** 打开原笔记（笔记证据可回原件）。 */
+  onOpenNote?: (noteId: string) => void;
   onBack: () => void;
 }) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
@@ -138,6 +142,28 @@ export function ArtifactsView({ dir, cards, onOpenCard, onBack }: {
                 </button>
               </div>
             </div>
+            {artifact.sourceNoteIds && artifact.sourceNoteIds.length ? (
+              <div className="ws-artifact-sources">
+                <span className="ws-hint">依据笔记：</span>
+                {artifact.sourceNoteIds.map((id) => {
+                  // 笔记可能已被删除：标出来且不可点，避免点进去静默跳到别的笔记。
+                  const alive = notes.find((n) => n.id === id);
+                  if (!alive) {
+                    return <span key={`note-${id}`} className="ws-cite-chip ws-cite-gone" aria-disabled="true">（已删除的笔记）</span>;
+                  }
+                  return (
+                    <button
+                      key={`note-${id}`}
+                      type="button"
+                      className="ws-cite-chip"
+                      onClick={() => onOpenNote?.(id)}
+                    >
+                      笔记《{alive.title || "无标题笔记"}》
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             {artifact.sourceCardIds.length ? (
               <div className="ws-artifact-sources">
                 <span className="ws-hint">依据卡片：</span>
