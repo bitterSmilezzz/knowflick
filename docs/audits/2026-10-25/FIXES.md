@@ -52,10 +52,23 @@
   ZIP 截断/重复条目/未知压缩方式/未知未来版本拒绝；真 v1 ZIP 文件集用例取代「v2 空 notes 冒充」。
 - 证据：`sha256.test.ts` 5 向量（含一百万 a 多块）、`systemBackup.test.ts` 负向 7 例。
 
+### T07 · 浏览器笔记损坏保护（KF-010 P1）
+
+- 损坏隔离与写保护：`browserNotes` 遇到非 JSON、截断 JSON 或非法结构（notes 非数组、条目缺 id、membership 非键值映射）时抛出 `BrowserNotesCorruptError`，自动将原始数据隔离备份到 `knowflick.notes.corrupted`，置内部写保护锁；后续任何新建或保存拒绝写入，防止静默覆盖损坏数据。
+- 运维入口：`readCorruptedNotesBackup()` 导出原始未损坏数据，`clearCorruptedNotesLockAndReset()` 供用户显式确认重置。
+- 证据：`repository.browserNotes.test.ts` 6 项（非法 JSON / 截断 / 错误形状 / 缺 id 条目 / 锁定写阻止覆盖 / 重置后正常）。
+
+### T08 · 向量空间、内容失效与重算任务（KF-011 P1）
+
+- 内容变更使旧向量失效：`upsert_card_inner` 在更新卡片时检查 `category` / `headline` / `summary` / `details` / `tags_json`；任何正文相关内容改变，同步执行 `DELETE FROM card_embeddings WHERE card_id = ?1`，卡片立即可被 `list_unembedded_card_ids` 发现并重算；纯复习评分变化（repetition / interval_days / ease_factor / favorite）**不删除向量**，避免无意义重算。
+- 软删同步清理：`delete_card` 同步清理 `card_embeddings`，被删卡片不再参与向量检索与 stale 判定。
+- 远端未知维度安全判定：`list_stale_embedding_card_ids` 在 `dim <= 0` 时按 `(provider, model)` 身份安全判断，避免误将同模型有效向量判为 stale。
+- 全量 stale 循环排空：`syncCardEmbeddings` 改为 `while(true)` 循环，超过 20 条（单个 batch）的过期数据全部重算，不再只跑一个批次就退出。
+- 证据：Rust `card_content_change_invalidates_embedding_while_review_change_keeps_it`（正文变向量失效、评分变保留、删除清理、零维身份判别）；前端 `embeddingEngine.test.ts` 批量 stale 循环排空测试。
+
 ## 有意未动 / 后续批次
 
-- **T05**（整份恢复一致性/失败报告）、**T07**（浏览器笔记损坏保护）、**T08**（向量空间与内容失效）、
-  **T09**（模块开关生命周期）、**T10**（MCP 安装分发）、**T11**（职责收口）、**T13**：依赖顺序未到，见 TASKS.md。
+- **T05**（整份恢复一致性/失败报告）、**T09**（模块开关生命周期）、**T10**（MCP 安装分发）、**T11**（职责收口）、**T13**：依赖顺序未到，见 TASKS.md。
 - **T12**（证据收口）：桌面端「保存/关闭可等待路径」需要 Tauri 侧窗口关闭拦截，与 T12 一起验；
   本批的草稿镜像 + beforeunload 冲刷是降级保护，不声称等价。
 - 真实 WebDAV 服务、Windows/Linux 安装首启：保持「待真实验收」，不以合成测试冒充。

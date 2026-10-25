@@ -292,22 +292,26 @@ export async function syncCardEmbeddings(
       options.onProgress?.(indexedCount, cards.length);
     }
 
-    // 维度已知且与旧向量不同：这些卡片重算一遍，否则它们在检索里永远匹配不到。
-    if (dim > 0) {
+    // 过期向量重算（T08，收口审计 KF-011）：循环处理全部 stale 批次（超过单个 batch 的所有脏数据全部重算）。
+    // 若 dim <= 0（远程未知维度），Rust 端按 provider/model 身份判断异空间向量；同空间不报 stale。
+    while (true) {
       const stale = await dbListStaleEmbeddingCardIds(dim, engine.identity(), batchSize, options.dir);
+      if (!stale.length) break;
+
       const staleCards = stale
         .map((id) => cards.find((c) => c.id === id))
         .filter((c): c is KnowledgeCard => !!c);
-      if (staleCards.length > 0) {
-        const texts = staleCards.map(cardToEmbeddingText);
-        const embeddings = await engine.embedTexts(texts);
-        await dbSaveCardEmbeddingsBatch(
-          staleCards.map((card, idx) => ({ cardId: card.id, embedding: embeddings[idx] })),
-          engine.identity(),
-          options.dir
-        );
-        indexedCount += staleCards.length;
-      }
+      if (!staleCards.length) break;
+
+      const texts = staleCards.map(cardToEmbeddingText);
+      const embeddings = await engine.embedTexts(texts);
+      await dbSaveCardEmbeddingsBatch(
+        staleCards.map((card, idx) => ({ cardId: card.id, embedding: embeddings[idx] })),
+        engine.identity(),
+        options.dir
+      );
+      indexedCount += staleCards.length;
+      options.onProgress?.(indexedCount, cards.length);
     }
     return { indexedCount };
   }

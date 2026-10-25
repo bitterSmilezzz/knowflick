@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   cardToEmbeddingText,
   embeddingURL,
   localSemanticHashEmbedding,
   cosineSimilarity,
   EmbeddingEngine,
+  syncCardEmbeddings,
 } from "./embeddingEngine";
 import { cardFromJson } from "./card";
 
@@ -109,6 +110,46 @@ describe("向量嵌入引擎 (EmbeddingEngine)", () => {
       expect(embeddings.length).toBe(2);
       expect(embeddings[0].length).toBe(128);
       expect(embeddings[1].length).toBe(128);
+    });
+
+    it("syncCardEmbeddings 循环排空超过一个 batch 的所有 stale 卡片（KF-011）", async () => {
+      // 模拟 25 张卡片全部 stale（batchSize=10，需走 3 轮循环排空）
+      const cards = Array.from({ length: 25 }, (_, i) => ({
+        id: `card-${i}`,
+        headline: `标题 ${i}`,
+        summary: `摘要 ${i}`,
+        details: `详情 ${i}`,
+        tags: [],
+        category: "测试",
+        source: "",
+        created_at: 100,
+        links: [],
+      } as any));
+
+      let staleIds = cards.map((c) => c.id);
+      const savedBatches: string[][] = [];
+
+      vi.spyOn(await import("../shell/store"), "inShell").mockReturnValue(true);
+      vi.spyOn(await import("../shell/store"), "dbListUnembeddedCardIds").mockResolvedValue([]);
+      vi.spyOn(await import("../shell/store"), "dbListStaleEmbeddingCardIds").mockImplementation(async (_dim, _ident, limit) => {
+        const batch = staleIds.slice(0, limit);
+        return batch;
+      });
+      vi.spyOn(await import("../shell/store"), "dbSaveCardEmbeddingsBatch").mockImplementation(async (items) => {
+        const ids = items.map((it: any) => it.cardId);
+        savedBatches.push(ids);
+        staleIds = staleIds.filter((id) => !ids.includes(id));
+      });
+
+      const engine = new EmbeddingEngine();
+      const res = await syncCardEmbeddings(cards, engine, { batchSize: 10 });
+      expect(res.indexedCount).toBe(25);
+      expect(savedBatches.length).toBe(3);
+      expect(savedBatches[0].length).toBe(10);
+      expect(savedBatches[1].length).toBe(10);
+      expect(savedBatches[2].length).toBe(5);
+      expect(staleIds.length).toBe(0);
+      vi.restoreAllMocks();
     });
   });
 });

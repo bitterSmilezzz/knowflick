@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -935,6 +935,17 @@ fn upsert_card_inner(conn: &Connection, card: &KnowledgeCardDto) -> Result<()> {
     let prereq_json = serde_json::to_string(&card.prereq).unwrap_or_else(|_| "[]".to_string());
     let updated_at = card.edited_at.unwrap_or(card.created_at);
 
+    // 向量失效检查（T08，收口审计 KF-011）：若已有卡片的正文/分类/标签发生改变，
+    // 必须清除旧向量，使 list_unembedded_card_ids 能够发现并重新生成向量。
+    // 复习评分/收藏等无关字段改变时不清除向量，避免无意义重算。
+    let existing_content: Option<(String, String, String, String, String)> = conn
+        .query_row(
+            "SELECT category, headline, summary, details, tags_json FROM cards WHERE id = ?1",
+            params![card.id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .optional()?;
+
     conn.execute(
         r#"
         INSERT INTO cards (
@@ -1019,6 +1030,18 @@ fn upsert_card_inner(conn: &Connection, card: &KnowledgeCardDto) -> Result<()> {
         ],
     )?;
 
+    if let Some((cat, head, sum, det, tags)) = existing_content {
+        let content_changed = cat != card.category
+            || head != card.headline
+            || sum != card.summary
+            || det != card.details
+            || tags != tags_json;
+        if content_changed {
+            // 正文/分类/标签已变更：旧向量失效，使卡片重回待计算队列
+            conn.execute("DELETE FROM card_embeddings WHERE card_id = ?1", params![card.id])?;
+        }
+    }
+
     // 同步刷新 FTS5
     conn.execute("DELETE FROM fts_cards WHERE card_id = ?1", params![card.id])?;
     let tags_text = card.tags.join(" ");
@@ -1037,6 +1060,7 @@ pub fn delete_card(conn: &Connection, id: &str) -> Result<()> {
         params![now, id],
     )?;
     conn.execute("DELETE FROM fts_cards WHERE card_id = ?1", params![id])?;
+    conn.execute("DELETE FROM card_embeddings WHERE card_id = ?1", params![id])?;
     Ok(())
 }
 
@@ -1492,19 +1516,31 @@ pub fn list_unembedded_card_ids(conn: &Connection, limit: i64) -> Result<Vec<Str
 /// 列出「向量身份与当前引擎不匹配」的卡片：维度或 provider/model 对不上
 /// 都算过期（同维度不同模型不混算，LOCAL_DATA_AND_AI），需要重算。
 pub fn list_stale_embedding_card_ids(conn: &Connection, dim: i64, provider: &str, model: &str, limit: i64) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT c.id FROM cards c
-         INNER JOIN card_embeddings e ON c.id = e.card_id
-         WHERE c.is_deleted = 0 AND (e.dim <> ?1 OR e.provider <> ?2 OR e.model <> ?3)
-         ORDER BY c.created_at DESC
-         LIMIT ?4",
-    )?;
-    let rows = stmt.query_map(params![dim, provider, model, limit], |r| r.get(0))?;
-    let mut ids = Vec::new();
-    for r in rows {
-        ids.push(r?);
+    if dim > 0 {
+        let mut stmt = conn.prepare(
+            "SELECT c.id FROM cards c
+             INNER JOIN card_embeddings e ON c.id = e.card_id
+             WHERE c.is_deleted = 0 AND (e.dim <> ?1 OR e.provider <> ?2 OR e.model <> ?3)
+             ORDER BY c.created_at DESC
+             LIMIT ?4",
+        )?;
+        let rows = stmt.query_map(params![dim, provider, model, limit], |r| r.get(0))?;
+        let mut ids = Vec::new();
+        for r in rows { ids.push(r?); }
+        Ok(ids)
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT c.id FROM cards c
+             INNER JOIN card_embeddings e ON c.id = e.card_id
+             WHERE c.is_deleted = 0 AND (e.provider <> ?1 OR e.model <> ?2)
+             ORDER BY c.created_at DESC
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![provider, model, limit], |r| r.get(0))?;
+        let mut ids = Vec::new();
+        for r in rows { ids.push(r?); }
+        Ok(ids)
     }
-    Ok(ids)
 }
 
 pub fn save_card_embeddings_batch(
@@ -1917,6 +1953,75 @@ mod tests {
             .query_row("SELECT provider, model FROM card_embeddings WHERE card_id='dim-card-1'", [], |r| Ok((r.get(0)?, r.get(1)?)))
             .unwrap();
         assert_eq!((prov.as_str(), mdl.as_str()), (PROVIDER, MODEL_B));
+    }
+
+    #[test]
+    fn card_content_change_invalidates_embedding_while_review_change_keeps_it() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+
+        let mut card = KnowledgeCardDto {
+            id: "card-inval-1".to_string(),
+            material_id: None,
+            category: "计算机".to_string(),
+            headline: "原始标题".to_string(),
+            summary: "原始摘要".to_string(),
+            details: "原始正文".to_string(),
+            links: vec![],
+            tags: vec!["tag1".to_string()],
+            source: "".to_string(),
+            seen_at: Some(1),
+            swiped: Some("right".to_string()),
+            is_favorite: false,
+            favorited_at: None,
+            review_count: 0,
+            mastery_level: 0,
+            last_reviewed_at: None,
+            repetition: 0,
+            interval_days: 0.0,
+            ease_factor: 2.5,
+            stability: 0.0,
+            difficulty: 0.0,
+            subject: None,
+            branch: None,
+            level: None,
+            track: None,
+            order_key: None,
+            prereq: vec![],
+            created_at: 100,
+            edited_at: None,
+        };
+
+        upsert_card(&conn, &card).unwrap();
+        save_card_embeddings_batch(&mut conn, &[("card-inval-1".to_string(), vec![0.1; 128])], "local", "model-a").unwrap();
+        assert!(list_unembedded_card_ids(&conn, 10).unwrap().is_empty(), "已嵌入卡片不出现在待计算列表中");
+
+        // 1. 仅改变复习评分 / 收藏状态等无关字段：旧向量必须保留，不标脏！
+        card.repetition = 3;
+        card.interval_days = 12.0;
+        card.is_favorite = true;
+        card.review_count = 5;
+        upsert_card(&conn, &card).unwrap();
+        assert!(list_unembedded_card_ids(&conn, 10).unwrap().is_empty(), "纯复习评分变化不使向量失效（契约）");
+        assert_eq!(search_cards_vector(&conn, &[0.1; 128], "local", "model-a", 10).unwrap().len(), 1);
+
+        // 2. 改变正文内容（headline / summary / details / tags / category）：旧向量必须失效！
+        card.headline = "全新改写的标题".to_string();
+        upsert_card(&conn, &card).unwrap();
+        let unembedded = list_unembedded_card_ids(&conn, 10).unwrap();
+        assert_eq!(unembedded, vec!["card-inval-1".to_string()], "正文变更后旧向量失效，卡片重新出现在待计算列表中");
+        assert!(search_cards_vector(&conn, &[0.1; 128], "local", "model-a", 10).unwrap().is_empty(), "失效后不再参与向量检索");
+
+        // 3. dim <= 0 时的 stale 判定（远端未知维度场景）：按 provider/model 身份判定，同身份不报 stale，异身份报 stale
+        save_card_embeddings_batch(&mut conn, &[("card-inval-1".to_string(), vec![0.3; 128])], "api", "remote-v1").unwrap();
+        assert!(list_stale_embedding_card_ids(&conn, 0, "api", "remote-v1", 10).unwrap().is_empty(), "dim<=0 时同模型不报 stale");
+        assert_eq!(list_stale_embedding_card_ids(&conn, 0, "api", "remote-v2", 10).unwrap(), vec!["card-inval-1".to_string()], "dim<=0 时异模型报 stale");
+
+        // 4. 软删除卡片：向量同步清除，且删除的卡片不再算待计算也不算过期
+        delete_card(&conn, "card-inval-1").unwrap();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM card_embeddings WHERE card_id = 'card-inval-1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0, "删除卡片后向量同步清除");
+        assert!(list_stale_embedding_card_ids(&conn, 0, "api", "remote-v2", 10).unwrap().is_empty(), "已删卡片不报 stale");
     }
 
     /// PLUGIN_SPECIFICATION §5 的检索门禁：万条卡片下混合检索首屏 ≤ 30 ms。

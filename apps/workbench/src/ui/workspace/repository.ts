@@ -119,23 +119,96 @@ export async function storePreferences(file: SettingsFile, key: string, dir: str
 // ---------- 笔记与知识库（R1）：桌面走 SQLite 命令，浏览器体验走领域纯函数 + localStorage ----------
 
 const notesKey = "knowflick.notes.v1";
+const notesCorruptedKey = "knowflick.notes.corrupted";
 
-function browserNotes(): NotesState {
-  const raw = localStorage.getItem(notesKey);
-  if (!raw) return emptyNotesState();
-  try {
-    const parsed = JSON.parse(raw) as Partial<NotesState>;
-    return {
-      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
-      knowledgeBases: Array.isArray(parsed.knowledgeBases) ? parsed.knowledgeBases : [],
-      membership: parsed.membership ?? {},
-    };
-  } catch {
-    return emptyNotesState();
+/**
+ * 浏览器笔记存储损坏异常（T07，收口审计 KF-010）。
+ * 携带损坏的原始字符串与原因，阻止任何后续写操作静默覆盖原始数据。
+ */
+export class BrowserNotesCorruptError extends Error {
+  constructor(readonly rawData: string, readonly reason: string) {
+    super(`浏览器笔记存储损坏（${reason}）。已锁定写操作并隔离备份原始数据，请先导出备份或恢复后再进行修改。`);
+    this.name = "BrowserNotesCorruptError";
   }
 }
 
+let isNotesCorruptedLocked = false;
+
+export function readCorruptedNotesBackup(): string | null {
+  try {
+    return localStorage.getItem(notesCorruptedKey);
+  } catch {
+    return null;
+  }
+}
+
+export function clearCorruptedNotesLockAndReset(): void {
+  isNotesCorruptedLocked = false;
+  try {
+    localStorage.removeItem(notesCorruptedKey);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+function preserveCorruptedRaw(raw: string, reason: string): never {
+  isNotesCorruptedLocked = true;
+  try {
+    localStorage.setItem(notesCorruptedKey, raw);
+  } catch {
+    // 若 localStorage 配额超限无法写入备份 key，依然保持锁定保护，不吞原始 raw
+  }
+  throw new BrowserNotesCorruptError(raw, reason);
+}
+
+function browserNotes(): NotesState {
+  if (isNotesCorruptedLocked) {
+    const backup = readCorruptedNotesBackup() || localStorage.getItem(notesKey) || "";
+    throw new BrowserNotesCorruptError(backup, "存储处于损坏锁定保护状态");
+  }
+  const raw = localStorage.getItem(notesKey);
+  if (!raw || !raw.trim()) return emptyNotesState();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    preserveCorruptedRaw(raw, `JSON 解析失败: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    preserveCorruptedRaw(raw, "根结构不是有效的对象");
+  }
+
+  const p = parsed as Partial<NotesState>;
+  if (p.notes !== undefined && !Array.isArray(p.notes)) {
+    preserveCorruptedRaw(raw, "notes 字段不是数组");
+  }
+  if (p.knowledgeBases !== undefined && !Array.isArray(p.knowledgeBases)) {
+    preserveCorruptedRaw(raw, "knowledgeBases 字段不是数组");
+  }
+  if (p.membership !== undefined && (typeof p.membership !== "object" || p.membership === null || Array.isArray(p.membership))) {
+    preserveCorruptedRaw(raw, "membership 字段不是键值映射");
+  }
+
+  const notesList = p.notes ?? [];
+  for (const item of notesList) {
+    if (typeof item !== "object" || item === null || !("id" in item) || typeof (item as { id: unknown }).id !== "string") {
+      preserveCorruptedRaw(raw, "notes 数组中包含缺少 id 或非对象的条目");
+    }
+  }
+
+  return {
+    notes: notesList,
+    knowledgeBases: p.knowledgeBases ?? [],
+    membership: p.membership ?? {},
+  };
+}
+
 function browserNotesWrite(state: NotesState) {
+  if (isNotesCorruptedLocked) {
+    throw new Error("浏览器笔记数据已损坏且已锁定写入保护。为防止覆盖残留数据，禁止写入。");
+  }
   try {
     localStorage.setItem(notesKey, JSON.stringify(state));
   } catch (err) {
