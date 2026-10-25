@@ -55,6 +55,7 @@ SUITES=(
 # 所以单独列出——混进 SUITES 会让「套数」与「浏览器冒烟」这个说法都不准。
 DESKTOP_ONLY_SUITES=(
   desktop_external_write_smoke
+  project_memory_smoke
 )
 
 failed=0

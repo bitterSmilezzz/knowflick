@@ -1496,6 +1496,51 @@ pub fn project_remove_note(conn: &Connection, project_id: &str, note_id: &str) -
 }
 
 /// 封存：不删数据，导出与检索跳过（「过期项目不继续污染其它项目上下文」）。
+/// 项目的一个成员笔记（供界面列出项目的上下文范围）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMemberDto {
+    pub note_id: String,
+    pub title: String,
+    /// 正文摘录（界面显示用；导出仍取全文）。
+    pub excerpt: String,
+    pub added_at: i64,
+    /// 成员笔记已被软删 —— 成员关系保留，但内容不再进导出。
+    pub is_deleted: bool,
+}
+
+/// 列出某项目的成员笔记（R4/D06 界面入口）。
+///
+/// 只列**这一个**项目的成员——项目之间的上下文是隔离的：
+/// 界面打开项目 A 时看不到项目 B 的成员，导出也只走所选项目（R4 门槛
+/// 「项目 A 无权读取项目 B」）。
+pub fn project_member_list(conn: &Connection, project_id: &str) -> Result<Vec<ProjectMemberDto>> {
+    let mut stmt = conn.prepare(
+        "SELECT n.id, n.title, n.body_md, pm.added_at, n.is_deleted
+         FROM project_members pm
+         JOIN notes n ON n.id = pm.note_id
+         WHERE pm.project_id = ?1
+         ORDER BY pm.added_at ASC",
+    )?;
+    let rows = stmt.query_map(params![project_id], |row| {
+        let body: String = row.get(2)?;
+        let flat = body.replace(char::is_whitespace, " ");
+        let excerpt: String = flat.chars().take(80).collect();
+        Ok(ProjectMemberDto {
+            note_id: row.get(0)?,
+            title: row.get(1)?,
+            excerpt,
+            added_at: row.get(3)?,
+            is_deleted: row.get::<_, i64>(4)? != 0,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 pub fn project_archive(conn: &Connection, project_id: &str, now: i64) -> Result<bool> {
     let changed = conn.execute(
         "UPDATE projects SET archived_at = ?2, updated_at = ?2 WHERE id = ?1 AND archived_at IS NULL",
@@ -1625,6 +1670,39 @@ mod project_tests {
 
         // 不存在的项目
         assert!(project_export_markdown(&conn, "ghost").is_err());
+    }
+
+    #[test]
+    fn project_member_list_is_scoped_to_one_project() {
+        let conn = temp_db("member-list");
+        note_upsert(&conn, &draft("n1", "项目 A 的笔记", "A 的内容"), 0, 1000).unwrap();
+        note_upsert(&conn, &draft("n2", "项目 B 的笔记", "B 的内容"), 0, 1100).unwrap();
+        project_create(&conn, "pa", "项目 A", "", 1200).unwrap();
+        project_create(&conn, "pb", "项目 B", "", 1200).unwrap();
+        project_add_note(&conn, "pa", "n1", 1300).unwrap();
+        project_add_note(&conn, "pb", "n2", 1300).unwrap();
+
+        // 项目 A 只看得到自己的成员（R4 门槛：项目 A 无权读取项目 B）
+        let a_members = project_member_list(&conn, "pa").unwrap();
+        assert_eq!(a_members.len(), 1);
+        assert_eq!(a_members[0].note_id, "n1");
+        assert_eq!(a_members[0].title, "项目 A 的笔记");
+        assert!(a_members[0].excerpt.contains("A 的内容"));
+        assert!(!a_members[0].is_deleted);
+        assert!(a_members[0].added_at == 1300);
+
+        let b_members = project_member_list(&conn, "pb").unwrap();
+        assert_eq!(b_members.len(), 1);
+        assert_eq!(b_members[0].note_id, "n2");
+
+        // 不存在的项目：空集而不是错误（界面据此显示「还没有成员」）
+        assert!(project_member_list(&conn, "ghost").unwrap().is_empty());
+
+        // 成员笔记被软删：成员关系保留，但标出已删除（界面能提示，不当它还在）
+        note_delete(&conn, "n1", 2000).unwrap();
+        let after = project_member_list(&conn, "pa").unwrap();
+        assert_eq!(after.len(), 1);
+        assert!(after[0].is_deleted, "已删的成员笔记标出来");
     }
 
     #[test]

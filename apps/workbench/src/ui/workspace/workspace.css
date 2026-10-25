@@ -2893,3 +2893,24 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .gl-link select { font-size: 12px; }
 .gl-review { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
 .gl-review textarea { min-height: 48px; resize: vertical; font-size: 12px; }
+
+/* 项目记忆（R4/D06） */
+.ws-projects { display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow: auto; }
+.ws-projects-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ws-projects-head h1 { margin: 0 0 4px; font-size: 18px; }
+.ws-projects-archived { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.ws-projects-body { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 16px; align-items: start; }
+.ws-projects-list { display: flex; flex-direction: column; gap: 8px; }
+.ws-projects-new { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.ws-projects-item { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; cursor: pointer; }
+.ws-projects-item.is-active { border-color: var(--accent, #2b6cb0); background: var(--paper, rgba(43, 108, 176, 0.06)); }
+.ws-projects-badge { font-size: 11px; color: #b3261e; }
+.ws-projects-detail { display: flex; flex-direction: column; gap: 10px; }
+.ws-projects-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ws-projects-detail-head h2 { margin: 0; font-size: 15px; }
+.ws-projects-actions { display: flex; gap: 8px; }
+.ws-projects-add { display: flex; gap: 8px; align-items: center; }
+.ws-projects-members h3 { margin: 4px 0; font-size: 13px; }
+.ws-projects-member { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ws-projects-member-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ws-projects-message { font-size: 12px; color: var(--muted); margin: 0; }

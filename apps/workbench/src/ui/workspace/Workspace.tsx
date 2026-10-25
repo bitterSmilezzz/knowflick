@@ -107,17 +107,19 @@ const Briefing = lazy(() => import("../BrainViews").then((m) => ({ default: m.Br
 const ReviewFactsView = lazy(() => import("./ReviewFactsView").then((m) => ({ default: m.ReviewFactsView })));
 const ProfileGovernanceView = lazy(() => import("./ProfileGovernanceView").then((m) => ({ default: m.ProfileGovernanceView })));
 const GoalsView = lazy(() => import("./GoalsView").then((m) => ({ default: m.GoalsView })));
+const ProjectsView = lazy(() => import("./ProjectsView").then((m) => ({ default: m.ProjectsView })));
 const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.BrainAssistantDrawer })));
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "notes" | "briefing" | "review-facts" | "profile" | "goals" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
+type Page = Collection | "settings" | "notes" | "briefing" | "review-facts" | "profile" | "goals" | "projects" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
   "review-facts": "复盘",
   profile: "我的记忆",
   goals: "目标",
+  projects: "项目记忆",
   notes: "笔记",
   briefing: "认知简报",
   brain: "知识问答",
@@ -1709,6 +1711,14 @@ export function Workspace() {
             >
               <Icon name="star" /><span>目标</span>
             </button>
+            {/* R4/D06：项目记忆的 UI 入口（数据层早就有了，界面这批补上）。 */}
+            <button
+              className="ws-nav-row"
+              aria-current={page === "projects" ? "page" : undefined}
+              onClick={() => navigate("projects")}
+            >
+              <Icon name="folder" /><span>项目记忆</span>
+            </button>
             </details>
             {/* 温故复习是**高频入口**（每天都要用），不跟着「应用」一起折叠——
                 折叠起来用户就找不到每天要点开的那个按钮了。 */}
@@ -2362,6 +2372,9 @@ export function Workspace() {
               ) : null}
               {page === "profile" ? <ProfileGovernanceView dir={dir} /> : null}
               {page === "goals" ? <GoalsView dir={dir} materials={materials} /> : null}
+              {page === "projects" ? (
+                <ProjectsView dir={dir} notes={notesState.notes.map((n) => ({ id: n.id, title: n.title }))} />
+              ) : null}
               {page === "brain" ? (
                 <Assistant
                   cards={cards}

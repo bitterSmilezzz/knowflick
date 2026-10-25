@@ -58,6 +58,7 @@
     "allow-project-add-note",
     "allow-project-remove-note",
     "allow-project-archive-cmd",
+    "allow-project-member-list",
     "allow-project-export-markdown-cmd",
     "allow-profile-claim-add",
     "allow-profile-claims-active",

@@ -326,6 +326,19 @@ export function projectRemoveNote(projectId: string, noteId: string, dir?: strin
   return invoke("project_remove_note", { projectId, noteId, dir: dir ?? null });
 }
 
+/** 项目的一个成员笔记（R4/D06 界面入口）。 */
+export interface ProjectMemberShell {
+  noteId: string;
+  title: string;
+  excerpt: string;
+  addedAt: number;
+  isDeleted: boolean;
+}
+
+export function projectMemberList(projectId: string, dir?: string): Promise<ProjectMemberShell[]> {
+  return invoke("project_member_list", { dir: dir ?? null, projectId });
+}
+
 export function projectArchive(projectId: string, dir?: string): Promise<boolean> {
   return invoke("project_archive_cmd", { projectId, dir: dir ?? null });
 }

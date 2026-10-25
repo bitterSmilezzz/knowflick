@@ -49,6 +49,7 @@ fn main() {
             "project_add_note",
             "project_remove_note",
             "project_archive_cmd",
+            "project_member_list",
             "project_export_markdown_cmd",
             "profile_claim_add",
             "profile_claims_active",

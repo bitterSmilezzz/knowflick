@@ -786,6 +786,13 @@ fn project_remove_note(app: tauri::AppHandle, dir: Option<String>, project_id: S
 }
 
 #[tauri::command]
+fn project_member_list(dir: Option<String>, project_id: String) -> Result<Vec<notes::ProjectMemberDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::project_member_list(&conn, &project_id).map_err(|e| crate::error_text::explain_text("读取项目成员失败", &e.to_string()))
+}
+
+#[tauri::command]
 fn project_archive_cmd(app: tauri::AppHandle, dir: Option<String>, project_id: String) -> Result<bool, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
@@ -1632,6 +1639,7 @@ pub fn run() {
             project_add_note,
             project_remove_note,
             project_archive_cmd,
+            project_member_list,
             project_export_markdown_cmd,
             profile_claim_add,
             profile_claims_active,
