@@ -1,19 +1,42 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Goal, RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { periodLabel, reviewFacts, reviewToMarkdown, type ReviewFacts as Facts } from "../../domain/reviewFacts";
+import {
+  nextReminderAt,
+  reviewReminders,
+  shouldRemindNow,
+  type ReviewSchedule,
+} from "../../domain/reviewReminder";
 import { Icon } from "./Icon";
 
 /** 复盘视图（R4/D03）：渲染 reviewFacts 的**事实**——记录了什么、目标现状、
  *  没有记录的方面。不产建议（事实与建议分离是路线图口径）；导出走 Markdown。 */
-export function ReviewFactsView({ materials, cards, goals }: {
+export function ReviewFactsView({ materials, cards, goals, notes = [], schedule, onScheduleChange, staleReferences = [] }: {
   materials: RawMaterial[];
   cards: KnowledgeCard[];
   goals: Goal[];
+  notes?: Array<{ id: string; title: string; bodyMd: string; notebook: string | null; isDeleted: boolean }>;
+  /** 主动回顾的提醒计划（R4/D09）。 */
+  schedule: ReviewSchedule;
+  onScheduleChange: (next: ReviewSchedule) => void;
+  /** 过期/失效的引用（由 noteReference 判定）。 */
+  staleReferences?: Array<{ noteId: string; title: string; status: "changed" | "missing" }>;
 }) {
   const [kind, setKind] = useState<"day" | "week" | "month">("week");
   const [now, setNow] = useState(() => Date.now());
   const facts: Facts = reviewFacts({ materials, cards, goals, now }, kind);
+  const reminders = useMemo(
+    () =>
+      reviewReminders({
+        goals,
+        notes: notes as never,
+        materials,
+        staleReferences,
+        projectScope: schedule.projectScope,
+      }),
+    [goals, notes, materials, staleReferences, schedule.projectScope]
+  );
 
   const download = () => {
     const md = reviewToMarkdown(facts);
@@ -95,6 +118,93 @@ export function ReviewFactsView({ materials, cards, goals }: {
           <ul className="rv-gaps">{facts.gaps.map((g, i) => <li key={i}>{g}</li>)}</ul>
         )}
         <p className="ws-hint">没有记录只是没有记录——不是失败，也不据此评价。</p>
+      </section>
+
+      {/* 主动回顾（R4/D09）：频率、安静时段、暂停与退订；只提醒可处理的事。 */}
+      <section className="rv-section" aria-label="主动回顾">
+        <h2>主动回顾</h2>
+        <div className="rv-reminder-controls">
+          <label>
+            频率
+            <select
+              aria-label="回顾频率"
+              value={schedule.frequency}
+              onChange={(e) =>
+                onScheduleChange({ ...schedule, frequency: e.target.value as ReviewSchedule["frequency"] })
+              }
+            >
+              <option value="off">关闭（退订）</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
+            </select>
+          </label>
+          <label className="rv-reminder-pause">
+            <input
+              type="checkbox"
+              aria-label="暂停主动回顾"
+              checked={schedule.paused}
+              onChange={(e) => onScheduleChange({ ...schedule, paused: e.target.checked })}
+            />
+            暂停
+          </label>
+          <label>
+            安静时段
+            <select
+              aria-label="安静时段开始"
+              value={schedule.quietHours ? schedule.quietHours.start : -1}
+              onChange={(e) => {
+                const start = Number(e.target.value);
+                if (start < 0) { onScheduleChange({ ...schedule, quietHours: null }); return; }
+                onScheduleChange({ ...schedule, quietHours: { start, end: schedule.quietHours?.end ?? 8 } });
+              }}
+            >
+              <option value={-1}>不设</option>
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{String(h).padStart(2, "0")}:00 起</option>
+              ))}
+            </select>
+            <select
+              aria-label="安静时段结束"
+              value={schedule.quietHours ? schedule.quietHours.end : -1}
+              disabled={!schedule.quietHours}
+              onChange={(e) => {
+                const end = Number(e.target.value);
+                if (end < 0 || !schedule.quietHours) return;
+                onScheduleChange({ ...schedule, quietHours: { start: schedule.quietHours.start, end } });
+              }}
+            >
+              <option value={-1}>不设</option>
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{String(h).padStart(2, "0")}:00 止</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <p className="ws-hint" role="status">
+          {schedule.frequency === "off"
+            ? "已退订——不会主动提醒你。"
+            : schedule.paused
+              ? "已暂停——不会主动提醒你。"
+              : shouldRemindNow(schedule, now)
+                ? "现在可以回顾一次。"
+                : `安静时段或未到周期——下次约在 ${nextReminderAt(schedule, now) ? new Date(nextReminderAt(schedule, now)!).toLocaleString("zh-CN") : "—"}。`}
+        </p>
+
+        <h3>可处理事项（{reminders.length}）</h3>
+        {reminders.length === 0 ? (
+          <p className="ws-hint">没有需要你动手的事——没有记录不是失败，所以这里不会提醒你。</p>
+        ) : (
+          <ul className="rv-reminders" data-reminders>
+            {reminders.map((r, i) => (
+              <li key={`${r.kind}-${r.targetId ?? i}`}>
+                <strong>{r.title}</strong>
+                <span>{r.action}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );

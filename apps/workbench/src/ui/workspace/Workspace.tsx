@@ -63,6 +63,8 @@ import { executeRestore, restoreFailuresToMarkdown, summarizeRestore } from "./b
 import { backupCopyToDirectory, webdavUploadBackup } from "../../shell/store";
 import { createKfBackupArchive } from "../../domain/systemBackup";
 import { activeGoals, ensureNoteFromMaterial, readLastImportReport, readNotes, saveLastImportReport } from "./repository";
+import { extractNoteReferences, referenceStatus } from "../../domain/noteReference";
+import { readReviewSchedule, writeReviewSchedule, type ReviewSchedule } from "../../domain/reviewReminder";
 import { buildImportReport, reportLines, type ImportReport } from "../../domain/importReport";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
@@ -1408,6 +1410,36 @@ export function Workspace() {
     navigate("notes");
   };
 
+  // 主动回顾计划（R4/D09）：存在 settings.json 的 raw.reviewSchedule。
+  const reviewSchedule = useMemo(() => readReviewSchedule(file.raw), [file.raw]);
+  const updateReviewSchedule = (next: ReviewSchedule) => {
+    const raw = writeReviewSchedule(file.raw, next);
+    const updated = { ...file, raw };
+    setFile(updated);
+    void storePreferences(updated, apiKey, dir).catch((err) =>
+      setError(`保存回顾设置失败：${err instanceof Error ? err.message : String(err)}`)
+    );
+  };
+
+  /** 过期/失效的引用（提醒与产物视图都要用）。 */
+  const staleReferenceList = useMemo(() => {
+    const sources = new Map<string, { id: string; title: string; bodyMd: string; kind: "note" | "material" }>();
+    for (const n of notesState.notes) {
+      sources.set(n.id, { id: n.id, title: n.title, bodyMd: n.bodyMd, kind: "note" });
+    }
+    for (const m of materials) {
+      sources.set(m.id, { id: m.id, title: m.title, bodyMd: m.rawText, kind: "material" });
+    }
+    const out: Array<{ noteId: string; title: string; status: "changed" | "missing" }> = [];
+    for (const note of notesState.notes) {
+      for (const ref of extractNoteReferences(note.bodyMd)) {
+        const status = referenceStatus(ref, sources);
+        if (status !== "ok") out.push({ noteId: ref.noteId, title: ref.title, status });
+      }
+    }
+    return out;
+  }, [notesState.notes, materials]);
+
   const theme = normalizePaperTheme(file.settings.paperTheme);
   const appearance = theme === "SYSTEM" ? systemAppearance : theme === "DARK" ? "dark" : "light";
   const navMode = layout.navMode;
@@ -1661,7 +1693,7 @@ export function Workspace() {
                 summary 带 ws-group-label 类：它同时就是这一段的组标签。 */}
             <details
               className="ws-nav-details"
-              open={["brain", "briefing", "artifacts", "stats", "quiz"].includes(page)}
+              open={["brain", "briefing", "artifacts", "stats", "quiz", "review-facts", "profile", "goals", "projects", "creative"].includes(page)}
             >
             <summary className="ws-nav-summary ws-group-label">应用</summary>
             <button
@@ -1698,6 +1730,15 @@ export function Workspace() {
               onClick={() => navigate("quiz")}
             >
               <Icon name="ask" /><span>知识测验</span>
+            </button>
+            {/* R4/D03：复盘页此前**没有任何入口**——视图写好了，用户却进不去。
+                入口补上，D09 的主动回顾也住在这里。 */}
+            <button
+              className="ws-nav-row"
+              aria-current={page === "review-facts" ? "page" : undefined}
+              onClick={() => navigate("review-facts")}
+            >
+              <Icon name="archive" /><span>复盘</span>
             </button>
             <button
               className="ws-nav-row"
@@ -2380,7 +2421,15 @@ export function Workspace() {
                 )
               ) : null}
               {page === "review-facts" ? (
-                <ReviewFactsView materials={materials} cards={cards} goals={goalsState} />
+                <ReviewFactsView
+                  materials={materials}
+                  cards={cards}
+                  goals={goalsState}
+                  notes={notesState.notes}
+                  schedule={reviewSchedule}
+                  onScheduleChange={updateReviewSchedule}
+                  staleReferences={staleReferenceList}
+                />
               ) : null}
               {page === "profile" ? <ProfileGovernanceView dir={dir} /> : null}
               {page === "goals" ? <GoalsView dir={dir} materials={materials} /> : null}
