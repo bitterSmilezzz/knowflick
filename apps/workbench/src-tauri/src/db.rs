@@ -605,6 +605,20 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             content,
             tokenize = 'unicode61 remove_diacritics 2'
         );
+
+        -- 分块向量（R2 向量化分块）：语义召回按块，身份三元组 + content_revision
+        -- 防「过期嵌入写回索引」（LOCAL_DATA_AND_AI：索引任务携带目标修订号）。
+        CREATE TABLE IF NOT EXISTS note_chunk_embeddings (
+            note_id            TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            chunk_index        INTEGER NOT NULL,
+            dim                INTEGER NOT NULL,
+            embedding          BLOB NOT NULL,
+            provider           TEXT NOT NULL DEFAULT '',
+            model              TEXT NOT NULL DEFAULT '',
+            content_revision   INTEGER NOT NULL,
+            updated_at         INTEGER NOT NULL,
+            PRIMARY KEY (note_id, chunk_index)
+        );
         "#,
     )?;
 
@@ -1600,7 +1614,7 @@ pub fn is_cards_table_empty(conn: &Connection) -> bool {
     total_rows == 0
 }
 
-fn chrono_or_epoch_now() -> i64 {
+pub fn chrono_or_epoch_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)

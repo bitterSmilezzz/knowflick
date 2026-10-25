@@ -3,7 +3,16 @@ import type { KnowledgeCard } from "../domain/card";
 import { generateCognitiveBriefing, type CognitiveBriefing } from "../domain/briefing";
 import { searchCards } from "../domain/search";
 import { reciprocalRankFusion } from "../domain/hybridSearch";
-import { completeChat, inShell, dbSaveArtifact, dbListArtifacts, dbSearchCardsHybrid, type Artifact } from "../shell/store";
+import {
+  completeChat,
+  inShell,
+  dbSaveArtifact,
+  dbListArtifacts,
+  dbSearchCardsHybrid,
+  noteSearchChunksVector,
+  type Artifact,
+  type NoteChunkVectorHitShell,
+} from "../shell/store";
 import { EmbeddingEngine } from "../domain/embeddingEngine";
 import type { AiSettings } from "../domain/settings";
 import { completionURL, requiresKey } from "../domain/ingest";
@@ -297,6 +306,7 @@ export function BrainAssistantDrawer({
 
     // 1. 本地多信号 RRF 混合检索相关卡片作为上下文 (Reciprocal Rank Fusion)
     let matched: KnowledgeCard[] = [];
+    let matchedChunkTexts: NoteChunkVectorHitShell[] = [];
     if (inShell()) {
       try {
         const engine = new EmbeddingEngine({
@@ -308,6 +318,14 @@ export function BrainAssistantDrawer({
         const hybridHits = await dbSearchCardsHybrid(q, queryVec, engine.identity(), 6);
         if (hybridHits.length > 0) {
           matched = hybridHits.slice(0, 4);
+        }
+        // R2 向量化分块：笔记原文的块级语义召回。只搜卡片的话，长文笔记里
+        // 的结论等于没进上下文——块命中带原文偏移，直接作为参考段落。
+        try {
+          const chunkHits = await noteSearchChunksVector(queryVec, engine.identity(), 3);
+          if (chunkHits.length > 0) matchedChunkTexts = chunkHits;
+        } catch (err) {
+          console.warn("分块向量检索不可用（索引未建或模型不匹配）:", err);
         }
       } catch (err) {
         console.warn("混合向量检索降级至规则检索:", err);
@@ -335,7 +353,7 @@ export function BrainAssistantDrawer({
       })
       .slice(0, 2);
 
-    if (matched.length === 0 && matchedArtifacts.length === 0) {
+    if (matched.length === 0 && matchedArtifacts.length === 0 && matchedChunkTexts.length === 0) {
       setMessages([
         ...newMessages,
         {
@@ -390,8 +408,13 @@ export function BrainAssistantDrawer({
         .map((artifact, idx) => `[产物 ${idx + 1}] 标题: ${artifact.title}\n内容: ${artifact.contentMarkdown.slice(0, 1200)}\n`)
         .join("\n---\n");
 
+      const chunkContext = matchedChunkTexts
+        .map((hit, idx) => `[笔记段落 ${idx + 1}] 来自笔记「${hit.noteTitle}」:\n${hit.content.slice(0, 800)}`)
+        .join("\n---\n");
+
       const userPrompt =
         `【知识库参考卡片】:\n${contextText || "暂无相关卡片"}\n\n` +
+        (chunkContext ? `【笔记原文段落（语义检索命中）】:\n${chunkContext}\n\n` : "") +
         (artifactContext ? `【已保存的产物（用户自己沉淀的结论）】:\n${artifactContext}\n\n` : "") +
         `【用户问题】: ${q}`;
 

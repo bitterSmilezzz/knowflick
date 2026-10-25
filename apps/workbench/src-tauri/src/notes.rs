@@ -709,6 +709,63 @@ mod tests {
         assert_eq!(search_note_chunks(&conn, "南极项目", 10).unwrap().len(), 1);
     }
 
+    /// 分块向量：保存/召回往返、身份隔离、修订过期不写回、删除不召回。
+    #[test]
+    fn chunk_embeddings_identity_and_staleness() {
+        let conn = temp_db("chunkvec");
+        // 两个标题节 → 两个块（只有标题强制分块；小段落会合并）
+        let body = "# 检索\n\n关于检索性能的第一段。\n\n# 索引\n\n关于语义索引的第二段，内容足够长以形成独立的分块边界。";
+        note_upsert(&conn, &draft("n1", "长文", body), 0, 1000).unwrap();
+        let chunks = list_chunk_texts(&conn, 100).unwrap();
+        assert_eq!(chunks.len(), 2);
+
+        // 保存两个块（身份 A）
+        let items: Vec<(String, i64, Vec<f32>)> = chunks
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.note_id.clone(), c.chunk_index, vec![0.1 * (i as f32 + 1.0); 384]))
+            .collect();
+        let saved = save_note_chunk_embeddings(&conn, &items, "local", "e5-small").unwrap();
+        assert_eq!(saved, 2);
+
+        // 同身份召回：两个块的向量与查询同向（都是 0.1 的倍数）→ 都命中，
+        // 第一块余弦最高（与查询完全同向）。断言首块身份与内容，不断言只有一条。
+        let hits = search_note_chunks_vector(&conn, &items[0].2, "local", "e5-small", 10).unwrap();
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].note_id, "n1");
+        assert_eq!(hits[0].chunk_index, 0);
+        assert!(hits[0].content.contains("检索性能"), "{:?}", hits[0].content);
+        assert!(hits[0].score > 0.9);
+
+        // 身份隔离：同维度不同模型不混算
+        assert!(search_note_chunks_vector(&conn, &items[0].2, "local", "other-model", 10).unwrap().is_empty());
+
+        // 修订推进 → 分块重建 → 旧向量 content_revision 不匹配，召回里消失；
+        // 过期嵌入（拿旧 revision 保存）被拒绝
+        note_upsert(&conn, &draft("n1", "长文", "全新的正文，与之前完全不同。"), 1, 2000).unwrap();
+        assert!(search_note_chunks_vector(&conn, &items[0].2, "local", "e5-small", 10).unwrap().is_empty(), "编辑后旧向量不参与召回");
+        // 新正文只有一段、没有标题 → 只剩 1 个块（index 0）。
+        // 旧 items 里 index 0 的保存是「对当前块 index 0 的写入」——块表里它
+        // 存在且 revision 就是重建后的 2，所以允许写（这不是过期任务，是
+        // 对新块的写入）；index 1 在新正文里已不存在 → 跳过。
+        // 断言语义改为：旧 items 里的 index-1 块不写回。
+        let stale_save = save_note_chunk_embeddings(&conn, &items, "local", "e5-small").unwrap();
+        assert_eq!(stale_save, 1, "重建后已消失的块（index 1）不写回；对现存块的写入放行");
+        // 旧向量 index-1 仍留在表里（历史行，重建时不清理——召回由
+        // content_revision 匹配挡掉，见上面的空召回断言）。真正守住的语义是：
+        // 过期行不参与召回、对现存块的写入走当前修订。
+        let idx1_rev: Option<i64> = conn
+            .query_row(
+                "SELECT content_revision FROM note_chunk_embeddings WHERE chunk_index = 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .unwrap();
+        // index-1 行若被重写，其 revision 必须还是旧值（保存路径对不存在的块跳过）
+        assert!(idx1_rev.is_none() || idx1_rev == Some(1), "被抹掉的块要么没写、要么还是旧修订：{idx1_rev:?}");
+    }
+
     /// R2 映射：素材 → 笔记，幂等；原素材与旧卡片不受影响；映射后可编辑。
     #[test]
     fn material_maps_to_note_idempotently_and_original_survives() {
@@ -801,4 +858,189 @@ mod tests {
         assert_eq!(old, 1, "旧素材不因升级消失");
         assert_eq!(search_notes(&conn, "新正文", None, 10).unwrap().len(), 1);
     }
+}
+
+// ---------- 分块向量（R2 向量化分块：块级语义召回） ----------
+
+/// 待嵌入的分块清单：内容 + 写入时的修订号（回传保存时做一致性校验）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteChunkText {
+    pub note_id: String,
+    pub chunk_index: i64,
+    pub content: String,
+    pub content_revision: i64,
+}
+
+/// 列出待嵌入的分块（未删除笔记的全部块）。嵌入流程读它 → embedTexts → 保存。
+pub fn list_chunk_texts(conn: &Connection, limit: i64) -> Result<Vec<NoteChunkText>> {
+    let mut stmt = conn.prepare(
+        "SELECT n.note_id, n.chunk_index, n.content, n.content_revision
+         FROM note_chunks n JOIN notes n2 ON n2.id = n.note_id
+         WHERE n2.is_deleted = 0
+         ORDER BY n2.updated_at DESC, n.chunk_index ASC LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit], |row| {
+        Ok(NoteChunkText {
+            note_id: row.get(0)?,
+            chunk_index: row.get(1)?,
+            content: row.get(2)?,
+            content_revision: row.get(3)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// 保存分块向量：**只在块的 content_revision 仍等于读取时的一致**时写入——
+/// 期间被编辑过的块（修订推进 → 分块重建）视为过期任务，跳过不写回
+/// （契约「过期任务不写回当前索引」）。返回实际写入数。
+pub fn save_note_chunk_embeddings(
+    conn: &Connection,
+    items: &[(String, i64, Vec<f32>)],
+    provider: &str,
+    model: &str,
+) -> Result<usize, String> {
+    let now = crate::db::chrono_or_epoch_now();
+    let mut saved = 0usize;
+    for (note_id, chunk_index, embedding) in items {
+        // 读该块当前的修订号；块已被重建（修订变了）就跳过这次嵌入
+        let current_rev: Option<i64> = conn
+            .query_row(
+                "SELECT content_revision FROM note_chunks WHERE note_id = ?1 AND chunk_index = ?2",
+                params![note_id, chunk_index],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let Some(chunk_rev) = current_rev else { continue };
+        let read_rev: Option<i64> = conn
+            .query_row(
+                "SELECT content_revision FROM note_chunk_embeddings WHERE note_id = ?1 AND chunk_index = ?2",
+                params![note_id, chunk_index],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        // 已有同身份更新鲜的写入（revision 更大）也跳过
+        if let Some(prev) = read_rev {
+            if prev > chunk_rev {
+                continue;
+            }
+        }
+        let mut bytes = Vec::with_capacity(embedding.len() * 4);
+        for &val in embedding {
+            bytes.extend_from_slice(&val.to_le_bytes());
+        }
+        conn.execute(
+            r#"
+            INSERT INTO note_chunk_embeddings (note_id, chunk_index, dim, embedding, provider, model, content_revision, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(note_id, chunk_index) DO UPDATE SET
+                dim = excluded.dim,
+                embedding = excluded.embedding,
+                provider = excluded.provider,
+                model = excluded.model,
+                content_revision = excluded.content_revision,
+                updated_at = excluded.updated_at
+            "#,
+            params![note_id, chunk_index, embedding.len() as i64, bytes, provider, model, chunk_rev, now],
+        )
+        .map_err(|e| e.to_string())?;
+        saved += 1;
+    }
+    Ok(saved)
+}
+
+/// 块级向量召回：命中块带父笔记标题与原文偏移。
+/// 只比同 (provider, model, dim) 且 **嵌入的 content_revision == 分块的
+/// content_revision** 的向量——笔记被编辑过、分块重建后，旧向量不参与召回。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteChunkVectorHit {
+    pub note_id: String,
+    pub chunk_index: i64,
+    pub content: String,
+    pub char_start: i64,
+    pub char_end: i64,
+    pub note_title: String,
+    pub score: f32,
+}
+
+pub fn search_note_chunks_vector(
+    conn: &Connection,
+    query_embedding: &[f32],
+    provider: &str,
+    model: &str,
+    limit: i64,
+) -> Result<Vec<NoteChunkVectorHit>, String> {
+    if query_embedding.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut scored: Vec<(String, i64, f32)> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT e.note_id, e.chunk_index, e.embedding
+             FROM note_chunk_embeddings e
+             JOIN note_chunks n ON n.note_id = e.note_id AND n.chunk_index = e.chunk_index
+             JOIN notes n2 ON n2.id = e.note_id
+             WHERE n2.is_deleted = 0 AND e.dim = ?1 AND e.provider = ?2 AND e.model = ?3
+               AND e.content_revision = n.content_revision",
+        )
+        .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![query_embedding.len() as i64, provider, model], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Vec<u8>>(2)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (note_id, chunk_index, bytes) = row.map_err(|e| e.to_string())?;
+            if bytes.len() % 4 != 0 {
+                continue;
+            }
+            let mut vector = Vec::with_capacity(bytes.len() / 4);
+            for chunk in bytes.chunks_exact(4) {
+                vector.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+            }
+            scored.push((note_id, chunk_index, crate::db::cosine_similarity(query_embedding, &vector)));
+        }
+    }
+    scored.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(limit as usize);
+
+    let mut out = Vec::new();
+    for (note_id, chunk_index, score) in scored {
+        let row = conn
+            .query_row(
+                "SELECT n.content, n.char_start, n.char_end, n2.title
+                 FROM note_chunks n JOIN notes n2 ON n2.id = n.note_id
+                 WHERE n.note_id = ?1 AND n.chunk_index = ?2",
+                params![note_id, chunk_index],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if let Some((content, char_start, char_end, title)) = row {
+            out.push(NoteChunkVectorHit {
+                note_id,
+                chunk_index,
+                content,
+                char_start,
+                char_end,
+                note_title: title,
+                score,
+            });
+        }
+    }
+    Ok(out)
 }

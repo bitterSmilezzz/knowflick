@@ -251,6 +251,53 @@ export function noteSearch(query: string, kbId: string | null, dir?: string, lim
   return invoke("note_search", { dir: dir ?? null, query, kbId, limit: limit ?? null });
 }
 
+// ---------- 分块向量（R2 向量化分块：块级语义召回） ----------
+
+export interface NoteChunkTextShell {
+  noteId: string;
+  chunkIndex: number;
+  content: string;
+  contentRevision: number;
+}
+
+export function noteListChunkTexts(limit?: number): Promise<NoteChunkTextShell[]> {
+  return invoke("note_list_chunk_texts", { limit: limit ?? null });
+}
+
+export function noteSaveChunkEmbeddings(
+  items: Array<{ noteId: string; chunkIndex: number; embedding: number[] }>,
+  identity?: EmbeddingIdentity
+): Promise<number> {
+  return invoke("note_save_chunk_embeddings", {
+    items: items.map((it) => ({ note_id: it.noteId, chunk_index: it.chunkIndex, embedding: it.embedding })),
+    provider: identity?.provider ?? "",
+    model: identity?.model ?? "",
+  });
+}
+
+export interface NoteChunkVectorHitShell {
+  noteId: string;
+  chunkIndex: number;
+  content: string;
+  charStart: number;
+  charEnd: number;
+  noteTitle: string;
+  score: number;
+}
+
+export function noteSearchChunksVector(
+  queryEmbedding: number[],
+  identity?: EmbeddingIdentity,
+  limit?: number
+): Promise<NoteChunkVectorHitShell[]> {
+  return invoke("note_search_chunks_vector", {
+    queryEmbedding,
+    provider: identity?.provider ?? "",
+    model: identity?.model ?? "",
+    limit: limit ?? null,
+  });
+}
+
 export function kbCreate(id: string, name: string, description: string, dir?: string): Promise<void> {
   return invoke("kb_create", { dir: dir ?? null, id, name, description });
 }

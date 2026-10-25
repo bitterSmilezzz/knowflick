@@ -495,6 +495,63 @@ fn note_search_chunks(query: String, limit: Option<i64>) -> Result<Vec<notes::No
 }
 
 #[tauri::command]
+fn note_list_chunk_texts(limit: Option<i64>) -> Result<Vec<notes::NoteChunkText>, String> {
+    let path = library_dir(None);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::list_chunk_texts(&conn, limit.unwrap_or(200)).map_err(|e| crate::error_text::explain_text("读取待嵌入分块失败", &e.to_string()))
+}
+
+#[tauri::command]
+fn note_save_chunk_embeddings(
+    app: tauri::AppHandle,
+    items: Vec<NoteChunkEmbeddingItem>,
+    provider: Option<String>,
+    model: Option<String>,
+) -> Result<usize, String> {
+    let path = library_dir(None);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let triples: Vec<(String, i64, Vec<f32>)> = items
+        .into_iter()
+        .map(|it| (it.note_id, it.chunk_index, it.embedding))
+        .collect();
+    let saved = notes::save_note_chunk_embeddings(
+        &conn,
+        &triples,
+        provider.as_deref().unwrap_or(""),
+        model.as_deref().unwrap_or(""),
+    )
+    .map_err(|e| crate::error_text::explain_text("保存分块向量失败", &e))?;
+    notify_library_changed(&app);
+    Ok(saved)
+}
+
+#[derive(serde::Deserialize)]
+struct NoteChunkEmbeddingItem {
+    note_id: String,
+    chunk_index: i64,
+    embedding: Vec<f32>,
+}
+
+#[tauri::command]
+fn note_search_chunks_vector(
+    query_embedding: Vec<f32>,
+    provider: Option<String>,
+    model: Option<String>,
+    limit: Option<i64>,
+) -> Result<Vec<notes::NoteChunkVectorHit>, String> {
+    let path = library_dir(None);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::search_note_chunks_vector(
+        &conn,
+        &query_embedding,
+        provider.as_deref().unwrap_or(""),
+        model.as_deref().unwrap_or(""),
+        limit.unwrap_or(20),
+    )
+    .map_err(|e| crate::error_text::explain_text("分块向量检索失败", &e))
+}
+
+#[tauri::command]
 fn kb_create(app: tauri::AppHandle, dir: Option<String>, id: String, name: String, description: Option<String>) -> Result<(), String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
@@ -1169,6 +1226,9 @@ pub fn run() {
             note_restore,
             note_search,
             note_search_chunks,
+            note_list_chunk_texts,
+            note_save_chunk_embeddings,
+            note_search_chunks_vector,
             kb_create,
             kb_list,
             kb_add_note,

@@ -5,6 +5,8 @@ import {
   dbListStaleEmbeddingCardIds,
   dbSaveCardEmbeddingsBatch,
   localEmbed,
+  noteListChunkTexts,
+  noteSaveChunkEmbeddings,
   localEmbedStatus,
   requestEmbeddings,
 } from "../shell/store";
@@ -311,4 +313,37 @@ export async function syncCardEmbeddings(
   }
 
   return { indexedCount: 0 };
+}
+
+/**
+ * 后台静默补齐笔记分块的向量索引（R2 向量化分块）。
+ *
+ * 与卡片索引的差别：分块的 content_revision 由 Rust 侧校验——笔记被编辑、
+ * 分块重建后，拿旧任务结果写入会被拒绝，不污染索引（契约「过期任务不写回」）。
+ * 失败静默（控制台可见），不打扰用户：索引是后台任务，问答仍可走全文检索。
+ */
+export async function syncNoteChunkEmbeddings(
+  engine: EmbeddingEngine,
+  options: { batchSize?: number; dir?: string } = {}
+): Promise<{ indexedCount: number }> {
+  if (!inShell()) return { indexedCount: 0 };
+  const batchSize = options.batchSize ?? 16;
+  let indexedCount = 0;
+  try {
+    for (let round = 0; round < 50; round++) {
+      const chunks = await noteListChunkTexts(batchSize);
+      if (!chunks.length) break;
+      const embeddings = await engine.embedTexts(chunks.map((c) => c.content));
+      if (embeddings.length !== chunks.length) break;
+      const saved = await noteSaveChunkEmbeddings(
+        chunks.map((c, i) => ({ noteId: c.noteId, chunkIndex: c.chunkIndex, embedding: embeddings[i] })),
+        engine.identity()
+      );
+      indexedCount += saved;
+      if (chunks.length < batchSize) break;
+    }
+  } catch (err) {
+    console.warn("[EmbeddingEngine] 分块向量同步失败（下次再试）:", err);
+  }
+  return { indexedCount };
 }

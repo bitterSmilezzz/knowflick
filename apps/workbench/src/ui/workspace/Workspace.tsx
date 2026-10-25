@@ -92,7 +92,7 @@ import {
   formatBilibiliPayload,
 } from "../../domain/sniffer";
 import { parseDocumentFile } from "../../domain/documentParser";
-import { EmbeddingEngine, syncCardEmbeddings } from "../../domain/embeddingEngine";
+import { EmbeddingEngine, syncCardEmbeddings, syncNoteChunkEmbeddings } from "../../domain/embeddingEngine";
 import { useModalFocus } from "./useModalFocus";
 import { dbLibrarySignature } from "../../shell/store";
 import { EXTERNAL_REFRESH_INTERVAL_MS, externalChangeDetected } from "./externalRefresh";
@@ -366,6 +366,11 @@ export function Workspace() {
     });
     void syncCardEmbeddings(cards, engine, { dir }).catch((err) => {
       console.warn("卡片向量同步非阻塞跳过:", err);
+    });
+    // R2 向量化分块：笔记分块的后台静默索引（问答的块级语义召回从这里取数；
+    // 失败静默——问答降级走全文检索，索引下次再补）
+    void syncNoteChunkEmbeddings(engine, { dir }).catch((err) => {
+      console.warn("分块向量同步非阻塞跳过:", err);
     });
   }, [cards, file.settings.providerId, file.settings.baseURL, apiKey, dir]);
 
