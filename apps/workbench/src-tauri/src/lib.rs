@@ -551,10 +551,18 @@ fn note_get(dir: Option<String>, id: String) -> Result<Option<notes::NoteDto>, S
 }
 
 #[tauri::command]
-fn note_list(dir: Option<String>, include_deleted: Option<bool>, limit: Option<i64>) -> Result<Vec<notes::NoteDto>, String> {
+fn note_list(dir: Option<String>, scope: Option<String>, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<notes::NoteDto>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::note_list(&conn, include_deleted.unwrap_or(false), limit.unwrap_or(500)).map_err(|e| crate::error_text::explain_text("读取笔记列表失败", &e.to_string()))
+    notes::note_list_scoped(&conn, scope.as_deref().unwrap_or("active"), limit.unwrap_or(500), offset.unwrap_or(0))
+        .map_err(|e| crate::error_text::explain_text("读取笔记列表失败", &e.to_string()))
+}
+
+#[tauri::command]
+fn note_restore_upsert(dir: Option<String>, note: notes::NoteDto) -> Result<notes::NoteRestoreOutcome, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::note_restore_upsert(&conn, &note).map_err(|e| crate::error_text::explain_text("恢复笔记失败", &e.to_string()))
 }
 
 #[tauri::command]
@@ -899,6 +907,13 @@ fn goal_abandon_cmd(app: tauri::AppHandle, dir: Option<String>, id: String, revi
     let ok = notes::goal_abandon(&conn, &id, &review_note, now)?;
     notify_library_changed(&app);
     Ok(ok)
+}
+
+#[tauri::command]
+fn kb_restore_membership(dir: Option<String>, entries: Vec<notes::KbMembershipRestore>) -> Result<Vec<notes::KbMembershipRestoreOutcome>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::kb_restore_membership(&conn, &entries).map_err(|e| crate::error_text::explain_text("恢复知识库成员关系失败", &e.to_string()))
 }
 
 #[tauri::command]
@@ -1574,12 +1589,14 @@ pub fn run() {
             note_list,
             note_delete,
             note_restore,
+            note_restore_upsert,
             note_search,
             note_search_chunks,
             note_list_chunk_texts,
             note_save_chunk_embeddings,
             note_search_chunks_vector,
             kb_create,
+            kb_restore_membership,
             kb_list,
             kb_add_note,
             kb_remove_note,

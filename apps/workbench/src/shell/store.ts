@@ -389,12 +389,22 @@ export function noteGet(id: string, dir?: string): Promise<object | null> {
   return invoke("note_get", { dir: dir ?? null, id });
 }
 
-export function noteList(includeDeleted: boolean, dir?: string, limit?: number): Promise<object[]> {
-  return invoke("note_list", { dir: dir ?? null, includeDeleted, limit: limit ?? null });
+/** 列表范围：active 正常 / deleted 仅回收站 / all 全量（与 notes.rs 的三段语义一致）。 */
+export type NoteListScope = "active" | "deleted" | "all";
+
+export function noteListScope(dir: string | null | undefined, scope: NoteListScope, limit: number, offset: number): Promise<object[]> {
+  return invoke("note_list", { dir: dir ?? null, scope, limit, offset });
 }
 
 export function noteDelete(id: string, dir?: string): Promise<boolean> {
   return invoke("note_delete", { dir: dir ?? null, id });
+}
+
+/** 备份恢复专用写入：返回逐条处置（与 notes.rs NoteRestoreOutcome 同名）。 */
+export type NoteRestoreActionShell = "created" | "updated" | "skippedLocalNewer" | "skippedDivergent" | "current";
+
+export function noteRestoreUpsert(note: object, dir?: string): Promise<NoteRestoreActionShell> {
+  return invoke("note_restore_upsert", { dir: dir ?? null, note });
 }
 
 export function noteRestore(id: string, dir?: string): Promise<boolean> {
@@ -450,6 +460,14 @@ export function noteSearchChunksVector(
     model: identity?.model ?? "",
     limit: limit ?? null,
   });
+}
+
+export interface KbMembershipRestoreEntry { kbId: string; noteId: string; addedAt: number }
+export interface KbMembershipRestoreOutcomeShell { kbId: string; noteId: string; action: string; error: string | null }
+
+/** 备份恢复专用：按包内 addedAt 挂成员关系（逐条处置，幂等）。 */
+export function kbRestoreMembership(entries: KbMembershipRestoreEntry[], dir?: string): Promise<KbMembershipRestoreOutcomeShell[]> {
+  return invoke("kb_restore_membership", { dir: dir ?? null, entries });
 }
 
 export function kbCreate(id: string, name: string, description: string, dir?: string): Promise<void> {

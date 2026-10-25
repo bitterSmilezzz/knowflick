@@ -10,6 +10,7 @@ import {
   kbList,
   kbMembership,
   kbRemoveNote,
+  kbRestoreMembership,
   loadStore,
   readImportReport,
   saveImportReport,
@@ -17,8 +18,9 @@ import {
   noteDelete,
   goalListActive,
   noteEnsureFromMaterial,
-  noteList,
+  noteListScope,
   noteRestore,
+  noteRestoreUpsert,
   noteUpsert,
   readApiKey,
   saveSettings,
@@ -34,11 +36,13 @@ import {
   createNoteDraft,
   emptyNotesState,
   restoreNote as domainRestoreNote,
+  restoreNoteRaw as domainRestoreNoteRaw,
   noteFromJson,
   removeNoteFromKb as domainRemoveFromKb,
   upsertNote as domainUpsert,
   type KnowledgeBase,
   type Note,
+  type NoteRestoreAction,
   type NoteSaveOutcome,
   type NotesState,
 } from "../../domain/note";
@@ -148,11 +152,42 @@ export async function readNoteMedia(relative: string, dir: string): Promise<Uint
   return await readMedia(relative, dir);
 }
 
+export type NoteListScope = "active" | "deleted" | "all";
+
+/**
+ * 桌面端按范围分页读笔记（T02，审计 KF-005）。
+ *
+ * 旧的 `noteList(false, …)` 只列正常笔记，布尔 true 又「只列回收站」——
+ * 调用方把它当「包含全部」用，桌面回收站因此一直是空的。现在范围显式
+ * 三段，分页走完不设 10000 隐含上限；浏览器仓储本来就是全量数组。
+ */
+export async function readNotesPage(
+  dir: string,
+  scope: NoteListScope,
+  limit: number,
+  offset: number
+): Promise<Note[]> {
+  if (!inShell()) {
+    const all = browserNotes().notes;
+    const filtered = scope === "active" ? all.filter((n) => !n.isDeleted) : scope === "deleted" ? all.filter((n) => n.isDeleted) : all;
+    return filtered.slice(offset, offset + limit);
+  }
+  const page = await noteListScope(dir, scope, limit, offset);
+  return page.map(noteFromJson);
+}
+
 export async function readNotes(dir: string): Promise<NotesState> {
   if (!inShell()) return browserNotes();
-  const [notes, kbs, membership] = await Promise.all([noteList(false, dir, 10000), kbList(dir), kbMembership(dir)]);
+  const pageSize = 500;
+  const notes: Note[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await readNotesPage(dir, "all", pageSize, offset);
+    notes.push(...page);
+    if (page.length < pageSize) break;
+  }
+  const [kbs, membership] = await Promise.all([kbList(dir), kbMembership(dir)]);
   return {
-    notes: notes.map(noteFromJson),
+    notes,
     knowledgeBases: kbs as KnowledgeBase[],
     membership,
   };
@@ -246,6 +281,22 @@ export async function restoreNoteById(id: string, dir: string): Promise<void> {
   browserNotesWrite(domainRestoreNote(browserNotes(), id));
 }
 
+/**
+ * 备份恢复专用写入（T04，审计 KF-003）：按包内当前态原样落库，
+ * 修订号/时间/删除态保留，处置结果逐条上报，不与普通编辑混用。
+ */
+export async function restoreNoteFromBackup(
+  note: Note,
+  dir: string
+): Promise<NoteRestoreAction> {
+  if (inShell()) return noteRestoreUpsert(note, dir);
+  const { state, action } = domainRestoreNoteRaw(browserNotes(), note);
+  if (action !== "skippedLocalNewer" && action !== "skippedDivergent" && action !== "current") {
+    browserNotesWrite(state);
+  }
+  return action;
+}
+
 export async function createKnowledgeBaseNamed(id: string, name: string, description: string, dir: string): Promise<void> {
   if (inShell()) { await kbCreate(id, name, description, dir); return; }
   browserNotesWrite(domainCreateKb(browserNotes(), { id, name, description }));
@@ -259,4 +310,53 @@ export async function addNoteToKnowledgeBase(kbId: string, noteId: string, dir: 
 export async function removeNoteFromKnowledgeBase(kbId: string, noteId: string, dir: string): Promise<void> {
   if (inShell()) { await kbRemoveNote(kbId, noteId, dir); return; }
   browserNotesWrite(domainRemoveFromKb(browserNotes(), kbId, noteId));
+}
+
+export interface MembershipRestoreEntry { kbId: string; noteId: string; addedAt: number }
+export interface MembershipRestoreOutcome { kbId: string; noteId: string; action: "added" | "existing" | "failed"; error: string | null }
+
+/**
+ * 备份恢复专用：按包内 addedAt 挂成员关系（T04，审计 KF-006）。
+ * 逐条处置上报；浏览器路径先确认库与笔记都存在（与 Rust 同语义），再幂等写入。
+ */
+export async function restoreMembershipFromBackup(
+  entries: MembershipRestoreEntry[],
+  dir: string
+): Promise<MembershipRestoreOutcome[]> {
+  if (inShell()) {
+    const outcomes = await kbRestoreMembership(
+      entries.map((e) => ({ kbId: e.kbId, noteId: e.noteId, addedAt: e.addedAt })),
+      dir
+    );
+    return outcomes.map((o) => ({
+      kbId: o.kbId,
+      noteId: o.noteId,
+      action: (["added", "existing", "failed"].includes(o.action) ? o.action : "failed") as MembershipRestoreOutcome["action"],
+      error: o.error,
+    }));
+  }
+  const state = browserNotes();
+  let next = state;
+  let mutated = false;
+  const results: MembershipRestoreOutcome[] = [];
+  for (const e of entries) {
+    if (!next.knowledgeBases.some((k) => k.id === e.kbId)) {
+      results.push({ kbId: e.kbId, noteId: e.noteId, action: "failed", error: "知识库不存在" });
+      continue;
+    }
+    if (!next.notes.some((n) => n.id === e.noteId)) {
+      results.push({ kbId: e.kbId, noteId: e.noteId, action: "failed", error: "笔记不存在" });
+      continue;
+    }
+    const key = `${e.kbId}\n${e.noteId}`;
+    if (next.membership[key] !== undefined) {
+      results.push({ kbId: e.kbId, noteId: e.noteId, action: "existing", error: null });
+      continue;
+    }
+    next = domainAddToKb(next, e.kbId, e.noteId, e.addedAt);
+    mutated = true;
+    results.push({ kbId: e.kbId, noteId: e.noteId, action: "added", error: null });
+  }
+  if (mutated) browserNotesWrite(next);
+  return results;
 }

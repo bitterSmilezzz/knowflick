@@ -8,8 +8,10 @@ import {
   NoteConflictError,
   noteFromJson,
   restoreNote,
+  restoreNoteRaw,
   searchNotes,
   upsertNote,
+  type Note,
 } from "./note";
 
 /** 与 Rust notes.rs 的测试同语义——同一契约两份实现，两边都要钉住。 */
@@ -116,5 +118,58 @@ describe("笔记领域语义（与 Rust notes.rs 对齐）", () => {
 
     const fromTs = noteFromJson({ id: "n2", title: "t2", bodyMd: "b2", tags: ["x"] });
     expect(fromTs).toMatchObject({ id: "n2", bodyMd: "b2", tags: ["x"], isPinned: false, currentRevision: 1 });
+  });
+
+  it("恢复专用写入：修订、时间与删除态按包保留（审计 KF-003 反例）", () => {
+    let state = emptyNotesState();
+    const pkg: Note = {
+      ...createNoteDraft(0),
+      id: "n1",
+      title: "备份里的笔记",
+      bodyMd: "修订 9 的内容",
+      currentRevision: 9,
+      createdAt: 1000,
+      updatedAt: 8000,
+      isDeleted: true,
+      deletedAt: 8001,
+      isFavorite: true,
+    };
+    const first = restoreNoteRaw(state, pkg, 99999);
+    expect(first.action).toBe("created");
+    state = first.state;
+    const got = state.notes[0];
+    expect(got.currentRevision).toBe(9);
+    expect(got.createdAt).toBe(1000);
+    expect(got.updatedAt).toBe(8000);
+    expect(got.isDeleted).toBe(true);
+    expect(got.deletedAt).toBe(8001);
+
+    // 重复恢复：幂等 current
+    expect(restoreNoteRaw(state, pkg, 99999).action).toBe("current");
+
+    // 恢复后的下一笔编辑从包内修订继续：9 → 10
+    const edited = { ...pkg, title: "改", bodyMd: "新内容", isDeleted: false, deletedAt: null };
+    const up = upsertNote(state, edited, 9, 100_000);
+    expect(up.outcome.revision).toBe(10);
+  });
+
+  it("恢复专用写入：本地修订不回退，同修订分歧保留本地", () => {
+    let state = emptyNotesState();
+    const seed = createNoteDraft(1);
+    seed.id = "n1";
+    state = upsertNote(state, { ...seed, bodyMd: "v1" }, 0, 100).state;
+    state = upsertNote(state, { ...seed, bodyMd: "v2" }, 1, 200).state;
+    // 本地修订 2；包内修订 1 → 不回退
+    const older = { ...seed, bodyMd: "v1-old", currentRevision: 1 };
+    expect(restoreNoteRaw(state, older, 300).action).toBe("skippedLocalNewer");
+    expect(state.notes[0].bodyMd).toBe("v2");
+    // 包内修订 3 → 覆盖
+    const newer = { ...seed, bodyMd: "v3", currentRevision: 3, createdAt: 50, updatedAt: 400 };
+    const up = restoreNoteRaw(state, newer, 500);
+    expect(up.action).toBe("updated");
+    expect(up.state.notes[0]).toMatchObject({ bodyMd: "v3", currentRevision: 3, createdAt: 50, updatedAt: 400 });
+    // 同修订号不同内容 → 保留本地等人工处置
+    const divergent = { ...seed, bodyMd: "分歧内容", currentRevision: 3 };
+    expect(restoreNoteRaw(up.state, divergent, 600).action).toBe("skippedDivergent");
   });
 });

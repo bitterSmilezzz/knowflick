@@ -88,6 +88,25 @@ R1 契约只保证：`body_md` 可无损往返（读回==写入），导出 Mark
 - 修订历史明细（note_revisions 全量）不入包：包携带当前态与修订号，足够恢复与后续修订；
   全量历史归档是后续批次（与 Job/Change 一起设计）。
 
+### 恢复专用写入（T04，审计 KF-003/KF-006 收口）
+
+恢复是**显式用户动作**，与普通编辑（`note_upsert`）是两个入口：
+`note_restore_upsert`（Rust）/ `restoreNoteRaw`（浏览器同语义）按包内当前态**原样**落库。
+
+- **保留项**：修订号（`current_revision`）、`created_at`/`updated_at`、
+  `is_deleted`/`deleted_at`（回收站内容不复活、保持不可检索）、收藏/置顶/归档、
+  `source_material_id` 与全部属性；成员关系的 `added_at` 保留包内值
+  （`kb_restore_membership` 逐条处置）。
+- **不伪造历史**：只落一条恢复时的基线修订行（沿用包内修订号）；后续编辑
+  从包内修订继续计数（修订 9 恢复 → 下一笔编辑修订 10）。
+- **逐条处置**（`NoteRestoreOutcome`）：`created` / `updated`（包内修订更大，覆盖）
+  / `skipped_local_newer`（本地修订更新，不回退） / `skipped_divergent`（同修订号
+  内容分歧，保守保留本地等人工处置） / `current`（重复恢复幂等）。
+- **知识库映射**：同 id 已存在 → 并入既有库（本地名字保留）；同名异 id →
+  并入既有库，成员关系经显式 id 映射迁移；都没有才按包内 id 新建。
+  每条失败（库/笔记缺失等）进结构化报告，不吞错假计数。
+- 回执按上述处置如实计数；有失败时明确告知「不是完整恢复」并列出明细。
+
 ## 迁移
 
 - 不回填：既有 materials 不自动转成 notes（「来源→笔记」映射是 R2 统一笔记模型的事）。

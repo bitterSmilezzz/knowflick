@@ -110,6 +110,56 @@ export function deleteNote(state: NotesState, id: string, now = Date.now()): Not
   };
 }
 
+// ---------- 备份恢复专用写入（T04，审计 KF-003） ----------
+
+/** 与 Rust `note_restore_upsert` 同名的处置结果（同一契约的两份实现）。 */
+export type NoteRestoreAction = "created" | "updated" | "skippedLocalNewer" | "skippedDivergent" | "current";
+
+/**
+ * 恢复落库：按包内当前态**原样**写入（修订号、时间、删除态全部保留），
+ * 不追加修订、不重置时间、不复活回收站。恢复是显式用户动作，
+ * 与普通编辑（upsertNote）是两个入口——审计 KF-003 的根因就是恢复走了
+ * 普通编辑：revision=9 的包落库变成修订 1、回收站内容自动复活。
+ */
+export function restoreNoteRaw(
+  state: NotesState,
+  note: Note,
+  now = Date.now()
+): { state: NotesState; action: NoteRestoreAction } {
+  void now;
+  const revision = Math.max(1, note.currentRevision);
+  const existing = state.notes.find((n) => n.id === note.id);
+  if (existing) {
+    if (existing.currentRevision > revision) {
+      return { state, action: "skippedLocalNewer" };
+    }
+    if (existing.currentRevision === revision) {
+      const same =
+        existing.title === note.title &&
+        existing.bodyMd === note.bodyMd &&
+        existing.notebook === note.notebook &&
+        existing.tags.join("\n") === note.tags.join("\n") &&
+        existing.isPinned === note.isPinned &&
+        existing.isFavorite === note.isFavorite &&
+        existing.archivedAt === note.archivedAt &&
+        existing.sourceMaterialId === note.sourceMaterialId &&
+        existing.isDeleted === note.isDeleted &&
+        existing.deletedAt === note.deletedAt;
+      return { state, action: same ? "current" : "skippedDivergent" };
+    }
+    const updated: Note = { ...note, currentRevision: revision };
+    return {
+      state: { ...state, notes: state.notes.map((n) => (n.id === note.id ? updated : n)) },
+      action: "updated",
+    };
+  }
+  const created: Note = { ...note, currentRevision: revision };
+  return {
+    state: { ...state, notes: [created, ...state.notes] },
+    action: "created",
+  };
+}
+
 export function restoreNote(state: NotesState, id: string): NotesState {
   return {
     ...state,

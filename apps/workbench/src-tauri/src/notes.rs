@@ -315,13 +315,30 @@ pub fn note_get(conn: &Connection, id: &str) -> Result<Option<NoteDto>> {
     }
 }
 
-/// 列笔记。`include_deleted` 打开时列出回收站内容（恢复界面用）。
-pub fn note_list(conn: &Connection, include_deleted: bool, limit: i64) -> Result<Vec<NoteDto>> {
+/// 列表范围（T02，审计 KF-005）：旧布尔 `include_deleted` 的真实语义是「只列回收站」，
+/// 调用方却当「包含全部」用——桌面回收站因此读不到、全量备份漏掉删过的笔记。
+/// 显式三段：active 正常 / deleted 仅回收站 / all 全量（备份采集、恢复对账用）。
+pub fn note_list_scoped(
+    conn: &Connection,
+    scope: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<NoteDto>> {
+    let where_clause = match scope {
+        "active" => "WHERE is_deleted = 0",
+        "deleted" => "WHERE is_deleted = 1",
+        "all" => "",
+        other => {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "未知的笔记列表范围：{other}"
+            )))
+        }
+    };
     let sql = format!(
-        "SELECT {NOTE_COLUMNS} FROM notes WHERE is_deleted = ?1 ORDER BY is_pinned DESC, updated_at DESC LIMIT ?2"
+        "SELECT {NOTE_COLUMNS} FROM notes {where_clause} ORDER BY is_pinned DESC, updated_at DESC LIMIT ?1 OFFSET ?2"
     );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params![include_deleted as i64, limit], map_note_row)?;
+    let rows = stmt.query_map(params![limit, offset], map_note_row)?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);
@@ -362,7 +379,213 @@ pub fn note_restore(conn: &Connection, id: &str) -> Result<bool> {
     Ok(true)
 }
 
+// ---------- 备份恢复专用写入（T04，审计 KF-003） ----------
+
+/// 恢复落库结果：每条都有明确处置，回执不再吞错假计数。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NoteRestoreOutcome {
+    /// 包内条目原样建入（修订号、时间、删除态全部保留）。
+    Created,
+    /// 包内修订号更大：以包内容覆盖本地。
+    Updated,
+    /// 本地修订号更新：不回退本地（「本地修订不可无声回退」）。
+    SkippedLocalNewer,
+    /// 修订号相同但内容分歧：保守保留本地，等人工处置。
+    SkippedDivergent,
+    /// 已一致（重复恢复的幂等结果）。
+    Current,
+}
+
+/// 备份恢复专用写入：按包内当前态**原样**落库，不追加修订、不重置时间、
+/// 不复活回收站。恢复是「显式用户动作」，与普通编辑（`note_upsert`）是两个
+/// 入口——审计 KF-003 的根因就是恢复走了普通编辑：revision=9 的包落库变成
+/// 修订 1、时间改成恢复时刻、回收站内容自动复活。
+///
+/// 历史明细不入包的既定范围不变：只落一条恢复时的基线修订行（保留包内
+/// 修订号，不伪造完整历史）。
+pub fn note_restore_upsert(conn: &Connection, note: &NoteDto) -> Result<NoteRestoreOutcome> {
+    if note.id.is_empty() {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "恢复的笔记缺少 id".to_string(),
+        ));
+    }
+    let revision = if note.current_revision < 1 { 1 } else { note.current_revision };
+    let existing = note_get(conn, &note.id)?;
+
+    let tx = conn.unchecked_transaction()?;
+    let outcome;
+    match &existing {
+        Some(local) if local.current_revision > revision => {
+            outcome = NoteRestoreOutcome::SkippedLocalNewer;
+        }
+        Some(local) if local.current_revision == revision => {
+            let same = local.title == note.title
+                && local.body_md == note.body_md
+                && local.notebook == note.notebook
+                && local.tags_json == note.tags_json
+                && local.is_pinned == note.is_pinned
+                && local.is_favorite == note.is_favorite
+                && local.archived_at == note.archived_at
+                && local.source_material_id == note.source_material_id
+                && local.is_deleted == note.is_deleted
+                && local.deleted_at == note.deleted_at;
+            outcome = if same {
+                NoteRestoreOutcome::Current
+            } else {
+                NoteRestoreOutcome::SkippedDivergent
+            };
+        }
+        Some(_) => {
+            tx.execute(
+                "UPDATE notes SET title = ?2, body_md = ?3, notebook = ?4, tags_json = ?5, is_pinned = ?6,
+                 is_favorite = ?7, archived_at = ?8, source_material_id = ?9, current_revision = ?10,
+                 created_at = ?11, updated_at = ?12, is_deleted = ?13, deleted_at = ?14
+                 WHERE id = ?1",
+                params![
+                    note.id,
+                    note.title,
+                    note.body_md,
+                    note.notebook,
+                    note.tags_json,
+                    note.is_pinned as i64,
+                    note.is_favorite as i64,
+                    note.archived_at,
+                    note.source_material_id,
+                    revision,
+                    note.created_at,
+                    note.updated_at,
+                    note.is_deleted as i64,
+                    note.deleted_at,
+                ],
+            )?;
+            tx.execute(
+                "INSERT INTO note_revisions (note_id, revision, title, body_md, saved_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![note.id, revision, note.title, note.body_md, note.updated_at],
+            )?;
+            sync_restored_indexes(&tx, note, revision)?;
+            outcome = NoteRestoreOutcome::Updated;
+        }
+        None => {
+            tx.execute(
+                "INSERT INTO notes (id, title, body_md, notebook, tags_json, is_pinned, is_favorite,
+                 archived_at, source_material_id, current_revision, created_at, updated_at, is_deleted, deleted_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![
+                    note.id,
+                    note.title,
+                    note.body_md,
+                    note.notebook,
+                    note.tags_json,
+                    note.is_pinned as i64,
+                    note.is_favorite as i64,
+                    note.archived_at,
+                    note.source_material_id,
+                    revision,
+                    note.created_at,
+                    note.updated_at,
+                    note.is_deleted as i64,
+                    note.deleted_at,
+                ],
+            )?;
+            tx.execute(
+                "INSERT INTO note_revisions (note_id, revision, title, body_md, saved_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![note.id, revision, note.title, note.body_md, note.updated_at],
+            )?;
+            sync_restored_indexes(&tx, note, revision)?;
+            outcome = NoteRestoreOutcome::Created;
+        }
+    }
+    tx.commit()?;
+    Ok(outcome)
+}
+
+/// 恢复后的索引对齐：删除态保持不可检索（回收站不复活）、无分块；
+/// 活动态重建 FTS 与分块索引（修订号随包内当前修订）。
+fn sync_restored_indexes(tx: &Connection, note: &NoteDto, revision: i64) -> Result<()> {
+    sync_note_fts(tx, &note.id, &note.title, &note.body_md, note.is_deleted)?;
+    if note.is_deleted {
+        tx.execute("DELETE FROM note_chunks WHERE note_id = ?1", params![note.id])?;
+        tx.execute("DELETE FROM fts_note_chunks WHERE note_id = ?1", params![note.id])?;
+    } else {
+        rebuild_note_chunks(tx, &note.id, &note.body_md, revision)?;
+    }
+    Ok(())
+}
+
 // ---------- 知识库 ----------
+
+/// 恢复成员关系的单条输入（T04：addedAt 保留包内值，不换成恢复时刻）。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KbMembershipRestore {
+    pub kb_id: String,
+    pub note_id: String,
+    pub added_at: i64,
+}
+
+/// 单条处置结果：逐条上报，不吞错假计数。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KbMembershipRestoreOutcome {
+    pub kb_id: String,
+    pub note_id: String,
+    /// added | existing | failed
+    pub action: String,
+    pub error: Option<String>,
+}
+
+/// 备份恢复专用：按包内 added_at 挂成员关系（幂等，已有即 existing）。
+/// 知识库或笔记不存在 → 该条 failed，由调用方计入报告。
+pub fn kb_restore_membership(
+    conn: &Connection,
+    entries: &[KbMembershipRestore],
+) -> Result<Vec<KbMembershipRestoreOutcome>> {
+    let mut out = Vec::with_capacity(entries.len());
+    for e in entries {
+        let outcome = |action: &str, error: Option<String>| KbMembershipRestoreOutcome {
+            kb_id: e.kb_id.clone(),
+            note_id: e.note_id.clone(),
+            action: action.to_string(),
+            error,
+        };
+        let kb_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM knowledge_bases WHERE id = ?1",
+                params![e.kb_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if kb_exists == 0 {
+            out.push(outcome("failed", Some("知识库不存在".to_string())));
+            continue;
+        }
+        let note_exists: i64 = conn
+            .query_row("SELECT COUNT(*) FROM notes WHERE id = ?1", params![e.note_id], |r| r.get(0))
+            .unwrap_or(0);
+        if note_exists == 0 {
+            out.push(outcome("failed", Some("笔记不存在".to_string())));
+            continue;
+        }
+        let existing: Option<i64> = conn
+            .query_row(
+                "SELECT added_at FROM kb_membership WHERE kb_id = ?1 AND note_id = ?2",
+                params![e.kb_id, e.note_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if existing.is_some() {
+            out.push(outcome("existing", None));
+            continue;
+        }
+        conn.execute(
+            "INSERT INTO kb_membership (kb_id, note_id, added_at) VALUES (?1, ?2, ?3)",
+            params![e.kb_id, e.note_id, e.added_at],
+        )?;
+        out.push(outcome("added", None));
+    }
+    Ok(out)
+}
 
 pub fn kb_create(conn: &Connection, id: &str, name: &str, description: &str, now: i64) -> Result<(), String> {
     let name = name.trim();
@@ -634,14 +857,145 @@ mod tests {
 
         assert!(note_delete(&conn, "n1", 2000).unwrap());
         assert!(search_notes(&conn, "北极项目", None, 10).unwrap().is_empty(), "删除后搜不到");
-        let listed = note_list(&conn, false, 10).unwrap();
+        let listed = note_list_scoped(&conn, "active", 10, 0).unwrap();
         assert!(listed.is_empty(), "默认列表不含回收站");
-        let trashed = note_list(&conn, true, 10).unwrap();
+        let trashed = note_list_scoped(&conn, "deleted", 10, 0).unwrap();
         assert_eq!(trashed.len(), 1, "回收站视图能看到");
+        // 三段范围的会计恒等式（KF-005 的反例：旧布尔语义下 all 与 deleted 混同）
+        let all = note_list_scoped(&conn, "all", 10, 0).unwrap();
+        assert_eq!(all.len(), listed.len() + trashed.len(), "all = active + deleted");
+        assert!(all.iter().any(|n| n.id == "n1"), "全量范围包含回收站里的笔记");
 
         assert!(note_restore(&conn, "n1").unwrap());
         assert_eq!(search_notes(&conn, "北极项目", None, 10).unwrap().len(), 1, "恢复后回到检索");
         assert_eq!(note_get(&conn, "n1").unwrap().unwrap().current_revision, 1, "修订不因回收站重置");
+    }
+
+    #[test]
+    fn note_list_pagination_walks_all_pages() {
+        let conn = temp_db("pager");
+        for i in 0..7 {
+            note_upsert(&conn, &draft(&format!("n{i}"), &format!("笔记{i}"), "正文"), 0, 1000 + i).unwrap();
+        }
+        // 一页 3 条走两轮半；翻页不许重、不许漏（10000 上限不再是隐含契约）
+        let mut seen = Vec::new();
+        let mut offset = 0;
+        loop {
+            let page = note_list_scoped(&conn, "active", 3, offset).unwrap();
+            let page_len = page.len();
+            seen.extend(page.into_iter().map(|n| n.id));
+            if page_len < 3 {
+                break;
+            }
+            offset += 3;
+        }
+        seen.sort();
+        let expected: Vec<String> = (0..7).map(|i| format!("n{i}")).collect();
+        assert_eq!(seen, expected, "分页遍历恰好覆盖全部 7 条");
+        // 越过末页：返回空页而不是错误
+        assert!(note_list_scoped(&conn, "active", 3, 9).unwrap().is_empty());
+        // 未知范围：显式报错，不静默当成 active
+        assert!(note_list_scoped(&conn, "everything", 3, 0).is_err());
+    }
+
+    #[test]
+    fn restore_upsert_preserves_revision_times_and_deleted_state() {
+        let conn = temp_db("restore");
+        // KF-003 的原始反例：revision=9、createdAt=1000、isDeleted=true 的包
+        let mut pkg = draft("n1", "旧笔记", "恢复前的重要正文");
+        pkg.current_revision = 9;
+        pkg.created_at = 1000;
+        pkg.updated_at = 8000;
+        pkg.is_favorite = true;
+        pkg.is_deleted = true;
+        pkg.deleted_at = Some(8001);
+
+        match note_restore_upsert(&conn, &pkg).unwrap() {
+            NoteRestoreOutcome::Created => {}
+            other => panic!("期望 Created，得到 {other:?}"),
+        }
+        let got = note_get(&conn, "n1").unwrap().unwrap();
+        assert_eq!(got.current_revision, 9, "修订号不因恢复重置");
+        assert_eq!(got.created_at, 1000, "创建时间保留包内值");
+        assert_eq!(got.updated_at, 8000, "更新时间保留包内值");
+        assert!(got.is_deleted, "回收站内容不因恢复复活");
+        assert_eq!(got.deleted_at, Some(8001));
+        assert!(got.is_favorite);
+        // 删除态不可检索、无分块（索引与状态对齐）
+        assert!(search_notes(&conn, "重要正文", None, 10).unwrap().is_empty());
+        let chunks: i64 = conn
+            .query_row("SELECT COUNT(*) FROM note_chunks WHERE note_id = 'n1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(chunks, 0, "回收站笔记不建分块索引");
+
+        // 活动态 + 修订 9 恢复 → 可检索、有分块，随后编辑产出修订 10
+        let mut active = draft("n2", "活动笔记", "活动正文第九版");
+        active.current_revision = 9;
+        active.created_at = 2000;
+        active.updated_at = 9000;
+        match note_restore_upsert(&conn, &active).unwrap() {
+            NoteRestoreOutcome::Created => {}
+            other => panic!("期望 Created，得到 {other:?}"),
+        }
+        assert_eq!(search_notes(&conn, "活动正文", None, 10).unwrap().len(), 1);
+        let chunks: i64 = conn
+            .query_row("SELECT COUNT(*) FROM note_chunks WHERE note_id = 'n2'", [], |r| r.get(0))
+            .unwrap();
+        assert!(chunks > 0, "活动笔记恢复后重建分块索引");
+
+        // 重复恢复（编辑前）：幂等 Current，不产生任何变化
+        match note_restore_upsert(&conn, &active).unwrap() {
+            NoteRestoreOutcome::Current => {}
+            other => panic!("期望 Current，得到 {other:?}"),
+        }
+
+        // 恢复后的下一笔编辑从包内修订继续：9 → 10（不从 1 重新计数）
+        let out = note_upsert(&conn, &draft("n2", "活动笔记", "恢复后第一次编辑"), 9, 10_000).unwrap();
+        assert_eq!(out.revision, 10, "恢复后编辑产生正确的下一修订");
+        // 编辑之后再恢复旧包：本地修订 10 > 包内 9，不回退
+        match note_restore_upsert(&conn, &active).unwrap() {
+            NoteRestoreOutcome::SkippedLocalNewer => {}
+            other => panic!("期望 SkippedLocalNewer，得到 {other:?}"),
+        }
+        assert_eq!(note_get(&conn, "n2").unwrap().unwrap().body_md, "恢复后第一次编辑");
+    }
+
+    #[test]
+    fn restore_upsert_never_regresses_local_revision() {
+        let conn = temp_db("restore-merge");
+        note_upsert(&conn, &draft("n1", "本地新版", "本地修订 5 的内容"), 0, 1000).unwrap();
+        note_upsert(&conn, &draft("n1", "本地新版", "本地修订 5 的内容（改）"), 1, 2000).unwrap();
+
+        // 包内修订 3 > 本地 2：以包内容覆盖
+        let mut pkg_newer = draft("n1", "包内新版", "包内修订 3 的内容");
+        pkg_newer.current_revision = 3;
+        pkg_newer.created_at = 500;
+        pkg_newer.updated_at = 6000;
+        match note_restore_upsert(&conn, &pkg_newer).unwrap() {
+            NoteRestoreOutcome::Updated => {}
+            other => panic!("期望 Updated，得到 {other:?}"),
+        }
+        let got = note_get(&conn, "n1").unwrap().unwrap();
+        assert_eq!(got.current_revision, 3);
+        assert_eq!(got.body_md, "包内修订 3 的内容");
+
+        // 包内修订 2 < 本地 3：不回退本地
+        let mut pkg_older = draft("n1", "包内旧版", "包内修订 2 的内容");
+        pkg_older.current_revision = 2;
+        match note_restore_upsert(&conn, &pkg_older).unwrap() {
+            NoteRestoreOutcome::SkippedLocalNewer => {}
+            other => panic!("期望 SkippedLocalNewer，得到 {other:?}"),
+        }
+        assert_eq!(note_get(&conn, "n1").unwrap().unwrap().body_md, "包内修订 3 的内容");
+
+        // 修订相同但内容分歧：保守保留本地，等待人工处置
+        let mut pkg_divergent = draft("n1", "分歧版", "同修订号不同内容");
+        pkg_divergent.current_revision = 3;
+        match note_restore_upsert(&conn, &pkg_divergent).unwrap() {
+            NoteRestoreOutcome::SkippedDivergent => {}
+            other => panic!("期望 SkippedDivergent，得到 {other:?}"),
+        }
+        assert_eq!(note_get(&conn, "n1").unwrap().unwrap().body_md, "包内修订 3 的内容");
     }
 
     #[test]

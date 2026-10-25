@@ -1329,19 +1329,35 @@ export function Workspace() {
           if (inShell()) await dbSaveArtifact(art, dir);
           total++;
         }
-        // 笔记与知识库（v2 包）：同 id 已存在 → 以备份覆盖（与素材/卡片的恢复语义一致）；
-        // 不存在 → 新建。恢复条数计入回执。
-        const restoredNotes = await restoreNotesBundle(restored.notes, restored.knowledgeBases, restored.kbMembership, dir);
-        total += restoredNotes;
+        // 笔记与知识库（v2 包）：走恢复专用写入——修订号/时间/删除态按包保留，
+        // 处置逐条上报（新增/更新/保留本地较新/已一致/失败），不再吞错假计数。
+        const report = await restoreNotesBundle(restored.notes, restored.knowledgeBases, restored.kbMembership, dir);
+        total += report.notes.created + report.notes.updated;
+        const noteSummary =
+          `笔记：新增 ${report.notes.created}、更新 ${report.notes.updated}` +
+          (report.notes.skippedLocalNewer ? `、保留本地较新 ${report.notes.skippedLocalNewer}` : "") +
+          (report.notes.skippedDivergent ? `、同修订分歧保留本地 ${report.notes.skippedDivergent}` : "") +
+          (report.notes.current ? `、已一致 ${report.notes.current}` : "");
+        const failedCount =
+          report.notes.failed.length + report.knowledgeBases.failed.length + report.membership.failed.length;
+        if (failedCount > 0) {
+          console.warn("[备份恢复] 部分条目未能写入：", {
+            notes: report.notes.failed,
+            knowledgeBases: report.knowledgeBases.failed,
+            membership: report.membership.failed,
+          });
+        }
         if (restored.settings) {
           await storePreferences(restored.settings, apiKey, dir);
           setFile(restored.settings);
         }
         setNotice(
           `备份恢复完成：${restored.cards.length} 张卡片、${restored.materials.length} 份素材` +
-            `、${restored.artifacts.length} 条认知产物、${restored.notes.length} 篇笔记、${restored.knowledgeBases.length} 个知识库` +
-            (restored.settings ? "、设置已还原" : "") +
-            `（共 ${total} 条）`
+            `、${restored.artifacts.length} 条认知产物；${noteSummary}` +
+            `；知识库：新建 ${report.knowledgeBases.created}、并入已有 ${report.knowledgeBases.mapped}` +
+            `；成员关系：新增 ${report.membership.added}` +
+            (failedCount > 0 ? `。有 ${failedCount} 条未能写入，明细在控制台——这不是完整恢复。` : "") +
+            (restored.settings ? "。设置已还原" : "")
         );
       });
     } catch (e) {
