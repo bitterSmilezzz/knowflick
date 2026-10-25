@@ -48,7 +48,7 @@
 
 | 层 | 在哪跑 | 覆盖什么 |
 | --- | --- | --- |
-| **门禁（每次提交）** | `verify_workbench.sh` | 前端 471 项 + Rust 测试（通过与忽略分开报告）+ 14 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
+| **门禁（每次提交）** | `verify_workbench.sh` | 前端 505 项 + Rust 测试（通过与忽略分开报告）+ 14 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
 | **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
