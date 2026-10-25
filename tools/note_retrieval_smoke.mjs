@@ -146,4 +146,38 @@ await check(
   "点「回原件」跳回源笔记"
 );
 
+// 10. 过期提示：源笔记内容改过 → 界面提示「可能已过期」
+await b("eval", `(()=>{
+  const s = JSON.parse(localStorage.getItem('knowflick.notes.v1'));
+  const src = s.notes.find(x=>x.id==='n-marker-2');
+  if (src) { src.bodyMd = '源内容已经被改过了。'; localStorage.setItem('knowflick.notes.v1', JSON.stringify(s)); }
+  return true;
+})()`);
+await b("open", url);
+await new Promise(r => setTimeout(r, 1800));
+await b("eval", "(()=>{const rows=[...document.querySelectorAll('.ws-nav-row')];const r=rows.find(x=>x.textContent.includes('笔记'));if(r){r.click();return true}return false})()");
+await new Promise(r => setTimeout(r, 900));
+await b("eval", "(()=>{const rows=[...document.querySelectorAll('.nv-entry')];const r=rows.find(x=>x.textContent.includes('北极项目决策记录'));if(r){r.click();return true}return false})()");
+await check(
+  "document.querySelector('.nv-ref-issue') !== null && document.querySelector('.nv-ref-issue').textContent.includes('过期')",
+  "源内容改过后提示「可能已过期」"
+);
+
+// 11. 源笔记被删 → 提示「引用已失效」
+await b("eval", `(()=>{
+  const s = JSON.parse(localStorage.getItem('knowflick.notes.v1'));
+  s.notes = s.notes.filter(x=>x.id!=='n-marker-2');
+  localStorage.setItem('knowflick.notes.v1', JSON.stringify(s));
+  return true;
+})()`);
+await b("open", url);
+await new Promise(r => setTimeout(r, 1800));
+await b("eval", "(()=>{const rows=[...document.querySelectorAll('.ws-nav-row')];const r=rows.find(x=>x.textContent.includes('笔记'));if(r){r.click();return true}return false})()");
+await new Promise(r => setTimeout(r, 900));
+await b("eval", "(()=>{const rows=[...document.querySelectorAll('.nv-entry')];const r=rows.find(x=>x.textContent.includes('北极项目决策记录'));if(r){r.click();return true}return false})()");
+await check(
+  "document.querySelector('.nv-ref-issue') !== null && document.querySelector('.nv-ref-issue').textContent.includes('失效')",
+  "源笔记被删后提示「引用已失效」"
+);
+
 console.log(`\n笔记检索与引用闭环 smoke：${count} 项检查通过。`);

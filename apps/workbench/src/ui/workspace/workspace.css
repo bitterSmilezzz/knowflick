@@ -2792,6 +2792,11 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-status-conflict, .nv-status-error { color: #b3261e; font-weight: 600; }
 .nv-status-note { font-size: 12px; color: var(--muted); margin: 0; display: flex; align-items: center; gap: 8px; }
 .nv-conflict-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.nv-ref-issues { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.nv-ref-issue { color: #b3261e; }
+.nv-ref-picker { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.nv-ref-item { display: inline-flex; align-items: baseline; gap: 6px; }
+.ws-md-note-link { background: none; border: none; padding: 0; color: var(--accent, #2b6cb0); cursor: pointer; text-decoration: underline; font: inherit; }
 .nv-body {
   flex: 1;
   min-height: 0;

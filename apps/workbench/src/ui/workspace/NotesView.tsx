@@ -27,7 +27,14 @@ import {
   type SessionIo,
 } from "./noteSession";
 import { registerNotesDraftFlusher } from "./backupCollect";
-import { applyNoteReference, excerptOf } from "../../domain/noteReference";
+import type { RawMaterial } from "../../shell/store";
+import {
+  applyNoteReference,
+  excerptOf,
+  extractNoteReferences,
+  referenceStatus,
+  type ReferenceSource,
+} from "../../domain/noteReference";
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -75,9 +82,11 @@ interface Props {
   onStateChange?: (state: NotesState) => void;
   /** T13/G01：外部（如全局搜索命中）要求打开的笔记 id。 */
   openNoteId?: string | null;
+  /** 素材列表：引用可以指向素材（多来源引用），过期判定也要看素材正文。 */
+  materials?: RawMaterial[];
 }
 
-export function NotesView({ dir, attachableMedia, onStateChange, openNoteId }: Props) {
+export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, materials = [] }: Props) {
   const [state, setState] = useState<NotesState>(emptyNotesState);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -373,7 +382,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId }: P
   };
 
   /** 引用另一篇笔记的一段到当前笔记（可回原件：knowflick://note/<id>）。 */
-  const insertNoteReference = (source: Note) => {
+  const insertNoteReference = (source: ReferenceSource) => {
     const s = currentSession();
     if (!s) return;
     const excerpt = excerptOf(source);
@@ -384,14 +393,38 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId }: P
     setStatusNote(`已引用《${source.title || "无标题笔记"}》——引用块里可点「回原件」跳回来源。`);
   };
 
-  /** 可引用的其它笔记（排除当前这篇与回收站里的）。 */
+  /**
+   * 当前正文的引用状态（R2「矛盾与过期提示」）：
+   * 源被改过 → changed（可能已过期）；源不在了 → missing（引用已失效）。
+   */
+  const referenceIssues = useMemo(() => {
+    const sources = new Map<string, ReferenceSource>();
+    for (const n of state.notes) {
+      sources.set(n.id, { id: n.id, title: n.title, bodyMd: n.bodyMd, kind: "note" });
+    }
+    for (const m of materials) {
+      sources.set(m.id, { id: m.id, title: m.title, bodyMd: m.rawText, kind: "material" });
+    }
+    const issues: { noteId: string; title: string; status: "changed" | "missing" }[] = [];
+    for (const ref of extractNoteReferences(body)) {
+      const status = referenceStatus(ref, sources);
+      if (status !== "ok") issues.push({ noteId: ref.noteId, title: ref.title, status });
+    }
+    return issues;
+  }, [body, state.notes, materials]);
+
+  /** 可引用的来源：其它笔记 + 素材（R2「多来源引用」）。 */
   const referenceCandidates = useMemo(() => {
     const q = refQuery.trim().toLowerCase();
-    return state.notes
+    const fromNotes: ReferenceSource[] = state.notes
       .filter((n) => !n.isDeleted && n.id !== selectedId)
       .filter((n) => !q || `${n.title}\n${n.bodyMd}`.toLowerCase().includes(q))
-      .slice(0, 12);
-  }, [state.notes, refQuery, selectedId]);
+      .map((n) => ({ id: n.id, title: n.title, bodyMd: n.bodyMd, kind: "note" as const }));
+    const fromMaterials: ReferenceSource[] = materials
+      .filter((m) => !q || `${m.title}\n${m.rawText}`.toLowerCase().includes(q))
+      .map((m) => ({ id: m.id, title: m.title, bodyMd: m.rawText, kind: "material" as const }));
+    return [...fromNotes, ...fromMaterials].slice(0, 12);
+  }, [state.notes, materials, refQuery, selectedId]);
 
   const insertAttachment = (path: string) => {
     if (!currentSession()) return;
@@ -632,6 +665,17 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId }: P
                 ) : null}
               </div>
             </div>
+            {referenceIssues.length > 0 ? (
+              <div className="nv-ref-issues" role="status" aria-label="引用状态">
+                {referenceIssues.map((issue) => (
+                  <span key={`${issue.noteId}-${issue.status}`} className="nv-ref-issue">
+                    {issue.status === "missing"
+                      ? `《${issue.title}》已不在库里——这条引用已失效`
+                      : `《${issue.title}》的内容改过了——这条引用可能已过期，请复核`}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             {statusNote ? (
               <p className={`nv-status-note${status === "conflict" || status === "error" ? " nv-error" : ""}`} role="status">
                 {statusNote}
@@ -680,12 +724,13 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId }: P
                   ) : (
                     referenceCandidates.map((n) => (
                       <button
-                        key={n.id}
+                        key={`${n.kind}-${n.id}`}
                         type="button"
                         className="nv-ref-item"
                         onClick={() => insertNoteReference(n)}
                       >
-                        《{n.title || "无标题笔记"}》
+                        《{n.title || (n.kind === "material" ? "无标题素材" : "无标题笔记")}》
+                        <span className="ws-hint">{n.kind === "material" ? "素材" : "笔记"}</span>
                         <span className="ws-hint">{excerptOf(n, 40)}</span>
                       </button>
                     ))

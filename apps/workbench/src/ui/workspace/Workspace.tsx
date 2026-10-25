@@ -2320,6 +2320,7 @@ export function Workspace() {
                     .map((m) => ({ path: m.mediaPath as string, label: m.title }))}
                   onStateChange={setNotesState}
                   openNoteId={openNoteId}
+                  materials={materials}
                 />
               ) : null}
               {page === "mail" ? (
