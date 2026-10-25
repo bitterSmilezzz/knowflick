@@ -61,6 +61,33 @@ pub fn credentials_file(library_dir: &Path) -> PathBuf {
     }
 }
 
+/// WebDAV 应用密码在 `<data_root>/credentials/webdav.credential`——
+/// 与 apiKey 同一模式：凭据**不进 settings.json、不进任何导出格式**
+/// （settings 里的 sync 段只存非敏感的地址与用户名）。
+pub fn credentials_file_named(library_dir: &Path, name: &str) -> PathBuf {
+    if library_dir.file_name().and_then(|n| n.to_str()) == Some("store") {
+        library_dir
+            .parent()
+            .unwrap_or(library_dir)
+            .join("credentials")
+            .join(name)
+    } else {
+        library_dir.join("credentials").join(name)
+    }
+}
+
+pub fn read_named_credential(library_dir: &Path, name: &str) -> Result<String, String> {
+    read_optional(&credentials_file_named(library_dir, name))?.ok_or_else(|| String::new())
+}
+
+pub fn write_named_credential(library_dir: &Path, name: &str, value: &str) -> Result<(), String> {
+    let path = credentials_file_named(library_dir, name);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    atomic_write(&path, value.as_bytes())
+}
+
 pub fn read_library(dir: &Path) -> Result<LibraryFiles, String> {
     fs::create_dir_all(dir).map_err(|err| err.to_string())?;
     Ok(LibraryFiles {

@@ -1,4 +1,8 @@
 import { useState, useEffect, type FormEvent } from "react";
+import {
+  readWebdavCredential,
+  writeWebdavCredential,
+} from "../../shell/store";
 import { normalizePaperTheme, personalizationEnabled, setPersonalization, type SettingsFile, type AiSettings } from "../../domain/settings";
 import { AI_PROVIDER_PRESETS, findPresetById } from "../../domain/aiPresets";
 import { probeConnection } from "../../domain/aiChat";
@@ -33,6 +37,8 @@ export interface WorkspaceSettingsProps {
   onExportAnkiTsv?: () => void;
   /** R3：备份到指定目录（版本化文件名 + SHA-256，挑目录的对话框在此触发）。 */
   onBackupToDirectory?: () => void;
+  /** R3：上传备份包到 WebDAV（组包与导出同语义；返回文件名/SHA-256/大小）。 */
+  onWebdavUpload?: (target: { url: string; username: string; password: string }) => Promise<{ fileName: string; sha256: string; bytes: number }>;
 }
 
 export function WorkspaceSettings({
@@ -47,6 +53,7 @@ export function WorkspaceSettings({
   onExportKfBackup,
   onRestoreKfBackup,
   onBackupToDirectory,
+  onWebdavUpload,
   onExportCardsJson,
   onExportAnkiTsv,
 }: WorkspaceSettingsProps) {
@@ -57,6 +64,26 @@ export function WorkspaceSettings({
     readPluginSettings(file.raw)
   );
   const [mcpCopied, setMcpCopied] = useState(false);
+  // R3 WebDAV：非敏感配置存 settings.raw.sync，应用密码存独立凭据文件
+  // （与 apiKey 同模式——不进 settings.json、不进任何导出格式）。
+  const sync = (file.raw.sync ?? {}) as { webdavUrl?: string; webdavUser?: string };
+  const [webdavUrl, setWebdavUrl] = useState(sync.webdavUrl ?? "");
+  const [webdavUser, setWebdavUser] = useState(sync.webdavUser ?? "");
+  const [webdavPass, setWebdavPass] = useState("");
+  const [webdavBusy, setWebdavBusy] = useState(false);
+  const [webdavMessage, setWebdavMessage] = useState("");
+  const [webdavReady, setWebdavReady] = useState(false);
+  useEffect(() => {
+    void readWebdavCredential().then((stored) => {
+      setWebdavPass(stored || "");
+      setWebdavReady(true);
+    }).catch(() => setWebdavReady(true));
+  }, []);
+  useEffect(() => {
+    if (!webdavMessage) return;
+    const timer = window.setTimeout(() => setWebdavMessage(""), 6000);
+    return () => window.clearTimeout(timer);
+  }, [webdavMessage]);
   const [personalizationOn, setPersonalizationOnState] = useState(() => personalizationEnabled(file.raw));
   const [draftRaw, setDraftRaw] = useState<Record<string, unknown>>(() => file.raw);
   const asrModel =
@@ -524,6 +551,35 @@ export function WorkspaceSettings({
                       备份到指定目录…
                     </button>
                   ) : null}
+                  {onWebdavUpload ? (
+                    <button
+                      type="button"
+                      className="ws-bordered"
+                      data-action="webdav-upload"
+                      disabled={webdavBusy || !webdavUrl.trim()}
+                      onClick={() => {
+                        setWebdavBusy(true);
+                        setWebdavMessage("");
+                        void (async () => {
+                          try {
+                            await writeWebdavCredential(webdavPass);
+                            const result = await onWebdavUpload({
+                              url: webdavUrl.trim(),
+                              username: webdavUser.trim(),
+                              password: webdavPass,
+                            });
+                            setWebdavMessage(`已上传 ${result.fileName}（${(result.bytes / 1024 / 1024).toFixed(1)} MB，SHA-256 ${result.sha256.slice(0, 12)}…）——单向备份快照，不是双向同步。`);
+                          } catch (err) {
+                            setWebdavMessage(`上传失败：${err instanceof Error ? err.message : String(err)}`);
+                          } finally {
+                            setWebdavBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      {webdavBusy ? "上传中…" : "备份到 WebDAV…"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="ws-bordered"
@@ -550,6 +606,38 @@ export function WorkspaceSettings({
                     </>
                   )}
                 </div>
+                {onWebdavUpload ? (
+                  <div className="mail-section" data-section="webdav" style={{ marginTop: 12 }}>
+                    <div className="mail-section-heading"><h3>WebDAV 备份目标</h3></div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <label className="ws-hint" style={{ display: "grid", gap: 4 }}>
+                        服务器地址（如 https://dav.example.com/knowflick）
+                        <input
+                          aria-label="WebDAV 地址"
+                          placeholder="https://你的服务/目录"
+                          value={webdavUrl}
+                          onChange={(e) => setWebdavUrl(e.target.value)}
+                        />
+                      </label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <label className="ws-hint" style={{ display: "grid", gap: 4, flex: 1 }}>
+                          用户名
+                          <input aria-label="WebDAV 用户名" value={webdavUser} onChange={(e) => setWebdavUser(e.target.value)} />
+                        </label>
+                        <label className="ws-hint" style={{ display: "grid", gap: 4, flex: 1 }}>
+                          应用密码（存本机凭据文件，不进任何导出）
+                          <input type="password" aria-label="WebDAV 应用密码" value={webdavPass} onChange={(e) => setWebdavPass(e.target.value)} />
+                        </label>
+                      </div>
+                      {webdavMessage ? <p className="ws-hint" role="status">{webdavMessage}</p> : null}
+                      {!webdavReady ? <p className="ws-hint">正在读取本机凭据…</p> : null}
+                      <p className="ws-hint" style={{ margin: 0 }}>
+                        这是**单向备份**（每次上传一个新的版本化快照），不是双向同步；
+                        地址与用户名随设置保存，应用密码只存本机 <code>credentials/webdav.credential</code>。
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
                 <p className="ws-hint" style={{ margin: 0 }}>
                   Markdown 归档带 YAML Frontmatter，按分类与收件箱分目录，可直接在 Obsidian 打开；
                   `.kfbackup` 是含清单、校验和与全部层级（素材 / 卡片 / 设置 / 认知产物 / 笔记 / 知识库）的完整备份，可无损还原；「备份到指定目录」生成带日期序号的版本化文件与 SHA-256 校验文件，方便拷到别的设备或网盘目录（这是备份，不是双向同步）；

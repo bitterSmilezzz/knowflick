@@ -48,6 +48,8 @@
     "allow-save-import-report",
     "allow-backup-copy-to-directory",
     "allow-webdav-upload-backup",
+    "allow-read-webdav-credential",
+    "allow-write-webdav-credential",
     "allow-db-save-subscription",
     "allow-db-search-cards-fts",
     "allow-db-search-cards-hybrid",

@@ -180,6 +180,18 @@ fn write_api_key(dir: String, value: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn read_webdav_credential(dir: String) -> Result<String, String> {
+    let path = db::resolve_library_dir(Some(&dir));
+    store::read_named_credential(path.as_path(), "webdav.credential")
+}
+
+#[tauri::command]
+fn write_webdav_credential(dir: String, value: String) -> Result<(), String> {
+    let path = db::resolve_library_dir(Some(&dir));
+    store::write_named_credential(path.as_path(), "webdav.credential", &value)
+}
+
+#[tauri::command]
 fn export_archive(dir: String, dest: String) -> Result<(), String> {
     let path = db::resolve_library_dir(Some(&dir));
     store::export_archive(path.as_path(), PathBuf::from(dest).as_path())
@@ -1384,6 +1396,8 @@ pub fn run() {
             save_import_report,
             backup_copy_to_directory,
             webdav_upload_backup,
+            read_webdav_credential,
+            write_webdav_credential,
             db_list_materials,
             db_update_material_status,
             db_get_stats,
