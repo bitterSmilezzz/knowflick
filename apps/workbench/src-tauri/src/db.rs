@@ -821,7 +821,7 @@ pub fn backfill_material_fts(conn: &Connection) -> Result<usize> {
 pub fn search_materials_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<RawMaterialDto>> {
     let clean_query = query.trim();
     if clean_query.is_empty() {
-        return list_materials(conn, false, limit);
+        return list_materials(conn, false, limit, 0);
     }
 
     let match_query = clean_query
@@ -890,17 +890,18 @@ fn map_material_row(row: &rusqlite::Row) -> rusqlite::Result<RawMaterialDto> {
     })
 }
 
-pub fn list_materials(conn: &Connection, inbox_only: bool, limit: i64) -> Result<Vec<RawMaterialDto>> {
+pub fn list_materials(conn: &Connection, inbox_only: bool, limit: i64, offset: i64) -> Result<Vec<RawMaterialDto>> {
+    // offset 支持分页遍历（备份采集要用；limit-only 的隐含 10000 上限不够）
     let sql = if inbox_only {
         "SELECT id, source_type, title, source_url, raw_text, cleaned_markdown, content_hash, media_path, media_size_bytes, metadata_json, inbox_status, created_at, updated_at
-         FROM materials WHERE is_deleted = 0 AND inbox_status = 'inbox' ORDER BY created_at DESC LIMIT ?1"
+         FROM materials WHERE is_deleted = 0 AND inbox_status = 'inbox' ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
     } else {
         "SELECT id, source_type, title, source_url, raw_text, cleaned_markdown, content_hash, media_path, media_size_bytes, metadata_json, inbox_status, created_at, updated_at
-         FROM materials WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?1"
+         FROM materials WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
     };
 
     let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map(params![limit], map_material_row)?;
+    let rows = stmt.query_map(params![limit, offset], map_material_row)?;
 
     let mut result = Vec::new();
     for r in rows {
@@ -1401,12 +1402,12 @@ pub fn delete_artifact(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn list_artifacts(conn: &Connection, limit: i64) -> Result<Vec<ArtifactDto>> {
+pub fn list_artifacts(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<ArtifactDto>> {
     let mut stmt = conn.prepare(
         "SELECT id, artifact_type, title, content_markdown, source_card_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted
-         FROM artifacts WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?1"
+         FROM artifacts WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
     )?;
-    let rows = stmt.query_map(params![limit], |row| {
+    let rows = stmt.query_map(params![limit, offset], |row| {
         let source_ids_str: String = row.get(4)?;
         let source_ids: Vec<String> = serde_json::from_str(&source_ids_str).unwrap_or_default();
         let is_del_int: i64 = row.get(9)?;
@@ -1761,7 +1762,7 @@ mod tests {
         };
         save_material(&conn, &material).unwrap();
 
-        let inbox = list_materials(&conn, true, 10).unwrap();
+        let inbox = list_materials(&conn, true, 10, 0).unwrap();
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].title, "灵感：设计闪念胶囊");
 
@@ -2230,7 +2231,7 @@ mod tests {
             save_material(&conn, &mat).unwrap();
 
             // 验证 hash 是后端根据 raw_text 重新计算的
-            let list = list_materials(&conn, false, 10).unwrap();
+            let list = list_materials(&conn, false, 10, 0).unwrap();
             assert_eq!(list.len(), 1);
             assert_eq!(list[0].content_hash, calculate_hash("初始文本内容"));
 
@@ -2264,7 +2265,7 @@ mod tests {
         // 模拟应用重启，重新打开连接
         {
             let conn = open_db(&db_path).unwrap();
-            let list = list_materials(&conn, false, 10).unwrap();
+            let list = list_materials(&conn, false, 10, 0).unwrap();
             assert_eq!(list.len(), 1);
             let m = &list[0];
             assert_eq!(m.id, "mat-persist-1");
@@ -2508,7 +2509,7 @@ mod tests {
 
         save_artifact(&conn, &artifact).unwrap();
 
-        let list = list_artifacts(&conn, 10).unwrap();
+        let list = list_artifacts(&conn, 10, 0).unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, "artifact-1");
         assert_eq!(list[0].title, "认知简报 · 第 42 周");
@@ -2519,13 +2520,13 @@ mod tests {
         updated.title = "认知简报 · 终稿".to_string();
         save_artifact(&conn, &updated).unwrap();
 
-        let list2 = list_artifacts(&conn, 10).unwrap();
+        let list2 = list_artifacts(&conn, 10, 0).unwrap();
         assert_eq!(list2.len(), 1);
         assert_eq!(list2[0].title, "认知简报 · 终稿");
 
         // 软删除：列表里不再出现，但行还在（硬删会让历史凭空消失）
         delete_artifact(&conn, "artifact-1").unwrap();
-        assert_eq!(list_artifacts(&conn, 10).unwrap().len(), 0);
+        assert_eq!(list_artifacts(&conn, 10, 0).unwrap().len(), 0);
         let remaining: i64 = conn
             .query_row("SELECT COUNT(*) FROM artifacts WHERE id = 'artifact-1'", [], |row| row.get(0))
             .unwrap();
@@ -2533,7 +2534,7 @@ mod tests {
 
         // 再存一次能复活：重新生成的同一份简报不该被历史删除挡住
         save_artifact(&conn, &artifact).unwrap();
-        assert_eq!(list_artifacts(&conn, 10).unwrap().len(), 1);
+        assert_eq!(list_artifacts(&conn, 10, 0).unwrap().len(), 1);
     }
 
     #[test]

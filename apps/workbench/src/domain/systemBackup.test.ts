@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createKfBackupArchive, restoreKfBackup, stripSecrets } from "./systemBackup";
+import { createKfBackupArchive, legacyFnvChecksum, restoreKfBackup, stripSecrets, unpackZipStoreBinary } from "./systemBackup";
+import { sha256Hex } from "./sha256";
+import { createZipArchive } from "./markdownExport";
 import { createKnowledgeBase, createNoteDraft, emptyNotesState, upsertNote } from "./note";
 import { cardFromJson } from "./card";
 import type { RawMaterial, Artifact } from "../shell/store";
@@ -295,7 +297,7 @@ describe("备份包 v2：笔记与知识库随包无损往返", () => {
     const archive = createKfBackupArchive([], [], sampleSettings, [], new Map(), state.notes, state.knowledgeBases, kbMembership);
     const restored = restoreKfBackup(archive);
 
-    expect(restored.manifest.schemaVersion).toBe(2);
+    expect(restored.manifest.schemaVersion).toBe(3);
     expect(restored.notes).toHaveLength(1);
     expect(restored.notes[0].title).toBe("第一篇笔记");
     expect(restored.notes[0].bodyMd).toContain("北极项目");
@@ -305,12 +307,144 @@ describe("备份包 v2：笔记与知识库随包无损往返", () => {
     expect(Object.keys(restored.kbMembership)).toHaveLength(1);
   });
 
-  it("旧 v1 包（无 notes.json）恢复为空集，不报错", () => {
-    // 只带旧字段的 v1 形状：手工构造一个不含 notes 文件的包
-    const legacy = createKfBackupArchive([], [], sampleSettings, [], new Map(), [], [], {});
-    const restored = restoreKfBackup(legacy);
-    // v2 打包器即使空笔记也写 notes.json；真正的 v1 包没有它——
-    // 这里通过删掉 notes.json 的包再恢复来模拟旧包。
+  it("真正的 v1 ZIP 包（无 notes.json）恢复为空集，不报错", () => {
+    // 审计要求：v1 用例必须真构造 v1 文件集，不能用「v2 空 notes」代替。
+    // v1 特征：schemaVersion 1、FNV 校验和、没有 notes/knowledge_bases 两个文件。
+    const cardsStr = "[]";
+    const materialsStr = "[]";
+    const settingsStr = JSON.stringify(sampleSettings);
+    const manifest = {
+      format: "knowflick-backup",
+      schemaVersion: 1,
+      appName: "KnowFlick",
+      appVersion: "0.1.0",
+      exportedAt: 1,
+      exportedAtIso: new Date(1).toISOString(),
+      stats: { cards: 0, materials: 0, artifacts: 0, media: 0 },
+      checksums: {
+        "cards.json": legacyFnvChecksum(cardsStr),
+        "materials.json": legacyFnvChecksum(materialsStr),
+        "settings.json": legacyFnvChecksum(settingsStr),
+        "artifacts.json": legacyFnvChecksum("[]"),
+      },
+    };
+    const legacyZip = createZipArchive([
+      { path: "manifest.json", data: JSON.stringify(manifest) },
+      { path: "cards.json", data: cardsStr },
+      { path: "materials.json", data: materialsStr },
+      { path: "settings.json", data: settingsStr },
+      { path: "artifacts.json", data: "[]" },
+    ]);
+    const restored = restoreKfBackup(legacyZip);
+    expect(restored.manifest.schemaVersion).toBe(1);
     expect(restored.notes).toHaveLength(0);
+    expect(restored.knowledgeBases).toHaveLength(0);
+    expect(restored.cards).toHaveLength(0);
+  });
+
+  it("篡改 notes.json 的 v3 包在恢复前被整体拒绝（旧实现接受——红转绿）", () => {
+    const { state, kbMembership } = buildNotes();
+    const archive = createKfBackupArchive([], [], sampleSettings, [], new Map(), state.notes, state.knowledgeBases, kbMembership);
+    // 用「checksum 对应另一份内容」的方式模拟包内文件被改
+    const files = unpackZipStoreBinary(archive);
+    const tampered = new Map(files);
+    tampered.set("notes.json", new TextEncoder().encode('[{"id":"x","title":"被换掉的内容"}]'));
+    const rebuilt = createZipArchive([...tampered].map(([path, data]) => ({ path, data })));
+    expect(() => restoreKfBackup(rebuilt)).toThrow(/notes\.json/);
+  });
+
+  it("v2 旧包（FNV 校验和）被篡改同样拒绝——兼容不豁免", () => {
+    const cardsStr = "[]";
+    const materialsStr = "[]";
+    const notesStr = JSON.stringify([{ id: "n1", title: "v2 笔记" }]);
+    const kbsStr = JSON.stringify({ knowledgeBases: [], membership: {} });
+    // manifest 的 notes.json 校验和按「旧内容」算，包里放「新内容」→ 篡改
+    const manifest = {
+      format: "knowflick-backup",
+      schemaVersion: 2,
+      appName: "KnowFlick",
+      appVersion: "0.1.0",
+      exportedAt: 1,
+      exportedAtIso: new Date(1).toISOString(),
+      stats: { cards: 0, materials: 0, artifacts: 0, media: 0, notes: 1, knowledgeBases: 0 },
+      checksums: {
+        "cards.json": legacyFnvChecksum(cardsStr),
+        "materials.json": legacyFnvChecksum(materialsStr),
+        "notes.json": legacyFnvChecksum('{"被篡改前的内容": true}'),
+        "knowledge_bases.json": legacyFnvChecksum(kbsStr),
+      },
+    };
+    const v2Zip = createZipArchive([
+      { path: "manifest.json", data: JSON.stringify(manifest) },
+      { path: "cards.json", data: cardsStr },
+      { path: "materials.json", data: materialsStr },
+      { path: "notes.json", data: notesStr },
+      { path: "knowledge_bases.json", data: kbsStr },
+    ]);
+    expect(() => restoreKfBackup(v2Zip)).toThrow(/notes\.json/);
+  });
+
+  it("v2+ 包缺 notes.json：结构不完整，拒绝恢复", () => {
+    const zip = createZipArchive([
+      { path: "manifest.json", data: JSON.stringify({
+        format: "knowflick-backup", schemaVersion: 2, appName: "KnowFlick", appVersion: "0.1.0",
+        exportedAt: 1, exportedAtIso: new Date(1).toISOString(),
+        stats: { cards: 0, materials: 0, artifacts: 0, media: 0, notes: 0, knowledgeBases: 0 },
+        checksums: {},
+      }) },
+      { path: "cards.json", data: "[]" },
+      { path: "materials.json", data: "[]" },
+    ]);
+    expect(() => restoreKfBackup(zip)).toThrow(/notes\.json/);
+  });
+
+  it("manifest 计数与包内实际不一致：拒绝恢复", () => {
+    const notesStr = JSON.stringify([{ id: "n1" }, { id: "n2" }]);
+    const zip = createZipArchive([
+      { path: "manifest.json", data: JSON.stringify({
+        format: "knowflick-backup", schemaVersion: 3, appName: "KnowFlick", appVersion: "0.1.0",
+        exportedAt: 1, exportedAtIso: new Date(1).toISOString(),
+        stats: { cards: 0, materials: 0, artifacts: 0, media: 0, notes: 5, knowledgeBases: 0 },
+        checksums: { "notes.json": `sha256:${sha256Hex(notesStr)}` },
+      }) },
+      { path: "cards.json", data: "[]" },
+      { path: "materials.json", data: "[]" },
+      { path: "notes.json", data: notesStr },
+      { path: "knowledge_bases.json", data: "{}" },
+    ]);
+    expect(() => restoreKfBackup(zip)).toThrow(/notes 声称 5 条、包里实际 2 条/);
+  });
+
+  it("截断的包：拒绝恢复，不把半截附件写进库", () => {
+    const { state, kbMembership } = buildNotes();
+    // 末尾是附件条目：切进它的数据内部，而不是只切掉尾部目录结构
+    const bigMedia = new Map([["media/image/big.bin", new Uint8Array(4096).fill(7)]]);
+    const archive = createKfBackupArchive([], [], sampleSettings, [], bigMedia, state.notes, state.knowledgeBases, kbMembership);
+    const truncated = archive.slice(0, archive.length - 600);
+    expect(() => restoreKfBackup(truncated)).toThrow(/截断/);
+  });
+
+  it("重复条目的包：拒绝恢复", () => {
+    const files = unpackZipStoreBinary(
+      createKfBackupArchive([], [], sampleSettings, [], new Map(), [], [], {})
+    );
+    const entries = [...files].map(([path, data]) => ({ path, data }));
+    entries.push({ path: "cards.json", data: new TextEncoder().encode("[]") });
+    const duplicated = createZipArchive(entries);
+    expect(() => restoreKfBackup(duplicated)).toThrow(/重复条目/);
+  });
+
+  it("未知未来版本：拒绝并说明支持的版本", () => {
+    const zip = createZipArchive([
+      { path: "manifest.json", data: JSON.stringify({
+        format: "knowflick-backup", schemaVersion: 99, appName: "KnowFlick", appVersion: "9.9.9",
+        exportedAt: 1, exportedAtIso: new Date(1).toISOString(), stats: {}, checksums: {},
+      }) },
+      { path: "cards.json", data: "[]" },
+      { path: "materials.json", data: "[]" },
+      { path: "notes.json", data: "[]" },
+      { path: "knowledge_bases.json", data: "{}" },
+    ]);
+    expect(() => restoreKfBackup(zip)).toThrow(/不支持的备份包版本 99/);
   });
 });

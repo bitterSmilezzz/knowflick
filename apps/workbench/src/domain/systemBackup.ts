@@ -6,10 +6,15 @@ import { noteFromJson } from "./note";
 import type { SettingsFile } from "./settings";
 import { parseSettings, encodeSettings } from "./settings";
 import { createZipArchive } from "./markdownExport";
+import { sha256Hex } from "./sha256";
 
 export interface BackupManifest {
   format: "knowflick-backup";
-  /** v2 起携带 notes.json / knowledge_bases.json（契约 docs/NOTES_MODEL.md）。 */
+  /**
+   * v2 携带 notes.json / knowledge_bases.json（契约 docs/NOTES_MODEL.md）；
+   * v3 校验和升级为 SHA-256（`sha256:<hex>` 前缀；v2 的 8 位裸值是旧 FNV，
+   * 读取端仍按 FNV 校验——旧包不豁免，被篡改照样拒绝）。
+   */
   schemaVersion: number;
   appName: string;
   appVersion: string;
@@ -41,14 +46,21 @@ export interface RestoredBackup {
   kbMembership: Record<string, number>;
 }
 
-/** 简易快速确定性哈希校验和（基于 FNV-1a） */
-function computeChecksum(content: string): string {
+/**
+ * 旧 v2 包的 FNV-1a 校验和——只在**读取** v2 包时使用（兼容不豁免：
+ * 旧包被篡改同样要在恢复前拒绝）。新包一律 SHA-256。
+ */
+export function legacyFnvChecksum(content: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < content.length; i++) {
     h ^= content.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+function computeChecksum(content: string): string {
+  return `sha256:${sha256Hex(content)}`;
 }
 
 /**
@@ -79,7 +91,7 @@ export function createKfBackupArchive(
 
   const manifest: BackupManifest = {
     format: "knowflick-backup",
-    schemaVersion: 2,
+    schemaVersion: 3,
     appName: "KnowFlick",
     appVersion: "0.1.0",
     exportedAt: now,
@@ -153,10 +165,21 @@ export function unpackZipStoreBinary(buffer: Uint8Array): Map<string, Uint8Array
     const nameStart = pos + 30;
     const filename = decoder.decode(buffer.subarray(nameStart, nameStart + nameLen));
     const dataStart = nameStart + nameLen + extraLen;
+    if (dataStart + compSize > buffer.length) {
+      // 截断的包：宁可拒绝恢复也不能把半截附件写进库
+      throw new Error(`备份包已截断（条目 ${filename} 不完整），可能传输损坏，拒绝恢复`);
+    }
 
     if (compMethod === 0) {
       // Store 模式 (无压缩)
+      if (result.has(filename)) {
+        throw new Error(`备份包含重复条目 ${filename}，结构损坏，拒绝恢复`);
+      }
       result.set(filename, buffer.slice(dataStart, dataStart + compSize));
+    } else {
+      // 我们只写 Store 模式；带压缩方式的包可能是别的工具产出的，如实拒绝
+      // （不要把「支持我们自己生成的 ZIP」表述成通用 ZIP 支持）。
+      throw new Error(`备份包条目 ${filename} 使用了不支持的压缩方式（${compMethod}），拒绝恢复`);
     }
     pos = dataStart + compSize;
   }
@@ -228,15 +251,62 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
   if (manifest.format !== "knowflick-backup") {
     throw new Error(`未知备份格式: ${manifest.format}`);
   }
+  if (manifest.schemaVersion < 1 || manifest.schemaVersion > 3) {
+    throw new Error(`不支持的备份包版本 ${manifest.schemaVersion}（本应用支持 v1–v3）`);
+  }
+
+  // 校验和（T06，审计 KF-009）：恢复写入前逐文件核对，不匹配即整体拒绝。
+  // v3 是 sha256:<hex>；v2 的 8 位裸值按旧 FNV 校验——旧包不豁免，
+  // 「篡改 notes 仍被接受」的旧行为在这里红转绿。
+  const checksumErrors: string[] = [];
+  for (const [file, declared] of Object.entries(manifest.checksums ?? {})) {
+    const actual = files.get(file);
+    if (actual === undefined) {
+      checksumErrors.push(`${file}：manifest 声明了校验和但包里没有该文件`);
+      continue;
+    }
+    const matches = declared.startsWith("sha256:")
+      ? `sha256:${sha256Hex(actual)}` === declared
+      : legacyFnvChecksum(actual) === declared;
+    if (!matches) checksumErrors.push(`${file}：校验和不匹配（文件可能已被修改或损坏）`);
+  }
+  if (checksumErrors.length > 0) {
+    throw new Error(`备份包校验失败，拒绝恢复：${checksumErrors.join("；")}`);
+  }
+
+  // 计数对账：manifest.stats 声称的条数必须与包内实际一致
+  // （先查存在性再解析：缺文件是「结构不完整」，不是解析错误）
+  const statsErrors: string[] = [];
+  const stats = manifest.stats ?? {};
+  const notesRawStr = files.get("notes.json");
+  const kbsRawStr = files.get("knowledge_bases.json");
+  if (manifest.schemaVersion >= 2) {
+    if (!notesRawStr) statsErrors.push("v2+ 备份包缺少 notes.json");
+    if (!kbsRawStr) statsErrors.push("v2+ 备份包缺少 knowledge_bases.json");
+    if (statsErrors.length > 0) {
+      throw new Error(`备份包结构不完整，拒绝恢复：${statsErrors.join("；")}`);
+    }
+  }
+  const rawNotesCheck = JSON.parse(notesRawStr ?? "[]") as unknown;
+  const countOf = (raw: unknown) => (Array.isArray(raw) ? raw.length : null);
+  const checks: Array<[string, number | undefined, number | null]> = [
+    ["cards", stats.cards, countOf(JSON.parse(files.get("cards.json") ?? "[]"))],
+    ["materials", stats.materials, countOf(JSON.parse(files.get("materials.json") ?? "[]"))],
+    ["artifacts", stats.artifacts, countOf(JSON.parse(files.get("artifacts.json") ?? "[]"))],
+    ["notes", stats.notes, countOf(rawNotesCheck)],
+    ["knowledgeBases", stats.knowledgeBases, countOf(((JSON.parse(files.get("knowledge_bases.json") ?? "{}") as { knowledgeBases?: unknown[] }).knowledgeBases) ?? [])],
+  ];
+  for (const [label, declared, actual] of checks) {
+    if (declared !== undefined && actual !== null && declared !== actual) {
+      statsErrors.push(`${label} 声称 ${declared} 条、包里实际 ${actual} 条`);
+    }
+  }
+  if (statsErrors.length > 0) {
+    throw new Error(`备份包计数对不上，拒绝恢复：${statsErrors.join("；")}`);
+  }
 
   // 1. 读取并校验 cards.json
   const cardsRaw = files.get("cards.json") ?? "[]";
-  if (manifest.checksums["cards.json"]) {
-    const calc = computeChecksum(cardsRaw);
-    if (calc !== manifest.checksums["cards.json"]) {
-      console.warn("cards.json 校验和不匹配，文件可能已在外部被修改");
-    }
-  }
   const rawCards = JSON.parse(cardsRaw) as unknown[];
   const cards = Array.isArray(rawCards) ? rawCards.map((c) => cardFromJson(c)) : [];
 

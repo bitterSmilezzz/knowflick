@@ -483,11 +483,11 @@ fn db_save_material(app: tauri::AppHandle, dir: Option<String>, material: db::Ra
 }
 
 #[tauri::command]
-fn db_list_materials(dir: Option<String>, inbox_only: Option<bool>, limit: Option<i64>) -> Result<Vec<db::RawMaterialDto>, String> {
+fn db_list_materials(dir: Option<String>, inbox_only: Option<bool>, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<db::RawMaterialDto>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
-    db::list_materials(&conn, inbox_only.unwrap_or(true), limit.unwrap_or(100)).map_err(|e| e.to_string())
+    db::list_materials(&conn, inbox_only.unwrap_or(true), limit.unwrap_or(100), offset.unwrap_or(0)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -982,11 +982,11 @@ fn db_delete_artifact(dir: Option<String>, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn db_list_artifacts(dir: Option<String>, limit: Option<i64>) -> Result<Vec<db::ArtifactDto>, String> {
+fn db_list_artifacts(dir: Option<String>, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<db::ArtifactDto>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
-    db::list_artifacts(&conn, limit.unwrap_or(50)).map_err(|e| e.to_string())
+    db::list_artifacts(&conn, limit.unwrap_or(50), offset.unwrap_or(0)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

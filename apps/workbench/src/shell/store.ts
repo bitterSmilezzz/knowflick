@@ -494,8 +494,8 @@ export function dbSaveMaterial(material: RawMaterial, dir?: string): Promise<voi
   return invoke("db_save_material", { dir: dir ?? null, material });
 }
 
-export function dbListMaterials(inboxOnly?: boolean, dir?: string, limit?: number): Promise<RawMaterial[]> {
-  return invoke("db_list_materials", { dir: dir ?? null, inboxOnly: inboxOnly ?? true, limit: limit ?? null });
+export function dbListMaterials(inboxOnly?: boolean, dir?: string, limit?: number, offset?: number): Promise<RawMaterial[]> {
+  return invoke("db_list_materials", { dir: dir ?? null, inboxOnly: inboxOnly ?? true, limit: limit ?? null, offset: offset ?? null });
 }
 
 export function dbUpdateMaterialStatus(id: string, status: string, dir?: string): Promise<void> {
@@ -527,8 +527,8 @@ export function dbSaveArtifact(artifact: Artifact, dir?: string): Promise<void> 
   return invoke("db_save_artifact", { dir: dir ?? null, artifact });
 }
 
-export function dbListArtifacts(limit?: number, dir?: string): Promise<Artifact[]> {
-  return invoke("db_list_artifacts", { dir: dir ?? null, limit: limit ?? 50 });
+export function dbListArtifacts(limit?: number, dir?: string, offset?: number): Promise<Artifact[]> {
+  return invoke("db_list_artifacts", { dir: dir ?? null, limit: limit ?? 50, offset: offset ?? null });
 }
 
 /** 向量空间身份（R2）：同维度不同 provider/model 的向量不混算。 */

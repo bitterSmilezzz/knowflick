@@ -20,7 +20,6 @@ import {
   asrModelStatus,
   asrTranscribe,
   inShell,
-  readMedia,
   saveMedia,
   pickAudioFile,
   pickExportPath,
@@ -48,6 +47,7 @@ import {
 } from "./repository";
 import { downloadAnkiTsv, downloadMarkdownVault } from "../../domain/markdownExport";
 import { downloadKfBackup, restoreKfBackup } from "../../domain/systemBackup";
+import { backupCompleteness, collectBackupSnapshot } from "./backupCollect";
 import { highlightText, extractSnippet } from "./HighlightText";
 import { Icon, sourceLabel, useSystemAppearance } from "./Icon";
 import { EntryInspector } from "./EntryInspector";
@@ -61,7 +61,7 @@ import type { Goal } from "../../shell/store";
 import { restoreNotesBundle } from "./notesRestore";
 import { backupCopyToDirectory, webdavUploadBackup } from "../../shell/store";
 import { createKfBackupArchive } from "../../domain/systemBackup";
-import { activeGoals, ensureNoteFromMaterial, readLastImportReport, saveLastImportReport } from "./repository";
+import { activeGoals, ensureNoteFromMaterial, readLastImportReport, readNotes, saveLastImportReport } from "./repository";
 import { buildImportReport, reportLines, type ImportReport } from "../../domain/importReport";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
@@ -282,6 +282,9 @@ export function Workspace() {
       setMaterials(data.materials);
       setCards(data.cards);
       setFile(data.file);
+      // 侧栏笔记计数也从权威层取——界面缓存要等用户点开笔记页才有数据，
+      // 冷启动会显示 0（与 KF-001 同类：导出已经改为权威采集，这里补计数）。
+      void readNotes(dir).then((state) => { if (current === revision.current) setNotesState(state); });
       setApiKey(data.apiKey);
       setDir(data.dir);
       setLastImportReport(await readLastImportReport(data.dir));
@@ -1140,17 +1143,6 @@ export function Workspace() {
    * 只在桌面端有读取能力；单条失败（文件被移动、权限）只跳过那一条，
    * 不能让整份备份导不出来。
    */
-  const collectBackupMedia = async (items: RawMaterial[]): Promise<Map<string, Uint8Array>> => {
-    const media = new Map<string, Uint8Array>();
-    if (!inShell()) return media;
-    for (const m of items) {
-      if (!m.mediaPath) continue;
-      if (media.has(m.mediaPath)) continue;
-      try { media.set(m.mediaPath, await readMedia(m.mediaPath, dir)); } catch { /* 跳过缺失附件 */ }
-    }
-    return media;
-  };
-
   /** 手写笔记：笔迹存成素材附件（JSON），标题自动生成，进收件箱等整理。 */
   const saveInkNote = async (doc: InkDocument) => {
     const json = JSON.stringify(doc);
@@ -1448,24 +1440,17 @@ export function Workspace() {
                 // 附件字节必须随包带走，所以导出是异步的；取附件失败只丢附件，
                 // 不能让整份备份导不出来。
                 void (async () => {
-                  const media = await collectBackupMedia(materials);
-                  if (!inShell()) {
-                    downloadKfBackup(materials, cards, file, [], media, notesState.notes, notesState.knowledgeBases, notesState.membership);
-                    setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片、设置与附件，不含 API 密钥");
-                    return;
-                  }
-                  try {
-                    const arts = await dbListArtifacts(1000, dir);
-                    downloadKfBackup(materials, cards, file, arts, media, notesState.notes, notesState.knowledgeBases, notesState.membership);
-                    setNotice(
-                      `已导出完整备份包 (.kfbackup)：${cards.length} 张卡片、${materials.length} 份素材、` +
-                        `${arts.length} 条认知产物、${media.size} 个附件，不含 API 密钥`
-                    );
-                  } catch {
-                    downloadKfBackup(materials, cards, file, [], media, notesState.notes, notesState.knowledgeBases, notesState.membership);
-                    setNotice("已导出完整备份包 (.kfbackup)，包含素材、卡片、设置与附件，不含 API 密钥");
-                  }
-                })();
+                  // 权威仓储采集（T03）：不依赖界面是否打开过笔记页，含回收站与分页全量
+                  const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
+                  downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
+                  const gaps = backupCompleteness(snapshot);
+                  const scale = `${snapshot.cards.length} 张卡片、${snapshot.materials.length} 份素材、${snapshot.artifacts.length} 条认知产物、${snapshot.notes.length} 篇笔记、${snapshot.media.size} 个附件`;
+                  setNotice(
+                    gaps.length === 0
+                      ? `已导出完整备份包 (.kfbackup)：${scale}，不含 API 密钥`
+                      : `已导出**部分**备份包：${scale}。${gaps.join("；")}——完整度缺口如上，不是完整备份。`
+                  );
+                })().catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
               }}
             >
               <Icon name="download" />
@@ -2195,18 +2180,15 @@ export function Workspace() {
                   onExportKfBackup={() => {
                     // 认知产物（Layer 3）只在桌面端的 SQLite 里有；浏览器体验模式跳过。
                     void (async () => {
-                      const media = await collectBackupMedia(materials);
-                      if (!inShell()) {
-                        downloadKfBackup(materials, cards, file, [], media, notesState.notes, notesState.knowledgeBases, notesState.membership);
-                        return;
-                      }
-                      try {
-                        const arts = await dbListArtifacts(1000, dir);
-                        downloadKfBackup(materials, cards, file, arts, media, notesState.notes, notesState.knowledgeBases, notesState.membership);
-                      } catch {
-                        downloadKfBackup(materials, cards, file, [], media, notesState.notes, notesState.knowledgeBases, notesState.membership);
-                      }
-                    })();
+                      const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
+                      downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
+                      const gaps = backupCompleteness(snapshot);
+                      setNotice(
+                        gaps.length === 0
+                          ? `已导出完整备份包 (.kfbackup)：${snapshot.notes.length} 篇笔记、${snapshot.cards.length} 张卡片、${snapshot.materials.length} 份素材、${snapshot.artifacts.length} 条产物`
+                          : `已导出**部分**备份包。${gaps.join("；")}——完整度缺口如上，不是完整备份。`
+                      );
+                    })().catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
                   }}
                   onRestoreKfBackup={() => restoreRef.current?.click()}
                   onBackupToDirectory={inShell() ? () => {
@@ -2215,19 +2197,23 @@ export function Workspace() {
                       const { open } = await import("@tauri-apps/plugin-dialog");
                       const selected = await open({ multiple: false, directory: true });
                       if (typeof selected !== "string") return;
-                      const media = await collectBackupMedia(materials);
-                      let arts: Awaited<ReturnType<typeof dbListArtifacts>> = [];
-                      try { arts = await dbListArtifacts(1000, dir); } catch { /* 产物层缺了不阻断整包 */ }
-                      const archive = createKfBackupArchive(materials, cards, file, arts, media, notesState.notes, notesState.knowledgeBases, notesState.membership);
+                      const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
+                      const archive = createKfBackupArchive(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
                       const result = await backupCopyToDirectory(selected, archive);
-                      setNotice(`已备份到 ${result.fileName}（${(result.bytes / 1024 / 1024).toFixed(1)} MB，SHA-256 ${result.sha256.slice(0, 12)}…）——这是完整备份快照，不是双向同步。`);
+                      const gaps = backupCompleteness(snapshot);
+                      setNotice(
+                        `已备份到 ${result.fileName}（${(result.bytes / 1024 / 1024).toFixed(1)} MB，SHA-256 ${result.sha256.slice(0, 12)}…）——` +
+                        (gaps.length === 0
+                          ? "这是完整备份快照，不是双向同步。"
+                          : `这是**部分**备份：${gaps.join("；")}。不是双向同步。`)
+                      );
                     })().catch((err) => setError(`备份到目录失败：${err instanceof Error ? err.message : String(err)}`));
                   } : undefined}
                   onWebdavUpload={inShell() ? async (target) => {
-                    const media = await collectBackupMedia(materials);
-                    let arts: Awaited<ReturnType<typeof dbListArtifacts>> = [];
-                    try { arts = await dbListArtifacts(1000, dir); } catch { /* 产物层缺了不阻断整包 */ }
-                    const archive = createKfBackupArchive(materials, cards, file, arts, media, notesState.notes, notesState.knowledgeBases, notesState.membership);
+                    const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
+                    const archive = createKfBackupArchive(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
+                    const gaps = backupCompleteness(snapshot);
+                    if (gaps.length > 0) console.warn("[WebDAV 备份] 部分内容缺口：", gaps);
                     return webdavUploadBackup(target.url, target.username || null, target.password || null, archive);
                   } : undefined}
                   onExportCardsJson={inShell() ? () => void exportCardsJsonForAndroid(dir) : undefined}

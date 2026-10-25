@@ -26,6 +26,7 @@ import {
   readDraftMirror,
   type SessionIo,
 } from "./noteSession";
+import { registerNotesDraftFlusher } from "./backupCollect";
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -192,6 +193,18 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
       window.removeEventListener("beforeunload", flush);
       flush();
     };
+  }, [currentSession]);
+
+  // 导出备份前的草稿处置（T03）：把当前脏会话的冲刷权交给备份采集——
+  // 冲刷结果如实上报，保存失败/冲突时回执不得声称「完整备份」。
+  useEffect(() => {
+    registerNotesDraftFlusher(async () => {
+      const s = currentSession();
+      if (!s || !s.isDirty) return { attempted: false, saved: true };
+      const snap = await s.flush();
+      return { attempted: true, saved: !snap.dirty && snap.phase !== "error" };
+    });
+    return () => registerNotesDraftFlusher(null);
   }, [currentSession]);
 
   const openNote = useCallback(

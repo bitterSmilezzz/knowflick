@@ -1593,12 +1593,12 @@ mod tests {
 
     fn material_count(dir: &Path) -> usize {
         let conn = db::open_db(&dir.join("knowflick.db")).expect("db");
-        db::list_materials(&conn, false, 1000).expect("materials").len()
+        db::list_materials(&conn, false, 1000, 0).expect("materials").len()
     }
 
     fn material_rows(dir: &Path) -> Vec<RawMaterialDto> {
         let conn = db::open_db(&dir.join("knowflick.db")).expect("db");
-        db::list_materials(&conn, false, 1000).expect("materials")
+        db::list_materials(&conn, false, 1000, 0).expect("materials")
     }
 
     #[test]
