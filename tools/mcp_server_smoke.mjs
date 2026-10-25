@@ -139,9 +139,55 @@ function seed() {
   db.close();
 }
 
+async function verifyReadOnlyDefault() {
+  // E06（R4）：默认只读——写工具被明确拒绝并告知开启方法（不是静默消失）。
+  const denied = spawn(process.execPath, [serverPath], {
+    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir, KNOWFLICK_MCP_WRITE: "", KNOWFLICK_MCP_ALLOW: "" },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const pendingDenied = new Map();
+  let bufDenied = "";
+  let nextIdDenied = 0;
+  denied.stdout.setEncoding("utf8");
+  denied.stderr.resume();
+  denied.stdout.on("data", (chunk) => {
+    bufDenied += chunk;
+    let idx;
+    while ((idx = bufDenied.indexOf("\n")) >= 0) {
+      const line = bufDenied.slice(0, idx).trim();
+      bufDenied = bufDenied.slice(idx + 1);
+      if (!line) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.id !== undefined && pendingDenied.has(String(parsed.id))) {
+          pendingDenied.get(String(parsed.id))(parsed);
+          pendingDenied.delete(String(parsed.id));
+        }
+      } catch { /* 非 JSON-RPC 行忽略 */ }
+    }
+  });
+  const callDenied = (method, params) =>
+    new Promise((resolve, reject) => {
+      const id = ++nextIdDenied;
+      pendingDenied.set(String(id), resolve);
+      denied.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+      setTimeout(() => reject(new Error(`只读段 ${method} 超时`)), 15000);
+    });
+  await callDenied("initialize", {});
+  const deniedWrite = await callDenied("tools/call", { name: "create_flash_card", arguments: { headline: "不应写入", details: "默认只读" } });
+  assert.ok(deniedWrite.result?.isError === true && /写入被拒绝/.test(deniedWrite.result?.content?.[0]?.text ?? ""), `默认只读：create_flash_card 应被明确拒绝并说明开启方法（实际：${JSON.stringify(deniedWrite).slice(0, 200)}）`);
+  pass("E06 默认只读：create_flash_card 被拒绝且给出开启方法");
+  const deniedMaterial = await callDenied("tools/call", { name: "add_material", arguments: { title: "不应写入", text: "默认只读" } });
+  assert.ok(deniedMaterial.result?.isError === true && /写入被拒绝/.test(deniedMaterial.result.content[0].text), "默认只读：add_material 应同样被拒");
+  pass("E06 默认只读：add_material 同样被拒");
+  denied.kill();
+  await new Promise((r) => setTimeout(r, 200));
+}
+
 function startServer() {
+  // 显式授权后，原有写入断言全部照跑（spawn 带授权）。
   const child = spawn(process.execPath, [serverPath], {
-    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir },
+    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir, KNOWFLICK_MCP_WRITE: "1" },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const pending = new Map();
@@ -185,6 +231,8 @@ function startServer() {
 let server;
 try {
   seed();
+  // seed 先建库，只读段才有可连接的目标（两个独立进程，互不影响数据）
+  await verifyReadOnlyDefault();
   server = startServer();
   const { call } = server;
 

@@ -44,6 +44,41 @@ function resolveLibraryDir() {
   return join(dataRoot(), "store");
 }
 
+/**
+ * E06（R4）：MCP 默认**只读**。
+ *
+ * 写工具（create_flash_card / add_material）须显式授权：
+ *   KNOWFLICK_MCP_WRITE=1            开启全部写工具
+ *   KNOWFLICK_MCP_ALLOW=card,material 细粒度（card=建卡，material=加素材）
+ * 未授权时写工具返回明确错误与开启方法——不是静默消失（外部 Agent 猜
+ * 「工具坏了」比「被拒绝」更糟）。这是向「独立客户端/项目授权」迁移的
+ * 第一步：单一环境变量先统一策略，按项目签发凭据属后续批次。
+ */
+function writePermission() {
+  const fine = (process.env.KNOWFLICK_MCP_ALLOW || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const all = process.env.KNOWFLICK_MCP_WRITE === "1";
+  return {
+    card: all || fine.includes("card"),
+    material: all || fine.includes("material"),
+  };
+}
+
+function denyWrite(tool) {
+  const which = tool === "create_flash_card" ? "card" : "material";
+  return {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text:
+          `写入被拒绝：${tool} 需要显式授权（E06 默认只读）。\n` +
+          `开启方法：设置环境变量 KNOWFLICK_MCP_WRITE=1（全部写工具）或 KNOWFLICK_MCP_ALLOW=${which}（仅此项）。\n` +
+          `只读检索（search_knowledge / search_materials / get_knowledge_stats）不受影响。`,
+      },
+    ],
+  };
+}
+
 const libraryDir = resolveLibraryDir();
 const dbPath = join(libraryDir, "knowflick.db");
 
@@ -501,10 +536,12 @@ function handleToolCall(name, args) {
       );
     }
     case "create_flash_card": {
+        if (!writePermission().card) return denyWrite("create_flash_card");
       const created = saveFlashCard(args ?? {});
       return textResult(`知识卡片创建成功！\nID: ${created.id}\n标题: ${created.headline}\n分类: ${created.category}`);
     }
     case "add_material": {
+        if (!writePermission().material) return denyWrite("add_material");
       const created = addMaterial(args ?? {});
       return textResult(`素材已加入收件箱！\nID: ${created.id}\n标题: ${created.title}`);
     }

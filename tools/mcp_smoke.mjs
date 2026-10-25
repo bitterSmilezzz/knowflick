@@ -25,7 +25,9 @@ const pass = (label, detail) => {
 function startServer(libraryDir) {
   const proc = spawn("node", ["tools/mcp-server.mjs"], {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir },
+    // E06 默认只读：此进程显式开写——它测「缺库/写路径」，授权拒绁会挡在
+    // 库检查之前；只读拒绝语义由 mcp_server_smoke 的独立段落验证。
+    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir, KNOWFLICK_MCP_WRITE: "1" },
   });
   let buf = "";
   const pending = new Map();
