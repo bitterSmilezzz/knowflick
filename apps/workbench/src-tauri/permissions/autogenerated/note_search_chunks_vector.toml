@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-search-chunks-vector"
+description = "Enables the note_search_chunks_vector command without any pre-configured scope."
+commands.allow = ["note_search_chunks_vector"]
+
+[[permission]]
+identifier = "deny-note-search-chunks-vector"
+description = "Denies the note_search_chunks_vector command without any pre-configured scope."
+commands.deny = ["note_search_chunks_vector"]

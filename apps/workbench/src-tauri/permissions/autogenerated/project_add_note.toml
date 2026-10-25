@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-project-add-note"
+description = "Enables the project_add_note command without any pre-configured scope."
+commands.allow = ["project_add_note"]
+
+[[permission]]
+identifier = "deny-project-add-note"
+description = "Denies the project_add_note command without any pre-configured scope."
+commands.deny = ["project_add_note"]

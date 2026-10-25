@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-profile-denial-clear-by-evidence"
+description = "Enables the profile_denial_clear_by_evidence command without any pre-configured scope."
+commands.allow = ["profile_denial_clear_by_evidence"]
+
+[[permission]]
+identifier = "deny-profile-denial-clear-by-evidence"
+description = "Denies the profile_denial_clear_by_evidence command without any pre-configured scope."
+commands.deny = ["profile_denial_clear_by_evidence"]
