@@ -2834,3 +2834,20 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-report-ok { color: var(--muted); }
 .nv-report-skipped { color: var(--muted); font-style: italic; }
 .nv-report-failed { color: #b3261e; }
+
+/* ---------- 复盘视图（R4/D03） ---------- */
+.rv-root { display: flex; flex-direction: column; gap: 14px; padding: 16px 22px; overflow-y: auto; height: 100%; }
+.rv-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rv-head h1 { font-size: 18px; margin: 0; flex: 1; }
+.rv-kind { display: flex; gap: 4px; }
+.rv-kind button { background: none; border: 1px solid transparent; border-radius: 6px; padding: 4px 10px; cursor: pointer; color: var(--muted); }
+.rv-kind button[aria-pressed="true"] { border-color: var(--line); background: var(--sunken); color: var(--ink); }
+.rv-section h2 { font-size: 14px; margin: 0 0 6px; }
+.rv-facts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.rv-fact { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.rv-fact strong { font-size: 20px; color: var(--ink); }
+.rv-fact span { font-size: 12px; color: var(--muted); }
+.rv-detail { margin: 4px 0; }
+.rv-detail ul { margin: 4px 0; padding-left: 20px; }
+.rv-goals, .rv-gaps { margin: 4px 0; padding-left: 20px; }
+.rv-gaps { color: var(--muted); }

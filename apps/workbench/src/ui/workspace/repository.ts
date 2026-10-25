@@ -15,6 +15,7 @@ import {
   saveImportReport,
   readMedia,
   noteDelete,
+  goalListActive,
   noteEnsureFromMaterial,
   noteList,
   noteRestore,
@@ -42,6 +43,7 @@ import {
   type NotesState,
 } from "../../domain/note";
 import type { KnowledgeCard } from "../../domain/card";
+import type { Goal } from "../../shell/store";
 import { encodeSettings, parseSettings, type SettingsFile } from "../../domain/settings";
 
 interface BrowserData { materials: RawMaterial[]; cards: KnowledgeCard[]; settings: string | null }
@@ -226,6 +228,12 @@ export async function saveLastImportReport(report: ImportReport, dir: string): P
   const text = serializeImportReport(report);
   if (inShell()) { await saveImportReport(text, dir); return; }
   localStorage.setItem(reportKey, text);
+}
+
+export async function activeGoals(dir: string): Promise<Goal[]> {
+  if (inShell()) return goalListActive(dir);
+  // 浏览器模式：项目记忆数据层在 R4 尚无浏览器实现——如实返回空
+  return [];
 }
 
 export async function deleteNoteById(id: string, dir: string): Promise<void> {

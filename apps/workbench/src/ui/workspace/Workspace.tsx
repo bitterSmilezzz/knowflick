@@ -57,10 +57,11 @@ import { usePaneLayout } from "./usePaneLayout";
 import { SubscriptionsView } from "./SubscriptionsView";
 import { NotesView } from "./NotesView";
 import type { NotesState } from "../../domain/note";
+import type { Goal } from "../../shell/store";
 import { restoreNotesBundle } from "./notesRestore";
 import { backupCopyToDirectory, webdavUploadBackup } from "../../shell/store";
 import { createKfBackupArchive } from "../../domain/systemBackup";
-import { ensureNoteFromMaterial, readLastImportReport, saveLastImportReport } from "./repository";
+import { activeGoals, ensureNoteFromMaterial, readLastImportReport, saveLastImportReport } from "./repository";
 import { buildImportReport, reportLines, type ImportReport } from "../../domain/importReport";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
@@ -103,14 +104,16 @@ import "./workspace.css";
 import { userError } from "./userError";
 
 const Briefing = lazy(() => import("../BrainViews").then((m) => ({ default: m.BriefingView })));
+const ReviewFactsView = lazy(() => import("./ReviewFactsView").then((m) => ({ default: m.ReviewFactsView })));
 const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.BrainAssistantDrawer })));
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "notes" | "briefing" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
+type Page = Collection | "settings" | "notes" | "briefing" | "review-facts" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
+  "review-facts": "复盘",
   notes: "笔记",
   briefing: "认知简报",
   brain: "知识问答",
@@ -140,6 +143,7 @@ export function Workspace() {
   const [capture, setCapture] = useState(false);
   const [notePad, setNotePad] = useState<"ink" | "voice" | null>(null);
   const [notesState, setNotesState] = useState<NotesState>({ notes: [], knowledgeBases: [], membership: {} });
+  const [goalsState, setGoalsState] = useState<Goal[]>([]);
   const [lastImportReport, setLastImportReport] = useState<ImportReport | null>(null);
   // 手写/语音面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱
   // 与 Escape 处理——实测 Tab 进不去、Escape 无效。用这个钩子补上。
@@ -277,6 +281,7 @@ export function Workspace() {
       setApiKey(data.apiKey);
       setDir(data.dir);
       setLastImportReport(await readLastImportReport(data.dir));
+      try { setGoalsState(await activeGoals(data.dir)); } catch { /* 目标读取失败不阻断 */ }
     } catch (e) {
       if (current === revision.current) {
         setErrorText(`读取知识库失败：${String(e)}`);
@@ -2265,6 +2270,9 @@ export function Workspace() {
                 />
               ) : null}
               {page === "briefing" ? <Briefing cards={cards} onOpenCard={openCard} /> : null}
+              {page === "review-facts" ? (
+                <ReviewFactsView materials={materials} cards={cards} goals={goalsState} />
+              ) : null}
               {page === "brain" ? (
                 <Assistant
                   cards={cards}
