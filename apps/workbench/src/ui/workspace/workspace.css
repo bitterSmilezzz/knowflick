@@ -2868,3 +2868,22 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .pg-meta { font-size: 11px; color: var(--muted); }
 .pg-item-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .pg-confirm { color: #b3261e; border-color: #b3261e; }
+
+/* ---------- 目标视图（R4/D04） ---------- */
+.gl-root { display: flex; flex-direction: column; gap: 12px; padding: 16px 22px; overflow-y: auto; height: 100%; }
+.gl-head { display: flex; align-items: center; justify-content: space-between; }
+.gl-head h1 { font-size: 18px; margin: 0; }
+.gl-form { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+.gl-form input, .gl-form textarea { font-size: 13px; }
+.gl-form textarea { min-height: 60px; resize: vertical; }
+.gl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gl-item { border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.gl-item-main { display: flex; flex-direction: column; gap: 3px; }
+.gl-criteria { font-size: 12px; color: var(--ink); }
+.gl-meta { font-size: 11px; color: var(--muted); }
+.gl-item-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.gl-abandon { color: #b3261e; }
+.gl-link { display: flex; gap: 8px; align-items: center; }
+.gl-link select { font-size: 12px; }
+.gl-review { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.gl-review textarea { min-height: 48px; resize: vertical; font-size: 12px; }

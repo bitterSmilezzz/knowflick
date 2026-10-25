@@ -106,16 +106,18 @@ import { userError } from "./userError";
 const Briefing = lazy(() => import("../BrainViews").then((m) => ({ default: m.BriefingView })));
 const ReviewFactsView = lazy(() => import("./ReviewFactsView").then((m) => ({ default: m.ReviewFactsView })));
 const ProfileGovernanceView = lazy(() => import("./ProfileGovernanceView").then((m) => ({ default: m.ProfileGovernanceView })));
+const GoalsView = lazy(() => import("./GoalsView").then((m) => ({ default: m.GoalsView })));
 const Assistant = lazy(() => import("../BrainViews").then((m) => ({ default: m.BrainAssistantDrawer })));
 const Quiz = lazy(() => import("../StudyViews").then((m) => ({ default: m.QuizView })));
 const ReviewOverviewPanel = lazy(() => import("../StudyViews").then((m) => ({ default: m.ReviewOverviewPanel })));
 
-type Page = Collection | "settings" | "notes" | "briefing" | "review-facts" | "profile" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
+type Page = Collection | "settings" | "notes" | "briefing" | "review-facts" | "profile" | "goals" | "brain" | "review" | "quiz" | "subscriptions" | "mail" | "artifacts" | "stats";
 
 const PAGE_TITLES: Record<string, string> = {
   settings: "设置",
   "review-facts": "复盘",
   profile: "我的记忆",
+  goals: "目标",
   notes: "笔记",
   briefing: "认知简报",
   brain: "知识问答",
@@ -1661,6 +1663,13 @@ export function Workspace() {
             >
               <Icon name="ask" /><span>我的记忆</span>
             </button>
+            <button
+              className="ws-nav-row"
+              aria-current={page === "goals" ? "page" : undefined}
+              onClick={() => navigate("goals")}
+            >
+              <Icon name="star" /><span>目标</span>
+            </button>
             </details>
             {/* 温故复习是**高频入口**（每天都要用），不跟着「应用」一起折叠——
                 折叠起来用户就找不到每天要点开的那个按钮了。 */}
@@ -2283,6 +2292,7 @@ export function Workspace() {
                 <ReviewFactsView materials={materials} cards={cards} goals={goalsState} />
               ) : null}
               {page === "profile" ? <ProfileGovernanceView dir={dir} /> : null}
+              {page === "goals" ? <GoalsView dir={dir} materials={materials} /> : null}
               {page === "brain" ? (
                 <Assistant
                   cards={cards}
