@@ -720,6 +720,61 @@ async fn webdav_upload_backup(
     }))
 }
 
+// ---------- 项目记忆（R4/D06 最小闭环） ----------
+
+#[tauri::command]
+fn project_create_cmd(app: tauri::AppHandle, id: String, name: String, description: Option<String>, dir: Option<String>) -> Result<(), String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    notes::project_create(&conn, &id, &name, description.as_deref().unwrap_or(""), now)?;
+    notify_library_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn project_list(dir: Option<String>, include_archived: Option<bool>) -> Result<Vec<notes::ProjectDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::project_list(&conn, include_archived.unwrap_or(false)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn project_add_note(app: tauri::AppHandle, dir: Option<String>, project_id: String, note_id: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    notes::project_add_note(&conn, &project_id, &note_id, now)?;
+    notify_library_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn project_remove_note(app: tauri::AppHandle, dir: Option<String>, project_id: String, note_id: String) -> Result<(), String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::project_remove_note(&conn, &project_id, &note_id).map_err(|e| crate::error_text::explain_text("移出项目失败", &e.to_string()))?;
+    notify_library_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn project_archive_cmd(app: tauri::AppHandle, dir: Option<String>, project_id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let archived = notes::project_archive(&conn, &project_id, now).map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    Ok(archived)
+}
+
+#[tauri::command]
+fn project_export_markdown_cmd(dir: Option<String>, project_id: String) -> Result<String, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::project_export_markdown(&conn, &project_id)
+}
+
 #[tauri::command]
 fn kb_create(app: tauri::AppHandle, dir: Option<String>, id: String, name: String, description: Option<String>) -> Result<(), String> {
     let path = library_dir(dir);
@@ -1410,6 +1465,12 @@ pub fn run() {
             read_webdav_credential,
             e2ee_encrypt,
             e2ee_decrypt,
+            project_create_cmd,
+            project_list,
+            project_add_note,
+            project_remove_note,
+            project_archive_cmd,
+            project_export_markdown_cmd,
             write_webdav_credential,
             db_list_materials,
             db_update_material_status,

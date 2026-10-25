@@ -619,6 +619,25 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             updated_at         INTEGER NOT NULL,
             PRIMARY KEY (note_id, chunk_index)
         );
+
+        -- 项目记忆（R4/D06 最小闭环）：项目 = 背景/决策/约束/未决问题的
+        -- 容器，成员引用现有笔记（不复制正文）；archived_at 有值 = 封存，
+        -- 封存的项目不再污染其它项目上下文（导出与检索都跳过）。
+        CREATE TABLE IF NOT EXISTS projects (
+            id                  TEXT PRIMARY KEY,
+            name                TEXT NOT NULL,
+            description         TEXT NOT NULL DEFAULT '',
+            created_at          INTEGER NOT NULL,
+            updated_at          INTEGER NOT NULL,
+            archived_at         INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS project_members (
+            project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            note_id             TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            added_at            INTEGER NOT NULL,
+            PRIMARY KEY (project_id, note_id)
+        );
         "#,
     )?;
 

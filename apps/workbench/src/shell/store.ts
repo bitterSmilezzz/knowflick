@@ -238,6 +238,41 @@ export function backupCopyToDirectory(targetDir: string, archiveBytes: Uint8Arra
   });
 }
 
+// ---------- 项目记忆（R4/D06 最小闭环） ----------
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+  archivedAt: number | null;
+}
+
+export function projectCreate(id: string, name: string, description: string, dir?: string): Promise<void> {
+  return invoke("project_create_cmd", { id, name, description, dir: dir ?? null });
+}
+
+export function projectList(includeArchived: boolean, dir?: string): Promise<Project[]> {
+  return invoke("project_list", { includeArchived, dir: dir ?? null });
+}
+
+export function projectAddNote(projectId: string, noteId: string, dir?: string): Promise<void> {
+  return invoke("project_add_note", { projectId, noteId, dir: dir ?? null });
+}
+
+export function projectRemoveNote(projectId: string, noteId: string, dir?: string): Promise<void> {
+  return invoke("project_remove_note", { projectId, noteId, dir: dir ?? null });
+}
+
+export function projectArchive(projectId: string, dir?: string): Promise<boolean> {
+  return invoke("project_archive_cmd", { projectId, dir: dir ?? null });
+}
+
+export function projectExportMarkdown(projectId: string, dir?: string): Promise<string> {
+  return invoke("project_export_markdown_cmd", { projectId, dir: dir ?? null });
+}
+
 export function readWebdavCredential(dir?: string): Promise<string> {
   return invoke("read_webdav_credential", { dir: dir ?? null });
 }

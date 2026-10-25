@@ -1044,3 +1044,230 @@ pub fn search_note_chunks_vector(
     }
     Ok(out)
 }
+
+// ---------- 项目记忆（R4/D06 最小闭环） ----------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDto {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub archived_at: Option<i64>,
+}
+
+pub fn project_create(conn: &Connection, id: &str, name: &str, description: &str, now: i64) -> Result<usize, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("项目名不能为空".to_string());
+    }
+    let dup: i64 = conn
+        .query_row("SELECT COUNT(*) FROM projects WHERE name = ?1", params![name], |r| r.get(0))
+        .unwrap_or(0);
+    if dup > 0 {
+        return Err(format!("已有名为「{name}」的项目"));
+    }
+    conn.execute(
+        "INSERT INTO projects (id, name, description, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
+        params![id, name, description, now],
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn project_list(conn: &Connection, include_archived: bool) -> Result<Vec<ProjectDto>> {
+    let sql = if include_archived {
+        "SELECT id, name, description, created_at, updated_at, archived_at FROM projects ORDER BY created_at ASC"
+    } else {
+        "SELECT id, name, description, created_at, updated_at, archived_at FROM projects WHERE archived_at IS NULL ORDER BY created_at ASC"
+    };
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ProjectDto {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            created_at: row.get(3)?,
+            updated_at: row.get(4)?,
+            archived_at: row.get(5)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// 幂等加入（与 kb_add_note 同语义：重复加入不报错、不重复行）。
+pub fn project_add_note(conn: &Connection, project_id: &str, note_id: &str, now: i64) -> Result<usize, String> {
+    let exists: i64 = conn
+        .query_row("SELECT COUNT(*) FROM projects WHERE id = ?1", params![project_id], |r| r.get(0))
+        .unwrap_or(0);
+    if exists == 0 {
+        return Err("项目不存在".to_string());
+    }
+    let note: i64 = conn
+        .query_row("SELECT COUNT(*) FROM notes WHERE id = ?1", params![note_id], |r| r.get(0))
+        .unwrap_or(0);
+    if note == 0 {
+        return Err("笔记不存在".to_string());
+    }
+    conn.execute(
+        "INSERT INTO project_members (project_id, note_id, added_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(project_id, note_id) DO NOTHING",
+        params![project_id, note_id, now],
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn project_remove_note(conn: &Connection, project_id: &str, note_id: &str) -> Result<()> {
+    conn.execute("DELETE FROM project_members WHERE project_id = ?1 AND note_id = ?2", params![project_id, note_id])?;
+    Ok(())
+}
+
+/// 封存：不删数据，导出与检索跳过（「过期项目不继续污染其它项目上下文」）。
+pub fn project_archive(conn: &Connection, project_id: &str, now: i64) -> Result<bool> {
+    let changed = conn.execute(
+        "UPDATE projects SET archived_at = ?2, updated_at = ?2 WHERE id = ?1 AND archived_at IS NULL",
+        params![project_id, now],
+    )?;
+    Ok(changed > 0)
+}
+
+/// 按项目导出 Markdown 上下文（E07 第一步：给外部 AI 工具的项目记忆包）。
+/// 含项目说明 + 成员笔记全文（未删除的）+ 来源清单（note 的 source_material
+/// 可回溯处）。封存项目导出返回错误（不悄悄导旧上下文）。
+pub fn project_export_markdown(conn: &Connection, project_id: &str) -> Result<String, String> {
+    let project = conn
+        .query_row(
+            "SELECT name, description, archived_at FROM projects WHERE id = ?1",
+            params![project_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<i64>>(2)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "项目不存在".to_string())?;
+    if project.2.is_some() {
+        return Err(format!("项目「{}」已封存——封存的项目不导出（避免旧上下文继续污染）。如需导出请先解除封存", project.0));
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT n.title, n.body_md, n.source_material_id
+             FROM project_members pm
+             JOIN notes n ON n.id = pm.note_id
+             WHERE pm.project_id = ?1 AND n.is_deleted = 0
+             ORDER BY pm.added_at ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![project_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut notes = Vec::new();
+    for r in rows {
+        notes.push(r.map_err(|e| e.to_string())?);
+    }
+
+    let mut out = String::new();
+    out.push_str(&format!("# 项目：{}\\n\\n", project.0));
+    if !project.1.is_empty() {
+        out.push_str(&format!("{}\\n\\n", project.1));
+    }
+    out.push_str(&format!("导出时间：{} ｜ 成员笔记 {} 篇\\n\\n---\\n\\n", chrono_date_label(), notes.len()));
+    for (i, (title, body, source)) in notes.iter().enumerate() {
+        out.push_str(&format!("## 笔记 {}：{}\\n\\n{}\\n\\n", i + 1, title, body));
+        if let Some(material_id) = source {
+            out.push_str(&format!("（来源素材：{material_id}，可在应用中回溯原文）\\n\\n"));
+        }
+        out.push_str("---\\n\\n");
+    }
+    Ok(out)
+}
+
+fn chrono_date_label() -> String {
+    let now = crate::db::chrono_or_epoch_now();
+    let (y, m, d) = crate::civil_from_days(now / 1000 / 86400);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+#[cfg(test)]
+mod project_tests {
+    use super::*;
+    use crate::db::init_tables;
+    use std::env;
+    use std::path::PathBuf;
+
+    fn temp_db(tag: &str) -> Connection {
+        let dir: PathBuf = env::temp_dir().join(format!("kf-proj-{tag}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = crate::db::open_db(&dir.join("knowflick.db")).unwrap();
+        init_tables(&conn).unwrap();
+        conn
+    }
+
+    fn draft(id: &str, title: &str, body: &str) -> NoteDto {
+        NoteDto { id: id.to_string(), title: title.to_string(), body_md: body.to_string(), ..Default::default() }
+    }
+
+    #[test]
+    fn project_lifecycle_idempotent_membership_and_export() {
+        let conn = temp_db("lifecycle");
+        note_upsert(&conn, &draft("n1", "决策A", "选了 SQLite 而不是 PG"), 0, 1000).unwrap();
+        note_upsert(&conn, &draft("n2", "约束", "无我方云依赖"), 0, 1100).unwrap();
+        project_create(&conn, "p1", "北极星", "检索与笔记", 1200).unwrap();
+
+        // 同名拒绝、空名拒绝
+        assert!(project_create(&conn, "p2", "北极星", "", 1300).is_err());
+        assert!(project_create(&conn, "p3", "  ", "", 1300).is_err());
+
+        // 幂等加入
+        project_add_note(&conn, "p1", "n1", 1300).unwrap();
+        project_add_note(&conn, "p1", "n1", 1400).unwrap();
+        project_add_note(&conn, "p1", "n2", 1400).unwrap();
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM project_members", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 2, "重复加入不重复行");
+        assert!(project_add_note(&conn, "ghost", "n1", 1500).is_err(), "不存在的项目报中文错");
+        assert!(project_add_note(&conn, "p1", "ghost", 1500).is_err(), "不存在的笔记报中文错");
+
+        // 默认列表只有未封存
+        assert_eq!(project_list(&conn, false).unwrap().len(), 1);
+
+        // 导出：项目说明 + 成员全文 + 来源可回溯
+        let md = project_export_markdown(&conn, "p1").unwrap();
+        assert!(md.contains("# 项目：北极星"), "{md}");
+        assert!(md.contains("选了 SQLite 而不是 PG"), "成员笔记全文进上下文");
+        assert!(md.contains("无我方云依赖"));
+        assert!(md.contains("成员笔记 2 篇"));
+
+        // 移除成员后导出不再包含
+        project_remove_note(&conn, "p1", "n2").unwrap();
+        let md2 = project_export_markdown(&conn, "p1").unwrap();
+        assert!(!md2.contains("无我方云依赖"));
+
+        // 封存后：默认列表消失、导出明确拒绝（不悄悄导旧上下文）
+        assert!(project_archive(&conn, "p1", 1600).unwrap());
+        assert!(project_list(&conn, false).unwrap().is_empty());
+        assert_eq!(project_list(&conn, true).unwrap().len(), 1, "include_archived 能看到");
+        let err = project_export_markdown(&conn, "p1").unwrap_err();
+        assert!(err.contains("已封存") && err.contains("不导出"), "{err}");
+
+        // 不存在的项目
+        assert!(project_export_markdown(&conn, "ghost").is_err());
+    }
+
+    #[test]
+    fn deleted_member_note_is_excluded_from_export() {
+        let conn = temp_db("deleted-member");
+        note_upsert(&conn, &draft("n1", "标题", "正文"), 0, 1000).unwrap();
+        project_create(&conn, "p1", "P", "", 1100).unwrap();
+        project_add_note(&conn, "p1", "n1", 1200).unwrap();
+        note_delete(&conn, "n1", 1300).unwrap();
+        let md = project_export_markdown(&conn, "p1").unwrap();
+        assert!(!md.contains("正文"), "软删的成员笔记不进导出");
+        assert!(md.contains("成员笔记 0 篇"));
+    }
+}
