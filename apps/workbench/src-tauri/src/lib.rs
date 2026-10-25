@@ -775,6 +775,83 @@ fn project_export_markdown_cmd(dir: Option<String>, project_id: String) -> Resul
     notes::project_export_markdown(&conn, &project_id)
 }
 
+// ---------- 个人画像（R4/D05：可治理的声明） ----------
+
+#[tauri::command]
+fn profile_claim_add(app: tauri::AppHandle, dir: Option<String>, claim: notes::ProfileClaimDto) -> Result<usize, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let added = notes::claim_add(&conn, &claim, now)?;
+    notify_library_changed(&app);
+    Ok(added)
+}
+
+#[tauri::command]
+fn profile_claims_active(dir: Option<String>) -> Result<Vec<notes::ProfileClaimDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    notes::claim_list_active(&conn, now).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn profile_claim_confirm(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let ok = notes::claim_confirm(&conn, &id, now).map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    Ok(ok)
+}
+
+#[tauri::command]
+fn profile_claim_pause(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let ok = notes::claim_pause(&conn, &id).map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    Ok(ok)
+}
+
+#[tauri::command]
+fn profile_claim_resume(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let ok = notes::claim_resume(&conn, &id).map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    Ok(ok)
+}
+
+#[tauri::command]
+fn profile_claim_deny(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let ok = notes::claim_deny(&conn, &id, now)?;
+    notify_library_changed(&app);
+    Ok(ok)
+}
+
+#[tauri::command]
+fn profile_claim_delete(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let ok = notes::claim_delete(&conn, &id, now)?;
+    notify_library_changed(&app);
+    Ok(ok)
+}
+
+#[tauri::command]
+fn profile_denial_clear_by_evidence(app: tauri::AppHandle, dir: Option<String>, evidence_json: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let ok = notes::denial_clear_by_evidence(&conn, &evidence_json).map_err(|e| e.to_string())?;
+    notify_library_changed(&app);
+    Ok(ok)
+}
+
 #[tauri::command]
 fn kb_create(app: tauri::AppHandle, dir: Option<String>, id: String, name: String, description: Option<String>) -> Result<(), String> {
     let path = library_dir(dir);
@@ -1471,6 +1548,14 @@ pub fn run() {
             project_remove_note,
             project_archive_cmd,
             project_export_markdown_cmd,
+            profile_claim_add,
+            profile_claims_active,
+            profile_claim_confirm,
+            profile_claim_pause,
+            profile_claim_resume,
+            profile_claim_deny,
+            profile_claim_delete,
+            profile_denial_clear_by_evidence,
             write_webdav_credential,
             db_list_materials,
             db_update_material_status,

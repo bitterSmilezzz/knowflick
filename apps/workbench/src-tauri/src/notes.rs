@@ -1271,3 +1271,231 @@ mod project_tests {
         assert!(md.contains("成员笔记 0 篇"));
     }
 }
+
+// ---------- 个人画像（R4/D05：可治理的声明 + 阻止同源重建） ----------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileClaimDto {
+    pub id: String,
+    pub kind: String,
+    pub content: String,
+    pub evidence_json: String,
+    pub scope: String,
+    pub created_at: i64,
+    pub confirmed_at: Option<i64>,
+    pub expires_at: Option<i64>,
+    pub denied_at: Option<i64>,
+    pub superseded_by: Option<String>,
+    pub status: String,
+}
+
+fn map_claim_row(row: &rusqlite::Row<'_>) -> Result<ProfileClaimDto> {
+    Ok(ProfileClaimDto {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        content: row.get(2)?,
+        evidence_json: row.get(3)?,
+        scope: row.get(4)?,
+        created_at: row.get(5)?,
+        confirmed_at: row.get(6)?,
+        expires_at: row.get(7)?,
+        denied_at: row.get(8)?,
+        superseded_by: row.get(9)?,
+        status: row.get(10)?,
+    })
+}
+
+const CLAIM_COLUMNS: &str =
+    "id, kind, content, evidence_json, scope, created_at, confirmed_at, expires_at, denied_at, superseded_by, status";
+
+/// 证据集合 → 稳定指纹（排序后 SHA-256 前 16 字节）：同源证据认得出。
+fn evidence_fingerprint(evidence_json: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut ids: Vec<String> = serde_json::from_str::<Vec<String>>(evidence_json)
+        .unwrap_or_default();
+    ids.sort();
+    let canonical = serde_json::to_string(&ids).unwrap_or_default();
+    let digest = Sha256::digest(canonical.as_bytes());
+    let mut head = [0u8; 8];
+    head.copy_from_slice(&digest[..8]);
+    format!("{:016x}", u64::from_be_bytes(head))
+}
+
+/// 新增声明。**被否认过的证据源不得重建**——同指纹在 profile_denials
+/// 里就直接拒绝（路线图：删除应生成阻止同源旧证据自动重建的标记）。
+pub fn claim_add(conn: &Connection, claim: &ProfileClaimDto, now: i64) -> Result<usize, String> {
+    let fp = evidence_fingerprint(&claim.evidence_json);
+    let denied: i64 = conn
+        .query_row("SELECT COUNT(*) FROM profile_denials WHERE evidence_fingerprint = ?1", params![fp], |r| r.get(0))
+        .unwrap_or(0);
+    if denied > 0 {
+        return Err("这条声明的证据源已被否认过——不自动重建。如需重新学习，请先在画像里清除该否认".to_string());
+    }
+    conn.execute(
+        "INSERT INTO profile_claims (id, kind, content, evidence_json, scope, created_at, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active')",
+        params![claim.id, claim.kind, claim.content, claim.evidence_json, claim.scope, now],
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// 只列有效声明：未否认、未过期、未暂停（回答与建议的可用记忆）。
+pub fn claim_list_active(conn: &Connection, now: i64) -> Result<Vec<ProfileClaimDto>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CLAIM_COLUMNS} FROM profile_claims
+         WHERE denied_at IS NULL
+           AND status = 'active'
+           AND (expires_at IS NULL OR expires_at > ?1)
+           AND superseded_by IS NULL
+         ORDER BY created_at DESC"
+    ))?;
+    let rows = stmt.query_map(params![now], map_claim_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// 用户确认事实（fact 类从推测转正）。
+pub fn claim_confirm(conn: &Connection, id: &str, now: i64) -> Result<bool> {
+    let changed = conn.execute(
+        "UPDATE profile_claims SET confirmed_at = ?2 WHERE id = ?1 AND denied_at IS NULL",
+        params![id, now],
+    )?;
+    Ok(changed > 0)
+}
+
+/// 暂停学习/使用（不删数据，恢复 = 再调 resume）。
+pub fn claim_pause(conn: &Connection, id: &str) -> Result<bool> {
+    let changed = conn.execute(
+        "UPDATE profile_claims SET status = 'paused' WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(changed > 0)
+}
+
+pub fn claim_resume(conn: &Connection, id: &str) -> Result<bool> {
+    let changed = conn.execute(
+        "UPDATE profile_claims SET status = 'active' WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(changed > 0)
+}
+
+/// 否认 + 阻止同源重建：denied_at 标记本条，证据指纹写进 profile_denials。
+pub fn claim_deny(conn: &Connection, id: &str, now: i64) -> Result<bool, String> {
+    let evidence: Option<String> = conn
+        .query_row("SELECT evidence_json FROM profile_claims WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some(evidence_json) = evidence else { return Ok(false) };
+    let fp = evidence_fingerprint(&evidence_json);
+    conn.execute(
+        "UPDATE profile_claims SET denied_at = ?2 WHERE id = ?1 AND denied_at IS NULL",
+        params![id, now],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO profile_denials (evidence_fingerprint, denied_at) VALUES (?1, ?2)",
+        params![fp, now],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// 删除 = 否认 + 物理移除声明（否认指纹保留，防同源重建）。
+pub fn claim_delete(conn: &Connection, id: &str, now: i64) -> Result<bool, String> {
+    let denied = claim_deny(conn, id, now)?;
+    if !denied {
+        return Ok(false);
+    }
+    conn.execute("DELETE FROM profile_claims WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// 清除某证据源的否认（用户主动允许重新学习）。
+pub fn denial_clear_by_evidence(conn: &Connection, evidence_json: &str) -> Result<bool> {
+    let fp = evidence_fingerprint(evidence_json);
+    let changed = conn.execute("DELETE FROM profile_denials WHERE evidence_fingerprint = ?1", params![fp])?;
+    Ok(changed > 0)
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    fn temp_db(tag: &str) -> Connection {
+        let dir = std::env::temp_dir().join(format!("kf-profile-{tag}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = crate::db::open_db(&dir.join("knowflick.db")).unwrap();
+        conn
+    }
+
+    fn claim(id: &str, evidence: &[&str]) -> ProfileClaimDto {
+        ProfileClaimDto {
+            id: id.to_string(),
+            kind: "inference".to_string(),
+            content: "用户在做检索方向的工作".to_string(),
+            evidence_json: serde_json::to_string(&evidence.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap(),
+            scope: "global".to_string(),
+            created_at: 0,
+            confirmed_at: None,
+            expires_at: None,
+            denied_at: None,
+            superseded_by: None,
+            status: "active".to_string(),
+        }
+    }
+
+    #[test]
+    fn deny_blocks_same_evidence_rebuild_and_user_can_clear() {
+        let conn = temp_db("deny");
+        claim_add(&conn, &claim("c1", &["m1", "m2"]), 1000).unwrap();
+        assert_eq!(claim_list_active(&conn, 2000).unwrap().len(), 1);
+
+        // 否认后：列表消失；同证据的新声明被拒绝（阻同源重建）；
+        // 不同证据的声明不受影响。
+        claim_deny(&conn, "c1", 2000).unwrap();
+        assert!(claim_list_active(&conn, 3000).unwrap().is_empty());
+        let err = claim_add(&conn, &claim("c2", &["m2", "m1"]), 3000).unwrap_err();
+        assert!(err.contains("不自动重建"), "{err}");
+        claim_add(&conn, &claim("c3", &["m9"]), 3000).unwrap();
+
+        // 用户清除否认后可重新学习
+        denial_clear_by_evidence(&conn, &claim("c2", &["m1", "m2"]).evidence_json).unwrap();
+        claim_add(&conn, &claim("c4", &["m1", "m2"]), 4000).unwrap();
+    }
+
+    #[test]
+    fn delete_leaves_denial_pause_and_expiry_and_confirm() {
+        let conn = temp_db("governance");
+
+        // 删除 = 声明没了 + 同源被阻
+        claim_add(&conn, &claim("c1", &["a1"]), 1000).unwrap();
+        claim_delete(&conn, "c1", 2000).unwrap();
+        let gone: i64 = conn.query_row("SELECT COUNT(*) FROM profile_claims WHERE id='c1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(gone, 0);
+        assert!(claim_add(&conn, &claim("c1b", &["a1"]), 3000).is_err(), "删除留下阻建标记");
+
+        // 暂停/恢复
+        claim_add(&conn, &claim("c2", &["a2"]), 1000).unwrap();
+        claim_pause(&conn, "c2").unwrap();
+        assert!(claim_list_active(&conn, 2000).unwrap().is_empty());
+        claim_resume(&conn, "c2").unwrap();
+        assert_eq!(claim_list_active(&conn, 2000).unwrap().len(), 1);
+
+        // 过期不进列表
+        claim_add(&conn, &claim("c3", &["a3"]), 1000).unwrap();
+        conn.execute("UPDATE profile_claims SET expires_at = 1500 WHERE id = 'c3'", []).unwrap();
+        assert!(claim_list_active(&conn, 2000).unwrap().iter().all(|c| c.id != "c3"), "过期声明不进可用列表");
+
+        // 确认事实
+        claim_confirm(&conn, "c2", 3000).unwrap();
+        let confirmed: Option<i64> = conn
+            .query_row("SELECT confirmed_at FROM profile_claims WHERE id='c2'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(confirmed, Some(3000));
+    }
+}

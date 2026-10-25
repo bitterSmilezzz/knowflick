@@ -638,6 +638,31 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             added_at            INTEGER NOT NULL,
             PRIMARY KEY (project_id, note_id)
         );
+
+        -- 个人画像（R4/D05）：三类声明（用户填写/行为统计/AI 推测）+ 治理。
+        -- confirmed_at 有值 = 用户确认的事实；denied = 用户否认；
+        -- superseded_by 指向修正后的新声明（旧声明保留可追溯）。
+        -- profile_denials 是「阻止同源自动重建」的关键：否认/删除留下
+        -- 证据指纹，学习管线再遇到同一证据源时不得重新提出（路线图明确：
+        -- 删除应生成阻止同源旧证据自动重建的标记，用户重新允许后才学习）。
+        CREATE TABLE IF NOT EXISTS profile_claims (
+            id                  TEXT PRIMARY KEY,
+            kind                TEXT NOT NULL,             -- 'fact' | 'inference' | 'statistic'
+            content             TEXT NOT NULL,
+            evidence_json       TEXT NOT NULL DEFAULT '[]', -- 证据：素材/笔记 id 列表
+            scope               TEXT NOT NULL DEFAULT 'global', -- 'global' | 项目 id
+            created_at          INTEGER NOT NULL,
+            confirmed_at        INTEGER,
+            expires_at          INTEGER,
+            denied_at           INTEGER,
+            superseded_by       TEXT,
+            status              TEXT NOT NULL DEFAULT 'active' -- 'active' | 'paused'
+        );
+
+        CREATE TABLE IF NOT EXISTS profile_denials (
+            evidence_fingerprint TEXT PRIMARY KEY,           -- 证据集合的稳定指纹
+            denied_at           INTEGER NOT NULL
+        );
         "#,
     )?;
 

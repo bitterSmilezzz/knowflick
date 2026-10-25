@@ -249,6 +249,54 @@ export interface Project {
   archivedAt: number | null;
 }
 
+// ---------- 个人画像（R4/D05：可治理的声明） ----------
+
+export interface ProfileClaim {
+  id: string;
+  kind: "fact" | "inference" | "statistic";
+  content: string;
+  evidenceJson: string;
+  scope: string;
+  createdAt: number;
+  confirmedAt: number | null;
+  expiresAt: number | null;
+  deniedAt: number | null;
+  supersededBy: string | null;
+  status: "active" | "paused";
+}
+
+export function profileClaimAdd(claim: Omit<ProfileClaim, "createdAt" | "confirmedAt" | "expiresAt" | "deniedAt" | "supersededBy" | "status">, dir?: string): Promise<number> {
+  return invoke("profile_claim_add", { claim, dir: dir ?? null });
+}
+
+export function profileClaimsActive(dir?: string): Promise<ProfileClaim[]> {
+  return invoke("profile_claims_active", { dir: dir ?? null });
+}
+
+export function profileClaimConfirm(id: string, dir?: string): Promise<boolean> {
+  return invoke("profile_claim_confirm", { id, dir: dir ?? null });
+}
+
+export function profileClaimPause(id: string, dir?: string): Promise<boolean> {
+  return invoke("profile_claim_pause", { id, dir: dir ?? null });
+}
+
+export function profileClaimResume(id: string, dir?: string): Promise<boolean> {
+  return invoke("profile_claim_resume", { id, dir: dir ?? null });
+}
+
+export function profileClaimDeny(id: string, dir?: string): Promise<boolean> {
+  return invoke("profile_claim_deny", { id, dir: dir ?? null });
+}
+
+export function profileClaimDelete(id: string, dir?: string): Promise<boolean> {
+  return invoke("profile_claim_delete", { id, dir: dir ?? null });
+}
+
+export function profileDenialClearByEvidence(evidenceJson: string, dir?: string): Promise<boolean> {
+  return invoke("profile_denial_clear_by_evidence", { evidenceJson, dir: dir ?? null });
+}
+
 export function projectCreate(id: string, name: string, description: string, dir?: string): Promise<void> {
   return invoke("project_create_cmd", { id, name, description, dir: dir ?? null });
 }
