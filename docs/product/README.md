@@ -86,6 +86,7 @@ iOS/iPadOS 尚未获准进入开发，平板需求先覆盖 Android 平板；iPa
 - [实施路线与验收门槛](DELIVERY_ROADMAP.md)：R0–R5、首个开发批次、规模与质量目标。
 - [R1 实施进度与证据](R1_PROGRESS.md)：R1 五工作项与三门槛的逐项证据（2026-10-25）。
 - [R2 实施进度与证据](R2_PROGRESS.md)：R2 七工作项的状态与剩余缺口（2026-10-25）。
+- [R3 实施进度与证据](R3_PROGRESS.md)：自选同步与移动基础的第一步及边界（2026-10-25）。
 - [笔记与采集官方资料调研](research/2026-10-24-notes-and-capture.md)。
 - [本地知识与 AI 官方资料调研](research/2026-10-24-local-knowledge-and-ai.md)。
 

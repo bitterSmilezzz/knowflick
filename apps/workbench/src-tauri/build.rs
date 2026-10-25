@@ -37,6 +37,7 @@ fn main() {
             "kb_membership",
             "read_import_report",
             "save_import_report",
+            "backup_copy_to_directory",
             "db_list_materials",
             "db_update_material_status",
             "db_get_stats",

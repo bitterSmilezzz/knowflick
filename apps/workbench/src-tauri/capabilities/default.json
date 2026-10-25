@@ -46,6 +46,7 @@
     "allow-kb-membership",
     "allow-read-import-report",
     "allow-save-import-report",
+    "allow-backup-copy-to-directory",
     "allow-db-save-subscription",
     "allow-db-search-cards-fts",
     "allow-db-search-cards-hybrid",

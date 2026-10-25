@@ -31,6 +31,8 @@ export interface WorkspaceSettingsProps {
   onExportCardsJson?: () => void;
   /** 导出 Anki TSV（与安卓端同格式，可直接导入 Anki）。 */
   onExportAnkiTsv?: () => void;
+  /** R3：备份到指定目录（版本化文件名 + SHA-256，挑目录的对话框在此触发）。 */
+  onBackupToDirectory?: () => void;
 }
 
 export function WorkspaceSettings({
@@ -44,6 +46,7 @@ export function WorkspaceSettings({
   onExportMarkdown,
   onExportKfBackup,
   onRestoreKfBackup,
+  onBackupToDirectory,
   onExportCardsJson,
   onExportAnkiTsv,
 }: WorkspaceSettingsProps) {
@@ -511,6 +514,16 @@ export function WorkspaceSettings({
                   >
                     导出完整备份包 (.kfbackup)
                   </button>
+                  {onBackupToDirectory ? (
+                    <button
+                      type="button"
+                      className="ws-bordered"
+                      data-action="backup-to-directory"
+                      onClick={onBackupToDirectory}
+                    >
+                      备份到指定目录…
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="ws-bordered"
@@ -539,7 +552,7 @@ export function WorkspaceSettings({
                 </div>
                 <p className="ws-hint" style={{ margin: 0 }}>
                   Markdown 归档带 YAML Frontmatter，按分类与收件箱分目录，可直接在 Obsidian 打开；
-                  `.kfbackup` 是含清单、校验和与全部层级（素材 / 卡片 / 设置 / 认知产物）的完整备份，可无损还原；
+                  `.kfbackup` 是含清单、校验和与全部层级（素材 / 卡片 / 设置 / 认知产物 / 笔记 / 知识库）的完整备份，可无损还原；「备份到指定目录」生成带日期序号的版本化文件与 SHA-256 校验文件，方便拷到别的设备或网盘目录（这是备份，不是双向同步）；
                   `cards.json` 是与安卓端同一份线格式，拷过去就能打开；
                   `.tsv` 是 Anki 可直接导入的词表（正面主张 / 背面解析 / 分类）。
                 </p>

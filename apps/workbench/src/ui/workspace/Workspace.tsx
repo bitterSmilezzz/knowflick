@@ -58,6 +58,8 @@ import { SubscriptionsView } from "./SubscriptionsView";
 import { NotesView } from "./NotesView";
 import type { NotesState } from "../../domain/note";
 import { restoreNotesBundle } from "./notesRestore";
+import { backupCopyToDirectory } from "../../shell/store";
+import { createKfBackupArchive } from "../../domain/systemBackup";
 import { ensureNoteFromMaterial, readLastImportReport, saveLastImportReport } from "./repository";
 import { buildImportReport, reportLines, type ImportReport } from "../../domain/importReport";
 import { MailboxView } from "./MailboxView";
@@ -2168,6 +2170,20 @@ export function Workspace() {
                     })();
                   }}
                   onRestoreKfBackup={() => restoreRef.current?.click()}
+                  onBackupToDirectory={inShell() ? () => {
+                    void (async () => {
+                      // 挑目录（dialog 插件）——用户自选存储，无我方云依赖（R3 第一步）
+                      const { open } = await import("@tauri-apps/plugin-dialog");
+                      const selected = await open({ multiple: false, directory: true });
+                      if (typeof selected !== "string") return;
+                      const media = await collectBackupMedia(materials);
+                      let arts: Awaited<ReturnType<typeof dbListArtifacts>> = [];
+                      try { arts = await dbListArtifacts(1000, dir); } catch { /* 产物层缺了不阻断整包 */ }
+                      const archive = createKfBackupArchive(materials, cards, file, arts, media, notesState.notes, notesState.knowledgeBases, notesState.membership);
+                      const result = await backupCopyToDirectory(selected, archive);
+                      setNotice(`已备份到 ${result.fileName}（${(result.bytes / 1024 / 1024).toFixed(1)} MB，SHA-256 ${result.sha256.slice(0, 12)}…）——这是完整备份快照，不是双向同步。`);
+                    })().catch((err) => setError(`备份到目录失败：${err instanceof Error ? err.message : String(err)}`));
+                  } : undefined}
                   onExportCardsJson={inShell() ? () => void exportCardsJsonForAndroid(dir) : undefined}
                   onExportAnkiTsv={() => {
                     // Anki 词表是纯文本，浏览器里也能直接下载。

@@ -56,6 +56,83 @@ fn save_settings(dir: String, text: String) -> Result<(), String> {
     store::save_settings(path.as_path(), &text)
 }
 
+/// R3 第一步：版本化备份包复制到用户指定目录。
+///
+/// 明确这是**备份**（不是同步）：一次性的完整快照，文件名带日期与序号，
+/// manifest 含 SHA-256（新备份清单要求，LOCAL_DATA_AND_AI「新备份清单列
+/// 对象大小、SHA-256」——R1 的 v2 包已有 FNV 校验和，这里对整包文件再算
+/// SHA-256 写进 sidecar，旧包读取兼容不变）。
+///
+/// 内容组装复用前端领域逻辑的同一语义由前端完成（materials/cards/notes/
+/// kbs 已在 Workspace 聚齐）——本命令只接收**打包好的字节**与目标目录，
+/// 职责单一：挑名、写盘、算 SHA-256、返回结果。UI 上的目录选择由
+/// dialog 插件在前端做。
+#[tauri::command]
+fn backup_copy_to_directory(target_dir: String, archive_bytes: Vec<u8>) -> Result<serde_json::Value, String> {
+    let dir = std::path::PathBuf::from(&target_dir);
+    if !dir.is_dir() {
+        return Err(format!("目标目录不存在：{target_dir}"));
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let date = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = now / 1000;
+        let days = secs / 86400;
+        // 2026-10-25 起算的天数换算（民用日期，够用；不需要时区库）
+        let (y, m, d) = civil_from_days(days as i64);
+        format!("{y:04}{m:02}{d:02}")
+    };
+    // 同一天多次备份：找下一个可用序号
+    let mut seq = 1;
+    loop {
+        let candidate = dir.join(format!("knowflick-backup-{date}-{seq:02}.kfbackup"));
+        if !candidate.exists() {
+            break;
+        }
+        seq += 1;
+        if seq > 99 {
+            return Err("同一天已备份 99 次——请先清理目标目录".to_string());
+        }
+    }
+    let file_name = format!("knowflick-backup-{date}-{seq:02}.kfbackup");
+    let out = dir.join(&file_name);
+    std::fs::write(&out, &archive_bytes).map_err(|e| crate::error_text::explain_text("备份写入失败", &e.to_string()))?;
+    let digest = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&archive_bytes);
+        format!("{:x}", hasher.finalize())
+    };
+    // SHA-256 sidecar：跨设备校验用（包内 FNV 校验和保持兼容）
+    let sidecar = dir.join(format!("{file_name}.sha256"));
+    let written = std::fs::write(&sidecar, format!("{digest}  {file_name}\n"))
+        .map_err(|e| crate::error_text::explain_text("备份校验文件写入失败", &e.to_string()))?;
+    let _ = written;
+    Ok(serde_json::json!({
+        "fileName": file_name,
+        "sha256": digest,
+        "bytes": archive_bytes.len(),
+        "sidecar": sidecar.to_string_lossy(),
+    }))
+}
+
+/// epoch 天 → 民用日期（Howard Hinnant 的 civil_from_days 算法）。
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
 #[tauri::command]
 fn read_import_report(dir: Option<String>) -> Result<Option<String>, String> {
     let path = library_dir(dir);
@@ -1236,6 +1313,7 @@ pub fn run() {
             kb_membership,
             read_import_report,
             save_import_report,
+            backup_copy_to_directory,
             db_list_materials,
             db_update_material_status,
             db_get_stats,
@@ -1450,5 +1528,38 @@ mod library_signature_tests {
         let after = library_signature(Some(dir.to_string_lossy().to_string())).unwrap();
         assert_eq!(before, after, "签名不该受 mtime 影响——它跟的是内容");
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod backup_copy_tests {
+    use super::*;
+
+    #[test]
+    fn versioned_names_increment_and_sidecar_matches() {
+        let dir = std::env::temp_dir().join(format!("kf-bkcopy-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let payload = b"PK-fake-archive-bytes".to_vec();
+
+        let first = backup_copy_to_directory(dir.to_string_lossy().to_string(), payload.clone()).unwrap();
+        let second = backup_copy_to_directory(dir.to_string_lossy().to_string(), payload.clone()).unwrap();
+
+        let name1 = first["fileName"].as_str().unwrap().to_string();
+        let name2 = second["fileName"].as_str().unwrap().to_string();
+        assert!(name1.ends_with("-01.kfbackup"), "{name1}");
+        assert!(name2.ends_with("-02.kfbackup"), "同日序号递增：{name2}");
+
+        // sidecar 的 SHA-256 与实际文件一致（跨设备校验的依据）
+        let sidecar = std::fs::read_to_string(dir.join(format!("{name1}.sha256"))).unwrap();
+        let digest = sidecar.split_whitespace().next().unwrap();
+        assert_eq!(digest, first["sha256"].as_str().unwrap());
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&payload);
+        assert_eq!(digest, format!("{:x}", hasher.finalize()));
+
+        // 目标目录不存在时给中文错误
+        let err = backup_copy_to_directory("/nonexistent-dir-xyz".into(), payload).unwrap_err();
+        assert!(err.contains("目标目录不存在"), "{err}");
     }
 }

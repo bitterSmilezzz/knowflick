@@ -223,6 +223,21 @@ export function noteEnsureFromMaterial(materialId: string, dir?: string): Promis
   return invoke("note_ensure_from_material", { dir: dir ?? null, materialId });
 }
 
+export interface BackupCopyResult {
+  fileName: string;
+  sha256: string;
+  bytes: number;
+  sidecar: string;
+}
+
+/** R3：把打包好的备份字节写到用户指定目录（版本化文件名 + SHA-256 sidecar）。 */
+export function backupCopyToDirectory(targetDir: string, archiveBytes: Uint8Array): Promise<BackupCopyResult> {
+  return invoke("backup_copy_to_directory", {
+    targetDir,
+    archiveBytes: Array.from(archiveBytes),
+  });
+}
+
 export function readImportReport(dir?: string): Promise<string | null> {
   return invoke("read_import_report", { dir: dir ?? null });
 }
