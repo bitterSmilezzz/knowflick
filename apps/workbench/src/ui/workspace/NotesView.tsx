@@ -12,7 +12,6 @@ import {
 import {
   createNoteDraft,
   listNotes,
-  NoteConflictError,
   noteKbIds,
   searchNotes,
   type KnowledgeBase,
@@ -20,6 +19,13 @@ import {
   type NotesState,
 } from "../../domain/note";
 import { emptyNotesState } from "../../domain/note";
+import {
+  NoteSession,
+  clearDraftMirror,
+  persistDraftMirror,
+  readDraftMirror,
+  type SessionIo,
+} from "./noteSession";
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -29,12 +35,28 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
  * 新建直接可写、停止输入自动保存、重启后内容在、可加入知识库、
  * 全文搜索命中正文、删除进回收站。不需要 AI。
  *
- * 三入口导航（笔记/知识库/应用）是下一批；本视图先以独立页挂在侧栏「笔记」下。
+ * 保存并发由每篇笔记一个 NoteSession 拥有（T01）：修订基线、草稿、
+ * 元数据补丁、冲突态都收敛在会话里——编辑器只显示会话快照，
+ * 冲突时不自动覆盖（KF-002），属性与正文同一份组合状态（KF-004）。
  */
 
-const AUTOSAVE_DELAY_MS = 800;
+type SaveStatus = "clean" | "dirty" | "saving" | "conflict" | "error";
 
-type SaveStatus = "saved" | "saving" | "dirty" | "conflict" | "error";
+/** data-save-status 对外的值是稳定契约（冒烟测试断言 `saved`）。 */
+const STATUS_ATTR: Record<SaveStatus, string> = {
+  clean: "saved",
+  saving: "saving",
+  dirty: "dirty",
+  conflict: "conflict",
+  error: "error",
+};
+const STATUS_LABEL: Record<SaveStatus, string> = {
+  clean: "已保存",
+  saving: "保存中…",
+  dirty: "未保存",
+  conflict: "内容冲突",
+  error: "保存失败",
+};
 
 interface AttachableMedia {
   /** 库内相对路径（media/...），正文引用用的就是它。 */
@@ -57,8 +79,12 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [status, setStatus] = useState<SaveStatus>("saved");
+  const [status, setStatus] = useState<SaveStatus>("clean");
   const [statusNote, setStatusNote] = useState("");
+  const [metaValues, setMetaValues] = useState<{ notebook: string | null; tags: string[] }>({
+    notebook: null,
+    tags: [],
+  });
   const [listQuery, setListQuery] = useState("");
   const [notebookFilter, setNotebookFilter] = useState("");
   const [showTrash, setShowTrash] = useState(false);
@@ -66,12 +92,16 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
   const [kbName, setKbName] = useState("");
   const [viewError, setViewError] = useState("");
 
-  // 修订基线：上次成功保存后服务端的修订号。保存成功即前移；
-  // 冲突时被 NoteConflictError 携带的当前修订替换。
-  const savedRevision = useRef(0);
-  const dirtyRef = useRef(false);
-  const timerRef = useRef<number | null>(null);
-  const noteRef = useRef<Note | null>(null);
+  const sessionsRef = useRef<Map<string, NoteSession>>(new Map());
+  const dirRef = useRef(dir);
+  dirRef.current = dir;
+  const selectedIdRef = useRef<string | null>(null);
+  /** 会话 io：仓储绑定当前 dir；草稿镜像走 localStorage（尽力而为）。 */
+  const ioRef = useRef<SessionIo>({
+    save: (note, base) => saveNote(note, base, dirRef.current),
+    persistDraft: persistDraftMirror,
+    clearDraft: clearDraftMirror,
+  });
 
   const activeNotes = useMemo(() => listNotes(state), [state]);
   const trashedNotes = useMemo(
@@ -86,7 +116,7 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
 
   const refresh = useCallback(async () => {
     try {
-      const next = await readNotes(dir);
+      const next = await readNotes(dirRef.current);
       setState(next);
       onStateChange?.(next);
     } catch (e) {
@@ -94,64 +124,286 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
     } finally {
       setLoaded(true);
     }
-  }, [dir, onStateChange]);
+  }, [onStateChange]);
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  const currentSession = useCallback(
+    () => (selectedIdRef.current ? sessionsRef.current.get(selectedIdRef.current) ?? null : null),
+    []
+  );
+
+  /** 会话相态 → 状态条。只对当前选中的会话生效（后台会话的状态留在会话里）。 */
+  const syncFromSession = useCallback((s: NoteSession) => {
+    const snap = s.snapshot();
+    setStatus(snap.phase);
+    if (snap.phase === "conflict") {
+      setStatusNote(
+        `内容已在别处更新（当前修订 ${snap.conflictRevision}）。本地草稿仍保留，继续输入不会自动覆盖。`
+      );
+    } else if (snap.phase === "error") {
+      setStatusNote(`保存失败：${snap.errorMessage ?? "未知错误"}。内容还在，稍后重试即可。`);
+    } else {
+      setStatusNote("");
+    }
+  }, []);
+
+  /** 会话相态变化：当前编辑中的同步状态条；有会话落库完成就刷新列表。 */
+  const attachSession = useCallback(
+    (s: NoteSession) => {
+      s.onChange = () => {
+        if (selectedIdRef.current === s.noteId) syncFromSession(s);
+        if (s.snapshot().phase === "clean") void refreshRef.current();
+      };
+    },
+    [syncFromSession]
+  );
 
   useEffect(() => {
     setLoaded(false);
     setSelectedId(null);
-    noteRef.current = null;
+    selectedIdRef.current = null;
+    for (const s of sessionsRef.current.values()) s.disposeTimer();
+    sessionsRef.current.clear();
     void refresh();
   }, [refresh]);
 
-  // 外部改动（MCP、备份恢复、另一窗口）——只在编辑器干净时同步列表，
-  // 正在编辑的草稿不打扰；脏保存时由修订冲突兜底。
+  // 外部改动（MCP、备份恢复、另一窗口）——只在编辑器干净时同步列表：
+  // 脏草稿不打扰，等保存时由修订冲突兜底（会话负责拦住，不静默覆盖）。
   useEffect(() => {
     const onChange = () => {
-      if (!dirtyRef.current) void refresh();
+      const s = currentSession();
+      if (!s || !s.isDirty) void refresh();
     };
     window.addEventListener("knowflick:library-changed", onChange);
     return () => window.removeEventListener("knowflick:library-changed", onChange);
-  }, [refresh]);
+  }, [currentSession]);
 
-  const flushSave = useCallback(
-    async (note: Note, nextTitle: string, nextBody: string) => {
-      setStatus("saving");
-      try {
-        const outcome = await saveNote({ ...note, title: nextTitle, bodyMd: nextBody }, savedRevision.current, dir);
-        savedRevision.current = outcome.revision;
-        dirtyRef.current = false;
-        setStatus("saved");
-        setStatusNote(`已保存 · 修订 ${outcome.revision}`);
-        await refresh();
-      } catch (err) {
-        if (err instanceof NoteConflictError) {
-          dirtyRef.current = false;
-          savedRevision.current = err.currentRevision;
-          setStatus("conflict");
-          setStatusNote(`内容已在别处更新（当前修订 ${err.currentRevision}）。下面的草稿仍在，可复制后刷新。`);
-          return;
-        }
-        setStatus("error");
-        setStatusNote(`保存失败：${err instanceof Error ? err.message : String(err)}`);
-        // 保存失败时保持脏标记：下次输入或卸载会再试，内容不会悄悄丢。
-        dirtyRef.current = true;
+  // 卸载 / 关窗前尽力冲一次未保存的改动。beforeunload 里的异步保存不是
+  // 已持久化证明——每次编辑都已写 localStorage 草稿镜像，意外退出后
+  // 重新打开这篇笔记会恢复镜像（「已恢复上次未保存的草稿」）。
+  useEffect(() => {
+    const flush = () => {
+      const s = currentSession();
+      if (s && s.isDirty) void s.flush();
+    };
+    window.addEventListener("beforeunload", flush);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      flush();
+    };
+  }, [currentSession]);
+
+  const openNote = useCallback(
+    (note: Note) => {
+      // 点的是正打开的这篇：什么都不动——重置会把未保存的草稿盖回旧内容。
+      if (note.id === selectedIdRef.current) return;
+      // 切走前冲掉上一篇的脏草稿（后台冲刷；结果与冲突都留在那个会话里）。
+      const prev = currentSession();
+      if (prev && prev.isDirty && prev.snapshot().phase !== "conflict") void prev.flush();
+
+      let s = sessionsRef.current.get(note.id) ?? null;
+      if (
+        s &&
+        s.snapshot().phase === "clean" &&
+        note.currentRevision !== s.snapshot().note.currentRevision
+      ) {
+        // 会话干净而列表已更新（外部改过）：旧会话没有要保留的东西，换成新基线。
+        s.disposeTimer();
+        sessionsRef.current.delete(note.id);
+        s = null;
       }
+      let restoredHint = "";
+      if (!s) {
+        s = new NoteSession(note, ioRef.current);
+        sessionsRef.current.set(note.id, s);
+        attachSession(s);
+        // 崩溃/意外退出留下的草稿镜像 ≠ 服务器内容 → 恢复成脏草稿（自动保存接力）。
+        const mirror = readDraftMirror(note.id);
+        if (mirror && (mirror.title !== note.title || mirror.bodyMd !== note.bodyMd)) {
+          s.restoreDraft(mirror.title, mirror.bodyMd);
+          restoredHint = "已恢复上次未保存的草稿";
+        }
+      }
+      const snap = s.snapshot();
+      selectedIdRef.current = note.id;
+      setSelectedId(note.id);
+      setTitle(snap.draft.title);
+      setBody(snap.draft.bodyMd);
+      setMetaValues({ notebook: snap.note.notebook, tags: [...snap.note.tags] });
+      syncFromSession(s);
+      if (restoredHint) setStatusNote(restoredHint);
+      setViewError("");
     },
-    [dir, refresh]
+    [attachSession, currentSession, syncFromSession]
   );
 
-  const scheduleSave = useCallback(
-    (note: Note, nextTitle: string, nextBody: string) => {
-      dirtyRef.current = true;
-      setStatus("dirty");
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => {
-        timerRef.current = null;
-        void flushSave(note, nextTitle, nextBody);
-      }, AUTOSAVE_DELAY_MS);
-    },
-    [flushSave]
-  );
+  const createNote = useCallback(() => {
+    const prev = currentSession();
+    if (prev && prev.isDirty && prev.snapshot().phase !== "conflict") void prev.flush();
+    const draft = createNoteDraft();
+    const s = new NoteSession(draft, ioRef.current);
+    sessionsRef.current.set(draft.id, s);
+    attachSession(s);
+    selectedIdRef.current = draft.id;
+    setSelectedId(draft.id);
+    setTitle("");
+    setBody("");
+    setMetaValues({ notebook: null, tags: [] });
+    setStatus("dirty");
+    setStatusNote("");
+    setViewError("");
+    // 空笔记先不落库：等第一段内容进来再保存，避免堆积空笔记。
+  }, [attachSession, currentSession]);
+
+  const onEdit = (nextTitle: string, nextBody: string) => {
+    const s = currentSession();
+    if (!s) return;
+    setTitle(nextTitle);
+    setBody(nextBody);
+    s.edit(nextTitle, nextBody);
+  };
+
+  const del = useDeleteConfirm(async (target: string) => {
+    try {
+      await deleteNoteById(target, dirRef.current);
+      const s = sessionsRef.current.get(target);
+      if (s) {
+        s.discard();
+        sessionsRef.current.delete(target);
+      }
+      if (selectedIdRef.current === target) {
+        selectedIdRef.current = null;
+        setSelectedId(null);
+      }
+      await refresh();
+    } catch (e) {
+      setViewError(`移入回收站失败：${String(e)}`);
+    }
+  });
+
+  const doRestore = async (id: string) => {
+    try {
+      await restoreNoteById(id, dirRef.current);
+      await refresh();
+    } catch (e) {
+      setViewError(`恢复失败：${String(e)}`);
+    }
+  };
+
+  const toggleFavorite = () => {
+    const s = currentSession();
+    if (!s) return;
+    s.patchMeta({ isFavorite: !s.effectiveNote().isFavorite });
+  };
+
+  /** 笔记本/标签等元数据编辑：进同一保存队列（内容不变 → 不追加修订）。 */
+  const saveMeta = (patch: Partial<Pick<Note, "notebook" | "tags">>) => {
+    const s = currentSession();
+    if (!s) return;
+    setMetaValues((prev) => ({ ...prev, ...patch }));
+    s.patchMeta(patch);
+  };
+
+  const doCreateKb = async () => {
+    const name = kbName.trim();
+    if (!name) return;
+    try {
+      await createKnowledgeBaseNamed(crypto.randomUUID(), name, "", dirRef.current);
+      setKbName("");
+      setKbFormOpen(false);
+      await refresh();
+    } catch (e) {
+      setViewError(`创建知识库失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const doAddToKb = async (kbId: string) => {
+    if (!selected) return;
+    try {
+      await addNoteToKnowledgeBase(kbId, selected.id, dirRef.current);
+      await refresh();
+    } catch (e) {
+      setViewError(`加入知识库失败：${String(e)}`);
+    }
+  };
+
+  const doRemoveFromKb = async (kbId: string) => {
+    if (!selected) return;
+    try {
+      await removeNoteFromKnowledgeBase(kbId, selected.id, dirRef.current);
+      await refresh();
+    } catch (e) {
+      setViewError(`移出知识库失败：${String(e)}`);
+    }
+  };
+
+  const insertAttachment = (path: string) => {
+    if (!currentSession()) return;
+    const anchor = body;
+    const insertAt = anchor.length; // 正文末尾追加（textarea 无 selection 暴露时最不惊讶）
+    const nextBody = `${anchor.slice(0, insertAt)}${anchor && !anchor.endsWith("\n") ? "\n\n" : ""}![附件](${path})\n`;
+    onEdit(title, nextBody);
+  };
+
+  /** 重新从仓储拉权威状态（外部更新 / 冲突处置后）。 */
+  const fetchFreshState = async (): Promise<NotesState> => {
+    const fresh = await readNotes(dirRef.current);
+    setState(fresh);
+    onStateChange?.(fresh);
+    return fresh;
+  };
+
+  // ---------- 冲突处置（三选一，都不自动发生） ----------
+
+  const keepConflictCopy = async () => {
+    const s = currentSession();
+    if (!s) return;
+    const snap = s.snapshot();
+    try {
+      const copy = createNoteDraft();
+      copy.title = snap.draft.title ? `${snap.draft.title}（冲突副本）` : "（冲突副本）";
+      copy.bodyMd = snap.draft.bodyMd;
+      copy.notebook = snap.note.notebook;
+      copy.tags = [...snap.note.tags];
+      await saveNote(copy, 0, dirRef.current);
+      const fresh = await fetchFreshState();
+      const remote = fresh.notes.find((n) => n.id === s.noteId) ?? null;
+      if (remote) {
+        s.adoptRemote(remote);
+        setTitle(s.snapshot().draft.title);
+        setBody(s.snapshot().draft.bodyMd);
+        setMetaValues({ notebook: s.snapshot().note.notebook, tags: [...s.snapshot().note.tags] });
+        syncFromSession(s);
+        setStatusNote("本地草稿已另存为新笔记；编辑器已加载远端最新内容。");
+      } else {
+        setStatusNote("本地草稿已另存为新笔记；远端这篇已被删除，列表不再显示它。");
+      }
+    } catch (e) {
+      setStatusNote(`另存副本失败：${e instanceof Error ? e.message : String(e)}。本地草稿未受影响。`);
+    }
+  };
+
+  const loadRemoteLatest = async () => {
+    const s = currentSession();
+    if (!s) return;
+    try {
+      const fresh = await fetchFreshState();
+      const remote = fresh.notes.find((n) => n.id === s.noteId) ?? null;
+      if (!remote) {
+        setStatusNote("远端已找不到这篇笔记（可能已被删除）。本地草稿仍在编辑器里。");
+        return;
+      }
+      s.adoptRemote(remote);
+      setTitle(s.snapshot().draft.title);
+      setBody(s.snapshot().draft.bodyMd);
+      setMetaValues({ notebook: s.snapshot().note.notebook, tags: [...s.snapshot().note.tags] });
+      syncFromSession(s);
+      setStatusNote("已加载最新内容（本地草稿被替换）。");
+    } catch (e) {
+      setStatusNote(`读取远端内容失败：${String(e)}。本地草稿未受影响。`);
+    }
+  };
 
   // 正文里引用的库内附件 → objectURL。按内容路径缓存，卸载统一释放；
   // resolver 只认这份缓存：拿不到说明附件缺失，渲染「附件缺失」文案。
@@ -169,7 +421,7 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
         if (objectUrls.has(ref)) next.set(ref, objectUrls.get(ref) ?? null);
         else {
           try {
-            const bytes = await readNoteMedia(ref, dir);
+            const bytes = await readNoteMedia(ref, dirRef.current);
             if (!bytes) next.set(ref, null);
             else {
               const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: ref.endsWith(".json") ? "image/svg+xml" : "application/octet-stream" }));
@@ -188,175 +440,10 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
     return () => { disposed = true; };
     // objectUrls 只作为缓存读取（避免重复加载），不作为触发器
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaRefs, dir]);
-
-  // 最新草稿的只读快照：冲保存的地方（卸载/关窗）从这里取值，
-  // 不把 title/body 写进 effect 依赖——否则每次按键都会重跑 effect，
-  // cleanup 里的一次性冲刷变成「每个字符冲一次」，与防抖双发竞争后
-  // 第二发拿着过期的 baseRevision 撞出假冲突（实测踩过）。
-  const draftRef = useRef<{ note: Note | null; title: string; body: string }>({ note: null, title: "", body: "" });
-  useEffect(() => {
-    draftRef.current = { note: noteRef.current, title, body };
-  });
-
-  // 卸载 / 关窗前尽力冲一次未保存的改动（自动保存让损失窗口很小，但别白丢最后一段）。
-  useEffect(() => {
-    const flush = () => {
-      const { note, title: t, body: b } = draftRef.current;
-      if (dirtyRef.current && note) void flushSave(note, t, b);
-    };
-    window.addEventListener("beforeunload", flush);
-    return () => {
-      window.removeEventListener("beforeunload", flush);
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      flush();
-    };
-  }, [flushSave]);
-
-  const openNote = useCallback((note: Note) => {
-    // 点的是正打开的这篇：什么都不动——重置会把未保存的草稿盖回旧内容。
-    if (note.id === selectedId) return;
-    // 切走前把未保存的草稿冲掉：当前 title/body 就是那份脏草稿。
-    if (dirtyRef.current && noteRef.current && noteRef.current.id !== note.id) {
-      void flushSave(noteRef.current, title, body);
-    }
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setSelectedId(note.id);
-    savedRevision.current = note.currentRevision;
-    noteRef.current = note;
-    dirtyRef.current = false;
-    setTitle(note.title);
-    setBody(note.bodyMd);
-    setStatus("saved");
-    setStatusNote("");
-    setViewError("");
-  }, [selectedId, body, title, flushSave]);
-
-  const createNote = useCallback(() => {
-    const draft = createNoteDraft();
-    setSelectedId(draft.id);
-    savedRevision.current = 0;
-    noteRef.current = draft;
-    dirtyRef.current = false;
-    setTitle("");
-    setBody("");
-    setStatus("dirty");
-    setStatusNote("");
-    // 空笔记先不落库：等第一段内容进来再保存，避免堆积空笔记。
-  }, []);
-
-  const onEdit = (nextTitle: string, nextBody: string) => {
-    if (!noteRef.current) return;
-    setTitle(nextTitle);
-    setBody(nextBody);
-    scheduleSave(noteRef.current, nextTitle, nextBody);
-  };
-
-  const del = useDeleteConfirm(async (target: string) => {
-    try {
-      await deleteNoteById(target, dir);
-      if (selectedId === target) {
-        setSelectedId(null);
-        noteRef.current = null;
-      }
-      await refresh();
-    } catch (e) {
-      setViewError(`移入回收站失败：${String(e)}`);
-    }
-  });
-
-  const doRestore = async (id: string) => {
-    try {
-      await restoreNoteById(id, dir);
-      await refresh();
-    } catch (e) {
-      setViewError(`恢复失败：${String(e)}`);
-    }
-  };
-
-  const toggleFavorite = async () => {
-    if (!selected) return;
-    try {
-      await saveNote({ ...selected, isFavorite: !selected.isFavorite }, selected.currentRevision, dir);
-      await refresh();
-    } catch (e) {
-      setViewError(`收藏失败：${String(e)}`);
-    }
-  };
-
-  /** 笔记本/标签等元数据编辑：走同一保存路径（内容不变 → 不追加修订）。 */
-  const saveMeta = async (patch: Partial<Pick<Note, "notebook" | "tags">>) => {
-    if (!selected) return;
-    try {
-      await saveNote({ ...selected, ...patch }, selected.currentRevision, dir);
-      await refresh();
-    } catch (e) {
-      setViewError(`保存笔记属性失败：${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
-
-  const doCreateKb = async () => {
-    const name = kbName.trim();
-    if (!name) return;
-    try {
-      await createKnowledgeBaseNamed(crypto.randomUUID(), name, "", dir);
-      setKbName("");
-      setKbFormOpen(false);
-      await refresh();
-    } catch (e) {
-      setViewError(`创建知识库失败：${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
-
-  const doAddToKb = async (kbId: string) => {
-    if (!selected) return;
-    try {
-      await addNoteToKnowledgeBase(kbId, selected.id, dir);
-      await refresh();
-    } catch (e) {
-      setViewError(`加入知识库失败：${String(e)}`);
-    }
-  };
-
-  const insertAttachment = (path: string) => {
-    if (!noteRef.current) return;
-    const anchor = body;
-    const insertAt = anchor.length; // 正文末尾追加（textarea 无 selection 暴露时最不惊讶）
-    const nextBody = `${anchor.slice(0, insertAt)}${anchor && !anchor.endsWith("\n") ? "\n\n" : ""}![附件](${path})\n`;
-    onEdit(title, nextBody);
-  };
-
-  const doRemoveFromKb = async (kbId: string) => {
-    if (!selected) return;
-    try {
-      await removeNoteFromKnowledgeBase(kbId, selected.id, dir);
-      await refresh();
-    } catch (e) {
-      setViewError(`移出知识库失败：${String(e)}`);
-    }
-  };
-
-  const reloadAfterConflict = () => {
-    const fresh = state.notes.find((n) => n.id === selectedId);
-    if (fresh) {
-      openNote(fresh);
-      setStatusNote("已加载最新内容（本地草稿被替换）");
-    }
-  };
+  }, [mediaRefs]);
 
   const selectedKbIds = selected ? noteKbIds(state, selected.id) : [];
   const notInKbs = state.knowledgeBases.filter((k) => !selectedKbIds.includes(k.id));
-
-  const statusLabel: Record<SaveStatus, string> = {
-    saved: "已保存",
-    saving: "保存中…",
-    dirty: "未保存",
-    conflict: "内容冲突",
-    error: "保存失败",
-  };
 
   return (
     <div className="nv-root" data-page="notes">
@@ -449,7 +536,7 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
       </section>
 
       <section className="nv-editor" aria-label="笔记编辑器">
-        {!selected && !noteRef.current ? (
+        {!selectedId ? (
           <div className="ws-empty-guide">
             <p style={{ fontWeight: 500 }}>选一篇笔记，或新建一篇</p>
             <span style={{ fontSize: 12 }}>写下的内容会自动保存；断网、不配模型也都能保存与搜索。</span>
@@ -464,8 +551,8 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
                 value={title}
                 onChange={(e) => onEdit(e.target.value, body)}
               />
-              <span className={`nv-status nv-status-${status}`} role="status" data-save-status={status}>
-                {statusLabel[status]}
+              <span className={`nv-status nv-status-${STATUS_ATTR[status]}`} role="status" data-save-status={STATUS_ATTR[status]}>
+                {STATUS_LABEL[status]}
               </span>
               <div className="nv-actions">
                 {selected ? (
@@ -475,7 +562,7 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
                       className="ws-icon-button"
                       aria-label={selected.isFavorite ? "取消收藏" : "收藏笔记"}
                       title={selected.isFavorite ? "取消收藏" : "收藏笔记"}
-                      onClick={() => void toggleFavorite()}
+                      onClick={toggleFavorite}
                     >
                       <Icon name="star" />
                     </button>
@@ -491,12 +578,22 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
               </div>
             </div>
             {statusNote ? (
-              <p className={`nv-status-note${status === "conflict" ? " nv-error" : ""}`} role="status">
+              <p className={`nv-status-note${status === "conflict" || status === "error" ? " nv-error" : ""}`} role="status">
                 {statusNote}
-                {status === "conflict" ? (
-                  <button type="button" className="ws-bordered" onClick={reloadAfterConflict}>加载最新内容</button>
-                ) : null}
               </p>
+            ) : null}
+            {status === "conflict" ? (
+              <div className="nv-conflict-actions" role="group" aria-label="冲突处理">
+                <button type="button" className="ws-bordered" onClick={() => currentSession()?.resolveOverwrite()}>
+                  用我的版本覆盖
+                </button>
+                <button type="button" className="ws-bordered" onClick={() => void keepConflictCopy()}>
+                  本地另存副本
+                </button>
+                <button type="button" className="ws-bordered" onClick={() => void loadRemoteLatest()}>
+                  加载远端内容
+                </button>
+              </div>
             ) : null}
             <textarea
               className="nv-body"
@@ -538,8 +635,8 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
                     list="nv-notebooks"
                     aria-label="笔记本名称"
                     placeholder="未分组"
-                    value={selected.notebook ?? ""}
-                    onChange={(e) => void saveMeta({ notebook: e.target.value.trim() || null })}
+                    value={metaValues.notebook ?? ""}
+                    onChange={(e) => saveMeta({ notebook: e.target.value.trim() || null })}
                   />
                   <datalist id="nv-notebooks">
                     {[...new Set(activeNotes.map((n) => n.notebook).filter(Boolean))].map((nb) => (
@@ -552,8 +649,10 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
                   <input
                     aria-label="笔记标签，逗号分隔"
                     placeholder="用逗号分隔，如：工作, 灵感"
-                    value={selected.tags.join(", ")}
-                    onChange={(e) => void saveMeta({ tags: e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean) })}
+                    value={metaValues.tags.join(", ")}
+                    onChange={(e) =>
+                      saveMeta({ tags: e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean) })
+                    }
                   />
                 </label>
               </div>

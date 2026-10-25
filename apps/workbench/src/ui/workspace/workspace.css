@@ -2791,6 +2791,7 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-status-saving, .nv-status-dirty { color: var(--muted); }
 .nv-status-conflict, .nv-status-error { color: #b3261e; font-weight: 600; }
 .nv-status-note { font-size: 12px; color: var(--muted); margin: 0; display: flex; align-items: center; gap: 8px; }
+.nv-conflict-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
 .nv-body {
   flex: 1;
   min-height: 0;
