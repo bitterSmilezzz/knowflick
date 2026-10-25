@@ -265,6 +265,40 @@ export interface ProfileClaim {
   status: "active" | "paused";
 }
 
+// ---------- 目标（R4/D04） ----------
+
+export interface Goal {
+  id: string;
+  title: string;
+  doneCriteria: string;
+  scope: string | null;
+  createdAt: number;
+  achievedAt: number | null;
+  abandonedAt: number | null;
+  reviewNote: string;
+  evidenceCount: number;
+}
+
+export function goalCreate(goal: Omit<Goal, "createdAt" | "achievedAt" | "abandonedAt" | "reviewNote" | "evidenceCount">, dir?: string): Promise<number> {
+  return invoke("goal_create_cmd", { goal, dir: dir ?? null });
+}
+
+export function goalListActive(dir?: string): Promise<Goal[]> {
+  return invoke("goal_list_active", { dir: dir ?? null });
+}
+
+export function goalLinkEvidence(goalId: string, evidenceId: string, kind: "note" | "material", dir?: string): Promise<number> {
+  return invoke("goal_link_evidence_cmd", { goalId, evidenceId, kind, dir: dir ?? null });
+}
+
+export function goalAchieve(id: string, reviewNote: string, dir?: string): Promise<boolean> {
+  return invoke("goal_achieve_cmd", { id, reviewNote, dir: dir ?? null });
+}
+
+export function goalAbandon(id: string, reviewNote: string, dir?: string): Promise<boolean> {
+  return invoke("goal_abandon_cmd", { id, reviewNote, dir: dir ?? null });
+}
+
 export function profileClaimAdd(claim: Omit<ProfileClaim, "createdAt" | "confirmedAt" | "expiresAt" | "deniedAt" | "supersededBy" | "status">, dir?: string): Promise<number> {
   return invoke("profile_claim_add", { claim, dir: dir ?? null });
 }

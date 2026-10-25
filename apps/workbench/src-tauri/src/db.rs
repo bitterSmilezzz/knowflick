@@ -663,6 +663,30 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             evidence_fingerprint TEXT PRIMARY KEY,           -- 证据集合的稳定指纹
             denied_at           INTEGER NOT NULL
         );
+
+        -- 目标（R4/D04）：用户明确设定的目标与完成条件；进展**只靠证据关联**，
+        -- 没有「缺勤扣分」——status 只有 active/achieved/abandoned 三种，
+        -- 「缺少记录」不是第四种状态（路线图：不凭记录少就评价一个人）。
+        CREATE TABLE IF NOT EXISTS goals (
+            id                  TEXT PRIMARY KEY,
+            title               TEXT NOT NULL,
+            done_criteria       TEXT NOT NULL,              -- 用户写的完成条件
+            scope               TEXT,                       -- 可关联项目（NULL=生活目标）
+            created_at          INTEGER NOT NULL,
+            achieved_at         INTEGER,                    -- 用户确认达成的时间
+            abandoned_at        INTEGER,
+            review_note         TEXT NOT NULL DEFAULT ''    -- 达成/放弃时的一句话回顾
+        );
+
+        -- 目标 ↔ 证据（素材/笔记 id）：进展的可追溯面。证据缺失 = 没有关联，
+        -- 不产生任何负面状态——判定只看 done_criteria 是否被用户确认。
+        CREATE TABLE IF NOT EXISTS goal_evidence (
+            goal_id             TEXT NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+            evidence_id         TEXT NOT NULL,              -- 笔记或素材 id（不建 FK：两类表）
+            kind                TEXT NOT NULL,              -- 'note' | 'material'
+            linked_at           INTEGER NOT NULL,
+            PRIMARY KEY (goal_id, evidence_id)
+        );
         "#,
     )?;
 

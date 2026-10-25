@@ -852,6 +852,55 @@ fn profile_denial_clear_by_evidence(app: tauri::AppHandle, dir: Option<String>, 
     Ok(ok)
 }
 
+// ---------- 目标（R4/D04） ----------
+
+#[tauri::command]
+fn goal_create_cmd(app: tauri::AppHandle, dir: Option<String>, goal: notes::GoalDto) -> Result<usize, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let created = notes::goal_create(&conn, &goal, now)?;
+    notify_library_changed(&app);
+    Ok(created)
+}
+
+#[tauri::command]
+fn goal_list_active(dir: Option<String>) -> Result<Vec<notes::GoalDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::goal_list_active(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn goal_link_evidence_cmd(app: tauri::AppHandle, dir: Option<String>, goal_id: String, evidence_id: String, kind: String) -> Result<usize, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let linked = notes::goal_link_evidence(&conn, &goal_id, &evidence_id, &kind, now)?;
+    notify_library_changed(&app);
+    Ok(linked)
+}
+
+#[tauri::command]
+fn goal_achieve_cmd(app: tauri::AppHandle, dir: Option<String>, id: String, review_note: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let ok = notes::goal_achieve(&conn, &id, &review_note, now)?;
+    notify_library_changed(&app);
+    Ok(ok)
+}
+
+#[tauri::command]
+fn goal_abandon_cmd(app: tauri::AppHandle, dir: Option<String>, id: String, review_note: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let ok = notes::goal_abandon(&conn, &id, &review_note, now)?;
+    notify_library_changed(&app);
+    Ok(ok)
+}
+
 #[tauri::command]
 fn kb_create(app: tauri::AppHandle, dir: Option<String>, id: String, name: String, description: Option<String>) -> Result<(), String> {
     let path = library_dir(dir);
@@ -1556,6 +1605,11 @@ pub fn run() {
             profile_claim_deny,
             profile_claim_delete,
             profile_denial_clear_by_evidence,
+            goal_create_cmd,
+            goal_list_active,
+            goal_link_evidence_cmd,
+            goal_achieve_cmd,
+            goal_abandon_cmd,
             write_webdav_credential,
             db_list_materials,
             db_update_material_status,

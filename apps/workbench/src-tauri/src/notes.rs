@@ -1499,3 +1499,177 @@ mod profile_tests {
         assert_eq!(confirmed, Some(3000));
     }
 }
+
+// ---------- 目标（R4/D04：完成条件 + 证据关联，缺记录不判失败） ----------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalDto {
+    pub id: String,
+    pub title: String,
+    pub done_criteria: String,
+    pub scope: Option<String>,
+    pub created_at: i64,
+    pub achieved_at: Option<i64>,
+    pub abandoned_at: Option<i64>,
+    pub review_note: String,
+    /// 关联证据数（只读派生列；缺证据 ≠ 失败，只是 0）。
+    pub evidence_count: i64,
+}
+
+pub fn goal_create(conn: &Connection, goal: &GoalDto, now: i64) -> Result<usize, String> {
+    let title = goal.title.trim();
+    let criteria = goal.done_criteria.trim();
+    if title.is_empty() {
+        return Err("目标标题不能为空".to_string());
+    }
+    if criteria.is_empty() {
+        return Err("完成条件不能为空——判定只认这个，不靠记录多少（这是「缺少记录不得判为失败」的前提：条件必须显式）".to_string());
+    }
+    conn.execute(
+        "INSERT INTO goals (id, title, done_criteria, scope, created_at, review_note) VALUES (?1, ?2, ?3, ?4, ?5, '')",
+        params![goal.id, title, criteria, goal.scope, now],
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// 活跃目标（未达成未放弃）。证据数是 LEFT JOIN 派生——没有证据的
+/// 目标照常出现，evidence_count = 0，没有「落后」「失败」状态。
+pub fn goal_list_active(conn: &Connection) -> Result<Vec<GoalDto>> {
+    let mut stmt = conn.prepare(
+        "SELECT g.id, g.title, g.done_criteria, g.scope, g.created_at, g.achieved_at, g.abandoned_at, g.review_note,
+                (SELECT COUNT(*) FROM goal_evidence e WHERE e.goal_id = g.id) AS evidence_count
+         FROM goals g
+         WHERE g.achieved_at IS NULL AND g.abandoned_at IS NULL
+         ORDER BY g.created_at ASC",
+    )?;
+    let rows = stmt.query_map([], map_goal_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+fn map_goal_row(row: &rusqlite::Row<'_>) -> Result<GoalDto> {
+    Ok(GoalDto {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        done_criteria: row.get(2)?,
+        scope: row.get(3)?,
+        created_at: row.get(4)?,
+        achieved_at: row.get(5)?,
+        abandoned_at: row.get(6)?,
+        review_note: row.get(7)?,
+        evidence_count: row.get(8)?,
+    })
+}
+
+/// 关联证据（幂等：重复关联同一证据不重复行）。
+pub fn goal_link_evidence(conn: &Connection, goal_id: &str, evidence_id: &str, kind: &str, now: i64) -> Result<usize, String> {
+    let exists: i64 = conn
+        .query_row("SELECT COUNT(*) FROM goals WHERE id = ?1", params![goal_id], |r| r.get(0))
+        .unwrap_or(0);
+    if exists == 0 {
+        return Err("目标不存在".to_string());
+    }
+    if !matches!(kind, "note" | "material") {
+        return Err(format!("证据类型只认 note 或 material，收到 {kind}"));
+    }
+    let table = if kind == "note" { "notes" } else { "materials" };
+    let target: i64 = conn
+        .query_row(&format!("SELECT COUNT(*) FROM {table} WHERE id = ?1"), params![evidence_id], |r| r.get(0))
+        .unwrap_or(0);
+    if target == 0 {
+        return Err(format!("{kind} 里没有 id 为 {evidence_id} 的记录"));
+    }
+    conn.execute(
+        "INSERT INTO goal_evidence (goal_id, evidence_id, kind, linked_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(goal_id, evidence_id) DO NOTHING",
+        params![goal_id, evidence_id, kind, now],
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// 用户确认达成：判定**只**来自这一步（显式确认），证据多少不参与。
+pub fn goal_achieve(conn: &Connection, id: &str, review_note: &str, now: i64) -> Result<bool, String> {
+    let changed = conn.execute(
+        "UPDATE goals SET achieved_at = ?2, review_note = ?3 WHERE id = ?1 AND achieved_at IS NULL AND abandoned_at IS NULL",
+        params![id, now, review_note],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(changed > 0)
+}
+
+/// 放弃（与失败区分：这是用户决定，不是系统判定）。
+pub fn goal_abandon(conn: &Connection, id: &str, review_note: &str, now: i64) -> Result<bool, String> {
+    let changed = conn.execute(
+        "UPDATE goals SET abandoned_at = ?2, review_note = ?3 WHERE id = ?1 AND achieved_at IS NULL AND abandoned_at IS NULL",
+        params![id, now, review_note],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(changed > 0)
+}
+
+#[cfg(test)]
+mod goal_tests {
+    use super::*;
+
+    fn temp_db(tag: &str) -> Connection {
+        let dir = std::env::temp_dir().join(format!("kf-goal-{tag}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::db::open_db(&dir.join("knowflick.db")).unwrap()
+    }
+
+    fn draft(id: &str, title: &str, body: &str) -> NoteDto {
+        NoteDto { id: id.to_string(), title: title.to_string(), body_md: body.to_string(), ..Default::default() }
+    }
+
+    fn goal(id: &str, title: &str, criteria: &str) -> GoalDto {
+        GoalDto {
+            id: id.to_string(),
+            title: title.to_string(),
+            done_criteria: criteria.to_string(),
+            scope: None,
+            created_at: 0,
+            achieved_at: None,
+            abandoned_at: None,
+            review_note: String::new(),
+            evidence_count: 0,
+        }
+    }
+
+    #[test]
+    fn no_evidence_is_not_failure_and_achievement_is_explicit() {
+        let conn = temp_db("semantics");
+        note_upsert(&conn, &draft("n1", "记录", "读完了第三章"), 0, 1000).unwrap();
+        goal_create(&conn, &goal("g1", "读完这本书", "读完最后一章并写笔记"), 1000).unwrap();
+
+        // 无证据目标照常出现，evidence_count = 0——没有「落后」状态
+        let goals = goal_list_active(&conn).unwrap();
+        assert_eq!(goals.len(), 1);
+        assert_eq!(goals[0].evidence_count, 0);
+
+        // 完成条件必填（判定的唯一依据）
+        assert!(goal_create(&conn, &goal("g2", "X", "  "), 2000).is_err());
+
+        // 关联证据幂等；不存在目标/笔记给中文错误
+        goal_link_evidence(&conn, "g1", "n1", "note", 2000).unwrap();
+        goal_link_evidence(&conn, "g1", "n1", "note", 2100).unwrap();
+        let goals = goal_list_active(&conn).unwrap();
+        assert_eq!(goals[0].evidence_count, 1, "重复关联不重复计数");
+        assert!(goal_link_evidence(&conn, "ghost", "n1", "note", 2200).is_err());
+        assert!(goal_link_evidence(&conn, "g1", "ghost", "note", 2200).is_err());
+        assert!(goal_link_evidence(&conn, "g1", "n1", "card", 2200).is_err());
+
+        // 达成是显式动作（与证据数无关）：无证据也能达成、有证据也能放弃
+        assert!(goal_achieve(&conn, "g1", "最后一章笔记已写", 3000).unwrap());
+        assert!(goal_list_active(&conn).unwrap().is_empty());
+        assert!(!goal_achieve(&conn, "g1", "再确认一次", 3100).unwrap(), "已达成不能重复确认");
+
+        // 放弃同理是显式动作
+        goal_create(&conn, &goal("g3", "学 Rust", "完成 borrow checker 练习"), 3200).unwrap();
+        assert!(goal_abandon(&conn, "g3", "优先级变化", 3300).unwrap());
+        assert!(goal_list_active(&conn).unwrap().is_empty());
+    }
+}
