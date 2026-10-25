@@ -38,6 +38,7 @@ fn main() {
             "read_import_report",
             "save_import_report",
             "backup_copy_to_directory",
+            "webdav_upload_backup",
             "db_list_materials",
             "db_update_material_status",
             "db_get_stats",

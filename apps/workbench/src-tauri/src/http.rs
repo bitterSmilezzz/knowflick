@@ -278,6 +278,42 @@ pub(crate) fn client_for(
     builder.build().map_err(|err| err.to_string())
 }
 
+/// WebDAV PUT（R3 单向复制）：把字节写到目标 URL。
+///
+/// 返回 (HTTP 状态码, 响应体)。鉴权走 Basic（WebDAV 服务端普遍支持，
+/// 含各网盘的应用密码）；地址校验与 client_for 同一判据——回环直连、
+/// 外部地址跟随系统代理。
+pub async fn webdav_put(
+    url: &str,
+    username: &str,
+    password: &str,
+    body: Vec<u8>,
+    content_type: &str,
+) -> Result<(u16, Vec<u8>), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| format!("WebDAV 地址无效：{url}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("WebDAV 地址须是 http:// 或 https://".to_string());
+    }
+    let client = client_for(&parsed, Duration::from_secs(120), Some(reqwest::redirect::Policy::limited(3)))?;
+    let mut request = client.put(parsed).header("Content-Type", content_type);
+    if !username.is_empty() {
+        use reqwest::header::{AUTHORIZATION, HeaderValue};
+        use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
+        let encoded = B64.encode(format!("{username}:{password}"));
+        let value = HeaderValue::from_str(&format!("Basic {encoded}")).map_err(|e| e.to_string())?;
+        request = request.header(AUTHORIZATION, value);
+    }
+    let response = request
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("WebDAV 上传失败：{e}"))?;
+    let status = response.status().as_u16();
+    let resp_body = response.bytes().await.unwrap_or_default().to_vec();
+    Ok((status, resp_body))
+}
+
 fn validate_url(raw: &str) -> Result<reqwest::Url, String> {
     let url = reqwest::Url::parse(raw.trim()).map_err(|_| "链接无效".to_string())?;
     if !url.username().is_empty() || url.password().is_some() {
@@ -651,5 +687,109 @@ mod tests {
         assert_eq!(charset_from_meta(inside.as_bytes()), Some("gbk".to_string()));
         let outside = format!("<html><head>{}<meta charset=\"gbk\">", " ".repeat(META_SNIFF_BYTES + 10));
         assert_eq!(charset_from_meta(outside.as_bytes()), None);
+    }
+}
+
+#[cfg(test)]
+mod webdav_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::Arc;
+
+    /// 内嵌 WebDAV 测试端点：接受 PUT（校验 Basic 鉴权与路径），记录收到的对象。
+    /// 真实服务兼容性按路线图标注待验——这里自验的是**协议层**。
+    fn spawn_test_server(reject_first: bool) -> (String, Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let received_cl = received.clone();
+        let handle = std::thread::spawn(move || {
+            let mut first = reject_first;
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let mut buf = [0u8; 8192];
+                let mut n = stream.read(&mut buf).unwrap_or(0);
+                let head = String::from_utf8_lossy(&buf[..n]).to_string();
+                let body_start = head.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
+                let content_length: usize = head
+                    .lines()
+                    .find_map(|l| l.split(':').next().map(|k| k.trim().eq_ignore_ascii_case("content-length")).and_then(|is_cl| {
+                        if is_cl { l.split_once(':').map(|(_, v)| v.trim().parse().unwrap_or(0)) } else { None }
+                    }))
+                    .unwrap_or(0);
+                // 读满 Content-Length（reqwest 分块发送，单次 read 只拿到第一块）
+                let mut body = buf[body_start.min(n)..n].to_vec();
+                while body.len() < content_length {
+                    let m = stream.read(&mut buf).unwrap_or(0);
+                    if m == 0 { break; }
+                    body.extend_from_slice(&buf[..m]);
+                    n = 0; // head 已消费完
+                }
+                let (method, path) = {
+                    let line = head.lines().next().unwrap_or("");
+                    let mut parts = line.split_whitespace();
+                    (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string())
+                };
+                // Basic 鉴权：user:pass
+                let authorized = head.contains("Basic dXNlcjpwYXNz"); // base64("user:pass")
+                let resp = if !authorized {
+                    "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nWWW-Authenticate: Basic\r\n\r\n".to_string()
+                } else if method == "PUT" {
+                    if first {
+                        first = false;
+                        "HTTP/1.1 409 Conflict\r\nContent-Length: 0\r\n\r\n".to_string()
+                    } else {
+                        received_cl.lock().unwrap().push((path.clone(), body.clone()));
+                        "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n".to_string()
+                    }
+                } else {
+                    "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n".to_string()
+                };
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.flush();
+            }
+        });
+        (format!("http://127.0.0.1:{port}/dav"), received, handle)
+    }
+
+    #[test]
+    fn webdav_put_roundtrip_with_auth_and_conflict_retry() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+        // 冲突退让 + 鉴权 + 对象落位
+        let (base, received, _handle) = spawn_test_server(true);
+        let payload = b"PK-test-archive".to_vec();
+        let (status, _) = webdav_put(&format!("{base}/a.bin"), "user", "pass", payload.clone(), "application/zip").await.unwrap();
+        assert_eq!(status, 409, "第一次 PUT 应被测试端点拒绝（模拟同名冲突）");
+        let (status2, _) = webdav_put(&format!("{base}/b.bin"), "user", "pass", payload.clone(), "application/zip").await.unwrap();
+        assert_eq!(status2, 201);
+        let objects = received.lock().unwrap();
+        assert_eq!(objects.len(), 1, "只有成功那次落了对象");
+        assert_eq!(objects[0].0, "/dav/b.bin");
+        assert_eq!(objects[0].1, payload);
+
+        // 无鉴权信息：服务端要求 Basic → 401（协议层的鉴权协商由调用方配置）
+        let (s401, _) = webdav_put(&format!("{base}/c.bin"), "", "", payload.clone(), "application/zip").await.unwrap();
+        assert_eq!(s401, 401);
+
+        // 非法地址给中文错误
+        assert!(webdav_put("ftp://x/y", "", "", vec![], "application/zip").await.is_err());
+        });
+    }
+
+    /// 裸 accept 的挂死教训：这个测试端点每连接串行处理且客户端会关连接，
+    /// incoming 迭代在客户端断开后继续——不会挂死（与既有回环测试同构）。
+    #[test]
+    fn webdav_put_large_body_streamed() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+        let (base, received, _handle) = spawn_test_server(false);
+        let payload = vec![7u8; 200_000]; // 大对象分块上传路径
+        let (status, _) = webdav_put(&format!("{base}/big.bin"), "user", "pass", payload.clone(), "application/zip").await.unwrap();
+        assert_eq!(status, 201);
+        let objects = received.lock().unwrap();
+        assert_eq!(objects[0].1.len(), payload.len());
+        });
     }
 }

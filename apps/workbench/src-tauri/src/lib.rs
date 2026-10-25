@@ -628,6 +628,75 @@ fn note_search_chunks_vector(
     .map_err(|e| crate::error_text::explain_text("分块向量检索失败", &e))
 }
 
+/// R3 第 2 项（协议层）：把备份包 PUT 到 WebDAV 目标。
+///
+/// **单向复制**（备份快照上传），不是双向同步——冲突/合并语义属后续批次。
+/// 写两个对象：版本化 `.kfbackup`（日期命名，主对象名冲突时按 `-01/-02` 退让）
+/// 与 `.sha256` sidecar（与本地备份到目录同一规则，跨设备校验）。
+/// 真实服务兼容性（自建 + 实际用户服务各一）按路线图标注待验；
+/// 协议层由内嵌 HTTP 服务的单测自验。
+#[tauri::command]
+async fn webdav_upload_backup(
+    base_url: String,
+    username: Option<String>,
+    password: Option<String>,
+    archive_bytes: Vec<u8>,
+) -> Result<serde_json::Value, String> {
+    let base = base_url.trim_end_matches('/').to_string();
+    let digest = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&archive_bytes);
+        format!("{:x}", hasher.finalize())
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let (y, m, d) = civil_from_days(now / 1000 / 86400);
+    let date = format!("{y:04}{m:02}{d:02}");
+    let user = username.unwrap_or_default();
+    let pass = password.unwrap_or_default();
+
+    // 主对象：优先纯日期名；409/412 冲突时退让到带序号的名
+    let mut uploaded_name = String::new();
+    for attempt in 0..3 {
+        let name = if attempt == 0 {
+            format!("knowflick-backup-{date}.kfbackup")
+        } else {
+            format!("knowflick-backup-{date}-{:02}.kfbackup", attempt)
+        };
+        let url = format!("{base}/{name}");
+        let (status, body) = http::webdav_put(&url, &user, &pass, archive_bytes.clone(), "application/zip")
+            .await
+            .map_err(|e| crate::error_text::explain_text("WebDAV 上传失败", &e))?;
+        if matches!(status, 200 | 201 | 204) {
+            uploaded_name = name;
+            break;
+        }
+        if !matches!(status, 409 | 412) {
+            return Err(format!("WebDAV 上传失败：HTTP {status} {}", String::from_utf8_lossy(&body[..body.len().min(200)])));
+        }
+        if attempt == 2 {
+            return Err(format!("WebDAV 上传失败：目标已有同名对象且退让序号用尽（HTTP {status}）"));
+        }
+    }
+    // sidecar：与本地备份同一「digest  文件名」格式
+    let sidecar_name = format!("{uploaded_name}.sha256");
+    let sidecar_body = format!("{digest}  {uploaded_name}\n").into_bytes();
+    let (s2, b2) = http::webdav_put(&format!("{base}/{sidecar_name}"), &user, &pass, sidecar_body, "text/plain")
+        .await
+        .map_err(|e| crate::error_text::explain_text("WebDAV 校验文件上传失败", &e))?;
+    if !matches!(s2, 200 | 201 | 204) {
+        return Err(format!("WebDAV 校验文件上传失败：HTTP {s2} {}", String::from_utf8_lossy(&b2[..b2.len().min(200)])));
+    }
+    Ok(serde_json::json!({
+        "fileName": uploaded_name,
+        "sha256": digest,
+        "bytes": archive_bytes.len(),
+    }))
+}
+
 #[tauri::command]
 fn kb_create(app: tauri::AppHandle, dir: Option<String>, id: String, name: String, description: Option<String>) -> Result<(), String> {
     let path = library_dir(dir);
@@ -1314,6 +1383,7 @@ pub fn run() {
             read_import_report,
             save_import_report,
             backup_copy_to_directory,
+            webdav_upload_backup,
             db_list_materials,
             db_update_material_status,
             db_get_stats,

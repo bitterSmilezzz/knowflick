@@ -238,6 +238,20 @@ export function backupCopyToDirectory(targetDir: string, archiveBytes: Uint8Arra
   });
 }
 
+export async function webdavUploadBackup(
+  baseUrl: string,
+  username: string | null,
+  password: string | null,
+  archiveBytes: Uint8Array
+): Promise<BackupCopyResult> {
+  return invoke("webdav_upload_backup", {
+    baseUrl,
+    username,
+    password,
+    archiveBytes: Array.from(archiveBytes),
+  });
+}
+
 export function readImportReport(dir?: string): Promise<string | null> {
   return invoke("read_import_report", { dir: dir ?? null });
 }
