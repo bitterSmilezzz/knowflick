@@ -17,7 +17,7 @@
  * 写能力（create_flash_card / add_material）会真实写入同一 SQLite，Tauri 主窗口收到文件监听后自动刷新。
  */
 import { createInterface } from "node:readline";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -39,9 +39,30 @@ function dataRoot() {
 }
 
 function resolveLibraryDir() {
-  const explicit = process.env.KNOWFLICK_LIBRARY_DIR;
+  // 支持 --dir <path> 命令行参数（T10，收口审计 KF-013，避免外部进程依赖仓库 cwd）
+  const argIdx = process.argv.indexOf("--dir");
+  if (argIdx >= 0 && process.argv[argIdx + 1]) {
+    return process.argv[argIdx + 1];
+  }
+  const explicit = process.env.KNOWFLICK_LIBRARY_DIR || process.env.KNOWFLICK_DB_DIR;
   if (explicit && explicit.trim()) return explicit.trim();
   return join(dataRoot(), "store");
+}
+
+/** 检查 KnowFlick 设置中的 official-mcp-server 启用状态（T09，收口审计 KF-012） */
+function isServerEnabled() {
+  const settingsFile = join(libraryDir, "settings.json");
+  if (!existsSync(settingsFile)) return true;
+  try {
+    const raw = JSON.parse(readFileSync(settingsFile, "utf-8"));
+    const plugins = raw?.plugins || raw?.raw?.plugins;
+    if (plugins && plugins["official-mcp-server"] && plugins["official-mcp-server"].enabled === false) {
+      return false;
+    }
+  } catch {
+    /* 忽略损坏 */
+  }
+  return true;
 }
 
 /**
@@ -576,6 +597,18 @@ function handleToolCall(name, args) {
 function dispatch(request) {
   const { method, params = {}, id = null } = request;
   try {
+    // 模块开关检查（T09）：用户在界面关闭 official-mcp-server 时，外部进程必须吊销执行能力
+    if (!isServerEnabled() && method !== "initialize" && method !== "ping") {
+      return {
+        jsonrpc: "2.0",
+        id,
+        error: {
+          code: -32000,
+          message: "KnowFlick MCP 服务已被停用（设置中关闭了 official-mcp-server 模块），外部连接已被阻断。",
+        },
+      };
+    }
+
     switch (method) {
       case "initialize":
         return {

@@ -483,6 +483,25 @@ fn db_save_material(app: tauri::AppHandle, dir: Option<String>, material: db::Ra
 }
 
 #[tauri::command]
+fn mcp_server_paths(app: tauri::AppHandle, dir: Option<String>) -> Result<notes::McpServerPaths, String> {
+    // T10（KF-013）：安装用户复制到外部客户端的配置必须指向**存在的绝对入口**，
+    // 不能是仓库相对路径（外部客户端的 cwd 不保证是仓库，安装用户也没有该脚本）。
+    use tauri::Manager;
+    let library = library_dir(dir);
+    let script = match app.path().resolve("tools/mcp-server.mjs", tauri::path::BaseDirectory::Resource) {
+        Ok(p) if p.exists() => p,
+        _ => std::env::current_dir()
+            .map(|c| c.join("tools").join("mcp-server.mjs"))
+            .unwrap_or_else(|_| PathBuf::from("tools").join("mcp-server.mjs")),
+    };
+    Ok(notes::McpServerPaths {
+        script_path: script.to_string_lossy().to_string(),
+        library_dir: library.to_string_lossy().to_string(),
+        script_exists: script.exists(),
+    })
+}
+
+#[tauri::command]
 fn db_list_materials(dir: Option<String>, inbox_only: Option<bool>, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<db::RawMaterialDto>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
@@ -1629,6 +1648,7 @@ pub fn run() {
             goal_abandon_cmd,
             write_webdav_credential,
             db_list_materials,
+            mcp_server_paths,
             db_update_material_status,
             db_get_stats,
             db_library_signature,

@@ -494,6 +494,13 @@ export function dbSaveMaterial(material: RawMaterial, dir?: string): Promise<voi
   return invoke("db_save_material", { dir: dir ?? null, material });
 }
 
+/** MCP 服务端入口的绝对路径（T10/KF-013）：安装用户复制配置用真实路径，不是仓库相对路径。 */
+export interface McpServerPathsShell { scriptPath: string; libraryDir: string; scriptExists: boolean }
+
+export function mcpServerPaths(dir?: string): Promise<McpServerPathsShell> {
+  return invoke("mcp_server_paths", { dir: dir ?? null });
+}
+
 export function dbListMaterials(inboxOnly?: boolean, dir?: string, limit?: number, offset?: number): Promise<RawMaterial[]> {
   return invoke("db_list_materials", { dir: dir ?? null, inboxOnly: inboxOnly ?? true, limit: limit ?? null, offset: offset ?? null });
 }

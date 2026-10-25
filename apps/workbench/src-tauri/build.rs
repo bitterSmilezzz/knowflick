@@ -65,6 +65,7 @@ fn main() {
             "goal_abandon_cmd",
             "write_webdav_credential",
             "db_list_materials",
+            "mcp_server_paths",
             "db_update_material_status",
             "db_get_stats",
             "db_replace_cards",

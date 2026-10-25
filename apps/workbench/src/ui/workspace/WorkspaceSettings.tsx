@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useMemo, type FormEvent } from "react";
 import {
   readWebdavCredential,
   writeWebdavCredential,
@@ -12,7 +12,7 @@ import { generateMcpConfigSnippet } from "../../domain/mcpServer";
 import { DEFAULT_ASR_MODEL } from "../../domain/asr";
 import { AsrModelPanel } from "./AsrModelPanel";
 import { LocalEmbedPanel } from "./LocalEmbedPanel";
-import { inShell, type RawMaterial } from "../../shell/store";
+import { inShell, mcpServerPaths, type RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { SourceInsightPanel } from "./SourceInsightPanel";
 import { Icon } from "./Icon";
@@ -39,6 +39,8 @@ export interface WorkspaceSettingsProps {
   onBackupToDirectory?: () => void;
   /** R3：上传备份包到 WebDAV（组包与导出同语义；返回文件名/SHA-256/大小）。 */
   onWebdavUpload?: (target: { url: string; username: string; password: string }) => Promise<{ fileName: string; sha256: string; bytes: number }>;
+  /** T09/KF-012：MCP 模块是否启用（关闭时设置页如实说明外部连接会被阻断）。 */
+  mcpServerEnabled?: boolean;
 }
 
 export function WorkspaceSettings({
@@ -56,6 +58,7 @@ export function WorkspaceSettings({
   onWebdavUpload,
   onExportCardsJson,
   onExportAnkiTsv,
+  mcpServerEnabled,
 }: WorkspaceSettingsProps) {
   const [draftSettings, setDraftSettings] = useState<AiSettings>(file.settings);
   const [draftKey, setDraftKey] = useState(apiKey);
@@ -88,7 +91,22 @@ export function WorkspaceSettings({
   const [draftRaw, setDraftRaw] = useState<Record<string, unknown>>(() => file.raw);
   const asrModel =
     (draftPlugins["official-speech-asr"]?.preferences?.model as string | undefined) ?? DEFAULT_ASR_MODEL;
-  const mcpSnippet = generateMcpConfigSnippet("tools/mcp-server.mjs");
+  // T10（KF-013）：配置指向真实存在的绝对入口，不用仓库相对路径。
+  const [mcpPaths, setMcpPaths] = useState<{ scriptPath: string; libraryDir: string; scriptExists: boolean } | null>(null);
+  useEffect(() => {
+    if (!inShell()) return;
+    void mcpServerPaths()
+      .then(setMcpPaths)
+      .catch(() => setMcpPaths(null));
+  }, []);
+  const mcpSnippet = useMemo(
+    () =>
+      generateMcpConfigSnippet(
+        mcpPaths?.scriptPath ?? "tools/mcp-server.mjs",
+        mcpPaths?.libraryDir
+      ),
+    [mcpPaths]
+  );
 
   const copyMcpConfig = async () => {
     try {
@@ -662,6 +680,16 @@ export function WorkspaceSettings({
               </div>
 
               <div className="ws-settings-body">
+                {mcpServerEnabled === false ? (
+                  <p className="ws-hint" role="status">
+                    MCP 模块已停用——外部 Agent 的请求会被拒绝（在模块管理里重新启用即可恢复）。
+                  </p>
+                ) : null}
+                {mcpPaths && !mcpPaths.scriptExists ? (
+                  <p className="ws-hint" role="status">
+                    找不到服务端脚本（{mcpPaths.scriptPath}）。请改用源码方式运行，或在设置里确认安装包完整。
+                  </p>
+                ) : null}
                 <div className="ws-settings-row" style={{ padding: 0 }}>
                   <div className="ws-settings-label">
                     <strong>Model Context Protocol (stdio)</strong>

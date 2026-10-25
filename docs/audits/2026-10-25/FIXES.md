@@ -66,9 +66,34 @@
 - 全量 stale 循环排空：`syncCardEmbeddings` 改为 `while(true)` 循环，超过 20 条（单个 batch）的过期数据全部重算，不再只跑一个批次就退出。
 - 证据：Rust `card_content_change_invalidates_embedding_while_review_change_keeps_it`（正文变向量失效、评分变保留、删除清理、零维身份判别）；前端 `embeddingEngine.test.ts` 批量 stale 循环排空测试。
 
+### T09 · 官方模块开关生命周期（KF-012 P1）
+
+- 开关**改变执行**，不只是隐藏入口：
+  - `official-inbox-sniff`：`fetchPage` 执行层拒绝抓取并说明如何在设置里重新启用；
+  - `official-doc-extractor`：文档导入路径执行层拒绝并说明；
+  - `official-cognitive-brief`：简报页显示「模块已关闭」说明页，已收集素材与卡片不受影响；
+  - `official-review-fsrs`（复习）、`official-speech-asr`（ASR）：沿用既有接线（旧 `reviewPluginEnabled` 键仍兼容）；
+  - `official-mcp-server`：嵌入式 MCP 停用时请求被拒（`-32000`「已停用」），独立进程同样读取库目录下的 `settings.json` 判定停用并阻断。
+- 旧内容不变式：关闭模块后既有素材/卡片/笔记仍可读、可导出；停用只影响新执行。
+- 证据：`moduleLifecycle.matrix.test.ts` 8 项（6 个模块的默认态与启停判定、MCP 停用拒绝与启用放行）。
+
+### T10 · 安装后可用的 MCP 接入（KF-013 P1）
+
+- 配置指向**真实存在的绝对入口**：新增 `mcp_server_paths` 命令返回服务端脚本与库目录的绝对路径；
+  设置页用它生成配置（浏览器模式无绝对路径时退回相对路径并如实说明前提）。
+- 库目录显式传递：配置片段带 `--dir <库目录>`；`mcp-server.mjs` 支持 `--dir` 参数，
+  优先级高于环境变量——两个进程不再各读各的库。
+- 随包分发：`tauri.conf.json` 的 `bundle.resources` 带上 `tools/mcp-server.mjs`，
+  安装用户不用有源码仓库。
+- 停用吊销：独立 MCP 进程读库目录下的 `settings.json`，`official-mcp-server` 关闭即拒绝外部请求。
+- 证据：`tools/mcp_install_smoke.mjs` 10 项（任意 cwd 启动、initialize/list/search/read、
+  默认只读拒绝、显式授权写入并落进指定库、模块停用被阻断、重新启用恢复）——已接入 `verify_workbench.sh`。
+
 ## 有意未动 / 后续批次
 
-- **T05**（整份恢复一致性/失败报告）、**T09**（模块开关生命周期）、**T10**（MCP 安装分发）、**T11**（职责收口）、**T13**：依赖顺序未到，见 TASKS.md。
+- **T05**（整份恢复一致性/失败报告）、**T11**（职责收口）、**T13**：依赖顺序未到，见 TASKS.md。
+- **T09 剩余**：正在执行的任务被停止/完成、旧内容的索引重建策略、模块级并发上限未做；
+  独立 MCP 进程的吊销只做了「读 settings 判定」，未做进程级撤销凭据。
 - **T12**（证据收口）：桌面端「保存/关闭可等待路径」需要 Tauri 侧窗口关闭拦截，与 T12 一起验；
   本批的草稿镜像 + beforeunload 冲刷是降级保护，不声称等价。
 - 真实 WebDAV 服务、Windows/Linux 安装首启：保持「待真实验收」，不以合成测试冒充。

@@ -578,6 +578,11 @@ export function Workspace() {
   );
   const reviewEnabled = file.raw.reviewPluginEnabled === true;
   const asrEnabled = pluginEnabledIn(file.raw, "official-speech-asr");
+  // 官方模块开关（T09，收口审计 KF-012）：开关必须改变**执行**，不只是隐藏入口。
+  const sniffEnabled = pluginEnabledIn(file.raw, "official-inbox-sniff");
+  const docExtractorEnabled = pluginEnabledIn(file.raw, "official-doc-extractor");
+  const briefEnabled = pluginEnabledIn(file.raw, "official-cognitive-brief");
+  const mcpServerEnabled = pluginEnabledIn(file.raw, "official-mcp-server");
 
   let aiReady = false;
   try {
@@ -728,6 +733,10 @@ export function Workspace() {
   const fetchPage = async (entry: Entry) =>
     act(async () => {
       if (!inShell()) throw new Error("浏览器无法跨站抓取。请在桌面客户端抓取，或将正文粘贴到编辑器保存（桌面客户端下载见设置页）");
+      // 模块开关（T09）：嗅探器关闭时不发起抓取——执行层拒绝，不是只隐藏按钮
+      if (!sniffEnabled) {
+        throw new Error("链接嗅探模块已关闭（设置 → 模块管理）。请在设置中重新启用「多平台智能链接嗅探器」，或直接粘贴正文保存。");
+      }
       const platform = identifyPlatform(entry.url);
       if (platform === "github") {
         const repo = parseGitHubRepo(entry.url);
@@ -992,6 +1001,10 @@ export function Workspace() {
       return;
     }
     const buffer = await f.arrayBuffer();
+    // 模块开关（T09）：文档解析器关闭时不解析——执行层拒绝并说明如何开启
+    if (!docExtractorEnabled) {
+      throw new Error("文档解析模块已关闭（设置 → 模块管理）。请重新启用「本地文档大纲与切片解析器」后再导入文档。");
+    }
     const doc = await parseDocumentFile(f.name, buffer);
     const m = {
       ...makeMaterial({ title: doc.title, text: doc.markdown, url: "" }),
@@ -2222,6 +2235,7 @@ export function Workspace() {
                     downloadAnkiTsv(cards);
                     setNotice(`已导出 ${cards.length} 张卡片的 Anki 词表 (.tsv)`);
                   }}
+                  mcpServerEnabled={mcpServerEnabled}
                   onSave={async (next, key, enabled) => {
                     const updated = {
                       ...next,
@@ -2289,7 +2303,16 @@ export function Workspace() {
                   onPoll={pollSubscription}
                 />
               ) : null}
-              {page === "briefing" ? <Briefing cards={cards} onOpenCard={openCard} /> : null}
+              {page === "briefing" ? (
+                briefEnabled ? (
+                  <Briefing cards={cards} onOpenCard={openCard} />
+                ) : (
+                  <div className="ws-empty-guide">
+                    <p style={{ fontWeight: 500 }}>认知简报模块已关闭</p>
+                    <span style={{ fontSize: 12 }}>在设置 → 模块管理中重新启用「认知简报与知识周报」即可恢复。已收集的素材与卡片不受影响。</span>
+                  </div>
+                )
+              ) : null}
               {page === "review-facts" ? (
                 <ReviewFactsView materials={materials} cards={cards} goals={goalsState} />
               ) : null}

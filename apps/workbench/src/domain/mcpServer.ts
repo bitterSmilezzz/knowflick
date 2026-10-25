@@ -135,6 +135,9 @@ export interface McpRpcResponse {
 
 /**
  * 处理标准 MCP JSON-RPC 协议请求
+ *
+ * T09/KF-012：context.enabled 控制模块开关——停用时返回明确错误，
+ * 不静默消失（外部 Agent 猜「工具坏了」比「被拒绝」更糟）。
  */
 export async function handleMcpRequest(
   request: McpRpcRequest,
@@ -143,9 +146,25 @@ export async function handleMcpRequest(
     materials: RawMaterial[];
     onAddCard?: (card: KnowledgeCard) => Promise<void> | void;
     onAddMaterial?: (material: RawMaterial) => Promise<void> | void;
+    /** T09：嵌入式 MCP 的模块开关——来自 pluginSettings(official-mcp-server)。 */
+    enabled?: boolean;
+    /** 读传统单文件仓储 */
+    store?: { materials: RawMaterial[]; cards: KnowledgeCard[]; settings: unknown | null };
   }
 ): Promise<McpRpcResponse> {
   const { method, params, id = null } = request;
+
+  // 模块开关（T09）：停用时阻断请求，initialize 和 ping 不受影响
+  if (context.enabled === false && method !== "initialize" && method !== "ping") {
+    return {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32000,
+        message: "KnowFlick MCP 服务已被停用（设置中关闭了 official-mcp-server 模块），嵌入式连接已被阻断。",
+      },
+    };
+  }
 
   switch (method) {
     case "initialize": {
@@ -516,14 +535,21 @@ export async function handleMcpRequest(
   }
 }
 
-/** 生成可在 Claude Desktop / Cursor / DeepSeek Harness 中直接配置的 JSON 代码片段 */
-export function generateMcpConfigSnippet(serverScriptPath: string): string {
+/**
+ * 生成可在 Claude Desktop / Cursor / DeepSeek Harness 中直接配置的 JSON 代码片段。
+ *
+ * T10（KF-013）：配置必须指向**存在的绝对入口**并显式带上库目录——
+ * 外部客户端的工作目录不保证是仓库，仓内相对路径在安装用户机器上必然
+ * 「module not found」。库目录用 `--dir` 传过去，避免两个进程各读各的库。
+ */
+export function generateMcpConfigSnippet(serverScriptPath: string, libraryDir?: string): string {
+  const args = libraryDir ? [serverScriptPath, "--dir", libraryDir] : [serverScriptPath];
   return JSON.stringify(
     {
       mcpServers: {
         knowflick: {
           command: "node",
-          args: [serverScriptPath],
+          args,
         },
       },
     },

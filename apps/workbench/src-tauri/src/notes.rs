@@ -513,6 +513,20 @@ fn sync_restored_indexes(tx: &Connection, note: &NoteDto, revision: i64) -> Resu
     Ok(())
 }
 
+/// MCP 服务端入口的绝对路径（T10，审计 KF-013）：
+/// 安装用户复制到外部客户端的配置必须指向真实存在的文件，
+/// 不能是仓库相对路径（外部客户端的 cwd 不保证是仓库）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerPaths {
+    /// MCP 服务端脚本的绝对路径。
+    pub script_path: String,
+    /// 知识库目录的绝对路径（外部进程用它定位 knowflick.db）。
+    pub library_dir: String,
+    /// 脚本是否真的存在（不存在时界面要如实说明，而不是给一段不能用的配置）。
+    pub script_exists: bool,
+}
+
 // ---------- 知识库 ----------
 
 /// 恢复成员关系的单条输入（T04：addedAt 保留包内值，不换成恢复时刻）。

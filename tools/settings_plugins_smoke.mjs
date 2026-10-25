@@ -137,9 +137,17 @@ try {
 
   // MCP 面板
   await check('!!document.querySelector("[data-mcp-snippet]")', "MCP 配置片段面板渲染");
+  // T10（KF-013）：浏览器模式没有绝对路径可用——片段退回到仓库相对路径，
+  // 但**必须**说明这一点，而不是假装那就是安装用户的可用配置。
   await check(
-    'JSON.parse(document.querySelector("[data-mcp-snippet]").textContent).mcpServers.knowflick.args[0] === "tools/mcp-server.mjs"',
-    "MCP 片段指向 tools/mcp-server.mjs"
+    '(()=>{const a=JSON.parse(document.querySelector("[data-mcp-snippet]").textContent).mcpServers.knowflick.args;' +
+    'return a[0]==="tools/mcp-server.mjs" && typeof a[0]==="string"})()',
+    "MCP 片段给出服务端脚本路径"
+  );
+  await check(
+    '(()=>{const el=document.querySelector("[data-mcp-snippet]").closest("section");' +
+    'return !!el && /MCP|桌面|安装|源码/.test(el.textContent)})()',
+    "MCP 区块说明接入前提（不是无条件可用）"
   );
 
   // .kfbackup 往返：造样本 → 点真实导出拿到字节 → 清库 → 走真实恢复输入框
