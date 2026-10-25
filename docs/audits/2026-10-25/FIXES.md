@@ -147,6 +147,24 @@
 物理麦克风/Windows-Linux 安装首启/真实 WebDAV/检索基准语料/真机外部写入），
 以及复核命令。SKIP 项写明缺什么——不拿合成测试冒充真实验收。
 
+### T14 · 开发依赖告警修复（KF-016 P2）
+
+- **暴露面核对（先看实际调用，再动版本）**：受影响的是**测试工具链**
+  （`vitest@3.2.7` → `@vitest/mocker@3.2.7` + `tinypool@1.1.1`）。
+  `npm audit --omit=dev`（生产依赖：React / Tauri / 插件）**修复前后都是 0 告警**——
+  桌面安装包不在这几条公告的范围内。
+- **修复方式**：升级到 `vitest@5.0.5`（不是 `audit fix --force` 的整体强推——
+  只动 vitest 一个包，vite 保持 6.4.4，React/Tauri/Android 一律不动）。
+  升级后依赖树里 **tinypool 整个消失**（vitest 5 不再依赖它），
+  `@vitest/mocker` 升到 5.0.5（> 4.1.11，两条公告都解除）。
+- **兼容验证**：
+  - vitest 5 要求 Node `^22.12.0 || ^24 || >=26`；CI 的 `node-version: '22'`
+    实测解析到 **v22.23.3**（满足），本机 Node 26.7.0；
+  - 84 个测试文件 / 538 项用例**一处未改**全部通过（未出现收集变化）；
+  - `npm run build` 通过；`tools/verify_workbench.sh` 全门禁通过（含 15 套浏览器冒烟）。
+- **告警结果**：完整树 `found 0 vulnerabilities`；`--omit=dev` `found 0 vulnerabilities`。
+- 顺带修正 CI 任务名里过时的「13 套浏览器冒烟」→15 套。
+
 ## 有意未动 / 后续批次
 
 - **T13 剩余**：反向链接视图、引用失效的显式标记（当前只在点击时提示）、
