@@ -70,6 +70,7 @@ python3 -m unittest discover -s tools -p test_check_frontend_error_text.py
 python3 -m unittest discover -s tools -p test_check_user_facing_content.py
 python3 -m unittest discover -s tools -p test_check_destructive_confirm.py
 python3 -m unittest discover -s tools -p test_check_test_assertions.py
+python3 -m unittest discover -s tools -p test_check_responsibility.py
 python3 -m unittest discover -s tools -p test_check_source_labels.py
 python3 -m unittest discover -s tools -p test_windows_console.py
 python3 tools/check_doc_consistency.py
@@ -91,6 +92,8 @@ python3 tools/destructive_confirm_reverse_test.py
 python3 tools/check_test_assertions.py
 # 会被写进库的来源类型都要有中文标签——没登记的类型会显示英文内部名。
 python3 tools/check_source_labels.py
+# 职责边界（T11）：恢复/备份/保存的规则各只能有一处入口，纯规则模块不依赖宿主。
+python3 tools/check_responsibility.py
 
 # 全部浏览器冒烟：13 套界面级回归。
 # 它们要真实浏览器与运行中的 Vite，CI 环境两者都没有（脚本会 SKIP）；

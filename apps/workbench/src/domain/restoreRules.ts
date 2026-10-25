@@ -1,5 +1,13 @@
 import type { KnowledgeCard } from "./card";
-import type { RawMaterial } from "../shell/store";
+
+/**
+ * 规则只需要素材的这两个字段——按结构声明，不从宿主模块拿 DTO
+ * （T11：领域规则不该依赖具体 Tauri 模块）。
+ */
+export interface RestorableMaterial {
+  id: string;
+  rawText: string;
+}
 
 /**
  * 恢复备份时「哪些条目该被放回去」的判定。
@@ -12,7 +20,7 @@ import type { RawMaterial } from "../shell/store";
  * 判定标准只有一个：**这条记录在数据上是否可用**。
  * 标题/正文为空不代表它无效——那可能是用户自己建的空标题笔记。
  */
-export function restorableMaterials(materials: RawMaterial[]): RawMaterial[] {
+export function restorableMaterials<T extends RestorableMaterial>(materials: T[]): T[] {
   return materials.filter((m) => Boolean(m.id) && typeof m.rawText === "string");
 }
 

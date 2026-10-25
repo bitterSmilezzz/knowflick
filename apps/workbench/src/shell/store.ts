@@ -3,21 +3,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import type { KnowledgeCard } from "../domain/card";
 
-export interface RawMaterial {
-  id: string;
-  sourceType: string;
-  title: string;
-  sourceUrl?: string | null;
-  rawText: string;
-  cleanedMarkdown?: string | null;
-  contentHash: string;
-  mediaPath?: string | null;
-  mediaSizeBytes?: number;
-  metadataJson: string;
-  inboxStatus: "inbox" | "processed" | "dismissed";
-  createdAt: number;
-  updatedAt: number;
-}
+// 形状定义在 domain/dto.ts（T11）：宿主从领域层取，domain 不再依赖宿主。
+export type { RawMaterial } from "../domain/dto";
+import type { RawMaterial } from "../domain/dto";
 
 export interface DbStats {
   totalCards: number;
@@ -267,17 +255,8 @@ export interface ProfileClaim {
 
 // ---------- 目标（R4/D04） ----------
 
-export interface Goal {
-  id: string;
-  title: string;
-  doneCriteria: string;
-  scope: string | null;
-  createdAt: number;
-  achievedAt: number | null;
-  abandonedAt: number | null;
-  reviewNote: string;
-  evidenceCount: number;
-}
+export type { Goal } from "../domain/dto";
+import type { Goal } from "../domain/dto";
 
 export function goalCreate(goal: Omit<Goal, "createdAt" | "achievedAt" | "abandonedAt" | "reviewNote" | "evidenceCount">, dir?: string): Promise<number> {
   return invoke("goal_create_cmd", { goal, dir: dir ?? null });

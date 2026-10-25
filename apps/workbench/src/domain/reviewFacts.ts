@@ -7,8 +7,7 @@
  */
 
 import type { KnowledgeCard } from "./card";
-import type { RawMaterial } from "../shell/store";
-import type { Goal } from "../shell/store";
+import type { Goal, RawMaterial } from "./dto";
 
 export interface ReviewPeriod {
   /** 周期起点（含）。 */

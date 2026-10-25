@@ -88,6 +88,7 @@ iOS/iPadOS 尚未获准进入开发，平板需求先覆盖 Android 平板；iPa
 - [R2 实施进度与证据](R2_PROGRESS.md)：R2 七工作项的状态与剩余缺口（2026-10-25）。
 - [R3 实施进度与证据](R3_PROGRESS.md)：自选同步与移动基础的第一步及边界（2026-10-25）。
 - [R4 实施进度与证据](R4_PROGRESS.md)：复盘与外部工作流的第一步（2026-10-25）。
+- [验收运行记录](ACCEPTANCE_RUN.md)：门禁与冒烟的实际 PASS/FAIL/SKIP、审计项 ↔ 反例测试绑定、外部条件缺口（2026-10-26）。
 - [笔记与采集官方资料调研](research/2026-10-24-notes-and-capture.md)。
 - [本地知识与 AI 官方资料调研](research/2026-10-24-local-knowledge-and-ai.md)。
 

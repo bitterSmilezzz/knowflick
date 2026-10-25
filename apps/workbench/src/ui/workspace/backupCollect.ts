@@ -73,6 +73,23 @@ export interface BackupSnapshot {
   draft: BackupDraftFlushResult;
 }
 
+/**
+ * 导出回执的唯一口径（T11：顶栏与设置页共用同一句判定）。
+ *
+ * 完整备份与部分备份的措辞此前在两处各写一遍——改一处就漂移，
+ * 用户会在不同入口看到不同的说法。这里收敛成一个函数。
+ */
+export function backupReceipt(snapshot: BackupSnapshot, opts: { detailed?: boolean } = {}): string {
+  const gaps = backupCompleteness(snapshot);
+  const scale = opts.detailed
+    ? `${snapshot.notes.length} 篇笔记、${snapshot.cards.length} 张卡片、${snapshot.materials.length} 份素材、${snapshot.artifacts.length} 条产物、${snapshot.media.size} 个附件`
+    : `${snapshot.cards.length} 张卡片、${snapshot.materials.length} 份素材、${snapshot.artifacts.length} 条认知产物、${snapshot.notes.length} 篇笔记、${snapshot.media.size} 个附件`;
+  if (gaps.length === 0) {
+    return `已导出完整备份包 (.kfbackup)：${scale}，不含 API 密钥`;
+  }
+  return `已导出**部分**备份包：${scale}。${gaps.join("；")}——完整度缺口如上，不是完整备份。`;
+}
+
 /** 与设置页/顶栏共用的回执判定：任一项不为空就是「部分备份」。 */
 export function backupCompleteness(snapshot: BackupSnapshot): string[] {
   const gaps: string[] = [];

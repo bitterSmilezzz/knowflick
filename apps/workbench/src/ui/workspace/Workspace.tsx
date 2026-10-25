@@ -48,7 +48,7 @@ import {
 } from "./repository";
 import { downloadAnkiTsv, downloadMarkdownVault } from "../../domain/markdownExport";
 import { downloadKfBackup, restoreKfBackup } from "../../domain/systemBackup";
-import { backupCompleteness, collectBackupSnapshot } from "./backupCollect";
+import { backupCompleteness, backupReceipt, collectBackupSnapshot } from "./backupCollect";
 import { highlightText, extractSnippet } from "./HighlightText";
 import { Icon, sourceLabel, useSystemAppearance } from "./Icon";
 import { EntryInspector } from "./EntryInspector";
@@ -1484,13 +1484,7 @@ export function Workspace() {
                   // 权威仓储采集（T03）：不依赖界面是否打开过笔记页，含回收站与分页全量
                   const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
                   downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
-                  const gaps = backupCompleteness(snapshot);
-                  const scale = `${snapshot.cards.length} 张卡片、${snapshot.materials.length} 份素材、${snapshot.artifacts.length} 条认知产物、${snapshot.notes.length} 篇笔记、${snapshot.media.size} 个附件`;
-                  setNotice(
-                    gaps.length === 0
-                      ? `已导出完整备份包 (.kfbackup)：${scale}，不含 API 密钥`
-                      : `已导出**部分**备份包：${scale}。${gaps.join("；")}——完整度缺口如上，不是完整备份。`
-                  );
+                  setNotice(backupReceipt(snapshot));
                 })().catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
               }}
             >
@@ -2248,12 +2242,7 @@ export function Workspace() {
                     void (async () => {
                       const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
                       downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
-                      const gaps = backupCompleteness(snapshot);
-                      setNotice(
-                        gaps.length === 0
-                          ? `已导出完整备份包 (.kfbackup)：${snapshot.notes.length} 篇笔记、${snapshot.cards.length} 张卡片、${snapshot.materials.length} 份素材、${snapshot.artifacts.length} 条产物`
-                          : `已导出**部分**备份包。${gaps.join("；")}——完整度缺口如上，不是完整备份。`
-                      );
+                      setNotice(backupReceipt(snapshot, { detailed: true }));
                     })().catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
                   }}
                   onRestoreKfBackup={() => restoreRef.current?.click()}
