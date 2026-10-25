@@ -198,14 +198,22 @@ interface BrainDrawerProps {
   settings: AiSettings;
   apiKey: string;
   onOpenCard: (cardId: string) => void;
+  /** 打开原笔记（R4「每个引用可回原件」：笔记段落引用也要能跳回那篇笔记）。 */
+  onOpenNote?: (noteId: string) => void;
+  /** 现有笔记（判断引用是否还活着）。 */
+  notes?: Array<{ id: string; title: string }>;
   onNavigateSettings?: () => void;
 }
 
 interface Message {
   role: "user" | "assistant";
   content: string;
-  /** 引用：只留卡片 id 与当时的标题。整张卡存进来会在卡片被删后指向不存在的条目。 */
-  cited?: Array<{ id: string; headline: string }>;
+  /**
+   * 引用：只留 id 与当时的标题。整张卡存进来会在卡片被删后指向不存在的条目。
+   * `kind` 区分卡片与笔记——笔记段落同样进上下文（R2 分块召回），
+   * 也同样要能回原件（R4 退出门槛「每个引用可回原件」）。
+   */
+  cited?: Array<{ id: string; headline: string; kind?: "card" | "note" }>;
 }
 
 const CHAT_STORE_KEY = "knowflick.workspace.chat";
@@ -235,11 +243,15 @@ function loadChat(): Message[] {
       const role = row.role === "user" || row.role === "assistant" ? row.role : null;
       if (!role || typeof row.content !== "string" || !row.content.trim()) return [];
       const cited = Array.isArray(row.cited)
-        ? row.cited.flatMap((item): Array<{ id: string; headline: string }> => {
+        ? row.cited.flatMap((item): Array<{ id: string; headline: string; kind?: "card" | "note" }> => {
           if (!item || typeof item !== "object") return [];
           const cite = item as Record<string, unknown>;
           if (typeof cite.id !== "string" || !cite.id) return [];
-          return [{ id: cite.id, headline: typeof cite.headline === "string" ? cite.headline : "未命名卡片" }];
+          return [{
+            id: cite.id,
+            headline: typeof cite.headline === "string" ? cite.headline : "未命名条目",
+            kind: cite.kind === "note" ? "note" : "card",
+          }];
         })
         : undefined;
       // 旧版本存的是整张卡片对象；按 id/headline 取出来即可，
@@ -266,6 +278,8 @@ export function BrainAssistantDrawer({
   settings,
   apiKey,
   onOpenCard,
+  onOpenNote,
+  notes = [],
   onNavigateSettings,
 }: BrainDrawerProps) {
   const [question, setQuestion] = useState("");
@@ -380,7 +394,10 @@ export function BrainAssistantDrawer({
               ...matched.map((c, i) => `【卡片 ${i + 1}】${c.headline}\n${c.details.slice(0, 100)}...`),
               ...matchedArtifacts.map((a, i) => `【产物 ${i + 1}】${a.title}\n${a.contentMarkdown.slice(0, 100)}...`),
             ].join("\n\n"),
-          cited: matched.map((card) => ({ id: card.id, headline: card.headline })),
+          cited: [
+            ...matched.map((card) => ({ id: card.id, headline: card.headline, kind: "card" as const })),
+            ...matchedChunkTexts.map((hit) => ({ id: hit.noteId, headline: hit.noteTitle, kind: "note" as const })),
+          ],
         },
       ]);
       setLoading(false);
@@ -409,7 +426,10 @@ export function BrainAssistantDrawer({
         .join("\n---\n");
 
       const chunkContext = matchedChunkTexts
-        .map((hit, idx) => `[笔记段落 ${idx + 1}] 来自笔记「${hit.noteTitle}」:\n${hit.content.slice(0, 800)}`)
+        .map(
+          (hit, idx) =>
+            `[笔记段落 ${idx + 1}] 来自笔记「${hit.noteTitle}」（note_id: ${hit.noteId}）：\n${hit.content.slice(0, 800)}`
+        )
         .join("\n---\n");
 
       const userPrompt =
@@ -444,7 +464,10 @@ export function BrainAssistantDrawer({
         {
           role: "assistant",
           content: resp,
-          cited: matched.map((card) => ({ id: card.id, headline: card.headline })),
+          cited: [
+            ...matched.map((card) => ({ id: card.id, headline: card.headline, kind: "card" as const })),
+            ...matchedChunkTexts.map((hit) => ({ id: hit.noteId, headline: hit.noteTitle, kind: "note" as const })),
+          ],
         },
       ]);
     } catch (err) {
@@ -502,10 +525,30 @@ export function BrainAssistantDrawer({
                 <div className="ws-chat-bubble">{m.content}</div>
                 {m.cited && m.cited.length > 0 ? (
                   <div className="ws-chat-citations">
-                    <span className="ws-cite-title">参考卡片：</span>
+                    <span className="ws-cite-title">参考来源：</span>
                     {m.cited.map((c, i) => {
-                      // 卡片可能已被删除。点击不存在的 id 会静默跳到别的卡片，
+                      // 卡片/笔记可能已被删除。点击不存在的 id 会静默跳到别的条目，
                       // 比报错更糟——所以这里标出来并禁用。
+                      if (c.kind === "note") {
+                        const alive = notes.find((n) => n.id === c.id);
+                        if (!alive) {
+                          return (
+                            <span key={`note-${c.id}`} className="ws-cite-chip ws-cite-gone" aria-disabled="true">
+                              [{i + 1}] 笔记《{c.headline}》（已删除）
+                            </span>
+                          );
+                        }
+                        return (
+                          <button
+                            key={`note-${c.id}`}
+                            type="button"
+                            className="ws-cite-chip ws-cite-note"
+                            onClick={() => onOpenNote?.(c.id)}
+                          >
+                            [{i + 1}] 笔记《{alive.title || "无标题笔记"}》
+                          </button>
+                        );
+                      }
                       const alive = cards.find((card) => card.id === c.id);
                       if (!alive) {
                         return (

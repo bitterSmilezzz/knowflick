@@ -2369,6 +2369,8 @@ export function Workspace() {
                   settings={file.settings}
                   apiKey={apiKey}
                   onOpenCard={openCard}
+                  notes={notesState.notes.map((n) => ({ id: n.id, title: n.title }))}
+                  onOpenNote={openNoteById}
                   onNavigateSettings={() => navigate("settings")}
                 />
               ) : null}
