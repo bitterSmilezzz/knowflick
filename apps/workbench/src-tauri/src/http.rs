@@ -308,7 +308,7 @@ pub async fn webdav_put(
         .body(body)
         .send()
         .await
-        .map_err(|e| format!("WebDAV 上传失败：{e}"))?;
+        .map_err(|e| crate::error_text::explain_text("WebDAV 上传失败", &e.to_string()))?;
     let status = response.status().as_u16();
     let resp_body = response.bytes().await.unwrap_or_default().to_vec();
     Ok((status, resp_body))
