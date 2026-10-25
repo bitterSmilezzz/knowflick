@@ -40,6 +40,8 @@ fn main() {
             "backup_copy_to_directory",
             "webdav_upload_backup",
             "read_webdav_credential",
+            "e2ee_encrypt",
+            "e2ee_decrypt",
             "write_webdav_credential",
             "db_list_materials",
             "db_update_material_status",

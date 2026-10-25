@@ -1,4 +1,5 @@
 mod chunker;
+mod e2ee;
 mod error_text;
 mod asr;
 pub mod db;
@@ -177,6 +178,16 @@ fn read_api_key(dir: String) -> Result<String, String> {
 fn write_api_key(dir: String, value: String) -> Result<(), String> {
     let path = db::resolve_library_dir(Some(&dir));
     store::write_api_key(path.as_path(), &value)
+}
+
+#[tauri::command]
+fn e2ee_encrypt(passphrase: String, plaintext: Vec<u8>) -> Result<Vec<u8>, String> {
+    e2ee::encrypt(&passphrase, &plaintext)
+}
+
+#[tauri::command]
+fn e2ee_decrypt(passphrase: String, blob: Vec<u8>) -> Result<Vec<u8>, String> {
+    e2ee::decrypt(&passphrase, &blob)
 }
 
 #[tauri::command]
@@ -1397,6 +1408,8 @@ pub fn run() {
             backup_copy_to_directory,
             webdav_upload_backup,
             read_webdav_credential,
+            e2ee_encrypt,
+            e2ee_decrypt,
             write_webdav_credential,
             db_list_materials,
             db_update_material_status,

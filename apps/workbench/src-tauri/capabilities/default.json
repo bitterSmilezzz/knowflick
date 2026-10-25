@@ -49,6 +49,8 @@
     "allow-backup-copy-to-directory",
     "allow-webdav-upload-backup",
     "allow-read-webdav-credential",
+    "allow-e2ee-encrypt",
+    "allow-e2ee-decrypt",
     "allow-write-webdav-credential",
     "allow-db-save-subscription",
     "allow-db-search-cards-fts",
