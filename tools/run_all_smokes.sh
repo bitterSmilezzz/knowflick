@@ -40,6 +40,7 @@ SUITES=(
   import_ui_smoke
   notes_ui_smoke
   notes_editor_smoke
+  note_retrieval_smoke
   mailbox_ui_smoke
   review_ui_smoke
   scale_ui_smoke

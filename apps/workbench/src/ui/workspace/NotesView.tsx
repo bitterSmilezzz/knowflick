@@ -27,6 +27,7 @@ import {
   type SessionIo,
 } from "./noteSession";
 import { registerNotesDraftFlusher } from "./backupCollect";
+import { applyNoteReference, excerptOf } from "../../domain/noteReference";
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -72,9 +73,11 @@ interface Props {
   attachableMedia: AttachableMedia[];
   /** Workspace 用最新快照来导出备份；笔记状态由本视图自治加载。 */
   onStateChange?: (state: NotesState) => void;
+  /** T13/G01：外部（如全局搜索命中）要求打开的笔记 id。 */
+  openNoteId?: string | null;
 }
 
-export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
+export function NotesView({ dir, attachableMedia, onStateChange, openNoteId }: Props) {
   const [state, setState] = useState<NotesState>(emptyNotesState);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -90,6 +93,9 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
   const [notebookFilter, setNotebookFilter] = useState("");
   const [showTrash, setShowTrash] = useState(false);
   const [kbFormOpen, setKbFormOpen] = useState(false);
+  // T13/G01：应用引用——从别的笔记选一段，插进当前笔记（可回原件）。
+  const [refPickerOpen, setRefPickerOpen] = useState(false);
+  const [refQuery, setRefQuery] = useState("");
   const [kbName, setKbName] = useState("");
   const [viewError, setViewError] = useState("");
 
@@ -168,6 +174,7 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
     sessionsRef.current.clear();
     void refresh();
   }, [refresh]);
+
 
   // 外部改动（MCP、备份恢复、另一窗口）——只在编辑器干净时同步列表：
   // 脏草稿不打扰，等保存时由修订冲突兜底（会话负责拦住，不静默覆盖）。
@@ -250,6 +257,20 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
     },
     [attachSession, currentSession, syncFromSession]
   );
+
+  // T13/G01：全局搜索命中笔记后跳到笔记页——按 id 定位并打开那篇。
+  const pendingOpenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openNoteId) return;
+    pendingOpenRef.current = openNoteId;
+  }, [openNoteId]);
+  useEffect(() => {
+    if (!loaded || !pendingOpenRef.current) return;
+    const target = state.notes.find((n) => n.id === pendingOpenRef.current);
+    if (!target) return;
+    pendingOpenRef.current = null;
+    openNote(target);
+  }, [loaded, state.notes, openNote]);
 
   const createNote = useCallback(() => {
     const prev = currentSession();
@@ -350,6 +371,27 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
       setViewError(`移出知识库失败：${String(e)}`);
     }
   };
+
+  /** 引用另一篇笔记的一段到当前笔记（可回原件：knowflick://note/<id>）。 */
+  const insertNoteReference = (source: Note) => {
+    const s = currentSession();
+    if (!s) return;
+    const excerpt = excerptOf(source);
+    const nextBody = applyNoteReference(body, source, excerpt);
+    setRefPickerOpen(false);
+    setRefQuery("");
+    onEdit(title, nextBody);
+    setStatusNote(`已引用《${source.title || "无标题笔记"}》——引用块里可点「回原件」跳回来源。`);
+  };
+
+  /** 可引用的其它笔记（排除当前这篇与回收站里的）。 */
+  const referenceCandidates = useMemo(() => {
+    const q = refQuery.trim().toLowerCase();
+    return state.notes
+      .filter((n) => !n.isDeleted && n.id !== selectedId)
+      .filter((n) => !q || `${n.title}\n${n.bodyMd}`.toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [state.notes, refQuery, selectedId]);
 
   const insertAttachment = (path: string) => {
     if (!currentSession()) return;
@@ -616,6 +658,41 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
               onChange={(e) => onEdit(title, e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") e.currentTarget.blur(); }}
             />
+            <div className="nv-insert-row" aria-label="引用其它笔记">
+              <span className="nv-kbs-label">引用：</span>
+              <button
+                type="button"
+                className="ws-bordered"
+                onClick={() => setRefPickerOpen(!refPickerOpen)}
+              >
+                {refPickerOpen ? "收起引用列表" : "引用另一篇笔记"}
+              </button>
+              {refPickerOpen ? (
+                <span className="nv-ref-picker">
+                  <input
+                    aria-label="搜索要引用的笔记"
+                    placeholder="搜索笔记标题或正文…"
+                    value={refQuery}
+                    onChange={(e) => setRefQuery(e.target.value)}
+                  />
+                  {referenceCandidates.length === 0 ? (
+                    <span className="ws-hint">没有可引用的笔记（库里只有这一篇，或没有匹配）。</span>
+                  ) : (
+                    referenceCandidates.map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        className="nv-ref-item"
+                        onClick={() => insertNoteReference(n)}
+                      >
+                        《{n.title || "无标题笔记"}》
+                        <span className="ws-hint">{excerptOf(n, 40)}</span>
+                      </button>
+                    ))
+                  )}
+                </span>
+              ) : null}
+            </div>
             {attachableMedia.length > 0 ? (
               <div className="nv-insert-row" aria-label="插入附件引用">
                 <span className="nv-kbs-label">插入附件引用：</span>
@@ -638,6 +715,16 @@ export function NotesView({ dir, attachableMedia, onStateChange }: Props) {
               <MarkdownRenderer
                 text={body}
                 resolveAttachment={(p) => objectUrls.get(p) ?? null}
+                onOpenNote={(noteId) => {
+                  // 「回原件」：跳到被引用的那篇笔记（引用带 id，改标题不破坏引用）
+                  const target = state.notes.find((n) => n.id === noteId);
+                  if (target) {
+                    openNote(target);
+                    setStatusNote(`已跳到《${target.title || "无标题笔记"}》。`);
+                  } else {
+                    setStatusNote("引用的原笔记已不在库里（可能被删除）——这条引用已失效。");
+                  }
+                }}
               />
             </details>
             {selected ? (

@@ -31,6 +31,7 @@ import {
 import {
   entriesFor,
   filterEntries,
+  filterByKnowledgeBase,
   makeMaterial,
   materialToCard,
   collectionNames,
@@ -141,6 +142,8 @@ export function Workspace() {
   const [page, setPage] = useState<Page>("inbox");
   const [selectedId, setSelectedId] = useState("");
   const [query, setQuery] = useState("");
+  // T13（G01）：知识库范围——「选定知识库 → 搜原文」这一步此前没有界面入口。
+  const [kbScope, setKbScope] = useState<string>("");
   const [tag, setTag] = useState("");
   const [source, setSource] = useState("all");
   const [capture, setCapture] = useState(false);
@@ -476,10 +479,31 @@ export function Workspace() {
     [materials, cards, personalizationOn]
   );
 
-  const entries = useMemo(() => entriesFor(materials, cards, collection), [materials, cards, collection]);
+  // 笔记 id → 所属库 id 列表（知识库范围过滤用；membership 的键是 `${kbId}\n${noteId}`）
+  const noteKbIndex = useMemo(() => {
+    const index: Record<string, string[]> = {};
+    for (const key of Object.keys(notesState.membership)) {
+      const sep = key.indexOf("\n");
+      if (sep <= 0) continue;
+      const kbId = key.slice(0, sep);
+      const noteId = key.slice(sep + 1);
+      (index[noteId] ??= []).push(kbId);
+    }
+    return index;
+  }, [notesState.membership]);
+
+  const entries = useMemo(
+    () => entriesFor(materials, cards, collection, notesState.notes),
+    [materials, cards, collection, notesState.notes]
+  );
   const filtered = useMemo(
-    () => filterEntries(entries, query, tag, source, indexedMaterialIds),
-    [entries, query, tag, source, indexedMaterialIds]
+    () =>
+      filterByKnowledgeBase(
+        filterEntries(entries, query, tag, source, indexedMaterialIds),
+        kbScope || null,
+        noteKbIndex
+      ),
+    [entries, query, tag, source, indexedMaterialIds, kbScope, noteKbIndex]
   );
 
   useEffect(() => setVisibleCount(60), [page, query, tag, source]);
@@ -1370,6 +1394,16 @@ export function Workspace() {
     setSource("card");
   };
 
+  /**
+   * 打开某篇笔记（T13/G01：搜原文 → 打开笔记）。
+   * 笔记页自己按 id 定位并载入——工作台不复制笔记内容，只传「要看哪一篇」。
+   */
+  const [openNoteId, setOpenNoteId] = useState<string | null>(null);
+  const openNoteById = (id: string) => {
+    setOpenNoteId(id);
+    navigate("notes");
+  };
+
   const theme = normalizePaperTheme(file.settings.paperTheme);
   const appearance = theme === "SYSTEM" ? systemAppearance : theme === "DARK" ? "dark" : "light";
   const navMode = layout.navMode;
@@ -1505,7 +1539,10 @@ export function Workspace() {
             </DisabledEntry>
           )}
           <button type="button" className="ws-capture-mode" aria-label="笔记转知识卡" disabled={loading || busy} title="把 Markdown 笔记拆成可复习的知识卡" onClick={() => notesRef.current?.click()}>
-            <Icon name="card" size={14} /><span>笔记</span>
+            {/* 可见文字带出动作（它不是一种「记法」，是把 Markdown 笔记拆成知识卡）：
+                写成「笔记」会与列表筛选页签的「笔记」同名——同一屏两个「笔记」
+                指两件事，品味门禁的「重复 CTA」判定也会报红。 */}
+            <Icon name="card" size={14} /><span>笔记转卡</span>
           </button>
         </div>
         <div className="ws-nav-scroll">
@@ -1808,6 +1845,8 @@ export function Workspace() {
                   ["all", "全部"],
                   ["material", "素材"],
                   ["card", "知识卡"],
+                  // T13（G01）：笔记进入全局检索——长文笔记里的结论此前搜不到。
+                  ["note", "笔记"],
                   // 订阅是「来源」维度，不是内容类型；单独一项便于清理自动收进来的内容。
                   ["subscription", "订阅"],
                 ].map(([id, label]) => (
@@ -1816,6 +1855,21 @@ export function Workspace() {
                   </button>
                 ))}
               </div>
+              {notesState.knowledgeBases.length > 0 ? (
+                <label className="ws-kb-scope">
+                  <span>知识库</span>
+                  <select
+                    aria-label="按知识库筛选"
+                    value={kbScope}
+                    onChange={(e) => setKbScope(e.target.value)}
+                  >
+                    <option value="">全部</option>
+                    {notesState.knowledgeBases.map((k) => (
+                      <option key={k.id} value={k.id}>{k.name}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <span>最近更新</span>
             </div>
 
@@ -1964,11 +2018,14 @@ export function Workspace() {
               ) : (
                 <>
                   {filtered.slice(0, visibleCount).map((e) => {
-                    const meta = sourceLabel(
-                      e.kind === "card" ? "card" : (e.original as RawMaterial).sourceType,
-                      e.url,
-                      e.kind === "material" ? subscriptionIdOf(e.original as RawMaterial) : null
-                    );
+                    const meta =
+                      e.kind === "note"
+                        ? { label: e.category || "笔记", icon: "note" }
+                        : sourceLabel(
+                            e.kind === "card" ? "card" : (e.original as RawMaterial).sourceType,
+                            e.url,
+                            e.kind === "material" ? subscriptionIdOf(e.original as RawMaterial) : null
+                          );
                     const isSelected = selected?.id === e.id;
                     return (
                       <button
@@ -1989,6 +2046,8 @@ export function Workspace() {
                           }
                           setBatchIds(new Set());
                           setSelectedId(e.id);
+                          // T13（G01）：笔记命中直接打开那篇笔记（搜原文 → 打开笔记）
+                          if (e.kind === "note") openNoteById(e.id);
                         }}
                       >
                         <span className="ws-entry-top">
@@ -2260,6 +2319,7 @@ export function Workspace() {
                     .filter((m) => m.mediaPath)
                     .map((m) => ({ path: m.mediaPath as string, label: m.title }))}
                   onStateChange={setNotesState}
+                  openNoteId={openNoteId}
                 />
               ) : null}
               {page === "mail" ? (

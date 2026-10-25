@@ -10,7 +10,11 @@ const MEDIA_PATH_RE = /^media\/(audio|image|ink)\/[A-Za-z0-9._-]+$/;
  * 拒绝外链图片（与下方链接的安全口径一致：非 http/https 不给可执行导航），
  * 也拒绝任何非 media/ 路径，避免被用来探测文件系统。
  */
-function renderInline(text: string, resolveAttachment?: (path: string) => string | null): React.ReactNode {
+function renderInline(
+  text: string,
+  resolveAttachment?: (path: string) => string | null,
+  onOpenNote?: (noteId: string) => void
+): React.ReactNode {
   // 正则匹配: **bold**, `code`, [label](url), ![alt](media/...)
   const regex = /(!\[[^\]]*\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
   const parts = text.split(regex);
@@ -33,6 +37,22 @@ function renderInline(text: string, resolveAttachment?: (path: string) => string
     }
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
+      // 库内笔记引用（T13/G01）：knowflick://note/<id> 是应用内部导航，
+      // 交给调用方处理——外链协议仍然只放行 http/https（导入的邮件里
+      // 可能有任意 scheme 的链接，不能给它们可执行导航）。
+      if (linkMatch[2].startsWith("knowflick://note/") && onOpenNote) {
+        const noteId = linkMatch[2].slice("knowflick://note/".length);
+        return (
+          <button
+            key={idx}
+            type="button"
+            className="ws-md-note-link"
+            onClick={() => onOpenNote(noteId)}
+          >
+            {linkMatch[1]}
+          </button>
+        );
+      }
       // Imported mail and AI summaries can contain arbitrary Markdown links.
       // Render unsupported schemes as text instead of executable navigation.
       try {
@@ -51,10 +71,12 @@ function renderInline(text: string, resolveAttachment?: (path: string) => string
 /**
  * 结构化轻量 Markdown 渲染器 (纯 React 节点，免 XSS 风险)
  */
-export function MarkdownRenderer({ text, resolveAttachment }: {
+export function MarkdownRenderer({ text, resolveAttachment, onOpenNote }: {
   text: string;
   /** 给了才把正文里的 `![](media/…)` 渲染成 <img>（见 renderInline 的安全口径）。 */
   resolveAttachment?: (path: string) => string | null;
+  /** 给了才把 `knowflick://note/<id>` 渲染成可点的内部链接（T13/G01）。 */
+  onOpenNote?: (noteId: string) => void;
 }): React.ReactElement {
   if (!text) return <div className="ws-prose" />;
 
@@ -93,8 +115,8 @@ export function MarkdownRenderer({ text, resolveAttachment }: {
     const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       elements.push(heading[1].length <= 2
-        ? <h2 key={`heading-${i}`}>{renderInline(heading[2], resolveAttachment)}</h2>
-        : <h3 key={`heading-${i}`}>{renderInline(heading[2], resolveAttachment)}</h3>);
+        ? <h2 key={`heading-${i}`}>{renderInline(heading[2], resolveAttachment, onOpenNote)}</h2>
+        : <h3 key={`heading-${i}`}>{renderInline(heading[2], resolveAttachment, onOpenNote)}</h3>);
       i++;
       continue;
     }
@@ -107,7 +129,7 @@ export function MarkdownRenderer({ text, resolveAttachment }: {
       }
       elements.push(
         <blockquote key={`quote-${i}`}>
-          <p>{renderInline(quoteLines.join(" "), resolveAttachment)}</p>
+          <p>{renderInline(quoteLines.join(" "), resolveAttachment, onOpenNote)}</p>
         </blockquote>
       );
       continue;
@@ -123,7 +145,7 @@ export function MarkdownRenderer({ text, resolveAttachment }: {
       elements.push(
         <ul key={`ul-${i}`}>
           {listItems.map((item, idx) => (
-            <li key={idx}>{renderInline(item, resolveAttachment)}</li>
+            <li key={idx}>{renderInline(item, resolveAttachment, onOpenNote)}</li>
           ))}
         </ul>
       );
@@ -140,7 +162,7 @@ export function MarkdownRenderer({ text, resolveAttachment }: {
       elements.push(
         <ol key={`ol-${i}`}>
           {listItems.map((item, idx) => (
-            <li key={idx}>{renderInline(item, resolveAttachment)}</li>
+            <li key={idx}>{renderInline(item, resolveAttachment, onOpenNote)}</li>
           ))}
         </ol>
       );
@@ -161,7 +183,7 @@ export function MarkdownRenderer({ text, resolveAttachment }: {
       paraLines.push(lines[i]);
       i++;
     }
-    elements.push(<p key={`p-${i}`}>{renderInline(paraLines.join("\n"), resolveAttachment)}</p>);
+    elements.push(<p key={`p-${i}`}>{renderInline(paraLines.join("\n"), resolveAttachment, onOpenNote)}</p>);
   }
 
   return <div className="ws-prose">{elements}</div>;

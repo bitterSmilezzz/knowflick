@@ -1,9 +1,10 @@
 import { cardFromJson, type KnowledgeCard } from "../../domain/card";
 import { contentHashOf } from "../../domain/contentHash";
 import type { RawMaterial } from "../../shell/store";
+import type { Note } from "../../domain/note";
 
 export type Collection = "inbox" | "library" | "favorites" | "archive";
-export type Entry = { id: string; kind: "material" | "card"; title: string; text: string; searchText?: string; category: string; tags: string[]; date: number; url: string; original: RawMaterial | KnowledgeCard };
+export type Entry = { id: string; kind: "material" | "card" | "note"; title: string; text: string; searchText?: string; category: string; tags: string[]; date: number; url: string; original: RawMaterial | KnowledgeCard | Note };
 export const collectionNames: Record<Collection, string> = { inbox: "收件箱", library: "全部知识", favorites: "收藏", archive: "已归档" };
 /**
  * 素材的可搜索文本。
@@ -49,10 +50,45 @@ function cardSearchText(c: KnowledgeCard): string {
   return [c.summary, c.details, ...links].filter(Boolean).join("\n");
 }
 
-export function entriesFor(materials: RawMaterial[], cards: KnowledgeCard[], collection: Collection): Entry[] {
+/**
+ * 集合里的条目。
+ *
+ * T13（G01）：笔记进入全局检索——此前「全部知识」只搜素材与卡片，
+ * 笔记里的结论在全局搜索里根本搜不到，等于长文笔记等于没有。
+ * `notes` 与 `kbIds` 可选：不传就是旧行为（不改变既有调用方）。
+ */
+export function entriesFor(
+  materials: RawMaterial[],
+  cards: KnowledgeCard[],
+  collection: Collection,
+  notes: Note[] = []
+): Entry[] {
   const materialEntries: Entry[] = materials.filter(m => collection === "inbox" ? m.inboxStatus === "inbox" : collection === "archive" ? m.inboxStatus !== "inbox" : true).map(m => ({ id: m.id, kind: "material", title: m.title, text: m.rawText, searchText: materialSearchText(m), category: m.sourceType === "email" ? "邮件" : m.sourceType === "email-digest" ? "邮件归纳" : m.sourceType === "web" ? "网页剪藏" : m.sourceType === "document" ? "导入文档" : m.sourceType === "image" ? "图片" : m.sourceType === "audio" ? "语音笔记" : m.sourceType === "ink" ? "手写笔记" : "闪念", tags: [], date: m.updatedAt, url: m.sourceUrl || "", original: m }));
   const cardEntries: Entry[] = cards.filter(c => collection !== "favorites" || c.isFavorite).map(c => ({ id: c.id, kind: "card", title: c.headline, text: c.details, searchText: cardSearchText(c), category: c.category || "未分类", tags: c.tags || [], date: c.editedAt || c.createdAt, url: c.links[0]?.url || "", original: c }));
-  return (collection === "favorites" ? cardEntries : collection === "inbox" || collection === "archive" ? materialEntries : [...materialEntries, ...cardEntries]).sort((a, b) => b.date - a.date || a.id.localeCompare(b.id));
+  // 笔记条目：回收站里的不进检索（契约「删除后搜不到」）；笔记本作为分类。
+  const noteEntries: Entry[] = notes
+    .filter(n => !n.isDeleted)
+    .map(n => ({
+      id: n.id,
+      kind: "note" as const,
+      title: n.title || "无标题笔记",
+      text: n.bodyMd,
+      searchText: `${n.title}
+${n.bodyMd}
+${n.tags.join(" ")}`,
+      category: n.notebook || "未分笔记本",
+      tags: n.tags,
+      date: n.updatedAt,
+      url: "",
+      original: n,
+    }));
+  const base =
+    collection === "favorites"
+      ? cardEntries
+      : collection === "inbox" || collection === "archive"
+        ? materialEntries
+        : [...materialEntries, ...cardEntries, ...noteEntries];
+  return base.sort((a, b) => b.date - a.date || a.id.localeCompare(b.id));
 }
 /**
  * 过滤当前集合的条目。
@@ -75,6 +111,7 @@ export function filterEntries(
     if (tag && !(e.category === tag || e.tags.includes(tag))) return false;
     if (source === "card" && e.kind !== "card") return false;
     if (source === "material" && e.kind !== "material") return false;
+    if (source === "note" && e.kind !== "note") return false;
     if (source === "subscription") {
       // 「订阅」不是一种 kind，而是素材的来源属性，所以要看 metadata。
       if (e.kind !== "material") return false;
@@ -84,6 +121,24 @@ export function filterEntries(
     return tokens.every(t => `${e.title}\n${e.searchText ?? e.text}\n${e.category}\n${e.tags.join(" ")}\n${e.url}`.toLocaleLowerCase().includes(t));
   });
 }
+/**
+ * 知识库范围过滤（T13/G01：选定知识库 → 搜原文）。
+ *
+ * 知识库只收纳笔记，所以选定一个库时结果只有该库的笔记；
+ * `kbIds` 是「笔记 id → 所属库 id 列表」的映射（来自 kb_membership）。
+ */
+export function filterByKnowledgeBase(
+  entries: Entry[],
+  kbId: string | null,
+  kbIds: Record<string, string[]>
+): Entry[] {
+  if (!kbId) return entries;
+  return entries.filter((e) => {
+    if (e.kind !== "note") return false;
+    return (kbIds[e.id] ?? []).includes(kbId);
+  });
+}
+
 export function makeMaterial(input: { title: string; text: string; url: string }): RawMaterial {
   const text = input.text.trim();
   if (!text) throw new Error("请填写正文后再保存");

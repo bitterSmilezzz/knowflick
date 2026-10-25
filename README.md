@@ -71,7 +71,7 @@ cd ../..
 ./tools/verify_workbench.sh             # 门禁：npm test + tsc + cargo test + 冒烟套件
 cd apps/workbench && npm run tauri build -- --bundles dmg   # 本系统那一档安装包
 
-# 门禁里还包含 14 套浏览器冒烟（界面级回归）。它们要真实浏览器与运行中的 Vite，
+# 门禁里还包含 15 套浏览器冒烟（界面级回归）。它们要真实浏览器与运行中的 Vite，
 # 所以开着一个 dev server 时才会跑；缺工具就明确 SKIP，不会让门禁红掉。
 npm run dev &                            # 另开一个终端：前端 dev server
 ./tools/run_all_smokes.sh                # 只跑浏览器冒烟
