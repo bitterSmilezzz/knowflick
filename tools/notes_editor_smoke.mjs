@@ -57,6 +57,18 @@ try {
   await b("open", url);
   await b("click", ".ws-nav-group[aria-label=笔记] .ws-nav-row");
   await check("(()=>{const t=document.querySelector('.nv-entry-title');return t && t.textContent.includes('冒烟笔记')})()", "刷新后笔记还在列表");
+  // **可见性**，不只是「DOM 里有这段字」。
+  // 列表行曾被 `.ws button` 的固定高度压成 30px，标题里的 overflow:hidden
+  // 让 flex 子项的自动最小尺寸归零 → 标题高度 0，肉眼只看到一条日期细缝，
+  // 而上面那条断言照样绿（文字确实在 DOM 里）。所以这里量实际渲染高度。
+  await check(
+    "(()=>{const t=document.querySelector('.nv-entry-title');if(!t)return false;const h=t.getBoundingClientRect().height;return h>=12})()",
+    "笔记列表的标题**可见**（不是只有 DOM 里有文字）"
+  );
+  await check(
+    "(()=>{const l=document.querySelector('.nv-entries');if(!l)return false;return l.scrollWidth<=Math.round(l.getBoundingClientRect().width)+1})()",
+    "笔记列表不横向溢出（标题不被撑出滚动条）"
+  );
   await b("eval", "(()=>{document.querySelector('.nv-entry').click();return true})()");
   await check("document.querySelector('.nv-body')?.value.includes('北极星计划备忘')", "刷新后正文完整恢复");
   await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const n=s.notes[0];return n && n.currentRevision >= 1})()", "修订号已落盘（>=1）");

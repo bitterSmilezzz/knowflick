@@ -2757,10 +2757,23 @@ body.capsule-window { overflow: hidden; background: transparent; }
 }
 .nv-trash-toggle[aria-pressed="true"] { color: var(--ink); }
 .nv-error { color: var(--danger); font-size: 12px; margin: 0; white-space: pre-wrap; }
-.nv-entries { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+/* 笔记列表要占满左栏剩余高度并自己滚动。
+   之前它没有 flex: 1，于是作为 .nv-list 的 flex 子项被压到 30px；
+   条目里的标题/摘要带 overflow: hidden（自动最小尺寸归零）跟着塌成 0 高——
+   结果列表里只剩一条日期细缝，标题整批不可见。
+   条目本身也要禁止收缩：它们在可滚动的列里，应当按内容高度排布。 */
+.nv-entries {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .nv-entry {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   gap: 3px;
   text-align: left;
   background: none;
@@ -2769,9 +2782,29 @@ body.capsule-window { overflow: hidden; background: transparent; }
   padding: 8px 10px;
   cursor: pointer;
 }
+/* 列表行不是控件：退出 `.ws button` 的固定高度（否则整行被压成 30px，
+   标题与摘要跟着塌掉——笔记列表里只剩一条日期细缝）。与 `.ws button.ws-entry`
+   同构：选择器要多带一个类才能压过 `.ws button`。 */
+.ws button.nv-entry {
+  height: auto;
+  /* `.ws button` 是横向 flex 控件（align-items/justify-content: center）。
+     笔记条目是**纵向**列表行：沿用 center 会让标题在水平方向居中——
+     加上 nowrap 子项不肯收缩，标题就溢出容器并把整列撑出横向滚动条。 */
+  align-items: stretch;
+  justify-content: flex-start;
+}
 .nv-entry[aria-selected="true"] { border-color: var(--line); background: var(--sunken); }
-.nv-entry-title { font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nv-entry-preview { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 标题/摘要不能被压扁：overflow:hidden 让它们成为滚动容器，
+   flex 列布局里自动最小尺寸归零 → 整行塌成 0 高（列表里标题全消失）。
+   flex-shrink:0 保留省略号行为，同时保证行按内容高度排布。 */
+.nv-entry-title {
+  font-size: 13px; font-weight: 600; color: var(--ink);
+  flex-shrink: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nv-entry-preview {
+  font-size: 12px; color: var(--muted);
+  flex-shrink: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .nv-entry-meta { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
 .nv-restore { color: var(--accent-text); cursor: pointer; }
 .nv-editor { display: flex; flex-direction: column; min-height: 0; padding: 16px 20px; gap: 8px; }
