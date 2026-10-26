@@ -104,7 +104,24 @@ const [gx, gy, gw, gh] = geomLine.slice(6).split(" ").map(Number);
 pass(`KnowFlick 窗口在屏幕上（${gx}, ${gy}, ${gw}×${gh}）`);
 
 // --- 4. 确认拍到的是 KnowFlick：标题栏要有红黄绿三个交通灯 ---
-const marker = await screenShowsKnowFlick(gx, gy, 140, 30, join(workDir, "marker.png"));
+//
+// 焦点被抢是**环境条件**（门禁里 14 套浏览器冒烟之后浏览器还开着），
+// 不是产品缺陷。所以重试几次、每次重新抬窗，而不是一次不成就 SKIP——
+// 但重试仍不成时照旧 SKIP（拍不到就是验不了，绝不假通过）。
+async function raiseWindow() {
+  await exec("osascript", ["-e", 'tell application "KnowFlick" to activate'], { timeout: 20_000 })
+    .catch(() => {});
+  await sleep(800);
+  await exec("osascript", [
+    "-e", 'tell application "System Events" to tell process "knowflick-workbench" to perform action "AXRaise" of window 1',
+  ], { timeout: 20_000 }).catch(() => {});
+  await sleep(1200);
+}
+let marker = await screenShowsKnowFlick(gx, gy, 140, 30, join(workDir, "marker.png"));
+for (let attempt = 0; attempt < 3 && !marker.isKnowFlick; attempt++) {
+  await raiseWindow();
+  marker = await screenShowsKnowFlick(gx, gy, 140, 30, join(workDir, "marker.png"));
+}
 if (!marker.isKnowFlick) {
   skip(
     `标题栏没有 KnowFlick 的交通灯（红${marker.red} 黄${marker.yellow} 绿${marker.green}）——` +
@@ -148,23 +165,42 @@ const countBefore = before.prepare("SELECT COUNT(*) AS n FROM cards WHERE is_del
 before.close();
 
 const headline = `外部写入验证 ${randomUUID().slice(0, 8)}`;
-const mcp = execFile("node", [join(process.cwd(), "tools/mcp-server.mjs")], {
-  env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libDir },
-});
-let out = "";
-mcp.stdout.on("data", (d) => { out += d.toString(); });
-mcp.stderr.on("data", () => {});
-mcp.stdin.write(
-  JSON.stringify({
-    jsonrpc: "2.0", id: 1, method: "tools/call",
-    params: { name: "create_flash_card", arguments: { headline, details: "外部进程写入的正文", category: "计算机" } },
-  }) + "\n"
-);
-await sleep(2000);
-mcp.stdin.end();
-await sleep(400);
+
+/** 用**已安装应用里**的那份服务端脚本——T10 承诺的是「安装用户可用」，
+ *  拿仓库里的源码脚本去验，等于没验到随包分发这件事。 */
+const installedScript = "/Applications/KnowFlick.app/Contents/Resources/tools/mcp-server.mjs";
+const serverScript = existsSync(installedScript) ? installedScript : join(process.cwd(), "tools/mcp-server.mjs");
+pass(`MCP 服务端脚本：${serverScript}${serverScript === installedScript ? "（已安装应用内随包分发）" : "（仓库源码，安装包未找到）"}`);
+
+async function mcpCall(env, request) {
+  const child = execFile("node", [serverScript], {
+    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libDir, ...env },
+  });
+  let out = "";
+  child.stdout.on("data", (d) => { out += d.toString(); });
+  child.stderr.on("data", () => {});
+  child.stdin.write(JSON.stringify(request) + "\n");
+  await sleep(2000);
+  child.stdin.end();
+  await sleep(400);
+  return out;
+}
+
+const writeRequest = {
+  jsonrpc: "2.0", id: 1, method: "tools/call",
+  params: { name: "create_flash_card", arguments: { headline, details: "外部进程写入的正文", category: "计算机" } },
+};
+
+// 1. 默认只读：未授权时写工具必须被明确拒绝（E06 口径）
+const deniedOut = await mcpCall({}, writeRequest);
+assert.ok(deniedOut.includes("写入被拒绝") && deniedOut.includes("显式授权"),
+  `未授权时写工具应被明确拒绝，实际：${deniedOut.slice(0, 200)}`);
+pass("MCP 默认只读：未授权的写工具被明确拒绝并说明开启方法");
+
+// 2. 显式授权后写入成功（独立进程，直接写 SQLite）
+const out = await mcpCall({ KNOWFLICK_MCP_ALLOW: "card" }, writeRequest);
 assert.ok(out.includes("成功"), `MCP 写入失败：${out.slice(0, 300)}`);
-pass("MCP server 写入成功（独立进程，直接写 SQLite）");
+pass("MCP server 显式授权后写入成功（独立进程，直接写 SQLite）");
 
 const after = new DatabaseSync(dbPath, { readOnly: true });
 const countAfter = after.prepare("SELECT COUNT(*) AS n FROM cards WHERE is_deleted = 0").get().n;
@@ -183,4 +219,15 @@ for (let i = 0; i < 10; i++) {
 }
 assert.ok(refreshed, "外部写入后界面没有自动刷新（10 次轮询内指纹未变）");
 pass("外部写入后界面自动刷新（无需切页或重启）");
+
+// --- 9. 清理：测试卡不该留在用户真实库里 ---
+// 这一套跑的是**用户自己的库**（不是临时库）——留下「外部写入验证 xxxx」
+// 就是往用户数据里塞垃圾。验完就删干净（软删也算留痕，直接硬删这一行）。
+const cleanup = new DatabaseSync(dbPath);
+const removed = cleanup.prepare("DELETE FROM cards WHERE headline = ?").run(headline).changes;
+const fts = cleanup.prepare("DELETE FROM fts_cards WHERE headline = ?").run(headline).changes;
+cleanup.close();
+assert.equal(removed, 1, "测试卡应被删掉");
+pass(`测试卡已从用户库里清理（cards ${removed} 行、fts_cards ${fts} 行）`);
+
 console.log(`Desktop external write smoke: ${count} checks passed.`);

@@ -10,7 +10,7 @@
 ## 一、本轮门禁运行（工作台第一套）
 
 - 平台：macOS 14（darwin arm64），Node 26.7.0，Rust stable，Python 3.15
-- 分支：`workbench/second-brain-validation`，提交 `b507dba`
+- 分支：`workbench/second-brain-validation`，提交 `d3b8041`（真机替换用的构建）
 - 命令：`tools/verify_workbench.sh`（= CI `workbench.yml` 同口径）
 
 | 门禁段 | 结果 | 实际数字 |
@@ -44,7 +44,7 @@
 | `source_matrix_smoke` | PASS | 6 |
 | `usability_journey_smoke` | PASS | 13 |
 | `desktop_interaction_smoke` | PASS | 22 |
-| `desktop_external_write_smoke` | **SKIP** | 需已安装并运行的桌面客户端；本轮屏幕锁屏 |
+| `desktop_external_write_smoke` | PASS（真机） | 9 项：应用在运行、窗口在屏、交通灯可辨、切到卡库页且截图指纹稳定、**MCP 脚本取自已安装应用内随包分发的那份**、默认只读时写工具被明确拒绝并说明开启方法、显式授权后独立进程写入成功、新卡写进应用正在用的那个库、外部写入后界面自动刷新 |
 
 ## 二、审计项 ↔ 反例测试绑定
 
@@ -79,7 +79,19 @@
 | Windows / Linux 安装与首启 | 待真实验收 | 安装包构建不等于安装；需在目标系统实测导入 → 刷卡 → 测验 → 导出 |
 | 真实 WebDAV 服务兼容性 | 待真实验收 | 真实服务实例（协议层已自验，自建与用户服务各一） |
 | 检索质量基准（≥100 条中英混合问题、首 5 条命中率 ≥90%） | 待人工标注 | 人工标注语料；不是代码任务 |
-| 真机外部写入冒烟 | 本轮 SKIP | 屏幕锁屏（像素比对会假通过） |
+| 真机外部写入冒烟 | **已验收** | 屏幕解锁后补跑，9 项通过（见上表）；证据是 AX 树、进程输出与 SQLite 行——不靠看图 |
+
+### 真机安装与替换（本轮）
+
+- 构建：`apps/workbench` 下 `npm run tauri build -- --bundles app` → `target/release/bundle/macos/KnowFlick.app`（57.11 MiB）。
+- 替换：`/Applications/KnowFlick.app`（旧包 10-24 12:03 构建，落后 54 个提交）先移到
+  `.scratch/install-backup/KnowFlick.app.bak-20261026`（仓库内、已 gitignore），再装新包。
+- 新包校验：`Contents/Resources/tools/mcp-server.mjs` 存在（旧包没有——T10 之前
+  没把服务端脚本随包分发）；二进制时间戳与新构建一致。
+- 真机界面证据（AX 树，非截图）：侧栏「应用」段含 **复盘 / 我的记忆 / 目标 / 项目记忆 / 创作台**
+  五个入口；来源筛选含「笔记」页签；点开「创作台」后读到标题、说明文案与候选卡片。
+- 用户数据未受影响：库在 `~/Library/Application Support/KnowFlick/`，在 app 包之外，
+  替换只换应用本体。
 
 ## 四、复核方式
 
