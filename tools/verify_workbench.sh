@@ -71,6 +71,7 @@ python3 -m unittest discover -s tools -p test_check_user_facing_content.py
 python3 -m unittest discover -s tools -p test_check_destructive_confirm.py
 python3 -m unittest discover -s tools -p test_check_test_assertions.py
 python3 -m unittest discover -s tools -p test_check_responsibility.py
+python3 -m unittest discover -s tools -p test_check_design_tokens.py
 python3 -m unittest discover -s tools -p test_check_source_labels.py
 python3 -m unittest discover -s tools -p test_windows_console.py
 python3 tools/check_doc_consistency.py
@@ -94,6 +95,9 @@ python3 tools/check_test_assertions.py
 python3 tools/check_source_labels.py
 # 职责边界（T11）：恢复/备份/保存的规则各只能有一处入口，纯规则模块不依赖宿主。
 python3 tools/check_responsibility.py
+# 设计令牌（UI_DESIGN_SPEC_2026-10-19 §2–§4）：圆角只用 4/8px、颜色令牌都得定义、
+# 文字色不用裸 accent、纯文本里不留 Markdown 标记。
+python3 tools/check_design_tokens.py
 
 # 全部浏览器冒烟：13 套界面级回归。
 # 它们要真实浏览器与运行中的 Vite，CI 环境两者都没有（脚本会 SKIP）；

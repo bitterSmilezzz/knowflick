@@ -38,6 +38,18 @@
     --accent-solid: var(--accent);
   }
 
+  /* 强调色**当文字色**用时的取值。裸 --accent 在浅色模式下只有约 3.4:1
+     （14px 正文不达 WCAG AA 4.5），所以文字链接用这个压深一档的版本
+     （实测约 6.6:1）。深色模式的 accent 本身已经很浅，直接用即可。 */
+  --accent-text: color-mix(in srgb, var(--accent) 78%, #000 22%);
+  @supports not (color: color-mix(in srgb, red, blue)) {
+    --accent-text: #2f5c8f;
+  }
+
+  /* 危险/错误色。规格 §4 之前没有定义它，CSS 里散落着写死的 #b3261e
+     与无 fallback 的 var(--danger)——后者等于颜色失效。 */
+  --danger: #b3261e;
+
   /* Geometry */
   --radius-control: 4px;
   --radius-panel: 8px;
@@ -84,6 +96,12 @@
   @supports not (color: color-mix(in srgb, red, blue)) {
     --accent-solid: var(--accent);
   }
+
+  /* 深色底上强调色已经很浅（#7aa7dc on #232629 约 6.1:1），文字直接用 accent。 */
+  --accent-text: var(--accent);
+
+  /* 深色下的错误色要提亮，否则深底上不够醒目。 */
+  --danger: #f2b8b5;
 }
 
 /*

@@ -650,7 +650,7 @@ export function WorkspaceSettings({
                       {webdavMessage ? <p className="ws-hint" role="status">{webdavMessage}</p> : null}
                       {!webdavReady ? <p className="ws-hint">正在读取本机凭据…</p> : null}
                       <p className="ws-hint" style={{ margin: 0 }}>
-                        这是**单向备份**（每次上传一个新的版本化快照），不是双向同步；
+                        这是单向备份（每次上传一个新的版本化快照），不是双向同步；
                         地址与用户名随设置保存，应用密码只存本机 <code>credentials/webdav.credential</code>。
                       </p>
                     </div>

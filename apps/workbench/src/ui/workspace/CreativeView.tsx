@@ -170,7 +170,7 @@ export function CreativeView({ dir, cards, notes }: Props) {
           <h1>创作台</h1>
           <p className="ws-hint">
             检索 → 选取证据 → 大纲/文稿 → 人工修改 → 导出。
-            本应用只帮你把稿子做出来，**不代发**到任何平台。
+            本应用只帮你把稿子做出来，不代发到任何平台。
           </p>
         </div>
       </header>
