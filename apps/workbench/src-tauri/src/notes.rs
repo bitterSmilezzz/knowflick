@@ -1495,6 +1495,41 @@ pub fn project_remove_note(conn: &Connection, project_id: &str, note_id: &str) -
     Ok(())
 }
 
+/// 全部项目的成员关系索引（笔记 id → 项目 id）。
+///
+/// 为什么要有这个：`project_member_list` 只列**一个**项目的成员，
+/// 而「这条提醒属于哪个项目」是跨项目的问题——限定项目范围时需要
+/// 把笔记反查回项目。逐个项目去问会得到 N 次调用且顺序敏感，
+/// 一次拿全量索引更简单，也和界面读到的项目列表对得上。
+///
+/// 封存项目的成员**不在索引里**：封存的项目不再参与其它上下文，
+/// 把封存内容算进「项目范围」等于让用户以为它还活跃。
+/// 一篇笔记属于多个项目时取**最近加入**的那个——范围筛选是「属于这个项目吗」
+/// 的判断，不需要同时命中多个项目。
+pub fn project_member_index(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT pm.note_id, pm.project_id
+         FROM project_members pm
+         JOIN projects p ON p.id = pm.project_id
+         WHERE p.archived_at IS NULL
+         ORDER BY pm.added_at ASC",
+    )?;
+    let rows = stmt.query_map(params![], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut out: Vec<(String, String)> = Vec::new();
+    for r in rows {
+        let (note_id, project_id) = r?;
+        // 后加入的覆盖先加入的（上面的 ORDER BY 让 added_at 递增）。
+        if let Some(slot) = out.iter_mut().find(|(n, _)| *n == note_id) {
+            slot.1 = project_id;
+        } else {
+            out.push((note_id, project_id));
+        }
+    }
+    Ok(out)
+}
+
 /// 封存：不删数据，导出与检索跳过（「过期项目不继续污染其它项目上下文」）。
 /// 项目的一个成员笔记（供界面列出项目的上下文范围）。
 #[derive(Debug, Clone, Serialize)]
@@ -1783,6 +1818,54 @@ mod project_tests {
         // 封存项目拒绝导出快照
         project_archive(&conn, "p_a", 1500).unwrap();
         assert!(project_export_snapshot(&conn, "p_a").is_err());
+    }
+
+    /// 项目归属索引：复盘限定项目范围时用来把笔记反查回项目。
+    ///
+    /// 关键语义：封存项目不在索引里（封存 = 不再参与其它上下文）；
+    /// 一篇笔记属于多个项目时取最近加入的那个。
+    #[test]
+    fn project_member_index_maps_notes_to_active_projects() {
+        let conn = temp_db("member-index");
+        note_upsert(&conn, &draft("n1", "共享笔记", "内容"), 0, 1000).unwrap();
+        note_upsert(&conn, &draft("n2", "封存里的笔记", "内容"), 0, 1000).unwrap();
+
+        project_create(&conn, "pa", "项目A", "", 1100).unwrap();
+        project_create(&conn, "pb", "项目B", "", 1100).unwrap();
+        project_create(&conn, "pc", "封存项目", "", 1100).unwrap();
+
+        project_add_note(&conn, "pa", "n1", 1200).unwrap();
+        project_add_note(&conn, "pb", "n1", 1300).unwrap(); // 更晚加入 → 应覆盖
+        project_add_note(&conn, "pc", "n2", 1200).unwrap();
+
+        let index = project_member_index(&conn).unwrap();
+        // n1 同时属于 A、B → 取最近加入的 B
+        assert_eq!(
+            index.iter().find(|(n, _)| n == "n1").map(|(_, p)| p.as_str()),
+            Some("pb"),
+            "同一笔记属于多个项目时取最近加入的那个"
+        );
+        assert!(
+            index.iter().any(|(n, p)| n == "n2" && p == "pc"),
+            "未封存项目的成员在索引里"
+        );
+
+        // 封存项目后，它的成员不再有归属
+        project_archive(&conn, "pc", 1400).unwrap();
+        let after = project_member_index(&conn).unwrap();
+        assert!(
+            !after.iter().any(|(n, _)| n == "n2"),
+            "封存项目的成员不该出现在归属索引里"
+        );
+
+        // n1 同时属于未封存的 A 与已封存的 B → 回落到 A
+        project_archive(&conn, "pb", 1500).unwrap();
+        let after2 = project_member_index(&conn).unwrap();
+        assert_eq!(
+            after2.iter().find(|(n, _)| n == "n1").map(|(_, p)| p.as_str()),
+            Some("pa"),
+            "封存掉最近加入的项目后，归属回落到仍在的那个"
+        );
     }
 }
 

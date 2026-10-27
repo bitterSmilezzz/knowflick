@@ -3046,6 +3046,18 @@ body.capsule-window { overflow: hidden; background: transparent; }
   background: var(--surface); color: inherit; font: inherit; font-size: var(--text-body);
 }
 .rv-reminder-pause { gap: 4px !important; }
+.rv-due {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; margin-bottom: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.rv-due .ws-hint { margin: 0; }
+.rv-due-quiet { background: var(--sunken); border-style: dashed; }
+.rv-project-scope { margin-bottom: 10px; }
+.rv-project-scope-label { font-size: var(--text-meta); color: var(--muted); }
+.rv-project-scope-list { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.rv-project-scope-list label { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-meta); color: var(--muted); }
 .rv-reminders { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .rv-reminders li {
   display: flex; flex-direction: column; gap: 2px; padding: 8px 0;

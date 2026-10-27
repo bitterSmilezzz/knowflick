@@ -19,12 +19,15 @@ import {
   fetchClip,
   asrModelStatus,
   asrTranscribe,
+  projectList,
+  projectMemberIndex,
   inShell,
   saveMedia,
   pickAudioFile,
   pickExportPath,
   type Artifact,
   type DbStats,
+  type Project,
   type RawMaterial,
   type SubscriptionRow,
 } from "../../shell/store";
@@ -158,6 +161,9 @@ export function Workspace() {
   const [notesLoaded, setNotesLoaded] = useState(false);
   const updateNotesState = useCallback((state: NotesState) => { setNotesState(state); setNotesLoaded(true); }, []);
   const [goalsState, setGoalsState] = useState<Goal[]>([]);
+  // 项目列表与「笔记 → 项目」归属索引：复盘限定项目范围时要用。
+  const [projectsState, setProjectsState] = useState<Project[]>([]);
+  const [noteProjectIndex, setNoteProjectIndex] = useState<Map<string, string>>(new Map());
   const [lastImportReport, setLastImportReport] = useState<ImportReport | null>(null);
   // 手写/语音面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱
   // 与 Escape 处理——实测 Tab 进不去、Escape 无效。用这个钩子补上。
@@ -266,6 +272,31 @@ export function Workspace() {
       setError(`导出 cards.json 失败：${err instanceof Error ? err.message : String(err)}`);
     }
   };
+
+  /**
+   * 项目列表与「笔记 → 项目」归属索引（R4/D09 项目范围用）。
+   *
+   * 读取失败不阻断主界面——但也不猜：拿不到归属时，复盘的范围筛选
+   * 只会少列提醒，不会把别的项目的内容算进来。
+   */
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      if (!inShell()) {
+        if (active) { setProjectsState([]); setNoteProjectIndex(new Map()); }
+        return;
+      }
+      try {
+        const [list, index] = await Promise.all([projectList(false, dir), projectMemberIndex(dir)]);
+        if (!active) return;
+        setProjectsState(list);
+        setNoteProjectIndex(new Map(index));
+      } catch {
+        if (active) { setProjectsState([]); setNoteProjectIndex(new Map()); }
+      }
+    })();
+    return () => { active = false; };
+  }, [dir]);
 
   /** 产物供产物库与问答共用；读取失败不阻塞主界面。 */
   useEffect(() => {
@@ -522,6 +553,18 @@ export function Workspace() {
   useEffect(() => { setBatchIds(new Set()); }, [page, query, tag, source]);
 
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0];
+    /**
+     * 键盘光标的**当前**位置（ref，不是 state）。
+     *
+     * 为什么不用渲染快照算：方向键处理器闭包里的 `filtered` / `selected`
+     * 是上一次渲染的快照。连按方向键时 React 未必来得及重渲染——
+     * 每次按键都基于同一个旧 `selected` 算 index，于是 index 每次只 +1，
+     * 快速按 63 下只走了 1 格，列表还停在首批 60 条以内。
+     * 机器负载高时更容易复现：实测门禁里会随机报「键盘浏览超出首批」失败。
+     *
+     * 用 ref 存位置让连按能累加；渲染真正完成后由下面的 effect 校准回真值。
+     */
+    const cursorIndexRef = useRef(0);
   /** 批量栏只对知识卡开放：素材归到收件箱的归档语义里，不在这里批量处理。 */
   const batchCards = cards.filter((card) => batchIds.has(card.id));
   const batchMaterials = materials.filter((material) => batchIds.has(material.id));
@@ -564,9 +607,12 @@ export function Workspace() {
       if (inReader || target?.closest("[role=separator]")) return;
       if (["ArrowDown", "ArrowUp", "j", "k"].includes(e.key) && filtered.length) {
         e.preventDefault();
-        const current = filtered.findIndex(it => it.id === selected?.id);
         const down = e.key === "ArrowDown" || e.key === "j";
-        const index = Math.max(0, Math.min(filtered.length - 1, (current < 0 ? 0 : current) + (down ? 1 : -1)));
+        // 基准位置取自 ref：渲染快照只能给出**起点**，连按时要能累加
+        // ——见 cursorIndexRef 的说明。
+        const current = cursorIndexRef.current;
+        const index = Math.max(0, Math.min(filtered.length - 1, current + (down ? 1 : -1)));
+        cursorIndexRef.current = index;
         setVisibleCount(n => Math.max(n, index + 1));
         // Shift+方向键 = 范围多选。没有这条，键盘用户完全无法进入批量模式
         // ——多选只能靠 ⌘/Ctrl 鼠标点击。
@@ -592,6 +638,16 @@ export function Workspace() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [page, loading, busy, isCollection, filtered, selected, layout]);
+  /**
+   * 渲染真正完成后，把光标 ref 校准回**真实**的选中位置。
+   *
+   * 方向键按下的瞬间 ref 会先累加（用于连按），但如果用户改用鼠标点了别的条目、
+   * 或者换了筛选条件，ref 就该跟着回到真实位置——否则下一次按方向键会从旧位置跳。
+   */
+  useEffect(() => {
+    const index = filtered.findIndex(it => it.id === selected?.id);
+    cursorIndexRef.current = index < 0 ? 0 : index;
+  }, [filtered, selected]);
   // 分类按「用得多的在前」排，同量再按名称；纯字母序对使用频率没有信息量。
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -2432,6 +2488,8 @@ export function Workspace() {
                   goals={goalsState}
                   notes={notesState.notes}
                   filedNoteIds={notesLoaded ? new Set(Object.keys(noteKbIndex)) : undefined}
+                  noteProject={noteProjectIndex}
+                  projects={projectsState}
                   schedule={reviewSchedule}
                   onScheduleChange={updateReviewSchedule}
                   staleReferences={staleReferenceList}

@@ -37,6 +37,30 @@ const selectOption = (selector, value) => b("eval", `(() => {
 await b("open", url);
 await new Promise(r => setTimeout(r, 1500));
 
+// 清掉上一次的回顾计划残留。
+//
+// 为什么必须清：回顾计划存在 settings 的 raw.reviewSchedule 里，lastRemindedAt
+// 一旦写上，weekly 频率下 7 天内都不再「到期」——上次跑过的冒烟会让
+// 这次跑到「到期入口」那一步时条件根本不成立，看起来像产品坏了。
+// 每次都从「从未回顾过」开始，断言才是确定的。
+//
+// 注意 settings 在浏览器里存的是**字符串**（encodeSettings 的结果），
+// 不是对象——直接 delete 会静默无效。
+await b("eval", `(()=>{
+  const key='knowflick.workspace.v1';
+  const d = JSON.parse(localStorage.getItem(key) || '{"materials":[],"cards":[],"settings":null}');
+  let raw = {};
+  if (typeof d.settings === 'string' && d.settings) {
+    try { raw = JSON.parse(d.settings); } catch { raw = {}; }
+  } else if (d.settings && typeof d.settings === 'object') {
+    raw = d.settings;
+  }
+  delete raw.reviewSchedule;
+  d.settings = JSON.stringify(raw);
+  localStorage.setItem(key, JSON.stringify(d));
+  return true;
+})()`);
+
 // 造一个可处理事项：目标有证据但未确认（需要走桌面端的目标表，这里改用收件箱堆积）
 await b("eval", `(()=>{
   const key='knowflick.workspace.v1';
@@ -97,6 +121,54 @@ await check(
 await check(
   "(()=>{const el=document.querySelector('input[aria-label=\"暂停主动回顾\"]');if(!el)return false;if(!el.checked)el.click();return (document.querySelector('[aria-label=\"主动回顾\"]')?.innerText||'').includes('已暂停')})()",
   "暂停后界面说明不会提醒"
+);
+
+// 9. 取消暂停 → 到期时出现回顾入口，且写回上次回顾时间
+await check(
+  "(()=>{const el=document.querySelector('input[aria-label=\"暂停主动回顾\"]');if(!el)return false;if(el.checked)el.click();return true})()",
+  "取消暂停"
+);
+
+// 安静时段的两个分支必须分开测，顺序有讲究：
+// **先**测「到期但被安静时段挡着」，**再**测「到期入口」。
+// 反过来测会失败——第 11 步点了「我现在回顾」就写回了上次提醒时间，
+// 之后不再处于「到期」状态，第 10 步的条件就不成立了。
+//
+// 安静时段默认 22:00–08:00，冒烟可能在夜里跑——两处都要按当前时刻动态算。
+const hour = new Date().getHours();
+// 覆盖当前时刻的那一小时（start=h, end=h+1）：此刻必在安静时段里
+await selectOption('select[aria-label="安静时段开始"]', String(hour));
+await selectOption('select[aria-label="安静时段结束"]', String((hour + 1) % 24));
+await new Promise(r => setTimeout(r, 700));
+await check(
+  "!!document.querySelector('[data-due-quiet]') && !document.querySelector('[data-due]')",
+  "安静时段内的到期状态单独说明"
+);
+
+// 把安静时段挪到 6 小时后——此刻一定不在里面
+await selectOption('select[aria-label="安静时段开始"]', String((hour + 6) % 24));
+await selectOption('select[aria-label="安静时段结束"]', String((hour + 7) % 24));
+await new Promise(r => setTimeout(r, 700));
+
+await check(
+  "!!document.querySelector('[data-due]') && !!document.querySelector('button[aria-label=\"我现在回顾\"]')",
+  "到期时出现回顾入口"
+);
+await check(
+  "(()=>{const el=document.querySelector('[aria-label=\"主动回顾\"]');return el.innerText.includes('还没回顾过')})()",
+  "未回顾过时如实显示"
+);
+
+// 点「我现在回顾」→ 到期状态消失，上次回顾时间被写上
+await b("eval", `(()=>{const btn=document.querySelector('button[aria-label="我现在回顾"]');if(btn)btn.click();return !!btn})()`);
+await new Promise(r => setTimeout(r, 800));
+await check(
+  "(()=>{const el=document.querySelector('[aria-label=\"主动回顾\"]');return el.innerText.includes('上次回顾：') && !el.innerText.includes('还没回顾过')})()",
+  "回顾完成后写回上次回顾时间"
+);
+await check(
+  "(()=>{return !document.querySelector('[data-due]')})()",
+  "回顾完成后不再显示到期入口"
 );
 
 console.log(`\n主动回顾 smoke：${count} 项检查通过。`);

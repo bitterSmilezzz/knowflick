@@ -3,6 +3,8 @@ import type { Goal, RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { periodLabel, reviewFacts, reviewToMarkdown, type ReviewFacts as Facts } from "../../domain/reviewFacts";
 import {
+  isDueButQuiet,
+  markReminded,
   nextReminderAt,
   reviewReminders,
   shouldRemindNow,
@@ -12,12 +14,16 @@ import { Icon } from "./Icon";
 
 /** 复盘视图（R4/D03）：渲染 reviewFacts 的**事实**——记录了什么、目标现状、
  *  没有记录的方面。不产建议（事实与建议分离是路线图口径）；导出走 Markdown。 */
-export function ReviewFactsView({ materials, cards, goals, notes = [], filedNoteIds, schedule, onScheduleChange, staleReferences = [], onOpenMaterial, onOpenCard }: {
+export function ReviewFactsView({ materials, cards, goals, notes = [], filedNoteIds, noteProject, projects = [], schedule, onScheduleChange, staleReferences = [], onOpenMaterial, onOpenCard }: {
   materials: RawMaterial[];
   cards: KnowledgeCard[];
   goals: Goal[];
   notes?: Array<{ id: string; title: string; bodyMd: string; notebook: string | null; isDeleted: boolean }>;
   filedNoteIds?: ReadonlySet<string>;
+  /** 笔记 → 项目归属；限定项目范围时据此判断提醒属于哪个项目。 */
+  noteProject?: ReadonlyMap<string, string>;
+  /** 可选的项目（供范围选择用）。 */
+  projects?: Array<{ id: string; name: string }>;
   /** 主动回顾的提醒计划（R4/D09）。 */
   schedule: ReviewSchedule;
   onScheduleChange: (next: ReviewSchedule) => void;
@@ -33,6 +39,16 @@ export function ReviewFactsView({ materials, cards, goals, notes = [], filedNote
     return () => window.clearInterval(timer);
   }, []);
   const facts: Facts = reviewFacts({ materials, cards, goals, now }, kind);
+  const due = shouldRemindNow(schedule, now);
+  /** 已到期但正处在安静时段——不是「没生效」，是「这个时刻不方便出声」。 */
+  const dueButQuiet = isDueButQuiet(schedule, now);
+  /**
+   * 回顾完成 → 写回上次提醒时间。
+   *
+   * 不写回的话 `isDue` 永远成立，「到点了」这句话就变成每次进页面都说的噪音。
+   * 点一下才推进是刻意的：只有用户真的回顾过，这轮才算数。
+   */
+  const acknowledge = () => onScheduleChange(markReminded(schedule, Date.now()));
   const reminders = useMemo(
     () =>
       reviewReminders({
@@ -42,8 +58,9 @@ export function ReviewFactsView({ materials, cards, goals, notes = [], filedNote
         materials,
         staleReferences,
         projectScope: schedule.projectScope,
+        noteProject,
       }),
-    [goals, notes, filedNoteIds, materials, staleReferences, schedule.projectScope]
+    [goals, notes, filedNoteIds, materials, staleReferences, schedule.projectScope, noteProject]
   );
 
   const download = () => {
@@ -131,7 +148,24 @@ export function ReviewFactsView({ materials, cards, goals, notes = [], filedNote
       {/* 主动回顾（R4/D09）：频率、安静时段、暂停与退订；只提醒可处理的事。 */}
       <section className="rv-section" aria-label="主动回顾">
         <h2>主动回顾</h2>
-        <p className="ws-hint">当前只在此页列出可处理事项，尚不会按频率自动推送提醒。</p>
+        {due ? (
+          <div className="rv-due" role="status" data-due>
+            <span>到回顾的时间了。</span>
+            <button type="button" className="ws-bordered" onClick={acknowledge} aria-label="我现在回顾">
+              我现在回顾
+            </button>
+            <span className="ws-hint">点一下就算这次回顾完成，下一轮按频率重新计时。</span>
+          </div>
+        ) : dueButQuiet ? (
+          <div className="rv-due rv-due-quiet" role="status" data-due-quiet>
+            <span>已到回顾时间，但现在在安静时段里，先不打扰你。</span>
+            <span className="ws-hint">
+              下次开口约在 {nextReminderAt(schedule, now) ? new Date(nextReminderAt(schedule, now)!).toLocaleString("zh-CN") : "—"}。
+            </span>
+          </div>
+        ) : (
+          <p className="ws-hint">到期时这里会出现回顾入口——不会自己弹窗打断你。</p>
+        )}
         <div className="rv-reminder-controls">
           <label>
             频率
@@ -191,14 +225,59 @@ export function ReviewFactsView({ materials, cards, goals, notes = [], filedNote
           </label>
         </div>
 
+        {/* 项目范围：只列范围内的项目事项；不选 = 全部。 */}
+        {projects.length > 0 ? (
+          <div className="rv-project-scope">
+            <span className="rv-project-scope-label">项目范围</span>
+            <div className="rv-project-scope-list" role="group" aria-label="回顾项目范围">
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label="不限项目（全部）"
+                  checked={schedule.projectScope.length === 0}
+                  onChange={(e) => {
+                    if (e.target.checked) onScheduleChange({ ...schedule, projectScope: [] });
+                  }}
+                />
+                不限（全部）
+              </label>
+              {projects.map((p) => {
+                const checked = schedule.projectScope.includes(p.id);
+                return (
+                  <label key={p.id}>
+                    <input
+                      type="checkbox"
+                      aria-label={`限定到项目「${p.name}」`}
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...schedule.projectScope, p.id]
+                          : schedule.projectScope.filter((id) => id !== p.id);
+                        // 取消最后一个 = 回到「不限」，避免出现「选了但没项目」的空范围。
+                        onScheduleChange({ ...schedule, projectScope: next.length === 0 ? [] : next });
+                      }}
+                    />
+                    {p.name}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="ws-hint">
+              限定项目后，只列属于这些项目的事项；收件箱堆积这类全局事项不会出现在范围内。
+            </p>
+          </div>
+        ) : null}
+
         <p className="ws-hint" role="status">
           {schedule.frequency === "off"
             ? "已退订——不会主动提醒你。"
             : schedule.paused
               ? "已暂停——不会主动提醒你。"
-              : shouldRemindNow(schedule, now)
-                ? "现在可以回顾一次。"
-                : `安静时段或未到周期——下次约在 ${nextReminderAt(schedule, now) ? new Date(nextReminderAt(schedule, now)!).toLocaleString("zh-CN") : "—"}。`}
+              : due
+                ? "到回顾的时间了——回顾完成后点「我现在回顾」推进下一轮。"
+                : dueButQuiet
+                  ? "已到回顾时间，但在安静时段里——等安静时段结束再提醒你。"
+                  : `安静时段或未到周期——下次约在 ${nextReminderAt(schedule, now) ? new Date(nextReminderAt(schedule, now)!).toLocaleString("zh-CN") : "—"}。`}
         </p>
 
         <h3>可处理事项（{reminders.length}）</h3>
@@ -214,6 +293,11 @@ export function ReviewFactsView({ materials, cards, goals, notes = [], filedNote
             ))}
           </ul>
         )}
+        <p className="ws-hint">
+          上次回顾：{schedule.lastRemindedAt > 0
+            ? new Date(schedule.lastRemindedAt).toLocaleString("zh-CN")
+            : "还没回顾过"}
+        </p>
       </section>
     </div>
   );

@@ -3,6 +3,7 @@ import {
   defaultReviewSchedule,
   inQuietHours,
   isDue,
+  markReminded,
   nextReminderAt,
   readReviewSchedule,
   reviewReminders,
@@ -119,6 +120,34 @@ describe("提醒频率与安静时段", () => {
   });
 });
 
+describe("回顾完成后推进周期", () => {
+  const at = (day: number, hour: number, minute = 0) => new Date(2026, 0, day, hour, minute).getTime();
+
+  it("回顾后写入上次提醒时间，下一轮按频率重新计时", () => {
+    const now = at(1, 10);
+    const next = markReminded(schedule({ frequency: "daily", lastRemindedAt: 0 }), now);
+    expect(next.lastRemindedAt).toBe(now);
+    expect(isDue(next, now)).toBe(false);
+    expect(isDue(next, at(2, 10))).toBe(true);
+  });
+
+  it("不回顾就不推进——到期状态一直保持，不会自己消失", () => {
+    const s = schedule({ frequency: "daily", lastRemindedAt: 0 });
+    expect(isDue(s, at(3, 10))).toBe(true);
+  });
+
+  it("安静时段内不写回（那个时刻用户听不到，写回等于吞掉一轮）", () => {
+    const s = schedule({ frequency: "daily", lastRemindedAt: 0 });
+    const night = at(1, 23, 30); // 在 22:00–08:00 的安静时段里
+    expect(markReminded(s, night).lastRemindedAt).toBe(0);
+  });
+
+  it("退订与暂停时推进不改变任何东西", () => {
+    expect(markReminded(schedule({ frequency: "off" }), Date.now()).lastRemindedAt).toBe(0);
+    expect(markReminded(schedule({ paused: true }), Date.now()).lastRemindedAt).toBe(0);
+  });
+});
+
 describe("只提醒可处理事项", () => {
   it("有证据但未确认的目标 → 提醒确认", () => {
     const reminders = reviewReminders({ goals: [goal()], notes: [], materials: [], staleReferences: [] });
@@ -205,15 +234,46 @@ describe("只提醒可处理事项", () => {
     expect(reviewReminders({ ...base, filedNoteIds: new Set(["filed", "unfiled1"]) }).some((r) => r.kind === "note-unfiled")).toBe(false);
   });
 
-  it("项目范围限定：只保留范围内的目标提醒", () => {
+  it("项目范围按目标声明的项目过滤，而不是拿目标 id 比项目 id", () => {
+    // goal.scope 存的是**项目 id**——目标是这么声明自己属于哪个项目的。
     const reminders = reviewReminders({
-      goals: [goal({ id: "g1" }), goal({ id: "g2", title: "别的项目" })],
+      goals: [goal({ id: "g1", scope: "p1" }), goal({ id: "g2", scope: "p2", title: "别的项目" })],
       notes: [], materials: [], staleReferences: [],
-      projectScope: ["g1"],
+      projectScope: ["p1"],
     });
     const g = reminders.filter((r) => r.kind === "goal-achieve");
     expect(g).toHaveLength(1);
     expect(g[0].targetId).toBe("g1");
+    expect(g[0].projectId).toBe("p1");
+  });
+
+  it("没有声明项目的目标不进任何项目范围（不猜归属）", () => {
+    const reminders = reviewReminders({
+      goals: [goal({ id: "g1", scope: null })],
+      notes: [], materials: [], staleReferences: [],
+      projectScope: ["p1"],
+    });
+    expect(reminders.filter((r) => r.kind === "goal-achieve")).toHaveLength(0);
+  });
+
+  it("引用提醒按笔记所属项目归属", () => {
+    const reminders = reviewReminders({
+      goals: [], notes: [], materials: [],
+      staleReferences: [{ noteId: "n1", title: "过期引用", status: "changed" }],
+      noteProject: new Map([["n1", "p1"]]),
+      projectScope: ["p1"],
+    });
+    expect(reminders.filter((r) => r.kind === "reference-stale")).toHaveLength(1);
+  });
+
+  it("限定项目范围时，全局事项（收件箱堆积）不出现", () => {
+    const reminders = reviewReminders({
+      goals: [], notes: [], staleReferences: [],
+      materials: Array.from({ length: 6 }, (_, i) => material({ id: `m${i}` })),
+      inboxThreshold: 5,
+      projectScope: ["p1"],
+    });
+    expect(reminders.filter((r) => r.kind === "inbox-backlog")).toHaveLength(0);
   });
 
   it("没有任何可处理事项时提醒列表为空（不是「一切正常」的噪声）", () => {

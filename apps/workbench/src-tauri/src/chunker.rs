@@ -62,7 +62,7 @@ pub fn chunk_markdown(body: &str) -> Vec<Chunk> {
     // 段落累积成块；单段超长再按字符硬切。
     let mut buffer = String::new();
     let mut buffer_start = 0usize;
-    let mut flush = |chunks: &mut Vec<Chunk>, buffer: &mut String, start: usize| {
+    let flush = |chunks: &mut Vec<Chunk>, buffer: &mut String, start: usize| {
         if buffer.trim().is_empty() {
             buffer.clear();
             return;

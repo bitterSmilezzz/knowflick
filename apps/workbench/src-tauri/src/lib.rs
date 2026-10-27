@@ -79,7 +79,6 @@ fn backup_copy_to_directory(target_dir: String, archive_bytes: Vec<u8>) -> Resul
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
     let date = {
-        use std::time::{SystemTime, UNIX_EPOCH};
         let secs = now / 1000;
         let days = secs / 86400;
         // 2026-10-25 起算的天数换算（民用日期，够用；不需要时区库）
@@ -790,6 +789,14 @@ fn project_member_list(dir: Option<String>, project_id: String) -> Result<Vec<no
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
     notes::project_member_list(&conn, &project_id).map_err(|e| crate::error_text::explain_text("读取项目成员失败", &e.to_string()))
+}
+
+/// 笔记 → 项目归属索引（复盘的项目范围过滤用）。
+#[tauri::command]
+fn project_member_index(dir: Option<String>) -> Result<Vec<(String, String)>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::project_member_index(&conn).map_err(|e| crate::error_text::explain_text("读取项目成员索引失败", &e.to_string()))
 }
 
 #[tauri::command]
@@ -1647,6 +1654,7 @@ pub fn run() {
             project_remove_note,
             project_archive_cmd,
             project_member_list,
+            project_member_index,
             project_export_markdown_cmd,
             project_export_snapshot,
             profile_claim_add,

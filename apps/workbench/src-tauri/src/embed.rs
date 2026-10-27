@@ -71,11 +71,11 @@ pub fn status(data_root: &Path) -> LocalEmbedStatus {
 fn engine(data_root: &Path) -> Result<&'static Mutex<fastembed::TextEmbedding>, String> {
     static INSTANCE: OnceLock<Result<Mutex<fastembed::TextEmbedding>, String>> = OnceLock::new();
     let shared = INSTANCE.get_or_init(|| {
-        use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+        use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
         let dir = cache_dir(data_root);
         std::fs::create_dir_all(&dir).map_err(|e| crate::error_text::explain("创建模型缓存目录失败", &e))?;
         let model = TextEmbedding::try_new(
-            InitOptions::new(EmbeddingModel::MultilingualE5Small)
+            TextInitOptions::new(EmbeddingModel::MultilingualE5Small)
                 .with_cache_dir(dir)
                 .with_show_download_progress(false),
         )

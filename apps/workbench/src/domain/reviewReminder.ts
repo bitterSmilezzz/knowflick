@@ -53,6 +53,14 @@ export interface ReviewReminder {
   /** 指向具体对象（目标 id / 笔记 id / 数量）。 */
   targetId?: string;
   count?: number;
+  /**
+   * 这条事项归属的项目 id。
+   *
+   * 没有归属 = 不属于任何项目（收件箱堆积、未归库笔记这类全局事项）。
+   * 限定项目范围时它们**不出现**——不能说一条不属于任何项目的事
+   * 属于「项目 A 的回顾」。
+   */
+  projectId?: string;
 }
 
 /** 判定现在该不该出声。 */
@@ -61,6 +69,34 @@ export function shouldRemindNow(schedule: ReviewSchedule, now: number): boolean 
   if (schedule.paused) return false;
   if (inQuietHours(schedule, now)) return false;
   return isDue(schedule, now);
+}
+
+/**
+ * 是否「已到期但被安静时段挡着」。
+ *
+ * 为什么单独判：安静时段内的到期状态如果什么都不显示，用户会以为
+ * 「计划没生效」——实际上只是这个时刻不方便出声。把这两种状态分开说，
+ * 用户才知道该等还是该改设置。
+ */
+export function isDueButQuiet(schedule: ReviewSchedule, now: number): boolean {
+  if (schedule.frequency === "off" || schedule.paused) return false;
+  if (!inQuietHours(schedule, now)) return false;
+  return isDue(schedule, now);
+}
+
+/**
+ * 提醒过一次之后，把计划推进到下一个周期。
+ *
+ * **为什么要显式推进**：`isDue` 只看 `lastRemindedAt`，不写它就永远是「到期」——
+ * 界面每次进复盘页都说「现在可以回顾一次」，但用户回顾过了它也不记得，
+ * 于是这句话变成噪音。真正提醒出去的那一刻必须写回时间戳。
+ *
+ * 安静时段内的提醒**不算已提醒**：那个时刻用户听不到，写回等于吞掉一次周期。
+ */
+export function markReminded(schedule: ReviewSchedule, now: number): ReviewSchedule {
+  if (schedule.frequency === "off" || schedule.paused) return schedule;
+  if (inQuietHours(schedule, now)) return schedule;
+  return { ...schedule, lastRemindedAt: now };
 }
 
 /** 是否落在安静时段（跨午夜也成立：22→8）。 */
@@ -116,8 +152,13 @@ export interface ReminderInput {
   materials: RawMaterial[];
   /** 引用过期/失效的条目（由 noteReference.referenceStatus 判定）。 */
   staleReferences: Array<{ noteId: string; title: string; status: "changed" | "missing" }>;
-  /** 项目范围：空 = 全部。 */
+  /** 项目范围：空 = 全部。存的是**项目 id**。 */
   projectScope?: string[];
+  /**
+   * 笔记 → 项目归属。限定项目范围时据此判断一条引用/笔记提醒属于哪个项目。
+   * 未提供时不推断归属（宁可漏掉也不乱归）。
+   */
+  noteProject?: ReadonlyMap<string, string>;
   /** 收件箱堆积多少条才算值得提醒（低于这个数不打扰）。 */
   inboxThreshold?: number;
 }
@@ -141,6 +182,8 @@ export function reviewReminders(input: ReminderInput): ReviewReminder[] {
         action: `已关联 ${goal.evidenceCount} 条证据——确认是否达成，或补充完成条件`,
         targetId: goal.id,
         count: goal.evidenceCount,
+        // 目标自己声明的范围就是它的项目归属。
+        projectId: goal.scope ?? undefined,
       });
     }
   }
@@ -152,10 +195,11 @@ export function reviewReminders(input: ReminderInput): ReviewReminder[] {
       title: ref.title,
       action: ref.status === "missing" ? "来源已不在库里——这条引用已失效" : "来源内容改过了——这条引用可能已过期",
       targetId: ref.noteId,
+      projectId: input.noteProject?.get(ref.noteId),
     });
   }
 
-  // 3. 收件箱堆积 —— 需要整理
+  // 3. 收件箱堆积 —— 需要整理（全局事项，不属于任何项目）
   const inbox = input.materials.filter((m) => m.inboxStatus === "inbox").length;
   if (inbox >= inboxThreshold) {
     out.push({
@@ -180,15 +224,20 @@ export function reviewReminders(input: ReminderInput): ReviewReminder[] {
     }
   }
 
-  // 项目范围：只保留属于范围内的项目相关提醒（当前只有目标与引用两类能定位到项目）
-  const scope = input.projectScope ?? [];
-  if (scope.length > 0) {
-    return out.filter((r) => {
-      if (r.kind === "goal-achieve") return scope.includes(r.targetId ?? "");
-      return true;
-    });
-  }
-  return out;
+  return filterByProjectScope(out, input.projectScope ?? []);
+}
+
+/**
+ * 按项目范围过滤。
+ *
+ * 范围里的项目 id 必须与提醒的**项目归属**比对，不是与提醒指向的对象 id 比。
+ * 目标提醒的项目归属是 `goal.scope`（目标自己声明的项目）——
+ * 早期版本拿目标 id 去比项目 id，两者是不同命名空间，永远匹配不上：
+ * 一设范围就把目标提醒全滤掉了，而这不是用户要的。
+ */
+export function filterByProjectScope(reminders: ReviewReminder[], scope: string[]): ReviewReminder[] {
+  if (scope.length === 0) return reminders;
+  return reminders.filter((r) => r.projectId !== undefined && scope.includes(r.projectId));
 }
 
 /** 读取设置里的回顾计划（settings.json 的 raw.reviewSchedule）。 */

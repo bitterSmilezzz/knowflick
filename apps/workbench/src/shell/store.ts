@@ -339,6 +339,14 @@ export function projectMemberList(projectId: string, dir?: string): Promise<Proj
   return invoke("project_member_list", { dir: dir ?? null, projectId });
 }
 
+/**
+ * 笔记 → 项目归属索引（复盘限定项目范围时用来反查）。
+ * 返回 [笔记 id, 项目 id] 列表——同一篇笔记只保留最近加入的那个项目。
+ */
+export function projectMemberIndex(dir?: string): Promise<[string, string][]> {
+  return invoke("project_member_index", { dir: dir ?? null });
+}
+
 export function projectArchive(projectId: string, dir?: string): Promise<boolean> {
   return invoke("project_archive_cmd", { projectId, dir: dir ?? null });
 }

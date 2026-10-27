@@ -60,6 +60,33 @@ try {
   for (let i = 0; i < 63; i++) await browser("press", "ArrowDown");
   await check('document.querySelector(".ws-entry[aria-selected=true]").dataset.entryId==="keyboard-63" && document.activeElement===document.querySelector(".ws-entry[aria-selected=true]")', "keyboard browsing grows past first batch and moves focus");
   await check('(()=>{const a=document.querySelector(".ws-entry[aria-selected=true]").getBoundingClientRect(),b=document.querySelector(".ws-entries").getBoundingClientRect();return a.top>=b.top && a.bottom<=b.bottom})()', "keyboard-selected row scrolls into view");
+  // 同步连发（不给浏览器重新渲染的机会）——这是竞态最容易被放大的条件。
+  //
+  // 逐次 press 每次都等浏览器处理完，React 有机会重渲染，
+  // 于是「按一次走一格」看着是对的。但真实用户按住方向键时事件是连着来的，
+  // 处理器闭包里的 filtered/selected 还是上一帧的快照，
+  // 每次按键都从同一个起点算 → 连按 63 下只走了 1 格，列表还停在首批 60 条内。
+  // 修复前这条断言稳定失败（选中项停在 keyboard-1），修复后停在 keyboard-63。
+  //
+  // 先回到列表顶部：上一段已经走到 keyboard-63，再连发会撞到末尾。
+  await browser("eval", `(()=>{
+    const first=document.querySelector('.ws-entry');
+    first.focus();
+    const target=document.activeElement;
+    for(let i=0;i<80;i++) target.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true,cancelable:true}));
+    return true;
+  })()`);
+  await browser("wait", "400");
+  await check('document.querySelector(".ws-entry[aria-selected=true]")?.dataset.entryId==="keyboard-0"', "key repeat back to the top");
+  await browser("eval", `(()=>{
+    const first=document.querySelector('.ws-entry');
+    first.focus();
+    const target=document.activeElement;
+    for(let i=0;i<63;i++) target.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+    return true;
+  })()`);
+  await browser("wait", "400");
+  await check('document.querySelector(".ws-entry[aria-selected=true]")?.dataset.entryId==="keyboard-63" && document.querySelectorAll(".ws-entry").length>60', "rapid key repeat accumulates past the first batch");
   await browser("press", "Enter");
   await check('document.activeElement?.getAttribute("data-workspace-pane")==="inspector"', "Enter focuses reading pane");
   await browser("press", "Control+e");

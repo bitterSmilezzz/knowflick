@@ -50,6 +50,7 @@ fn main() {
             "project_remove_note",
             "project_archive_cmd",
             "project_member_list",
+            "project_member_index",
             "project_export_markdown_cmd",
             "project_export_snapshot",
             "profile_claim_add",
