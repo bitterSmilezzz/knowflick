@@ -22,15 +22,9 @@ data class SpeechSettings(
 ) {
     val channelEnum: SpeechChannel get() = runCatching { SpeechChannel.valueOf(channel) }.getOrDefault(SpeechChannel.SYSTEM)
 
-    /** 本地回环判定：127.0.0.1 / localhost / [::1] */
+    /** 本地回环判定：127.0.0.1 / localhost / IPv6 回环（口径与第一套桌面一致） */
     val isLoopback: Boolean
-        get() {
-            val host = runCatching { java.net.URI(baseURL.trim()).host }
-                .getOrNull()
-                ?.lowercase()
-                ?.trim('[', ']')
-            return host == "127.0.0.1" || host == "localhost" || host == "::1"
-        }
+        get() = com.knowflick.app.domain.LoopbackHost.isLoopbackUrl(baseURL)
 
     fun toJson(): String = json.encodeToString(serializer(), this)
 

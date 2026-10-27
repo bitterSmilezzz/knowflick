@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-goal-link-evidence-cmd"
+description = "Enables the goal_link_evidence_cmd command without any pre-configured scope."
+commands.allow = ["goal_link_evidence_cmd"]
+
+[[permission]]
+identifier = "deny-goal-link-evidence-cmd"
+description = "Denies the goal_link_evidence_cmd command without any pre-configured scope."
+commands.deny = ["goal_link_evidence_cmd"]

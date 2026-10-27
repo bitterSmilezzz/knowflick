@@ -1,0 +1,87 @@
+import { describe, expect, it } from "vitest";
+import { entriesFor, filterEntries, subscriptionIdOf } from "./model";
+import type { RawMaterial } from "../../shell/store";
+import { cardFromJson } from "../../domain/card";
+
+const NOW = Date.now();
+function material(extra: Partial<RawMaterial>): RawMaterial {
+  return { id: "m1", title: "素材", sourceType: "manual", sourceUrl: null, rawText: "正文只有这一段",
+    cleanedMarkdown: null, contentHash: "", mediaPath: null, mediaSizeBytes: 0, metadataJson: "{}",
+    inboxStatus: "inbox", createdAt: NOW, updatedAt: NOW, ...extra } as RawMaterial;
+}
+const card = (extra: Record<string, unknown>) => cardFromJson({
+  id: "c1", headline: "标题", summary: "一句话结论", details: "详细正文", category: "计算机",
+  createdAt: NOW, ...extra });
+
+const search = (materials: RawMaterial[], cards: any[], query: string) =>
+  filterEntries(entriesFor(materials, cards, "library"), query).map(entry => entry.id);
+
+describe("正文与搜索字段", () => {
+  it("邮件搜索元数据不会写进阅读和编辑用的正文", () => {
+    const m = material({ sourceType: "email", metadataJson: JSON.stringify({
+      from: "sender@example.test", attachmentFilenames: ["budget.pdf"],
+    }), cleanedMarkdown: "另一份清洗正文" });
+    const [entry] = entriesFor([m], [], "library");
+    expect(filterEntries([entry], "sender@example.test")).toHaveLength(1);
+    expect(entry.text).toBe(m.rawText);
+  });
+
+  it("卡片搜索摘要和链接时，编辑正文仍保持 details 原样", () => {
+    const c = card({ summary: "仅在摘要中出现的词", links: [{ title: "引用", url: "https://ref.example.test" }] });
+    const [entry] = entriesFor([], [c], "library");
+    expect(filterEntries([entry], "仅在摘要中出现的词")).toHaveLength(1);
+    expect(entry.text).toBe(c.details);
+  });
+});
+
+describe("搜索覆盖", () => {
+  it("能搜到知识卡的摘要（一句话结论常常才是用户记住的东西）", () => {
+    const c = card({ summary: "复购率比拉新更重要" });
+    expect(search([], [c], "复购率")).toContain("c1");
+  });
+
+  it("能搜到卡片的所有链接，而不只是第一条", () => {
+    const c = card({ links: [{ title: "一", url: "https://a.example.com" }, { title: "二", url: "https://b.example.com" }] });
+    expect(search([], [c], "b.example.com")).toContain("c1");
+  });
+
+  it("邮件能按发件人搜到", () => {
+    const m = material({ sourceType: "email", title: "项目排期",
+      metadataJson: JSON.stringify({ mailAccountId: "work", from: "团队 <team@example.com>" }) });
+    expect(search([m], [], "team@example.com")).toContain("m1");
+  });
+
+  it("邮件能按附件名搜到", () => {
+    const m = material({ sourceType: "email", title: "项目排期",
+      metadataJson: JSON.stringify({ mailAccountId: "work", from: "a@b.c", attachmentFilenames: ["方案-v3.pdf"] }) });
+    expect(search([m], [], "方案-v3")).toContain("m1");
+  });
+
+  it("搜不到的内容就是不该出现", () => {
+    const m = material({});
+    expect(search([m], [], "完全不存在")).toHaveLength(0);
+  });
+});
+
+describe("订阅来源", () => {
+  const sub = material({ id: "s1", metadataJson: JSON.stringify({ subscriptionId: "sub-1" }) });
+  const web = material({ id: "w1", metadataJson: JSON.stringify({}) });
+  const broken = material({ id: "b1", metadataJson: "坏数据" });
+
+  it("能识别素材是否来自订阅", () => {
+    expect(subscriptionIdOf(sub)).toBe("sub-1");
+    expect(subscriptionIdOf(web)).toBeNull();
+    expect(subscriptionIdOf(broken)).toBeNull();
+  });
+
+  it("按订阅筛选只留订阅来源的素材", () => {
+    const entries = entriesFor([sub, web], [], "library");
+    const kept = filterEntries(entries, "", "", "subscription").map(e => e.id);
+    expect(kept).toEqual(["s1"]);
+  });
+
+  it("订阅筛选不会误留知识卡", () => {
+    const entries = entriesFor([sub], [card({})], "library");
+    expect(filterEntries(entries, "", "", "subscription").map(e => e.id)).toEqual(["s1"]);
+  });
+});

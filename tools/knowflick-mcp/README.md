@@ -7,7 +7,7 @@
 
 ```bash
 # Qoder CLI（配置写入 ~/.qoder/settings.json，可 /mcp reload 热加载）
-qoder mcp add knowflick -- node /Users/fangshoufanji/workspace/02-AI开发/ai-test/KnowFlick/tools/knowflick-mcp/server.mjs
+qoder mcp add knowflick -- node "$HOME/workspace/02-AI开发/KnowFlick/tools/knowflick-mcp/server.mjs"
 ```
 
 Claude Desktop / Cursor 写进各自的 MCP 配置即可，形状相同：
@@ -16,7 +16,7 @@ Claude Desktop / Cursor 写进各自的 MCP 配置即可，形状相同：
 { "mcpServers": { "knowflick": { "command": "node", "args": ["/绝对路径/tools/knowflick-mcp/server.mjs"] } } }
 ```
 
-参数：`--cards <path>` 指定 cards.json（默认 `~/Library/Application Support/KnowFlick/cards.json`）；
+参数：`--cards <path>` 指定 cards.json（默认 `<数据根>/store/cards.json`——两套 App 都写这里，见 [ADR-0002 §3](../../docs/adr/0002-desktop-web-split-from-android.md)；若只有已删除的 mac 端遗留在数据根下的 `cards.json`，也认它）；
 `--allow-write` 打开写回；`--selftest [查询词]` 不起 stdio，直接跑一遍全部工具。
 
 ## 工具
@@ -68,7 +68,7 @@ node tools/knowflick-mcp/kf.mjs staged
 
 - 检索是字面/词频口径，**没有语义向量**（那是 P4：一次性云端编码 + 端侧点积，见
   `docs/KNOWLEDGE_SYSTEM_ROADMAP_2026-09.md` §6）。
-- 只覆盖 mac 端数据目录；手机上的库要先经局域网同步到本机。
+- 只覆盖本机数据目录；手机上的库要先经局域网同步到本机，或用 App 导出后拷过来。
 - 协议按 2025-06-18/2025-11-25 代际实现（`initialize` + `tools/*`）。MCP 2026-07-28 起取消握手，
   官方 SDK 也还在跟进；实测客户端（Qoder/Claude/Cursor）接受这一代际，若将来握手失败再补 `server/discover`。
 

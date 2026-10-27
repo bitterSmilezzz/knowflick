@@ -20,6 +20,10 @@ import pathlib
 import sys
 from collections import defaultdict
 
+# Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from windows_console import emit  # noqa: E402
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 PKG_ROOT = REPO / "apps/android/app/src/main/kotlin/com/knowflick/app"
 
@@ -194,32 +198,32 @@ def main() -> int:
     def total(items):
         return sum(info[i]["lines"] for i in items)
 
-    print("=== 分档（文件数 / 行数）===")
+    emit("=== 分档（文件数 / 行数）===")
     for t in ("A", "B", "C"):
-        print(f"{t}: {len(tiers[t])} 文件 / {total(tiers[t])} 行")
+        emit(f"{t}: {len(tiers[t])} 文件 / {total(tiers[t])} 行")
 
-    print("\n=== A 档（可直接进 :shared-ui commonMain）===")
+    emit("\n=== A 档（可直接进 :shared-ui commonMain）===")
     for rel in sorted(tiers["A"], key=lambda r: -info[r]["lines"]):
-        print(f"  {info[rel]['lines']:5d}  {rel}")
+        emit(f"  {info[rel]['lines']:5d}  {rel}")
 
-    print("\n=== B 档（自身干净，但依赖闭包里有平台文件）—— 前 25 条 ===")
+    emit("\n=== B 档（自身干净，但依赖闭包里有平台文件）—— 前 25 条 ===")
     for rel in sorted(tiers["B"], key=lambda r: -info[r]["lines"])[:25]:
         bad = sorted(d for d in deps[rel] if not portable[d])[:3]
-        print(f"  {info[rel]['lines']:5d}  {rel}   ← 受 {', '.join(bad)} 拖累")
+        emit(f"  {info[rel]['lines']:5d}  {rel}   ← 受 {', '.join(bad)} 拖累")
 
-    print("\n=== C 档（自身有平台信号）—— 前 15 条 ===")
+    emit("\n=== C 档（自身有平台信号）—— 前 15 条 ===")
     for rel in sorted(tiers["C"], key=lambda r: -info[r]["lines"])[:15]:
-        print(f"  {info[rel]['lines']:5d}  {rel}   [{'; '.join(reasons[rel][:3])}]")
+        emit(f"  {info[rel]['lines']:5d}  {rel}   [{'; '.join(reasons[rel][:3])}]")
 
     # 已迁入共享模块的文件单列：本脚本只对 app 模块剩下的代码分档，
     # 不单列的话每迁一批都会像「总量凭空变少」。
     shared_root = REPO / "apps/android/shared-ui/src"
     shared = sorted(shared_root.rglob("*.kt"))
     shared_lines = sum(len(read(p).splitlines()) for p in shared)
-    print(f"\n=== 已迁入 :shared-ui：{len(shared)} 文件 / {shared_lines} 行 ===")
+    emit(f"\n=== 已迁入 :shared-ui：{len(shared)} 文件 / {shared_lines} 行 ===")
     for p in shared:
-        print(f"  {len(read(p).splitlines()):5d}  {p.relative_to(shared_root).as_posix()}")
-    print(f"\n注：上面的 A/B/C 只统计 app 模块**尚未迁走**的代码。"
+        emit(f"  {len(read(p).splitlines()):5d}  {p.relative_to(shared_root).as_posix()}")
+    emit(f"\n注：上面的 A/B/C 只统计 app 模块**尚未迁走**的代码。"
           f"当前共享界面总量 {shared_lines} 行；app 侧 A 档还有 {total(tiers['A'])} 行可直接搬。")
 
     if "--json" in sys.argv:
@@ -233,7 +237,7 @@ def main() -> int:
                 "reasons": {k: v for k, v in reasons.items() if v},
             },
             ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"\n已写出 {out.relative_to(REPO)}")
+        emit(f"\n已写出 {out.relative_to(REPO)}")
     return 0
 
 

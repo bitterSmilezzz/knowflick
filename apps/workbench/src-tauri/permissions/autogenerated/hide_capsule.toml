@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hide-capsule"
+description = "Enables the hide_capsule command without any pre-configured scope."
+commands.allow = ["hide_capsule"]
+
+[[permission]]
+identifier = "deny-hide-capsule"
+description = "Denies the hide_capsule command without any pre-configured scope."
+commands.deny = ["hide_capsule"]

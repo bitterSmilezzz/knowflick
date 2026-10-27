@@ -139,6 +139,8 @@ fun DeckScreen(
     onOpenSync: () -> Unit = {},
     /** 网页剪藏：粘链接或从浏览器分享进来 */
     onOpenClip: () -> Unit = {},
+    onOpenNotesImport: () -> Unit = {},
+    onOpenHelp: () -> Unit = {},
     onOpenQuiz: () -> Unit = {},
     onGenerateRequest: () -> Unit = {},
     isGenerating: Boolean = false,
@@ -429,6 +431,14 @@ fun DeckScreen(
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("剪藏网页…", fontSize = 13.sp) },
                                 onClick = { showMore = false; onOpenClip() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("导入笔记…", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenNotesImport() },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("快捷键", fontSize = 13.sp) },
+                                onClick = { showMore = false; onOpenHelp() },
                             )
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("局域网极速同步…", fontSize = 13.sp) },

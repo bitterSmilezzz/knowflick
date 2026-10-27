@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-mark-subscription-polled"
+description = "Enables the db_mark_subscription_polled command without any pre-configured scope."
+commands.allow = ["db_mark_subscription_polled"]
+
+[[permission]]
+identifier = "deny-db-mark-subscription-polled"
+description = "Denies the db_mark_subscription_polled command without any pre-configured scope."
+commands.deny = ["db_mark_subscription_polled"]

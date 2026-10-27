@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-save-chunk-embeddings"
+description = "Enables the note_save_chunk_embeddings command without any pre-configured scope."
+commands.allow = ["note_save_chunk_embeddings"]
+
+[[permission]]
+identifier = "deny-note-save-chunk-embeddings"
+description = "Denies the note_save_chunk_embeddings command without any pre-configured scope."
+commands.deny = ["note_save_chunk_embeddings"]

@@ -21,6 +21,19 @@ export const DEFAULT_APP_DIR = path.join(
 
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 
+/**
+ * 默认卡库位置：两套 App（第一套桌面与 Android）都读写 `<数据根>/store/cards.json`
+ * （ADR-0002 §3「拷过去就能打开」）；已删除的 mac 端把 `cards.json` 直接放在数据根下，
+ * 所以那里也看一眼。两处都没有时按**现行**布局返回——错误信息里的那个路径才是用户该去的地方。
+ */
+export function defaultCardsPath(appDir = DEFAULT_APP_DIR) {
+  const inStore = path.join(appDir, "store", "cards.json");
+  if (fs.existsSync(inStore)) return inStore;
+  const legacy = path.join(appDir, "cards.json");
+  if (fs.existsSync(legacy)) return legacy;
+  return inStore;
+}
+
 // ---------------------------------------------------------------- 读取
 
 function readJsonArray(file) {
@@ -34,7 +47,7 @@ function readJsonArray(file) {
 }
 
 export function loadLibrary({ appDir = DEFAULT_APP_DIR, cardsFile, taxonomyFile } = {}) {
-  const cardsPath = cardsFile ?? path.join(appDir, "cards.json");
+  const cardsPath = cardsFile ?? defaultCardsPath(appDir);
   if (!fs.existsSync(cardsPath)) {
     throw new Error(`找不到卡片库：${cardsPath}。请先在 KnowFlick 里生成/导入内容，或用 --cards 指定路径。`);
   }

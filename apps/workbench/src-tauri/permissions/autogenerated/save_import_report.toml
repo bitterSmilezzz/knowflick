@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-import-report"
+description = "Enables the save_import_report command without any pre-configured scope."
+commands.allow = ["save_import_report"]
+
+[[permission]]
+identifier = "deny-save-import-report"
+description = "Denies the save_import_report command without any pre-configured scope."
+commands.deny = ["save_import_report"]

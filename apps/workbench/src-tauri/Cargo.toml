@@ -1,0 +1,36 @@
+[package]
+name = "knowflick-workbench"
+version = "0.1.0"
+edition = "2021"
+description = "KnowFlick desktop shell"
+
+[lib]
+name = "knowflick_workbench_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+encoding_rs = "0.8"
+fastembed = "7"
+open = "5"
+mailparse = "0.16"
+html2text = "0.17"
+aes-gcm = "0.10"
+base64 = "0.22"
+rand = "0.8"
+native-tls = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["charset", "http2", "rustls-tls", "stream"] }
+rusqlite = { version = "0.32", features = ["bundled", "bundled-full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+tokio = { version = "1", features = ["fs"] }
+uuid = { version = "1", features = ["v4"] }
+whisper-rs = "0.16"
+window-vibrancy = "0.5"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }

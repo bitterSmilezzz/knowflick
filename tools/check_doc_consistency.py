@@ -1,0 +1,521 @@
+#!/usr/bin/env python3
+"""核对「当前状态」类文档里的数字与实际是否相符。
+
+# 改这个文件应当触发 CI（路径过滤里列了它）——这一行就是验证用的。
+
+背景：这轮手工核对时发现 README / UI_CONSOLIDATION 写着的门禁内容与实际
+已经差了好几轮（文档说「npm test + tsc + cargo test」，实际还有 MCP、
+来源矩阵、taste gate 与 13 套浏览器冒烟）。这类漂移靠人查迟早会再犯。
+
+范围只管**描述当前状态的文档**——CHANGELOG 记的是「当时的事实」，
+历史条目的数字本来就不该跟着变，不在检查范围内。
+
+检查项：
+1. 文档里写的「前端 N 项」「Rust N 项」与实际跑出来的数量一致；
+2. 文档里写的「N 套浏览器冒烟」与 tools/ 下 *_smoke.mjs 的实际套数一致；
+3. 文档里提到的命令行脚本确实存在。
+
+退出码 0 = 全部相符；1 = 有漂移。
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows_console import emit  # noqa: E402
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(ROOT / "tools"))
+from workflow_paths import matches as _path_matches  # noqa: E402
+from workflow_paths import paths_for as _workflow_paths  # noqa: E402
+
+# 只检查这些：它们描述的是「现在是什么样」，不是历史。
+CURRENT_STATE_DOCS = [
+    "README.md",
+    "AGENTS.md",
+    "docs/MULTI_PLATFORM.md",
+    "docs/UI_CONSOLIDATION.md",
+    "docs/FIRST_VERSION_ACCEPTANCE.md",
+    "docs/DATA_EGRESS.md",
+    "docs/WINDOWS_ONBOARDING.md",
+]
+
+# 描述「当前状态」的措辞——带这些词的行才拿来核对。
+CURRENT_MARKERS = ("门禁", "当前", "现在", "全量回归", "验证")
+
+
+def count_frontend_tests() -> int | None:
+    """从前端测试文件里数出测试用例数（it/test 声明）。"""
+    total = 0
+    for path in (ROOT / "apps/workbench/src").rglob("*.test.ts*"):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        total += len(re.findall(r"\b(?:it|test)\s*\(", text))
+    return total or None
+
+
+def count_rust_tests() -> int | None:
+    """数 Rust 的 #[test] 数量。"""
+    total = 0
+    for path in (ROOT / "apps/workbench/src-tauri/src").rglob("*.rs"):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        total += len(re.findall(r"#\[(?:tokio::)?test\]", text))
+    return total or None
+
+
+def count_smoke_suites() -> int:
+    """**浏览器**冒烟的套数。
+
+    以 tools/run_all_smokes.sh 的 SUITES 列表为准——那是真正被跑的一组。
+    不能直接数 tools/*_smoke.mjs：mcp_smoke 与 mcp_server_smoke 不需要浏览器，
+    已在门禁里单独跑，不属于「浏览器冒烟」。
+    """
+    runner = ROOT / "tools/run_all_smokes.sh"
+    if not runner.exists():
+        return 0
+    text = runner.read_text(encoding="utf-8")
+    match = re.search(r"SUITES=\((.*?)\)", text, re.S)
+    if not match:
+        return 0
+    return len(re.findall(r"^\s+[a-z_]+$", match.group(1), re.M))
+
+
+
+
+def gate_contents() -> str:
+    """门禁脚本的全文——用来核对「在门禁里」这类说法。"""
+    gate = ROOT / "tools/verify_workbench.sh"
+    return gate.read_text(encoding="utf-8") if gate.exists() else ""
+
+
+def check_gate_claims(problems: list[str]) -> None:
+    """文档说某个检查「在门禁里」，门禁里就得真的有它。
+
+    反过来的漂移我踩过：验收清单写「taste gate 未纳入门禁」，而它早就接进去了。
+    """
+    gate = gate_contents()
+    if not gate:
+        return
+    for rel in CURRENT_STATE_DOCS:
+        path = ROOT / rel
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if "在门禁里" not in line and "已纳入门禁" not in line:
+                continue
+            # 只核对**紧挨着「在门禁里」的那个**脚本名——
+            # 一行里可能提到好几个脚本，别的未必声称在门禁里。
+            for match in re.finditer(
+                r"([a-z0-9_]+\.(?:mjs|py))[^。；;]{0,12}?在门禁里", line
+            ):
+                script = match.group(1)
+                if script not in gate:
+                    problems.append(
+                        f"{rel}:{lineno} 说「{script} 在门禁里」，但 verify_workbench.sh 里没有它"
+                    )
+
+
+# 已修缺陷 → 证据测试。回归防护的**自我审查**：
+# 缺陷修好后，它的测试可能��后来某次改动里被改弱或删掉——那时缺陷就悄悄回来了。
+# 这张表把「缺陷」和「证据」绑在一起，证据不在了就报警。
+EVIDENCE_MAP: list[tuple[str, str, str]] = [
+    ("压缩 PDF 解析出源码", "apps/workbench/src/domain/fixtures.test.ts", "FlateDecode"),
+    ("浏览器不给 MIME 时 JPEG 存成 png", "apps/workbench/src/domain/mediaMime.test.ts", "imageMimeOf"),
+    ("订阅源相对链接", "apps/workbench/src/domain/fixtures.test.ts", "相对链接"),
+    ("AI 错误回显密钥", "apps/workbench/src/shell/store.redact.test.ts", "不该回显"),
+    ("Embedding 错误回显密钥", "apps/workbench/src/shell/store.redact.test.ts", "不该回显"),
+    ("导出包带走密钥", "apps/workbench/src/domain/dataEgress.test.ts", "SENTINEL"),
+    ("归档被当成讨厌来源", "apps/workbench/src/domain/insights.test.ts", "归档"),
+    ("恢复丢弃空标题", "apps/workbench/src/domain/restoreRules.test.ts", "空标题"),
+    ("模型输出带引用编号", "apps/workbench/src/domain/ingest.aiPreview.test.ts", "引用编号"),
+    ("details 折叠失效", "tools/taste_usability_gate.mjs", "最后一行完整可见"),
+    # 三入口导航（R1，UI_SPEC 桌面主导航 + ADR-0004）：笔记/知识库/应用。
+    ("侧栏三入口", "tools/taste_usability_gate.mjs", "侧栏按三入口分组"),
+    ("路由对照自动检查", "tools/taste_usability_gate.mjs", "旧入口迁移后仍可达"),
+    ("一级入口数", "tools/taste_usability_gate.mjs", "一级入口"),
+    ("手写/语音面板键盘不可达", "tools/taste_usability_gate.mjs", "焦点应落在面板内"),
+    ("测验入口", "tools/workspace_ui_smoke.mjs", "知识测验"),
+    ("测验空态措辞", "tools/workspace_ui_smoke.mjs", "没有可以测验的知识卡"),
+    ("统计页", "tools/workspace_ui_smoke.mjs", "统计页"),
+    (".eml 导入", "tools/import_ui_smoke.mjs", "eml"),
+    ("AI 出卡链路", "tools/workspace_ui_smoke.mjs", "AI 提炼"),
+    ("数据库损坏报错", "apps/workbench/src-tauri/src/db.rs", "corrupt_db_is_reported_not_silently_recreated"),
+    ("Anki TSV 两端同格式", "apps/android/shared-data/src/jvmTest/kotlin/com/knowflick/app/data/CardExportEngineTest.kt", "exportAnkiTSV"),
+    ("来源矩阵", "apps/workbench/src/ui/workspace/sourceMatrix.test.ts", "来源矩阵"),
+    # —— 以下为第二批补齐的证据 ——
+    ("复习闭环：间隔算出来并存住", "tools/review_ui_smoke.mjs", "重载后复习间隔仍在"),
+    ("搜索无结果没有清空入口", "tools/workspace_ui_smoke.mjs", "clear-search"),
+    ("MCP 服务器没有回归", "tools/mcp_smoke.mjs", "MCP smoke"),
+    ("MCP 工具自身回归", "apps/workbench/src/domain/mcpServer.test.ts", "mcpServer"),
+    ("跨端导入丢精度（间隔被改写）", "apps/android/shared-data/src/jvmTest/kotlin/com/knowflick/app/data/WorkbenchExportImportTest.kt", "WorkbenchExportImport"),
+    ("跨端契约 cards.json", "apps/android/domain/src/jvmTest/kotlin/com/knowflick/app/domain/CardJsonCrossEndTest.kt", "CrossEnd"),
+    ("统计页没有入口", "tools/workspace_ui_smoke.mjs", "统计页渲染"),
+    ("笔记转知识卡没有入口", "apps/workbench/src/domain/notes.test.ts", "parseNotesFile"),
+    ("操作音效开关只存不用", "apps/workbench/src/shell/sounds.test.ts", "setSoundEffectsEnabled"),
+    ("批量栏缺导出选中", "tools/workspace_ui_smoke.mjs", "导出选中"),
+    ("规模 4000 条下的交互", "tools/scale_ui_smoke.mjs", "逐字输入"),
+    ("产物看不到依据哪几张卡", "tools/brain_ui_smoke.mjs", "能看见依据的具体卡片"),
+    ("已保存的产物对问答不可见", "tools/brain_ui_smoke.mjs", "产物标题或结论出现在回答依据里"),
+    ("问答引用指向已删除的卡片", "tools/brain_ui_smoke.mjs", "已删除的引用要标出来"),
+    ("订阅来源在收件箱认不出来", "apps/workbench/src/domain/subscription.test.ts", "subscriptionId"),
+    ("两个隐藏 input 缺 data-role", "tools/import_ui_smoke.mjs", "data-role=import-files"),
+    ("数据库损坏时只甩英文错误", "apps/workbench/src-tauri/src/db.rs", "corrupt_db_is_reported_not_silently_recreated"),
+    # —— 第三批：逐条核对 SMOOTHNESS.md 的 42 个小节时补齐的 ——
+    ("批量操作只有单选", "tools/workspace_ui_smoke.mjs", "多选后出现批量操作栏"),
+    ("订阅素材只能一条条点", "tools/workspace_ui_smoke.mjs", "多选订阅素材也出现批量栏"),
+    ("问答的对话一离开就清零", "tools/brain_ui_smoke.mjs", "切页回来后对话仍在"),
+    ("未配密钥时提问点了没反应", "tools/brain_ui_smoke.mjs", "尚未配置 API 密钥"),
+    ("简报「重新分析」看起来像没反应", "tools/brain_ui_smoke.mjs", "重新分析默认显示为「重新分析」"),
+    ("产物库存进去却读不到", "tools/brain_ui_smoke.mjs", "简报已存入产物库"),
+    ("剪藏到知识卡这条链没覆盖", "apps/workbench/src/domain/fixtures.test.ts", "真实文件：网页剪藏"),
+    ("订阅来源在收件箱认不出来", "apps/workbench/src/domain/insights.test.ts", "订阅"),
+    # —— 第四批：扫「没被任何测试触及的纯逻辑函数」时补上的 ——
+    # 这几个函数此前完全没有测试覆盖，其中 assertFetchableUrl 是 SSRF 防护。
+    ("链接可抓取性判定（SSRF 防护）", "apps/workbench/src/domain/ingest.boundaries.test.ts", "拒绝非本机的 http 链接"),
+    ("API 地址拼接", "apps/workbench/src/domain/ingest.boundaries.test.ts", "/v1/chat/completions"),
+    ("本地地址不需要 API 密钥", "apps/workbench/src/domain/ingest.boundaries.test.ts", "本机地址不需要密钥"),
+    ("模型提示词的长文分支", "apps/workbench/src/domain/ingest.boundaries.test.ts", "长文智能切片提示"),
+    ("剪藏侧相对链接补全", "apps/workbench/src/domain/clipEngine.links.test.ts", "同目录相对地址补上目录"),
+    ("从文字里找出第一个链接", "apps/workbench/src/domain/clipEngine.links.test.ts", "找得到时返回原样地址"),
+]
+
+
+def check_evidence(problems: list[str]) -> None:
+    """每条已修缺陷都要还有证据测试。"""
+    for label, rel, needle in EVIDENCE_MAP:
+        path = ROOT / rel
+        if not path.exists():
+            problems.append(f"「{label}」的证据文件没了：{rel}")
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if needle not in text:
+            problems.append(f"「{label}」的证据在 {rel} 里找不到「{needle}」——测试可能被改弱了")
+
+
+def ci_browser_smoke_suites() -> set[str]:
+    """CI 上**真的会跑**的浏览器冒烟套件名。
+
+    只认 `tools/ci_run_browser_smokes.sh` 里 `SUITES=(...)` 数组的**实际条目**。
+
+    为什么不能全文 grep：注释里提到一个套件名就会让 grep 命中，于是
+    「把它从执行列表里删掉、只在注释里留个名字」这种改动能骗过检查——
+    我第一版就是这么写的，自己踩了一次（同一个坑：判定 wrapper 源时，
+    注释里的官方地址让 grep 误判）。
+
+    只支持当前这套写法（每行一个标识符）。格式变了就**明确报错**，
+    不猜、不假装支持。
+    """
+    script = ROOT / "tools/ci_run_browser_smokes.sh"
+    if not script.exists():
+        return set()
+    text = script.read_text(encoding="utf-8")
+    block = re.search(r"^SUITES=\(\n(.*?)\n\)", text, re.M | re.S)
+    if not block:
+        raise ValueError("ci_run_browser_smokes.sh 里找不到 SUITES=(...) 数组")
+    suites: set[str] = set()
+    for line in block[1].splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue  # 注释不是执行项
+        if not re.fullmatch(r"[a-z0-9_]+", stripped):
+            raise ValueError(f"无法识别的 SUITES 条目：{line!r}")
+        suites.add(stripped)
+    return suites
+
+
+def check_evidence_is_executed(problems: list[str]) -> None:
+    """证据测试**确实会被执行**。
+
+    「文件里有断言」不够——它还得真的被跑：
+    - 浏览器冒烟要在 run_all_smokes 的列表里（或门禁单独调），否则永远不跑；
+    - Android 测试的模块要被 CI 显式点名（AGENTS.md 记着：漏了会静默少跑）；
+    - 前端单测要在 vitest 的收集范围（apps/workbench/src）里。
+
+    「在列表里」还要再问一层：**CI 上真会跑吗**。
+    浏览器冒烟需要 agent-browser 与运行中的 Vite，CI 上两者都没有
+    （`run_all_smokes.sh` 缺 agent-browser 时打印 SKIP 并 exit 0）。
+    所以只靠 run_all_smokes 到达的证据在 CI 上**一条断言都不产生**，
+    却会被算成「已覆盖」——这正是本条检查原先放过的事。
+    """
+    runner = (ROOT / "tools/run_all_smokes.sh").read_text(encoding="utf-8")
+    gate = gate_contents()
+    ci = (ROOT / ".github/workflows/android.yml").read_text(encoding="utf-8")
+    # CI 上真正会跑的浏览器冒烟：workbench.yml 的 browser-smokes job 用
+    # tools/ci_run_browser_smokes.sh 逐套遍历，缺任何一套都算失败。
+    ci_suites = ci_browser_smoke_suites()
+
+    for label, rel, _needle in EVIDENCE_MAP:
+        if not rel.endswith((".mjs", ".kt", ".test.ts", ".test.tsx")):
+            continue  # 实现文件（.ts/.rs）本身不是「测试」
+        if rel.endswith(".mjs"):
+            name = Path(rel).stem
+            if name not in runner and name not in gate:
+                problems.append(
+                    f"「{label}」的证据 {rel} 不会被执行：既不在 run_all_smokes.sh 也不在门禁里"
+                )
+            elif name in gate and name not in runner:
+                continue  # 门禁直接调用它：CI 上真会跑
+            elif name in runner and name not in gate:
+                # 只靠 run_all_smokes 到达：本机跑得到，但要确认 **CI 上也跑得到**——
+                # CI 的 browser-smokes job 用 ci_run_browser_smokes.sh 逐套遍历，
+                # 套件名出现在那里才算 CI 已覆盖。
+                if name not in ci_suites:
+                    problems.append(
+                        f"「{label}」的证据 {rel} 只在本机跑：它不在 CI 的浏览器冒烟"
+                        "（tools/ci_run_browser_smokes.sh 的 SUITES 数组）里，"
+                        "CI 上不会被执行——不能算 CI 已覆盖"
+                    )
+        elif rel.endswith(".kt"):
+            module = rel.split("apps/android/")[1].split("/")[0]
+            if f":{module}:jvmTest" not in ci and f":{module}:test" not in ci:
+                problems.append(
+                    f"「{label}」的证据 {rel} 所在模块 {module} 没被 CI 点名，不会被跑"
+                )
+        else:
+            if "apps/workbench/src/" not in rel:
+                problems.append(f"「{label}」的证据 {rel} 不在 vitest 的收集范围内")
+
+
+def check_evidence_assertions(problems: list[str]) -> None:
+    """证据测试的断言要**真的在断言行为**，不是只断言存在。
+
+    两种常见的弱断言：
+    - `expect(x.length).toBeGreaterThan(0)`——「1 个」和「8 个」都算过；
+    - for 循环里的断言——**数组为空时循环零次、直接通过**。
+    """
+    # 范围是**全仓**前端测试，不只证据表里那些——弱断言在任何地方都是问题。
+    targets = [
+        ROOT / rel
+        for _label, rel, _needle in EVIDENCE_MAP
+        if rel.endswith((".test.ts", ".test.tsx")) and (ROOT / rel).exists()
+    ]
+    targets += [p for p in (ROOT / "apps/workbench/src").rglob("*.test.ts*")]
+    seen_paths: set[Path] = set()
+    for path in targets:
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
+        rel = str(path.relative_to(ROOT))
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for match in re.finditer(r'it\(\s*"([^"]+)"', text):
+            start = match.end()
+            nxt = text.find("\n  it(", start)
+            body = text[start: nxt if nxt > 0 else len(text)]
+            if not body.strip():
+                continue
+            # 循环里的断言：空数组时不会执行 → 形同虚设。
+            # 判定：循环体内有 expect，但**循环外**没有对容器长度的断言。
+            for_match = re.search(r"for\s*\(([^)]*)\)\s*\{", body)
+            if for_match:
+                loop_start = for_match.start()
+                # 找循环体（粗略取到下一个 it 或文件尾）
+                body_after = body[loop_start:]
+                depth = 0
+                loop_body = ""
+                for idx, ch in enumerate(body_after):
+                    if ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0:
+                            loop_body = body_after[: idx + 1]
+                            break
+                has_expect_in_loop = "expect(" in loop_body
+                before = body[:loop_start]
+                after = body_after[len(loop_body):]
+                has_length_assert_outside = bool(
+                    re.search(r"expect\(\s*\w+\.length", before + after)
+                )
+                # 遍历的是**硬编码数组**或**模块级常量**时不可能为空——
+                # 那种循环是安全的，不算弱断言。
+                iterated = for_match.group(1).split(" of ")[-1].strip()
+                safe_iteration = bool(
+                    re.match(r"^[A-Z][A-Z0-9_]*$", iterated)  # 全大写常量
+                    or re.match(r"^(cases|list|items|values|samples)$", iterated)
+                )
+                if has_expect_in_loop and not has_length_assert_outside and not safe_iteration:
+                    problems.append(
+                        f"{rel} 的「{match.group(1)[:30]}」在 for 循环里断言，"
+                        "空数组时会直接通过"
+                    )
+            # 存在性断言：整个测试块里**只有** length > 0 这一种断言时才算弱。
+            # 只要还有别的精确断言（toBe 具体值 / toEqual / toContain…），
+            # 那个 > 0 就是「确实有东西」的兜底，不算弱。
+            # 参数里可能有嵌套括号（expect(senderKeyOf(x)).toBeNull()），
+            # 所以不能简单地 [^)]*。
+            # DOTALL：expect(...) 可能跨行（参数里带模板字符串或换行）
+            asserts = re.findall(r"expect\(.*?\)\.(\w+)", body, re.S)
+            if asserts and all(meth == "toBeGreaterThan" for meth in asserts):
+                problems.append(
+                    f"{rel} 的「{match.group(1)[:30]}」只断言长度 > 0，"
+                    "换个数量也照样通过"
+                )
+
+
+def check_tauri_commands(problems: list[str]) -> None:
+    """核对静态字面量 invoke 与命令注册，并拒绝重复注册。
+
+    Rust 列表的最后一项允许没有尾逗号。旧扫描器漏了这一项，曾将已经注册的
+    db_list_stale_embedding_card_ids 误判为缺失；不能据此宣称发生过运行时故障。
+    动态生成的命令名不在此静态检查的覆盖范围内。
+    """
+    lib = ROOT / "apps/workbench/src-tauri/src/lib.rs"
+    if not lib.exists():
+        problems.append("找不到 Tauri 命令注册文件")
+        return
+    match = re.search(r"generate_handler!\s*\[(.*?)\]\s*\)", lib.read_text(encoding="utf-8"), re.S)
+    if not match:
+        problems.append("无法读取 Tauri 命令注册列表")
+        return
+    # 按逗号分项，末项有无尾逗号都有效；注释不算注册项。
+    registration_text = re.sub(r"/\*.*?\*/|//[^\n]*", "", match.group(1), flags=re.S)
+    commands = [item.strip() for item in registration_text.split(",") if item.strip()]
+    registered: set[str] = set()
+    for command in commands:
+        if not re.fullmatch(r"[a-z_][a-z_0-9]*", command):
+            problems.append(f"无法识别 Tauri 注册项：{command}")
+        elif command in registered:
+            problems.append(f"Tauri 命令重复注册：{command}")
+        registered.add(command)
+
+    invoked: set[str] = set()
+    for path in (ROOT / "apps/workbench/src").rglob("*"):
+        if path.suffix not in (".ts", ".tsx") or path.name.endswith((".test.ts", ".test.tsx")):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        invoked |= set(re.findall(r'''\binvoke\s*(?:<[^;]*?>\s*)?\(\s*["']([a-z_][a-z_0-9]*)["']''', text))
+    for command in sorted(invoked - registered):
+        problems.append(
+            f"前端 invoke(\"{command}\")，但 Rust 的 invoke_handler 里没注册——运行时会抛错"
+        )
+
+
+def check_ci_trigger_paths(problems: list[str]) -> None:
+    """CI 的路径过滤要盖住**真正被 CI 依赖的东西**。
+
+    这类漂移的特点是「改了没人验」：
+    - `tools/mcp-server.mjs` 是 MCP server 的实现，`mcp_smoke.mjs` spawn 它、
+      断言它的工具名。它不在任何 workflow 的 paths 里 → 改它只有本机 smoke
+      会红，CI 一次都不跑。
+    - `.github/workflows/android.yml` 决定 Android 测哪些模块，
+      `check_doc_consistency.py` 正是拿它当依据来核对「模块有没有被点名」。
+      改它却不触发跑这个守卫的 workflow → 守卫在 CI 上形同虚设。
+
+    守卫自己的触发路径漏了，比守卫逻辑写错更隐蔽。
+    """
+    required = {
+        # 文件 → 至少一个 workflow 要在 paths 里提到它
+        "tools/mcp-server.mjs": (".github/workflows/workbench.yml", ".github/workflows/workbench-release.yml"),
+        ".github/workflows/android.yml": (".github/workflows/workbench.yml", ".github/workflows/workbench-release.yml"),
+    }
+    for target, workflows in required.items():
+        mentioned = False
+        for workflow in workflows:
+            path = ROOT / workflow
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            for event in ("push", "pull_request"):
+                try:
+                    patterns = _workflow_paths(text, event)
+                except ValueError:
+                    continue  # 这个事件没有 paths 过滤
+                if any(_path_matches(target, pattern) for pattern in patterns):
+                    mentioned = True
+        if not mentioned:
+            problems.append(
+                f"{target} 没被任何 workflow 的 paths 提到——改它不会触发 CI，"
+                "而它是被 CI 依赖的东西（证据被改弱时无人察觉）"
+            )
+
+
+def main() -> int:
+    problems: list[str] = []
+
+    frontend = count_frontend_tests()
+    rust = count_rust_tests()
+    smokes = count_smoke_suites()
+
+    for rel in CURRENT_STATE_DOCS:
+        path = ROOT / rel
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if not any(marker in line for marker in CURRENT_MARKERS):
+                continue
+
+            # 「前端 N 项」
+            for match in re.finditer(r"前端\s*(\d+)\s*项", line):
+                claimed = int(match.group(1))
+                if frontend and claimed != frontend:
+                    problems.append(
+                        f"{rel}:{lineno} 说「前端 {claimed} 项」，实际 {frontend} 项"
+                    )
+            # 这里只数 #[test] 声明，包含 ignored，也不展开平台条件。
+            # 不能把声明数当作实际通过数；执行结果以 cargo test 日志为准。
+            for match in re.finditer(r"Rust\s*(\d+)\s*项", line):
+                claimed = int(match.group(1))
+                if rust and claimed != rust:
+                    emit(
+                        f"  提示 {rel}:{lineno} 的「Rust {claimed} 项」与本机 {rust} 项不同"
+                        "（三端数量本就不同，不算漂移）"
+                    )
+            # 「N 套浏览器冒烟」
+            for match in re.finditer(r"(\d+)\s*套浏览器冒烟", line):
+                claimed = int(match.group(1))
+                if claimed != smokes:
+                    problems.append(
+                        f"{rel}:{lineno} 说「{claimed} 套浏览器冒烟」，实际 {smokes} 套"
+                    )
+
+    # 文档提到的脚本必须存在——但「已随某端删除」这类**历史说明**不算。
+    deleted_note = re.compile(r"(已.{0,6}删除|已.{0,6}移除|不存在)")
+    for rel in CURRENT_STATE_DOCS:
+        path = ROOT / rel
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if not any(marker in line for marker in CURRENT_MARKERS):
+                continue
+            for script in re.findall(r"tools/([a-z0-9_]+\.(?:mjs|py|sh|swift))", line):
+                if (ROOT / "tools" / script).exists():
+                    continue
+                if deleted_note.search(line):
+                    continue  # 这是「该脚本已删除」的历史说明
+                problems.append(f"{rel}:{lineno} 提到 tools/{script}，但该文件不存在")
+
+    check_gate_claims(problems)
+    check_evidence(problems)
+    check_evidence_is_executed(problems)
+    check_evidence_assertions(problems)
+    check_tauri_commands(problems)
+    check_ci_trigger_paths(problems)
+
+    if problems:
+        emit("文档与实际有出入：")
+        for item in problems:
+            emit(f"  - {item}")
+        emit(f"\n（共 {len(problems)} 处）")
+        return 1
+
+    emit(
+        f"静态核对通过：前端用例声明 {frontend} 条、Rust 测试声明 {rust} 条、{smokes} 套浏览器冒烟，"
+        f"{len(EVIDENCE_MAP)} 条登记的证据路径与标识仍在；实际执行结果以测试日志为准"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

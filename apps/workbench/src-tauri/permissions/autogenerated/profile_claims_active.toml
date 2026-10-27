@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-profile-claims-active"
+description = "Enables the profile_claims_active command without any pre-configured scope."
+commands.allow = ["profile_claims_active"]
+
+[[permission]]
+identifier = "deny-profile-claims-active"
+description = "Denies the profile_claims_active command without any pre-configured scope."
+commands.deny = ["profile_claims_active"]

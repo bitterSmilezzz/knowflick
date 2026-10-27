@@ -3,7 +3,7 @@
 
 背景：jpackage 不交叉编译、也不认识「一种图标格式走三端」——
 macOS 要 `.icns`、Windows 要 `.ico`、Linux 要 `.png`。按第一原则，
-**美术只有一份**（`apps/mac/Resources/AppIcon.iconset/`，mac 端本来就用它），
+**美术只有一份**（`shared/icons/AppIcon.iconset/`），
 本脚本把它派生成三端打包器各自需要的格式，输出到 `shared/icons/`（随仓库分发）。
 
 用法：
@@ -23,8 +23,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows_console import emit  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
-ICONSET = ROOT / "apps/mac/Resources/AppIcon.iconset"
+ICONSET = ROOT / "shared/icons/AppIcon.iconset"
 OUT_DIR = ROOT / "shared/icons"
 
 # Windows 的 .ico 要含多档尺寸，否则任务栏/资源管理器/ Alt-Tab 会各取一档而糊
@@ -65,7 +69,7 @@ def build_icns(target: Path) -> bool:
     """
     iconutil = shutil.which("iconutil")
     if iconutil is None:
-        print("  · 跳过 AppIcon.icns（iconutil 只在 macOS 上有；仓库里已有产物）")
+        emit("  · 跳过 AppIcon.icns（iconutil 只在 macOS 上有；仓库里已有产物）")
         return False
     subprocess.run([iconutil, "-c", "icns", str(ICONSET), "-o", str(target)], check=True)
     return True
@@ -89,20 +93,20 @@ def main() -> int:
     if args.check:
         missing = [t.name for t in targets if not t.exists() or t.stat().st_size == 0]
         if missing:
-            print(f"✗ 缺少图标产物：{', '.join(missing)}（跑 python3 tools/generate_app_icons.py）")
+            emit(f"✗ 缺少图标产物：{', '.join(missing)}（跑 python3 tools/generate_app_icons.py）")
             return 1
         for t in targets:
-            print(f"✓ {t.relative_to(ROOT)}  {t.stat().st_size:>9,} B  sha256:{digest(t)}")
+            emit(f"✓ {t.relative_to(ROOT)}  {t.stat().st_size:>9,} B  sha256:{digest(t)}")
         return 0
 
     master = load_master()
-    print(f"美术源：{ICONSET.name}/ ({master.width}×{master.height})")
+    emit(f"美术源：{ICONSET.name}/ ({master.width}×{master.height})")
     build_png(master, targets[0])
     build_ico(master, targets[1])
     build_icns(targets[2])
     for t in targets:
         if t.exists():
-            print(f"✓ {t.relative_to(ROOT)}  {t.stat().st_size:>9,} B  sha256:{digest(t)}")
+            emit(f"✓ {t.relative_to(ROOT)}  {t.stat().st_size:>9,} B  sha256:{digest(t)}")
     return 0
 
 
