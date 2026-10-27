@@ -155,6 +155,8 @@ export function Workspace() {
   const [capture, setCapture] = useState(false);
   const [notePad, setNotePad] = useState<"ink" | "voice" | null>(null);
   const [notesState, setNotesState] = useState<NotesState>({ notes: [], knowledgeBases: [], membership: {} });
+  const [notesLoaded, setNotesLoaded] = useState(false);
+  const updateNotesState = useCallback((state: NotesState) => { setNotesState(state); setNotesLoaded(true); }, []);
   const [goalsState, setGoalsState] = useState<Goal[]>([]);
   const [lastImportReport, setLastImportReport] = useState<ImportReport | null>(null);
   // 手写/语音面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱
@@ -292,7 +294,10 @@ export function Workspace() {
       setFile(data.file);
       // 侧栏笔记计数也从权威层取——界面缓存要等用户点开笔记页才有数据，
       // 冷启动会显示 0（与 KF-001 同类：导出已经改为权威采集，这里补计数）。
-      void readNotes(dir).then((state) => { if (current === revision.current) setNotesState(state); });
+      setNotesLoaded(false);
+      void readNotes(data.dir).then((state) => {
+        if (current === revision.current) { setNotesState(state); setNotesLoaded(true); }
+      }).catch(() => { /* 未读取成功时不推断知识库归属。 */ });
       setApiKey(data.apiKey);
       setDir(data.dir);
       setLastImportReport(await readLastImportReport(data.dir));
@@ -2370,7 +2375,7 @@ export function Workspace() {
                   attachableMedia={materials
                     .filter((m) => m.mediaPath)
                     .map((m) => ({ path: m.mediaPath as string, label: m.title }))}
-                  onStateChange={setNotesState}
+                  onStateChange={updateNotesState}
                   openNoteId={openNoteId}
                   materials={materials}
                 />
@@ -2426,13 +2431,16 @@ export function Workspace() {
                   cards={cards}
                   goals={goalsState}
                   notes={notesState.notes}
+                  filedNoteIds={notesLoaded ? new Set(Object.keys(noteKbIndex)) : undefined}
                   schedule={reviewSchedule}
                   onScheduleChange={updateReviewSchedule}
                   staleReferences={staleReferenceList}
+                  onOpenMaterial={(id) => { navigate("library"); setKbScope(""); setSelectedId(id); }}
+                  onOpenCard={(id) => { setKbScope(""); openCard(id); }}
                 />
               ) : null}
               {page === "profile" ? <ProfileGovernanceView dir={dir} /> : null}
-              {page === "goals" ? <GoalsView dir={dir} materials={materials} /> : null}
+              {page === "goals" ? <GoalsView dir={dir} materials={materials} notes={notesState.notes} onGoalsChange={setGoalsState} /> : null}
               {page === "projects" ? (
                 <ProjectsView dir={dir} notes={notesState.notes.map((n) => ({ id: n.id, title: n.title }))} />
               ) : null}

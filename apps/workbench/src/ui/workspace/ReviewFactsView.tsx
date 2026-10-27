@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Goal, RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { periodLabel, reviewFacts, reviewToMarkdown, type ReviewFacts as Facts } from "../../domain/reviewFacts";
@@ -12,30 +12,38 @@ import { Icon } from "./Icon";
 
 /** 复盘视图（R4/D03）：渲染 reviewFacts 的**事实**——记录了什么、目标现状、
  *  没有记录的方面。不产建议（事实与建议分离是路线图口径）；导出走 Markdown。 */
-export function ReviewFactsView({ materials, cards, goals, notes = [], schedule, onScheduleChange, staleReferences = [] }: {
+export function ReviewFactsView({ materials, cards, goals, notes = [], filedNoteIds, schedule, onScheduleChange, staleReferences = [], onOpenMaterial, onOpenCard }: {
   materials: RawMaterial[];
   cards: KnowledgeCard[];
   goals: Goal[];
   notes?: Array<{ id: string; title: string; bodyMd: string; notebook: string | null; isDeleted: boolean }>;
+  filedNoteIds?: ReadonlySet<string>;
   /** 主动回顾的提醒计划（R4/D09）。 */
   schedule: ReviewSchedule;
   onScheduleChange: (next: ReviewSchedule) => void;
   /** 过期/失效的引用（由 noteReference 判定）。 */
   staleReferences?: Array<{ noteId: string; title: string; status: "changed" | "missing" }>;
+  onOpenMaterial: (id: string) => void;
+  onOpenCard: (id: string) => void;
 }) {
   const [kind, setKind] = useState<"day" | "week" | "month">("week");
   const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const facts: Facts = reviewFacts({ materials, cards, goals, now }, kind);
   const reminders = useMemo(
     () =>
       reviewReminders({
         goals,
-        notes: notes as never,
+        notes,
+        filedNoteIds,
         materials,
         staleReferences,
         projectScope: schedule.projectScope,
       }),
-    [goals, notes, materials, staleReferences, schedule.projectScope]
+    [goals, notes, filedNoteIds, materials, staleReferences, schedule.projectScope]
   );
 
   const download = () => {
@@ -78,19 +86,19 @@ export function ReviewFactsView({ materials, cards, goals, notes = [], schedule,
         <div className="rv-facts-grid">
           <div className="rv-fact" data-fact="materials"><strong>{facts.newMaterials.length}</strong><span>新收集素材</span></div>
           <div className="rv-fact" data-fact="cards"><strong>{facts.newCards.length}</strong><span>新转出知识卡</span></div>
-          <div className="rv-fact" data-fact="reviews"><strong>{facts.reviewedCardCount}</strong><span>复习过的卡</span></div>
-          <div className="rv-fact" data-fact="actions"><strong>{facts.reviewActions}</strong><span>复习动作</span></div>
+          <div className="rv-fact" data-fact="reviews"><strong>{facts.reviewedCardCount}</strong><span>最近一次复习在本周期的卡</span></div>
         </div>
+        <p className="ws-hint">未记录逐次复习历史，无法统计本周期的复习次数。</p>
         {facts.newMaterials.length > 0 ? (
           <details className="rv-detail" open>
             <summary>新收集素材</summary>
-            <ul>{facts.newMaterials.map((m) => <li key={m.id}>{m.title}</li>)}</ul>
+            <ul>{facts.newMaterials.map((m) => <li key={m.id}><button type="button" className="rv-source-link" onClick={() => onOpenMaterial(m.id)}>{m.title}</button></li>)}</ul>
           </details>
         ) : null}
         {facts.newCards.length > 0 ? (
           <details className="rv-detail">
             <summary>新转出知识卡</summary>
-            <ul>{facts.newCards.map((c) => <li key={c.id}>{c.headline}</li>)}</ul>
+            <ul>{facts.newCards.map((c) => <li key={c.id}><button type="button" className="rv-source-link" onClick={() => onOpenCard(c.id)}>{c.headline}</button></li>)}</ul>
           </details>
         ) : null}
       </section>
@@ -123,6 +131,7 @@ export function ReviewFactsView({ materials, cards, goals, notes = [], schedule,
       {/* 主动回顾（R4/D09）：频率、安静时段、暂停与退订；只提醒可处理的事。 */}
       <section className="rv-section" aria-label="主动回顾">
         <h2>主动回顾</h2>
+        <p className="ws-hint">当前只在此页列出可处理事项，尚不会按频率自动推送提醒。</p>
         <div className="rv-reminder-controls">
           <label>
             频率

@@ -78,6 +78,15 @@ describe("复盘事实聚合（R4/D03 底座）", () => {
     expect(facts.goals.find((g) => g.id === "g-active")?.evidenceCount).toBe(0);
   });
 
+  it("不把累计复习次数或证据数冒充周期内的事件", () => {
+    const facts = reviewFacts({ materials: [], cards: [card("old-history", NOW - 1000, 50)], goals: [goal("g1", 0)], now: NOW }, "week");
+    expect(facts.reviewedCardCount).toBe(1);
+    expect(facts.gaps.join(" ")).not.toContain("本周期没有新增证据");
+    const md = reviewToMarkdown(facts);
+    expect(md).toContain("无法统计本周期动作次数");
+    expect(md).not.toContain("50 次");
+  });
+
   it("Markdown 导出带周期边界与全部事实段；不出现任何评价措辞", () => {
     const facts = reviewFacts(
       { materials: [material("m1", NOW - 1000)], cards: [], goals: [goal("g1", 2)], now: NOW },

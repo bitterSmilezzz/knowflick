@@ -80,7 +80,7 @@ describe("T09 官方模块开关行为矩阵（KF-012）", () => {
       expect(res.error?.message).toMatch(/停用/);
     });
 
-    it("启用时 MCP 正常返回工具列表", async () => {
+    it("模块启用不能绕过嵌入式入口的授权要求", async () => {
       const req = {
         jsonrpc: "2.0" as const,
         id: "2",
@@ -91,8 +91,7 @@ describe("T09 官方模块开关行为矩阵（KF-012）", () => {
         materials: [],
         enabled: true,
       });
-      expect(res.result).toBeDefined();
-      expect(res.error).toBeUndefined();
+      expect(res.error?.message).toContain("尚未接入项目授权");
     });
   });
 });

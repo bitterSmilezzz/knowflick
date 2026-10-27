@@ -57,8 +57,8 @@ function rpc(args, cwd, env, request) {
         }
       }
     );
-    child.stdin.write(`${JSON.stringify(request)}\n`);
-    // 服务端读到 EOF 会退出；写完就等它的响应
+    // 关闭输入让服务端收到 EOF，避免每个请求都等到 20 秒超时才退出。
+    child.stdin.end(`${JSON.stringify(request)}\n`);
   });
 }
 

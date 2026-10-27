@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { Note } from "../../domain/note";
 import type { RawMaterial } from "../../shell/store";
 import {
   goalAbandon,
@@ -15,9 +16,11 @@ import {
  * 没有证据的目标照常在列且无「落后/失败」状态；放弃也是显式动作。
  * 页首口径与 D05 一致：这里治理用户自己设的目标，不评价人。
  */
-export function GoalsView({ dir, materials }: {
+export function GoalsView({ dir, materials, notes, onGoalsChange }: {
   dir: string;
   materials: RawMaterial[];
+  notes: Note[];
+  onGoalsChange: (goals: Goal[]) => void;
 }) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -25,21 +28,23 @@ export function GoalsView({ dir, materials }: {
   const [title, setTitle] = useState("");
   const [criteria, setCriteria] = useState("");
   const [creating, setCreating] = useState(false);
-  // 每个目标独立的「证据选择」打开态（选素材 id）
+  // 每个目标独立的「证据选择」打开态。
   const [linkingFor, setLinkingFor] = useState<string | null>(null);
   const [reviewFor, setReviewFor] = useState<string | null>(null);
   const [reviewText, setReviewText] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      setGoals(await goalListActive(dir));
+      const current = await goalListActive(dir);
+      setGoals(current);
+      onGoalsChange(current);
       setError("");
     } catch (e) {
       setError(`读取目标失败：${String(e)}`);
     } finally {
       setLoaded(true);
     }
-  }, [dir]);
+  }, [dir, onGoalsChange]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -82,9 +87,9 @@ export function GoalsView({ dir, materials }: {
     }
   };
 
-  const link = async (goalId: string, evidenceId: string) => {
+  const link = async (goalId: string, evidenceId: string, kind: "note" | "material") => {
     try {
-      await goalLinkEvidence(goalId, evidenceId, "note", dir);
+      await goalLinkEvidence(goalId, evidenceId, kind, dir);
       await refresh();
     } catch (e) {
       setError(`关联证据失败：${String(e)}`);
@@ -161,19 +166,8 @@ export function GoalsView({ dir, materials }: {
                 </button>
               </div>
               {linkingFor === g.id ? (
-                <div className="gl-link" role="group" aria-label="关联证据">
-                  <select
-                    aria-label={`给「${g.title}」选择笔记证据`}
-                    value=""
-                    onChange={(e) => { if (e.target.value) void link(g.id, e.target.value); }}
-                  >
-                    <option value="">选择笔记作为证据…</option>
-                    {materials.map((m) => (
-                      <option key={m.id} value={m.id}>{m.title}</option>
-                    ))}
-                  </select>
-                  <span className="ws-hint">证据来自收件箱与知识库条目</span>
-                </div>
+                <GoalsEvidencePicker goalTitle={g.title} notes={notes} materials={materials}
+                  onSelect={(id, kind) => void link(g.id, id, kind)} />
               ) : null}
               {reviewFor === g.id ? (
                 <div className="gl-review" role="group" aria-label="达成或放弃">
@@ -194,6 +188,30 @@ export function GoalsView({ dir, materials }: {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** 笔记和素材分别选择，避免把一个来源的 id 当成另一种类型提交。 */
+export function GoalsEvidencePicker({ goalTitle, notes, materials, onSelect }: {
+  goalTitle: string;
+  notes: Pick<Note, "id" | "title" | "isDeleted">[];
+  materials: Pick<RawMaterial, "id" | "title">[];
+  onSelect: (id: string, kind: "note" | "material") => void;
+}) {
+  return (
+    <div className="gl-link" role="group" aria-label="关联证据">
+      <select aria-label={`给「${goalTitle}」选择笔记证据`} value=""
+        onChange={(e) => { if (e.target.value) onSelect(e.target.value, "note"); }}>
+        <option value="">选择笔记作为证据…</option>
+        {notes.filter((n) => !n.isDeleted).map((n) => <option key={n.id} value={n.id}>{n.title}</option>)}
+      </select>
+      <select aria-label={`给「${goalTitle}」选择素材证据`} value=""
+        onChange={(e) => { if (e.target.value) onSelect(e.target.value, "material"); }}>
+        <option value="">选择素材作为证据…</option>
+        {materials.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
+      </select>
+      <span className="ws-hint">可关联笔记或素材作为证据。</span>
     </div>
   );
 }

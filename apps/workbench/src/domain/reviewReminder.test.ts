@@ -11,6 +11,7 @@ import {
   type ReviewSchedule,
 } from "./reviewReminder";
 import type { Goal, RawMaterial } from "../shell/store";
+import { createNoteDraft } from "./note";
 
 /**
  * 主动回顾的提醒策略（R4/D09）：
@@ -97,6 +98,21 @@ describe("提醒频率与安静时段", () => {
     expect(hour < 8 || hour >= 22).toBe(false);
   });
 
+  it("首次或已到期时，在安静时段结束的整点提醒，而不是再等一个周期", () => {
+    const at = (day: number, hour: number, minute = 0) => new Date(2026, 0, day, hour, minute).getTime();
+    expect(nextReminderAt(schedule({ frequency: "weekly", lastRemindedAt: 0 }), at(1, 23, 35))).toBe(at(2, 8));
+    expect(nextReminderAt(schedule({ frequency: "daily", lastRemindedAt: at(1, 1) }), at(2, 3, 30))).toBe(at(2, 8));
+    expect(nextReminderAt(schedule({ frequency: "daily", lastRemindedAt: at(1, 1) }), at(2, 9))).toBe(at(2, 9));
+    expect(nextReminderAt(schedule({ quietHours: { start: 13, end: 15 }, lastRemindedAt: 0 }), at(1, 14, 20))).toBe(at(1, 15));
+  });
+
+  it("尚未到期时保留实际到期时间，并只在到期落入安静时段时顺延", () => {
+    const at = (day: number, hour: number, minute = 0) => new Date(2026, 0, day, hour, minute).getTime();
+    expect(nextReminderAt(schedule({ frequency: "daily", lastRemindedAt: at(1, 9, 30) }), at(1, 10))).toBe(at(2, 9, 30));
+    expect(nextReminderAt(schedule({ frequency: "daily", lastRemindedAt: at(1, 23, 30) }), at(2, 10))).toBe(at(3, 8));
+    expect(nextReminderAt(schedule({ frequency: "daily", lastRemindedAt: at(1, 8) }), at(1, 9))).toBe(at(2, 8));
+  });
+
   it("退订与暂停时没有下次提醒", () => {
     expect(nextReminderAt(schedule({ frequency: "off" }), Date.now())).toBeNull();
     expect(nextReminderAt(schedule({ paused: true }), Date.now())).toBeNull();
@@ -171,6 +187,24 @@ describe("只提醒可处理事项", () => {
     expect(reminders.filter((r) => r.kind === "inbox-backlog")).toHaveLength(0);
   });
 
+  it("仅按实际知识库成员关系统计未归类笔记，排除回收站", () => {
+    const notes = [
+      { ...createNoteDraft(1), id: "filed", notebook: null },
+      { ...createNoteDraft(1), id: "unfiled1", notebook: "笔记本" },
+      { ...createNoteDraft(1), id: "unfiled2" },
+      { ...createNoteDraft(1), id: "unfiled3" },
+      { ...createNoteDraft(1), id: "deleted", isDeleted: true },
+    ];
+    const base = { goals: [], notes, materials: [], staleReferences: [] };
+    // 未收到成员关系时不猜测。空集则明确表示没有任何笔记归入知识库。
+    expect(reviewReminders(base).some((r) => r.kind === "note-unfiled")).toBe(false);
+    const result = reviewReminders({ ...base, filedNoteIds: new Set(["filed"]) }).find((r) => r.kind === "note-unfiled");
+    expect(result?.count).toBe(3);
+    expect(result?.action).not.toContain("才搜得到");
+    expect(reviewReminders({ ...base, filedNoteIds: new Set() }).find((r) => r.kind === "note-unfiled")?.count).toBe(4);
+    expect(reviewReminders({ ...base, filedNoteIds: new Set(["filed", "unfiled1"]) }).some((r) => r.kind === "note-unfiled")).toBe(false);
+  });
+
   it("项目范围限定：只保留范围内的目标提醒", () => {
     const reminders = reviewReminders({
       goals: [goal({ id: "g1" }), goal({ id: "g2", title: "别的项目" })],
@@ -207,6 +241,12 @@ describe("回顾计划的读写", () => {
     expect(s.paused).toBe(true);
     expect(s.projectScope).toEqual(["p1"]);
     expect(s.lastRemindedAt).toBe(123);
+  });
+
+  it("显式不设安静时段可以写入并读回，缺省值仍采用默认时段", () => {
+    const raw = writeReviewSchedule({}, schedule({ quietHours: null }));
+    expect(readReviewSchedule(raw).quietHours).toBeNull();
+    expect(readReviewSchedule({ reviewSchedule: {} }).quietHours).toEqual(defaultReviewSchedule.quietHours);
   });
 
   it("坏数据退回默认（不让一份坏设置把提醒功能整个锁死）", () => {

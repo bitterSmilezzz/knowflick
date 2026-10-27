@@ -83,10 +83,38 @@ await check(
   "草稿可人工修改"
 );
 
-// 6. 标题
+// 6. 选择模板不会覆盖正文，拒绝替换后正文仍保留
+await b("eval", `(()=>{
+  const select=document.querySelector('.ws-creative-template select');
+  select.value='research'; select.dispatchEvent(new Event('change', {bubbles:true}));
+})()`);
+await check(
+  "document.querySelector('textarea[aria-label=\"草稿正文\"]').value.includes('我自己的论点')",
+  "切换模板保留正文"
+);
+await b("eval", `(()=>{
+  const original=window.confirm; window.confirm=()=>false;
+  [...document.querySelectorAll('button')].find(x=>x.textContent.includes('按证据生成大纲')).click();
+  window.confirm=original;
+})()`);
+await check(
+  "document.querySelector('textarea[aria-label=\"草稿正文\"]').value.includes('我自己的论点')",
+  "取消替换保留正文"
+);
+await b("eval", `(()=>{
+  const original=window.confirm; window.confirm=()=>true;
+  [...document.querySelectorAll('button')].find(x=>x.textContent.includes('按证据生成大纲')).click();
+  window.confirm=original;
+})()`);
+await check(
+  "(()=>{const text=document.querySelector('textarea[aria-label=\"草稿正文\"]').value; return text.includes('## 研究问题') && text.includes('创作证据笔记')})()",
+  "确认替换后按模板和证据生成大纲"
+);
+
+// 7. 标题
 await setNative('input[aria-label="草稿标题"]', "我的创作稿");
 
-// 7. 导出（Markdown 下载）
+// 8. 导出（Markdown 下载）
 const downloadName = await b("eval", `(()=>{
   const orig = document.createElement.bind(document);
   let captured = null;

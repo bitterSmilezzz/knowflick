@@ -123,7 +123,8 @@ it("parity", () => {
     if (!fsCheck) {
       throw new Error(`找不到 vitest 入口：${vitestEntry}（先在 apps/workbench 跑 npm ci）`);
     }
-    const { stdout } = await exec(process.execPath, [vitestEntry, "run", "src/domain/__parity.test.ts"], {
+    // Vitest 5 默认隐藏通过用例的 console 输出；探针依赖这些判定行。
+    const { stdout } = await exec(process.execPath, [vitestEntry, "run", "--silent=false", "src/domain/__parity.test.ts"], {
       cwd: workbench,
       timeout: 300_000,
       maxBuffer: 32 * 1024 * 1024,

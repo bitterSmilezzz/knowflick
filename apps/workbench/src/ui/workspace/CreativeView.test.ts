@@ -33,6 +33,26 @@ describe("创作台：按证据生成大纲", () => {
     const outline = buildOutlineFromEvidence([{ kind: "card", id: "c2", title: "标题", excerpt: "" }]);
     expect(outline).toContain("这条证据没有正文摘录");
   });
+
+  it.each([
+    ["development", "问题与目标", "实施与验证"],
+    ["marketing", "受众与需求", "素材与行动提示"],
+    ["social", "主题与读者", "结尾与互动"],
+    ["research", "研究问题", "局限与待验证"],
+  ] as const)("%s 模板提供对应结构并保留全部选中证据", (template, first, last) => {
+    const outline = buildOutlineFromEvidence([noteEvidence, cardEvidence], template);
+    expect(outline).toContain(`## ${first}`);
+    expect(outline).toContain(`## ${last}`);
+    expect(outline).toContain("### 1. 北极项目决策");
+    expect(outline).toContain("采用分阶段上线。");
+    expect(outline).toContain("### 2. 一张卡片");
+    expect(outline).toContain("卡片里的结论。");
+    expect(outline).toContain("请核对相关证据");
+  });
+
+  it("模板也不在无证据时生成内容", () => {
+    expect(buildOutlineFromEvidence([], "research")).toBe("");
+  });
 });
 
 describe("创作台：导出", () => {

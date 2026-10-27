@@ -45,10 +45,9 @@ export interface ReviewFacts {
   newMaterials: Array<{ id: string; title: string; sourceType: string; at: number }>;
   /** 周期内新转出的知识卡。 */
   newCards: Array<{ id: string; headline: string; at: number }>;
-  /** 周期内有复习动作的卡数与总复习次数。 */
+  /** 最近一次复习落在周期内的卡数。没有逐次历史，不能推算周期内动作次数。 */
   reviewedCardCount: number;
-  reviewActions: number;
-  /** 周期内加入证据关联的目标（活跃目标现状 + 本周期新证据）。 */
+  /** 目标当前状态及累计证据数。 */
   goals: Array<{ id: string; title: string; evidenceCount: number; achieved: boolean }>;
   /** 如实缺席清单：周期内没有任何记录的方面（不是失败，是「没有记录」）。 */
   gaps: string[];
@@ -77,7 +76,6 @@ export function reviewFacts(input: ReviewInput, kind: "day" | "week" | "month"):
     .map((c) => ({ id: c.id, headline: c.headline, at: c.createdAt }));
 
   const reviewedCards = input.cards.filter((c) => inPeriod(c.lastReviewedAt));
-  const reviewActions = reviewedCards.reduce((sum, c) => sum + (c.reviewCount ?? 0), 0);
 
   const goals = input.goals.map((g) => ({
     id: g.id,
@@ -90,16 +88,12 @@ export function reviewFacts(input: ReviewInput, kind: "day" | "week" | "month"):
   if (newMaterials.length === 0) gaps.push("本周期没有新收集的素材");
   if (newCards.length === 0) gaps.push("本周期没有新转出的知识卡");
   if (reviewedCards.length === 0) gaps.push("本周期没有复习动作");
-  if (input.goals.some((g) => g.achievedAt == null) && goals.every((g) => g.evidenceCount === 0 && !g.achieved)) {
-    gaps.push("活跃目标本周期没有新增证据关联");
-  }
 
   return {
     period: { from, to, label: periodLabel(kind, to) },
     newMaterials,
     newCards,
     reviewedCardCount: reviewedCards.length,
-    reviewActions,
     goals,
     gaps,
   };
@@ -118,7 +112,7 @@ export function reviewToMarkdown(facts: ReviewFacts): string {
   for (const m of facts.newMaterials) lines.push(`  - ${m.title}`);
   lines.push(`- 新转出知识卡：${facts.newCards.length} 张`);
   for (const c of facts.newCards) lines.push(`  - ${c.headline}`);
-  lines.push(`- 复习：${facts.reviewedCardCount} 张卡、${facts.reviewActions} 次动作`);
+  lines.push(`- 最近一次复习在本周期的卡：${facts.reviewedCardCount} 张（未记录逐次复习历史，无法统计本周期动作次数）`);
   lines.push("");
   lines.push(`## 目标现状（证据数只是计数，不是进度评分）`);
   lines.push("");

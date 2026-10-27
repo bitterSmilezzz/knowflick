@@ -2907,6 +2907,7 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .rv-fact span { font-size: 12px; color: var(--muted); }
 .rv-detail { margin: 4px 0; }
 .rv-detail ul { margin: 4px 0; padding-left: 20px; }
+.rv-source-link { border: 0; padding: 2px 0; background: transparent; color: inherit; text-align: left; text-decoration: underline; cursor: pointer; }
 .rv-goals, .rv-gaps { margin: 4px 0; padding-left: 20px; }
 .rv-gaps { color: var(--muted); }
 
@@ -3017,6 +3018,12 @@ body.capsule-window { overflow: hidden; background: transparent; }
 }
 .ws-creative-candidate:hover { background: var(--hover); border-color: var(--line); }
 .ws-creative-draft { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.ws-creative-template { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--text-meta); }
+.ws-creative-template select {
+  height: var(--control-h); padding: 0 6px;
+  border: 1px solid var(--line); border-radius: var(--radius-control);
+  background: var(--surface); color: inherit; font: inherit; font-size: var(--text-body);
+}
 .ws-creative-draft-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .ws-creative-title {
   flex: 1; min-width: 160px; height: var(--control-h); padding: 0 8px;

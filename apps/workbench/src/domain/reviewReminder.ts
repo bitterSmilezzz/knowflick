@@ -95,23 +95,24 @@ export function nextReminderAt(schedule: ReviewSchedule, now: number): number | 
       : schedule.frequency === "weekly"
         ? 7 * 24 * 3600 * 1000
         : 30 * 24 * 3600 * 1000;
-  const base = schedule.lastRemindedAt === 0 ? now : schedule.lastRemindedAt;
-  let next = base + periodMs;
-  if (next <= now) next = now + periodMs;
-  // 安静时段里不提醒：往后推到安静时段结束
+  // 从未提醒或已到期时，下一次机会就是现在；若处在安静时段则等到结束。
+  let next = schedule.lastRemindedAt === 0 ? now : Math.max(now, schedule.lastRemindedAt + periodMs);
   const q = schedule.quietHours;
-  if (q) {
-    for (let i = 0; i < 48; i++) {
-      if (!inQuietHours(schedule, next)) break;
-      next += 3600 * 1000;
-    }
+  if (q && inQuietHours(schedule, next)) {
+    const end = new Date(next);
+    // 跨午夜且当前在起点之后，结束时间属于第二天。用本地日历运算兼容夏令时。
+    if (q.start > q.end && end.getHours() >= q.start) end.setDate(end.getDate() + 1);
+    end.setHours(q.end, 0, 0, 0);
+    next = end.getTime();
   }
   return next;
 }
 
 export interface ReminderInput {
   goals: Goal[];
-  notes: Note[];
+  notes: Array<Pick<Note, "id" | "isDeleted">>;
+  /** 已加入知识库的笔记 id；未提供时不推断归属。 */
+  filedNoteIds?: ReadonlySet<string>;
   materials: RawMaterial[];
   /** 引用过期/失效的条目（由 noteReference.referenceStatus 判定）。 */
   staleReferences: Array<{ noteId: string; title: string; status: "changed" | "missing" }>;
@@ -165,21 +166,18 @@ export function reviewReminders(input: ReminderInput): ReviewReminder[] {
     });
   }
 
-  // 4. 没有归入任何知识库的笔记 —— 需要归档
-  const filed = new Set<string>();
-  for (const note of input.notes) {
-    if (note.isDeleted) continue;
-    // 归属关系由外部传入（这里只按「有没有知识库 id」判断，用 note.notebook 近似）
-    if (note.notebook) filed.add(note.id);
-  }
-  const unfiled = input.notes.filter((n) => !n.isDeleted && !filed.has(n.id));
-  if (unfiled.length >= 3) {
-    out.push({
-      kind: "note-unfiled",
-      title: `${unfiled.length} 篇笔记还没有归入知识库`,
-      action: "给它们分个笔记本或知识库，之后才搜得到范围",
-      count: unfiled.length,
-    });
+  // 4. 仅依据明确的知识库成员关系判断；笔记本字段不是知识库归属。
+  const filedNoteIds = input.filedNoteIds;
+  if (filedNoteIds !== undefined) {
+    const unfiled = input.notes.filter((n) => !n.isDeleted && !filedNoteIds.has(n.id));
+    if (unfiled.length >= 3) {
+      out.push({
+        kind: "note-unfiled",
+        title: `${unfiled.length} 篇笔记还没有归入知识库`,
+        action: "可以按需要将笔记加入知识库，方便按范围整理。",
+        count: unfiled.length,
+      });
+    }
   }
 
   // 项目范围：只保留属于范围内的项目相关提醒（当前只有目标与引用两类能定位到项目）
@@ -203,21 +201,23 @@ export function readReviewSchedule(raw: Record<string, unknown>): ReviewSchedule
     freq === "off" || freq === "daily" || freq === "weekly" || freq === "monthly" ? freq : defaultReviewSchedule.frequency;
   const q = v.quietHours;
   const quietHours =
-    q && typeof q === "object" && !Array.isArray(q)
+    q === null
+      ? null
+      : q && typeof q === "object" && !Array.isArray(q)
       ? (() => {
           const qh = q as Record<string, unknown>;
           const start = Number(qh.start);
           const end = Number(qh.end);
-          if (!Number.isInteger(start) || !Number.isInteger(end)) return null;
-          if (start < 0 || start > 23 || end < 0 || end > 23) return null;
+          if (!Number.isInteger(start) || !Number.isInteger(end)) return defaultReviewSchedule.quietHours;
+          if (start < 0 || start > 23 || end < 0 || end > 23) return defaultReviewSchedule.quietHours;
           return { start, end };
         })()
-      : null;
+      : defaultReviewSchedule.quietHours;
   const scope = Array.isArray(v.projectScope) ? v.projectScope.map(String) : [];
   const last = Number(v.lastRemindedAt);
   return {
     frequency,
-    quietHours: quietHours ?? defaultReviewSchedule.quietHours,
+    quietHours,
     paused: v.paused === true,
     projectScope: scope,
     lastRemindedAt: Number.isFinite(last) ? last : 0,

@@ -31,6 +31,15 @@ interface Evidence {
 
 const MAX_EXCERPT = 160;
 
+const CREATIVE_TEMPLATES = {
+  outline: { label: "通用大纲", sections: [] },
+  development: { label: "开发方案", sections: ["问题与目标", "方案与取舍", "实施与验证"] },
+  marketing: { label: "营销素材", sections: ["受众与需求", "价值主张", "素材与行动提示"] },
+  social: { label: "自媒体内容", sections: ["主题与读者", "观点与叙事", "结尾与互动"] },
+  research: { label: "研究整理", sections: ["研究问题", "证据与分析", "局限与待验证"] },
+} as const;
+type CreativeTemplate = keyof typeof CREATIVE_TEMPLATES;
+
 function excerptOf(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length <= MAX_EXCERPT ? flat : `${flat.slice(0, MAX_EXCERPT)}…`;
@@ -40,11 +49,19 @@ function excerptOf(text: string): string {
  * 按证据拼出大纲草稿（不依赖模型）。
  * 每条证据一个小节，标题 + 摘录——用户在这份草稿上手改，而不是从空白开始。
  */
-export function buildOutlineFromEvidence(evidence: Evidence[]): string {
+export function buildOutlineFromEvidence(evidence: Evidence[], template: CreativeTemplate = "outline"): string {
   if (evidence.length === 0) return "";
+  const config = CREATIVE_TEMPLATES[template];
   const lines: string[] = ["# 草稿大纲", ""];
+  if (config.sections.length > 0) {
+    for (const section of config.sections) {
+      lines.push(`## ${section}`, "", "（在此填写；请核对相关证据。）", "");
+    }
+    lines.push("## 选取的证据", "");
+  }
   evidence.forEach((e, idx) => {
-    lines.push(`## ${idx + 1}. ${e.title || (e.kind === "note" ? "无标题笔记" : "无标题卡片")}`);
+    const heading = config.sections.length > 0 ? "###" : "##";
+    lines.push(`${heading} ${idx + 1}. ${e.title || (e.kind === "note" ? "无标题笔记" : "无标题卡片")}`);
     lines.push("");
     lines.push(e.excerpt || "（这条证据没有正文摘录）");
     lines.push("");
@@ -74,6 +91,7 @@ export function CreativeView({ dir, cards, notes }: Props) {
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [template, setTemplate] = useState<CreativeTemplate>("outline");
   const [savedHint, setSavedHint] = useState("");
   const [error, setError] = useState("");
 
@@ -111,8 +129,9 @@ export function CreativeView({ dir, cards, notes }: Props) {
       setError("先选至少一条证据——大纲是从证据长出来的，不是凭空生成。");
       return;
     }
+    if (body.trim() && !window.confirm("生成大纲会替换当前草稿正文。确定替换吗？")) return;
     setError("");
-    setBody(buildOutlineFromEvidence(evidence));
+    setBody(buildOutlineFromEvidence(evidence, template));
     setSavedHint("已按证据生成大纲，可以直接改。");
   };
 
@@ -231,6 +250,15 @@ export function CreativeView({ dir, cards, notes }: Props) {
         </section>
 
         <section className="ws-creative-draft" aria-label="草稿">
+          <label className="ws-creative-template">
+            写作模板
+            <select value={template} onChange={(e) => setTemplate(e.target.value as CreativeTemplate)}>
+              {Object.entries(CREATIVE_TEMPLATES).map(([id, option]) => (
+                <option key={id} value={id}>{option.label}</option>
+              ))}
+            </select>
+            <span className="ws-hint">选择模板不会改变已有正文；生成大纲时才应用。</span>
+          </label>
           <div className="ws-creative-draft-head">
             <input
               className="ws-creative-title"
