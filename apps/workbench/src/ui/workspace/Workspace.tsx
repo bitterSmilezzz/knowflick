@@ -7,13 +7,27 @@ import { requiresKey } from "../../domain/ingest";
 import { digest } from "../../domain/clipEngine";
 import {
   dbBackfillMaterialFts,
+  backupValidateR4,
+  backupRestoreR4,
+  backupRestoreMaterial,
+  backupRestoreCard,
+  backupRestoreArtifact,
+  backupRestoreDeletedRecords,
+  backupRestoreNote,
+  backupRestoreNoteHistory,
+  backupValidateSubscriptions,
+  backupRestoreSubscriptions,
+  backupValidateMail,
+  backupRestoreMail,
+  backupValidateReviewHistory,
+  backupRestoreReviewHistory,
+  backupRestoreMedia,
   dbGetStats,
-  dbListArtifacts,
   exportCardsJson,
   dbListSubscriptions,
   dbDeleteSubscription,
   dbMarkSubscriptionPolled,
-  dbSaveArtifact,
+  reviewRecord,
   dbSaveSubscription,
   dbSearchMaterialsFts,
   fetchClip,
@@ -22,6 +36,9 @@ import {
   projectList,
   projectMemberIndex,
   inShell,
+  loadStore,
+  saveSearchHistory,
+  SEARCH_HISTORY_STORAGE_KEY,
   saveMedia,
   pickAudioFile,
   pickExportPath,
@@ -44,14 +61,19 @@ import {
 } from "./model";
 import {
   readWorkspace,
+  readArtifacts,
+  restoreBrowserMaterial,
+  restoreBrowserCard,
+  restoreBrowserArtifact,
   storeCard,
   storeCardList,
   storeMaterial,
   storePreferences,
 } from "./repository";
 import { downloadAnkiTsv, downloadMarkdownVault } from "../../domain/markdownExport";
-import { downloadKfBackup, restoreKfBackup } from "../../domain/systemBackup";
-import { backupCompleteness, backupReceipt, collectBackupSnapshot } from "./backupCollect";
+import { projectFactMembership } from "../../domain/reviewFacts";
+import { BACKUP_BROWSER_FORMAT_GAP, BACKUP_FORMAT_GAP, BACKUP_V5_FORMAT_GAP, BACKUP_V6_FORMAT_GAP, BACKUP_V6_NO_R4_GAP, BACKUP_V7_FORMAT_GAP, BACKUP_V7_NO_R4_GAP, BACKUP_V8_FORMAT_GAP, BACKUP_V8_NO_R4_GAP, BACKUP_V9_FORMAT_GAP, BACKUP_V9_NO_R4_GAP, BACKUP_V10_FORMAT_GAP, BACKUP_V10_NO_R4_GAP, BACKUP_V11_FORMAT_GAP, BACKUP_V11_NO_R4_GAP, downloadKfBackup, mailSourcesWithoutOriginal, r4SourceBinding, restoreKfBackup } from "../../domain/systemBackup";
+import { backupCompleteness, backupReceipt, backupVersion, collectBackupSnapshot, readCurrentSettings } from "./backupCollect";
 import { highlightText, extractSnippet } from "./HighlightText";
 import { Icon, sourceLabel, useSystemAppearance } from "./Icon";
 import { EntryInspector } from "./EntryInspector";
@@ -67,7 +89,17 @@ import { backupCopyToDirectory, webdavUploadBackup } from "../../shell/store";
 import { createKfBackupArchive } from "../../domain/systemBackup";
 import { activeGoals, ensureNoteFromMaterial, readLastImportReport, readNotes, saveLastImportReport } from "./repository";
 import { extractNoteReferences, referenceStatus } from "../../domain/noteReference";
-import { readReviewSchedule, writeReviewSchedule, type ReviewSchedule } from "../../domain/reviewReminder";
+import {
+  indexNoteProjects,
+  inQuietHours,
+  markSystemReviewNotificationAttempted,
+  readReviewSchedule,
+  reviewReminders,
+  shouldSendSystemReviewNotification,
+  writeReviewSchedule,
+  type ReviewReminder,
+  type ReviewSchedule,
+} from "../../domain/reviewReminder";
 import { buildImportReport, reportLines, type ImportReport } from "../../domain/importReport";
 import { MailboxView } from "./MailboxView";
 import { ArtifactsView } from "./ArtifactsView";
@@ -75,7 +107,8 @@ import { StatsView } from "./StatsView";
 import { setSoundEffectsEnabled } from "../../shell/sounds";
 import { parseNotesFile } from "../../domain/notes";
 import { parseEml } from "./emlParser";
-import { imageMimeOf, mediaMimeOfExtension } from "../../domain/mediaMime";
+import { imageMimeOf } from "../../domain/mediaMime";
+import { encodeSearchHistory, mergeSearchHistory, parseSearchHistory, pushSearchHistory, removeSearchHistory, validateSearchHistorySnapshot } from "../../domain/searchHistory";
 import { InkPad, VoiceRecorder } from "./NotePads";
 import { formatDuration, inkTitle, type InkDocument } from "../../domain/ink";
 import { existingKeys } from "../../domain/contentHash";
@@ -151,6 +184,10 @@ export function Workspace() {
   const [page, setPage] = useState<Page>("inbox");
   const [selectedId, setSelectedId] = useState("");
   const [query, setQuery] = useState("");
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
+  const searchHistoryRef = useRef<string[]>([]);
+  const searchHistoryWritesRef = useRef<Promise<void>>(Promise.resolve());
   // T13（G01）：知识库范围——「选定知识库 → 搜原文」这一步此前没有界面入口。
   const [kbScope, setKbScope] = useState<string>("");
   const [tag, setTag] = useState("");
@@ -159,11 +196,17 @@ export function Workspace() {
   const [notePad, setNotePad] = useState<"ink" | "voice" | null>(null);
   const [notesState, setNotesState] = useState<NotesState>({ notes: [], knowledgeBases: [], membership: {} });
   const [notesLoaded, setNotesLoaded] = useState(false);
-  const updateNotesState = useCallback((state: NotesState) => { setNotesState(state); setNotesLoaded(true); }, []);
+  const [notesReadStatus, setNotesReadStatus] = useState<"loading" | "ready" | "error">("loading");
+  const updateNotesState = useCallback((state: NotesState) => {
+    setNotesState(state);
+    setNotesLoaded(true);
+    setNotesReadStatus("ready");
+  }, []);
   const [goalsState, setGoalsState] = useState<Goal[]>([]);
   // 项目列表与「笔记 → 项目」归属索引：复盘限定项目范围时要用。
   const [projectsState, setProjectsState] = useState<Project[]>([]);
-  const [noteProjectIndex, setNoteProjectIndex] = useState<Map<string, string>>(new Map());
+  const [noteProjectIndex, setNoteProjectIndex] = useState<Map<string, string[]>>(new Map());
+  const [projectIndexStatus, setProjectIndexStatus] = useState<"loading" | "ready" | "error" | "unavailable">("loading");
   const [lastImportReport, setLastImportReport] = useState<ImportReport | null>(null);
   // 手写/语音面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱
   // 与 Escape 处理——实测 Tab 进不去、Escape 无效。用这个钩子补上。
@@ -283,29 +326,31 @@ export function Workspace() {
     let active = true;
     void (async () => {
       if (!inShell()) {
-        if (active) { setProjectsState([]); setNoteProjectIndex(new Map()); }
+        if (active) { setProjectsState([]); setNoteProjectIndex(new Map()); setProjectIndexStatus("unavailable"); }
         return;
       }
+      setProjectsState([]);
+      setNoteProjectIndex(new Map());
+      setProjectIndexStatus("loading");
       try {
         const [list, index] = await Promise.all([projectList(false, dir), projectMemberIndex(dir)]);
         if (!active) return;
         setProjectsState(list);
-        setNoteProjectIndex(new Map(index));
+        setNoteProjectIndex(indexNoteProjects(index));
+        setProjectIndexStatus("ready");
       } catch {
-        if (active) { setProjectsState([]); setNoteProjectIndex(new Map()); }
+        if (active) { setProjectsState([]); setNoteProjectIndex(new Map()); setProjectIndexStatus("error"); }
       }
     })();
     return () => { active = false; };
-  }, [dir]);
+  }, [dir, page]);
 
   /** 产物供产物库与问答共用；读取失败不阻塞主界面。 */
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        const list = inShell()
-          ? await dbListArtifacts(200, dir)
-          : JSON.parse(localStorage.getItem("knowflick.workspace.artifacts") || "[]") as Artifact[];
+        const list = await readArtifacts(dir);
         if (active) setArtifacts(list.filter((item) => !item.isDeleted));
       } catch {
         if (active) setArtifacts([]);
@@ -326,11 +371,22 @@ export function Workspace() {
       // 侧栏笔记计数也从权威层取——界面缓存要等用户点开笔记页才有数据，
       // 冷启动会显示 0（与 KF-001 同类：导出已经改为权威采集，这里补计数）。
       setNotesLoaded(false);
+      setNotesReadStatus("loading");
       void readNotes(data.dir).then((state) => {
-        if (current === revision.current) { setNotesState(state); setNotesLoaded(true); }
-      }).catch(() => { /* 未读取成功时不推断知识库归属。 */ });
+        if (current === revision.current) {
+          setNotesState(state);
+          setNotesLoaded(true);
+          setNotesReadStatus("ready");
+        }
+      }).catch(() => {
+        if (current === revision.current) setNotesReadStatus("error");
+        /* 未读取成功时不推断知识库归属。 */
+      });
       setApiKey(data.apiKey);
       setDir(data.dir);
+      const history = parseSearchHistory(data.searchHistory);
+      searchHistoryRef.current = history;
+      setSearchHistory(history);
       setLastImportReport(await readLastImportReport(data.dir));
       try { setGoalsState(await activeGoals(data.dir)); } catch { /* 目标读取失败不阻断 */ }
     } catch (e) {
@@ -361,7 +417,9 @@ export function Workspace() {
 
   useEffect(() => {
     const changed = () => { void load(true); };
-    const storageChanged = (e: StorageEvent) => { if (e.key === "knowflick.workspace.v1") changed(); };
+    const storageChanged = (e: StorageEvent) => {
+      if (e.key === "knowflick.workspace.v1" || e.key === SEARCH_HISTORY_STORAGE_KEY) changed();
+    };
     window.addEventListener("knowflick:library-changed", changed);
     window.addEventListener("storage", storageChanged);
     return () => {
@@ -425,12 +483,18 @@ export function Workspace() {
     void syncCardEmbeddings(cards, engine, { dir }).catch((err) => {
       console.warn("卡片向量同步非阻塞跳过:", err);
     });
-    // R2 向量化分块：笔记分块的后台静默索引（问答的块级语义召回从这里取数；
-    // 失败静默——问答降级走全文检索，索引下次再补）
-    void syncNoteChunkEmbeddings(engine, { dir }).catch((err) => {
-      console.warn("分块向量同步非阻塞跳过:", err);
-    });
   }, [cards, file.settings.providerId, file.settings.baseURL, apiKey, dir]);
+
+  // 笔记独立补索引：无卡片的资料库也能召回笔记，旧资料库和模型的任务不会继续取下一批。
+  useEffect(() => {
+    if (!dir || !notesState.notes.some((note) => !note.isDeleted)) return;
+    const task = new AbortController();
+    const engine = new EmbeddingEngine({
+      providerId: file.settings.providerId, baseURL: file.settings.baseURL, apiKey,
+    });
+    void syncNoteChunkEmbeddings(engine, { dir, signal: task.signal });
+    return () => task.abort();
+  }, [notesState.notes, file.settings.providerId, file.settings.baseURL, apiKey, dir]);
 
   // Background mail polling while the app runs. The interval is decided in Rust
   // (persisted last attempt + backoff), so this only wakes up occasionally and
@@ -533,6 +597,37 @@ export function Workspace() {
     }
     return index;
   }, [notesState.membership]);
+
+  const brainProjectScopesStatus = projectIndexStatus === "ready" ? notesReadStatus : projectIndexStatus;
+  const brainProjectKnowledgeScopes = useMemo(() => {
+    if (projectIndexStatus !== "ready" || notesReadStatus !== "ready") return undefined;
+    return Object.fromEntries(projectsState.map((project) => {
+      const membership = projectFactMembership([project.id], notesState.notes, cards, noteProjectIndex);
+      return [project.id, {
+        cardIds: [...membership.cardIds].sort(),
+        noteIds: [...membership.noteIds].sort(),
+      }];
+    }));
+  }, [projectIndexStatus, notesReadStatus, projectsState, notesState.notes, cards, noteProjectIndex]);
+
+  const reviewProjectContext = useCallback((card: KnowledgeCard) => {
+    if (projectIndexStatus !== "ready" || !notesLoaded) return { projectIds: [], complete: false };
+    if (!card.materialId) return { projectIds: [], complete: true };
+    const sourceNotes = notesState.notes.filter((note) => !note.isDeleted && note.sourceMaterialId === card.materialId);
+    const projectIds = [...new Set(sourceNotes.flatMap((note) => noteProjectIndex.get(note.id) ?? []))].sort();
+    return { projectIds, complete: true };
+  }, [projectIndexStatus, notesLoaded, notesState.notes, noteProjectIndex]);
+
+  const persistReview = async (next: KnowledgeCard[], event?: import("../../domain/reviewHistory").ReviewEvent) => {
+    if (event) {
+      const card = next.find((item) => item.id === event.cardId);
+      if (!card) throw new Error("复习后的卡片缺失，未保存评分");
+      await reviewRecord(card, event, dir);
+    } else {
+      await storeCardList(next, dir);
+    }
+    setCards(next);
+  };
 
   const entries = useMemo(
     () => entriesFor(materials, cards, collection, notesState.notes),
@@ -709,6 +804,30 @@ export function Workspace() {
       setBusyLabel("");
     }
   };
+  const persistSearchHistory = useCallback((history: string[]) => {
+    const text = encodeSearchHistory(history);
+    const write = searchHistoryWritesRef.current.catch(() => {}).then(() => saveSearchHistory(dir, text));
+    searchHistoryWritesRef.current = write;
+    return write;
+  }, [dir]);
+  const rememberSearch = useCallback((value: string) => {
+    const next = pushSearchHistory(searchHistoryRef.current, value);
+    if (next.length === searchHistoryRef.current.length && next.every((term, index) => term === searchHistoryRef.current[index])) return;
+    searchHistoryRef.current = next;
+    setSearchHistory(next);
+    void persistSearchHistory(next).catch(() => setNotice("最近搜索记录未能保存；搜索结果仍可使用。"));
+  }, [persistSearchHistory]);
+  const forgetSearch = useCallback((value: string) => {
+    const next = removeSearchHistory(searchHistoryRef.current, value);
+    searchHistoryRef.current = next;
+    setSearchHistory(next);
+    void persistSearchHistory(next).catch(() => setNotice("最近搜索记录未能更新。"));
+  }, [persistSearchHistory]);
+  const clearSearchHistory = useCallback(() => {
+    searchHistoryRef.current = [];
+    setSearchHistory([]);
+    void persistSearchHistory([]).catch(() => setNotice("最近搜索记录未能清空。"));
+  }, [persistSearchHistory]);
   /**
    * 对多选的知识卡执行一次操作。
    *
@@ -752,6 +871,7 @@ export function Workspace() {
   const navigate = (next: Page) => {
     setNotice("");
     setBatchIds(new Set());
+    setSearchHistoryOpen(false);
     setPage(next);
     setTag("");
     setQuery("");
@@ -1380,42 +1500,101 @@ export function Workspace() {
   }, [notice]);
 
   /**
-   * 从 `.kfbackup` 完整备份包恢复。走的是「合并还原」而不是覆盖：
-   * 备份里的条目按 id 写入，本机已有同 id 的会被覆盖，其余保持不动；
-   * 设置只在备份里带了 settings.json 时替换。这样误点恢复不会清空本地库。
+   * 从 `.kfbackup` 恢复：同 id 的不同记录报告冲突并保留本地数据；
+   * 设置只在备份里带了 settings.json 时替换，附件与数据库分别报告失败。
    */
   const restoreFromBackup = async (picked: FileList | File[] | null) => {
     const chosen = picked?.[0];
     if (!chosen) return;
+    let writesStarted = false;
     try {
       await act(async () => {
         setBusyLabel("正在恢复备份…");
         const buffer = new Uint8Array(await chosen.arrayBuffer());
         const isZip = /\.kfbackup$/i.test(chosen.name) || (buffer[0] === 0x50 && buffer[1] === 0x4b);
         const restored = restoreKfBackup(isZip ? buffer : new TextDecoder().decode(buffer));
+        const desktopOnlyData = restored.r4 !== undefined || restored.noteRevisions !== undefined || restored.mail !== undefined || restored.reviewHistory !== undefined || restored.deletedRecords !== undefined || restored.searchHistory !== undefined && restored.manifest.profile !== "browser";
+        if (desktopOnlyData && !inShell()) throw new Error("此备份包含桌面数据，请使用桌面工作台恢复");
+        if (restored.r4 !== undefined) {
+          await backupValidateR4(restored.r4, dir);
+        }
+        if (restored.subscriptions !== undefined) await backupValidateSubscriptions(restored.subscriptions, dir);
+        if (restored.mail !== undefined) await backupValidateMail(restored.mail, dir);
+        if (restored.reviewHistory !== undefined) await backupValidateReviewHistory(restored.reviewHistory, dir);
+        const gap = restored.manifest.profile === "browser" ? BACKUP_BROWSER_FORMAT_GAP : restored.deletedRecords !== undefined ? (restored.r4 === undefined ? BACKUP_V11_NO_R4_GAP : BACKUP_V11_FORMAT_GAP) : restored.searchHistory !== undefined ? (restored.r4 === undefined ? BACKUP_V10_NO_R4_GAP : BACKUP_V10_FORMAT_GAP) : restored.reviewHistory !== undefined ? (restored.r4 === undefined ? BACKUP_V9_NO_R4_GAP : BACKUP_V9_FORMAT_GAP) : restored.mail !== undefined ? (restored.r4 === undefined ? BACKUP_V8_NO_R4_GAP : BACKUP_V8_FORMAT_GAP) : restored.subscriptions !== undefined ? (restored.r4 === undefined ? BACKUP_V7_NO_R4_GAP : BACKUP_V7_FORMAT_GAP) : restored.noteRevisions !== undefined ? (restored.r4 === undefined ? BACKUP_V6_NO_R4_GAP : BACKUP_V6_FORMAT_GAP) : (restored.r4 === undefined ? BACKUP_FORMAT_GAP : BACKUP_V5_FORMAT_GAP);
+        const mailSourceGaps = mailSourcesWithoutOriginal(restored.mail, restored.deletedRecords);
+        const scopeWarning = `${gap}${restored.subscriptions?.excludedCount ? `；${restored.subscriptions.excludedCount} 条订阅未纳入备份` : ""}${mailSourceGaps ? `；${mailSourceGaps} 条邮件去重记录所指素材已删除或缺失且原件未纳入备份` : ""}${restored.mail ? "；邮箱密码不在备份中，恢复后需重新输入；自动同步账号可能联网" : ""}${restored.manifest.schemaVersion === 1 ? "；旧版备份可能还不含笔记、知识库和附件" : ""}${restored.uncheckedMediaPaths?.length ? `；${restored.uncheckedMediaPaths.length} 个旧版附件没有字节校验和，完整性未验证` : ""}`;
+        const historyByNote = new Map<string, NonNullable<typeof restored.noteRevisions>>();
+        for (const revision of restored.noteRevisions ?? []) {
+          const history = historyByNote.get(revision.noteId) ?? [];
+          history.push(revision);
+          historyByNote.set(revision.noteId, history);
+        }
         // T05（KF-007）：恢复走一致性服务——附件先暂存、素材逐条处置、
         // 失败逐条记录，回执区分完整恢复与部分恢复（不再一律写「未受影响」）。
         const stager = async (rel: string, bytes: Uint8Array): Promise<string> => {
-          // media 只接受白名单 MIME，必须按扩展名还原，否则每一条都会被判失败。
-          const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-          const mime = mediaMimeOfExtension(ext);
-          if (!mime) throw new Error(`不支持的附件类型（${ext || "无扩展名"}）`);
-          const kind = rel.startsWith("media/image/") ? "image" : rel.startsWith("media/ink/") ? "ink" : "audio";
-          return await saveMedia(kind as "audio" | "ink" | "image", mime, bytes, dir);
+          if (!inShell()) throw new Error("浏览器模式不支持恢复本地附件，请使用桌面工作台");
+          return backupRestoreMedia(rel, bytes, dir);
         };
+        writesStarted = true;
         const report = await executeRestore(restored, dir, stager, {
-          updateMaterial: (m) => updateMaterial(m),
-          updateCard: (c) => updateCard(c),
-          saveArtifact: inShell() ? (a) => dbSaveArtifact(a, dir) : undefined,
+          updateMaterial: !inShell() ? restoreBrowserMaterial : (m) => backupRestoreMaterial(restored.r4 === undefined ? { protected: false, fingerprint: null } : r4SourceBinding(restored.r4, "material", m.id), m, dir),
+          updateCard: !inShell() ? restoreBrowserCard : (c) => backupRestoreCard(restored.r4 === undefined ? { protected: false, fingerprint: null } : r4SourceBinding(restored.r4, "card", c.id), c, dir),
+          saveArtifact: !inShell() ? restoreBrowserArtifact : (a) => backupRestoreArtifact(a, dir),
           saveSettings: restored.settings ? (s) => storePreferences(s, apiKey, dir) : undefined,
+          restoreR4: restored.r4 !== undefined ? (snapshot) => backupRestoreR4(snapshot, dir) : undefined,
+          restoreSubscriptions: restored.subscriptions !== undefined ? async (snapshot) => {
+            const written = await backupRestoreSubscriptions(snapshot, dir);
+            const rows = await dbListSubscriptions(dir);
+            setSubscriptions(rows.map((row) => ({ ...row, type: row.type as Subscription["type"] })));
+            return written;
+          } : undefined,
+          restoreMail: restored.mail !== undefined ? async (snapshot) => {
+            const counts = await backupRestoreMail(snapshot, dir);
+            window.dispatchEvent(new Event("knowflick:mail-accounts-changed"));
+            return counts;
+          } : undefined,
+          restoreReviewHistory: restored.reviewHistory !== undefined ? (snapshot) => backupRestoreReviewHistory(snapshot, dir) : undefined,
+          restoreSearchHistory: restored.searchHistory !== undefined ? async (imported) => {
+            let existing: string[];
+            try {
+              if (inShell()) {
+                const store = await loadStore(dir);
+                existing = store.searchHistory === null ? [] : validateSearchHistorySnapshot(JSON.parse(store.searchHistory) as unknown);
+              } else {
+                const raw = localStorage.getItem(SEARCH_HISTORY_STORAGE_KEY);
+                existing = raw === null ? [] : validateSearchHistorySnapshot(JSON.parse(raw) as unknown);
+              }
+            } catch {
+              throw new Error("本机搜索历史损坏或无法读取，未覆盖本机记录");
+            }
+            const merged = mergeSearchHistory(existing, imported);
+            try {
+              await persistSearchHistory(merged.history);
+            } catch {
+              throw new Error("搜索历史合并写入失败");
+            }
+            searchHistoryRef.current = merged.history;
+            setSearchHistory(merged.history);
+            return { added: merged.added, skipped: merged.skipped, alreadyPresent: merged.alreadyPresent, overLimit: merged.overLimit };
+          } : undefined,
+          restoreDeletedRecords: restored.deletedRecords !== undefined ? (snapshot) => backupRestoreDeletedRecords(snapshot, dir) : undefined,
+          restoreNote: restored.noteRevisions !== undefined
+            ? (note) => backupRestoreNoteHistory(restored.r4 === undefined ? { protected: false, fingerprint: null } : r4SourceBinding(restored.r4, "note", note.id), note, historyByNote.get(note.id) ?? [], dir)
+            : restored.r4 !== undefined ? (note) => backupRestoreNote(r4SourceBinding(restored.r4, "note", note.id), note, dir) : undefined,
         });
         const summary = summarizeRestore(report);
+        try {
+          setArtifacts((await readArtifacts(dir)).filter((item) => !item.isDeleted));
+        } catch {
+          // 保留当前缓存；产物页和下次备份会显示仓储读取错误。
+        }
         if (report.failures.length > 0) {
           console.warn("[备份恢复] 部分条目未能写入：", report.failures);
         }
         if (report.partial) {
           setError(
-            `备份恢复是**部分完成**：${summary}。${report.failures.length} 条未能写入` +
+            `备份恢复是部分完成：${summary}。${report.failures.length} 条未能写入。${scopeWarning}` +
             "——本地内容已经改变，不会自动回滚。失败明细已复制到剪贴板（也可在控制台查看）。",
           );
           // 失败明细要给用户能带走的东西：复制到剪贴板 + 存进本地文件供下载
@@ -1437,7 +1616,7 @@ export function Workspace() {
             /* 下载不可用时至少还有剪贴板与控制台 */
           }
         } else {
-          setNotice(`备份恢复完成：${summary}`);
+          setNotice(`备份恢复完成：${summary}。${scopeWarning}，这些内容无法从此包恢复。`);
         }
         if (restored.settings) {
           // 设置已由恢复服务写入；同步界面状态
@@ -1449,9 +1628,7 @@ export function Workspace() {
         return;
       });
     } catch (e) {
-      // 外层错误只覆盖「还没开始写」的阶段（解包/校验失败）。
-      // 一旦开始写，错误由恢复服务逐条捕获并写进报告——这里不再谎称「未受影响」。
-      setError(`备份恢复失败：${String(e)}（尚未写入任何内容）`);
+      setError(`备份恢复失败：${String(e)}（${writesStarted ? "部分内容可能已写入，请检查本地数据" : "尚未写入任何内容"}）`);
     }
   };
 
@@ -1473,13 +1650,33 @@ export function Workspace() {
 
   // 主动回顾计划（R4/D09）：存在 settings.json 的 raw.reviewSchedule。
   const reviewSchedule = useMemo(() => readReviewSchedule(file.raw), [file.raw]);
-  const updateReviewSchedule = (next: ReviewSchedule) => {
+  const reviewFactsProjectStatus = reviewSchedule.projectScope.length === 0
+    ? "ready"
+    : projectIndexStatus !== "ready" ? projectIndexStatus
+      : !notesLoaded ? "loading"
+        : reviewSchedule.projectScope.every((id) => projectsState.some((project) => project.id === id)) ? "ready" : "unavailable";
+  const reviewFactsProjectMembership = useMemo(() => {
+    if (reviewSchedule.projectScope.length === 0 || reviewFactsProjectStatus !== "ready") return null;
+    return projectFactMembership(reviewSchedule.projectScope, notesState.notes, cards, noteProjectIndex);
+  }, [reviewSchedule.projectScope, reviewFactsProjectStatus, notesState.notes, cards, noteProjectIndex]);
+  const updateReviewSchedule = useCallback(async (next: ReviewSchedule): Promise<boolean> => {
     const raw = writeReviewSchedule(file.raw, next);
     const updated = { ...file, raw };
-    setFile(updated);
-    void storePreferences(updated, apiKey, dir).catch((err) =>
-      setError(`保存回顾设置失败：${err instanceof Error ? err.message : String(err)}`)
-    );
+    try {
+      await storePreferences(updated, apiKey, dir);
+      setFile(updated);
+      return true;
+    } catch (err) {
+      setError(`保存回顾设置失败：${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  }, [file, apiKey, dir, setError]);
+
+  const requestReviewNotificationPermission = async (): Promise<boolean> => {
+    if (!inShell()) return false;
+    const notifications = await import("@tauri-apps/plugin-notification");
+    if (await notifications.isPermissionGranted()) return true;
+    return (await notifications.requestPermission()) === "granted";
   };
 
   /** 过期/失效的引用（提醒与产物视图都要用）。 */
@@ -1500,6 +1697,76 @@ export function Workspace() {
     }
     return out;
   }, [notesState.notes, materials]);
+
+  // 复盘页与后台通知共用同一份可处理事项；加载和项目归属完整之前不做通知判定。
+  const actionableReviewReminders = useMemo(() => reviewReminders({
+    goals: goalsState,
+    notes: notesState.notes,
+    filedNoteIds: notesLoaded ? new Set(Object.keys(noteKbIndex)) : undefined,
+    materials,
+    staleReferences: staleReferenceList,
+    projectScope: reviewSchedule.projectScope,
+    noteProject: noteProjectIndex,
+    activeProjectIds: new Set(projectsState.map((project) => project.id)),
+  }), [goalsState, notesState.notes, notesLoaded, noteKbIndex, materials, staleReferenceList, reviewSchedule.projectScope, noteProjectIndex, projectsState]);
+  const reviewRemindersReady = !loading && notesLoaded && projectIndexStatus === "ready";
+  const notificationCheckInFlight = useRef(false);
+  const notificationSnapshot = useRef<{
+    schedule: ReviewSchedule;
+    reminders: ReviewReminder[];
+    ready: boolean;
+    saveSchedule: (next: ReviewSchedule) => Promise<boolean>;
+  }>({ schedule: reviewSchedule, reminders: actionableReviewReminders, ready: reviewRemindersReady, saveSchedule: updateReviewSchedule });
+  notificationSnapshot.current = {
+    schedule: reviewSchedule,
+    reminders: actionableReviewReminders,
+    ready: reviewRemindersReady,
+    saveSchedule: updateReviewSchedule,
+  };
+
+  useEffect(() => {
+    let active = true;
+    const isDocumentVisible = () => document.visibilityState === "visible";
+    const checkForSystemReviewNotification = async () => {
+      if (!active || notificationCheckInFlight.current || isDocumentVisible() || !inShell()) return;
+      const initial = notificationSnapshot.current;
+      if (!initial.ready || initial.reminders.length === 0 || !shouldSendSystemReviewNotification(initial.schedule, Date.now())) return;
+
+      notificationCheckInFlight.current = true;
+      try {
+        const { isPermissionGranted, sendNotification } = await import("@tauri-apps/plugin-notification");
+        if (!active || isDocumentVisible()) return;
+        const current = notificationSnapshot.current;
+        const now = Date.now();
+        if (!current.ready || current.reminders.length === 0 || !shouldSendSystemReviewNotification(current.schedule, now)) return;
+        if (!(await isPermissionGranted())) return;
+        const next = markSystemReviewNotificationAttempted(current.schedule, now);
+        if (next.lastNotificationAt === current.schedule.lastNotificationAt) return;
+        // 先持久化周期闩锁，再投递系统通知；进程重启或 React 重挂载不会重复发送。
+        if (!(await current.saveSchedule(next))) return;
+        const latest = notificationSnapshot.current;
+        if (
+          !active || isDocumentVisible() || !latest.ready || latest.reminders.length === 0 ||
+          !latest.schedule.systemNotificationsEnabled || latest.schedule.frequency === "off" || latest.schedule.paused ||
+          inQuietHours(latest.schedule, Date.now())
+        ) return;
+        await sendNotification({
+          title: "KnowFlick · 回顾提醒",
+          body: "有可处理事项。打开 KnowFlick 查看回顾清单。",
+        });
+      } catch (err) {
+        console.warn("[回顾通知] 系统通知投递失败：", err);
+      } finally {
+        notificationCheckInFlight.current = false;
+      }
+    };
+    void checkForSystemReviewNotification();
+    const timer = window.setInterval(() => void checkForSystemReviewNotification(), 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const theme = normalizePaperTheme(file.settings.paperTheme);
   const appearance = theme === "SYSTEM" ? systemAppearance : theme === "DARK" ? "dark" : "light";
@@ -1572,15 +1839,15 @@ export function Workspace() {
             <button
               className="ws-icon-button"
               aria-label="导出备份"
-              title="导出完整备份包 (.kfbackup)"
+              title="导出备份包 (.kfbackup)"
               disabled={loading || busy}
               onClick={() => {
                 // 附件字节必须随包带走，所以导出是异步的；取附件失败只丢附件，
                 // 不能让整份备份导不出来。
                 void (async () => {
                   // 权威仓储采集（T03）：不依赖界面是否打开过笔记页，含回收站与分页全量
-                  const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
-                  downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
+                  const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);
+                  downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership, snapshot.r4, snapshot.noteRevisions, snapshot.subscriptions, snapshot.mail, backupVersion(snapshot) >= 9 && backupVersion(snapshot) < 12 ? snapshot.reviewHistory : null, backupVersion(snapshot) >= 10 && backupVersion(snapshot) < 12 ? snapshot.searchHistory : null, backupVersion(snapshot) === 11 ? snapshot.deletedRecords : null, backupVersion(snapshot) === 12 ? snapshot.searchHistory : null);
                   setNotice(backupReceipt(snapshot));
                 })().catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
               }}
@@ -1937,23 +2204,72 @@ export function Workspace() {
                 <span>{filtered.length} 条</span>
               </div>
               <p className="ws-list-sub">{PAGE_HINTS[collection]}</p>
-              <label className="ws-search">
-                <Icon name="search" />
-                <input
-                  ref={searchRef}
-                  aria-label="搜索知识库"
-                  placeholder="搜索标题、正文、发件人或标签"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-                {query ? (
-                  <button aria-label="清除搜索" onClick={() => setQuery("")}>
-                    <Icon name="close" size={14} />
-                  </button>
-                ) : (
-                  <kbd>⌘K</kbd>
-                )}
-              </label>
+              <div
+                className="ws-search-wrap"
+                onBlur={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                  setSearchHistoryOpen(false);
+                  rememberSearch(query);
+                }}
+              >
+                <label className="ws-search">
+                  <Icon name="search" />
+                  <input
+                    ref={searchRef}
+                    aria-label="搜索知识库"
+                    placeholder="搜索标题、正文、发件人或标签"
+                    value={query}
+                    onFocus={() => setSearchHistoryOpen(true)}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      rememberSearch(query);
+                    }}
+                  />
+                  {query ? (
+                    <button type="button" aria-label="清除搜索" onClick={() => setQuery("")}>
+                      <Icon name="close" size={14} />
+                    </button>
+                  ) : (
+                    <kbd>⌘K</kbd>
+                  )}
+                </label>
+                {searchHistoryOpen && searchHistory.length > 0 ? (
+                  <div className="ws-search-history" role="group" aria-label="最近搜索">
+                    <div className="ws-search-history-head">
+                      <span>最近搜索</span>
+                      <button type="button" onClick={clearSearchHistory}>清空</button>
+                    </div>
+                    <ul>
+                      {searchHistory.map((term) => (
+                        <li key={term}>
+                          <button
+                            type="button"
+                            className="ws-search-history-term"
+                            onClick={() => {
+                              setQuery(term);
+                              rememberSearch(term);
+                              searchRef.current?.focus();
+                            }}
+                          >
+                            <Icon name="search" size={13} />
+                            <span>{term}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="ws-search-history-remove"
+                            aria-label={`从最近搜索删除：${term}`}
+                            onClick={() => forgetSearch(term)}
+                          >
+                            <Icon name="close" size={13} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="ws-list-controls">
               <div className="ws-filter-tabs">
@@ -2352,6 +2668,7 @@ export function Workspace() {
             <Suspense fallback={<p className="ws-reader-scroll">正在加载…</p>}>
               {page === "settings" ? (
                 <WorkspaceSettings
+                  dir={dir}
                   file={file}
                   apiKey={apiKey}
                   reviewEnabled={reviewEnabled}
@@ -2362,8 +2679,8 @@ export function Workspace() {
                   onExportKfBackup={() => {
                     // 认知产物（Layer 3）只在桌面端的 SQLite 里有；浏览器体验模式跳过。
                     void (async () => {
-                      const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
-                      downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
+                      const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);
+                      downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership, snapshot.r4, snapshot.noteRevisions, snapshot.subscriptions, snapshot.mail, backupVersion(snapshot) >= 9 && backupVersion(snapshot) < 12 ? snapshot.reviewHistory : null, backupVersion(snapshot) >= 10 && backupVersion(snapshot) < 12 ? snapshot.searchHistory : null, backupVersion(snapshot) === 11 ? snapshot.deletedRecords : null, backupVersion(snapshot) === 12 ? snapshot.searchHistory : null);
                       setNotice(backupReceipt(snapshot, { detailed: true }));
                     })().catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
                   }}
@@ -2374,24 +2691,24 @@ export function Workspace() {
                       const { open } = await import("@tauri-apps/plugin-dialog");
                       const selected = await open({ multiple: false, directory: true });
                       if (typeof selected !== "string") return;
-                      const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
-                      const archive = createKfBackupArchive(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
+                      const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);
+                      const archive = createKfBackupArchive(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership, snapshot.r4, snapshot.noteRevisions, snapshot.subscriptions, snapshot.mail, backupVersion(snapshot) >= 9 && backupVersion(snapshot) < 12 ? snapshot.reviewHistory : null, backupVersion(snapshot) >= 10 && backupVersion(snapshot) < 12 ? snapshot.searchHistory : null, backupVersion(snapshot) === 11 ? snapshot.deletedRecords : null, backupVersion(snapshot) === 12 ? snapshot.searchHistory : null);
                       const result = await backupCopyToDirectory(selected, archive);
                       const gaps = backupCompleteness(snapshot);
                       setNotice(
                         `已备份到 ${result.fileName}（${(result.bytes / 1024 / 1024).toFixed(1)} MB，SHA-256 ${result.sha256.slice(0, 12)}…）——` +
                         (gaps.length === 0
                           ? "这是完整备份快照，不是双向同步。"
-                          : `这是**部分**备份：${gaps.join("；")}。不是双向同步。`)
+                          : `这是部分备份：${gaps.join("；")}。备份格式为 v${backupVersion(snapshot)}，旧版工作台无法恢复。不是双向同步。`)
                       );
                     })().catch((err) => setError(`备份到目录失败：${err instanceof Error ? err.message : String(err)}`));
                   } : undefined}
                   onWebdavUpload={inShell() ? async (target) => {
-                    const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), Promise.resolve(file)]);
-                    const archive = createKfBackupArchive(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership);
+                    const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);
+                    const archive = createKfBackupArchive(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership, snapshot.r4, snapshot.noteRevisions, snapshot.subscriptions, snapshot.mail, backupVersion(snapshot) >= 9 && backupVersion(snapshot) < 12 ? snapshot.reviewHistory : null, backupVersion(snapshot) >= 10 && backupVersion(snapshot) < 12 ? snapshot.searchHistory : null, backupVersion(snapshot) === 11 ? snapshot.deletedRecords : null, backupVersion(snapshot) === 12 ? snapshot.searchHistory : null);
                     const gaps = backupCompleteness(snapshot);
-                    if (gaps.length > 0) console.warn("[WebDAV 备份] 部分内容缺口：", gaps);
-                    return webdavUploadBackup(target.url, target.username || null, target.password || null, archive);
+                    const result = await webdavUploadBackup(target.url, target.username || null, target.password || null, archive);
+                    return { ...result, gaps, version: backupVersion(snapshot) };
                   } : undefined}
                   onExportCardsJson={inShell() ? () => void exportCardsJsonForAndroid(dir) : undefined}
                   onExportAnkiTsv={() => {
@@ -2422,6 +2739,7 @@ export function Workspace() {
                   notes={notesState.notes.map((n) => ({ id: n.id, title: n.title }))}
                   onOpenCard={(cardId) => { navigate("library"); setSelectedId(cardId); setSource("card"); }}
                   onOpenNote={openNoteById}
+                  onArtifactDeleted={(artifactId) => setArtifacts((current) => current.filter((item) => item.id !== artifactId))}
                   onBack={() => navigate("briefing")}
                 />
               ) : null}
@@ -2434,6 +2752,7 @@ export function Workspace() {
                   onStateChange={updateNotesState}
                   openNoteId={openNoteId}
                   materials={materials}
+                  onOpenMaterial={(id) => { navigate("library"); setKbScope(""); setSelectedId(id); setSource("material"); }}
                 />
               ) : null}
               {page === "mail" ? (
@@ -2483,36 +2802,70 @@ export function Workspace() {
               ) : null}
               {page === "review-facts" ? (
                 <ReviewFactsView
+                  dir={dir}
                   materials={materials}
                   cards={cards}
+                  notes={notesLoaded ? notesState.notes : null}
                   goals={goalsState}
-                  notes={notesState.notes}
-                  filedNoteIds={notesLoaded ? new Set(Object.keys(noteKbIndex)) : undefined}
-                  noteProject={noteProjectIndex}
                   projects={projectsState}
+                  projectIndexStatus={projectIndexStatus}
+                  projectFactsStatus={reviewFactsProjectStatus}
+                  projectNoteIds={reviewFactsProjectMembership?.noteIds ?? null}
+                  projectMaterialIds={reviewFactsProjectMembership?.materialIds ?? null}
+                  projectCardIds={reviewFactsProjectMembership?.cardIds ?? null}
                   schedule={reviewSchedule}
+                  settings={file.settings}
+                  apiKey={apiKey}
                   onScheduleChange={updateReviewSchedule}
-                  staleReferences={staleReferenceList}
+                  reminders={actionableReviewReminders}
+                  onEnableSystemNotifications={requestReviewNotificationPermission}
                   onOpenMaterial={(id) => { navigate("library"); setKbScope(""); setSelectedId(id); }}
                   onOpenCard={(id) => { setKbScope(""); openCard(id); }}
+                  onOpenNote={openNoteById}
                 />
               ) : null}
-              {page === "profile" ? <ProfileGovernanceView dir={dir} /> : null}
+              {page === "profile" ? (
+                <ProfileGovernanceView
+                  dir={dir}
+                  notes={notesState.notes}
+                  notesStatus={notesReadStatus}
+                  projects={projectsState}
+                  noteProjectIndex={noteProjectIndex}
+                  projectIndexStatus={projectIndexStatus}
+                  settings={file.settings}
+                  apiKey={apiKey}
+                  onOpenNote={openNoteById}
+                />
+              ) : null}
               {page === "goals" ? <GoalsView dir={dir} materials={materials} notes={notesState.notes} onGoalsChange={setGoalsState} /> : null}
               {page === "projects" ? (
                 <ProjectsView dir={dir} notes={notesState.notes.map((n) => ({ id: n.id, title: n.title }))} />
               ) : null}
               {page === "creative" ? (
-                <CreativeView dir={dir} cards={cards} notes={notesState.notes} />
+                <CreativeView
+                  dir={dir}
+                  cards={cards}
+                  notes={notesState.notes}
+                  projects={projectsState}
+                  projectsStatus={projectIndexStatus}
+                  projectKnowledgeScopes={brainProjectKnowledgeScopes}
+                  projectKnowledgeScopesStatus={brainProjectScopesStatus}
+                  onArtifactSaved={(artifact) => setArtifacts((current) => [artifact, ...current.filter((item) => item.id !== artifact.id)])}
+                />
               ) : null}
               {page === "brain" ? (
                 <Assistant
+                  dir={dir}
                   cards={cards}
                   artifacts={artifacts}
                   settings={file.settings}
                   apiKey={apiKey}
                   onOpenCard={openCard}
                   notes={notesState.notes.map((n) => ({ id: n.id, title: n.title }))}
+                  projects={projectsState}
+                  projectsStatus={projectIndexStatus}
+                  projectKnowledgeScopes={brainProjectKnowledgeScopes}
+                  projectKnowledgeScopesStatus={brainProjectScopesStatus}
                   onOpenNote={openNoteById}
                   onNavigateSettings={() => navigate("settings")}
                 />
@@ -2528,10 +2881,9 @@ export function Workspace() {
                   <Quiz
                     cards={cards}
                     algorithm="fsrs"
-                    onChange={async (next) => {
-                      await storeCardList(next, dir);
-                      setCards(next);
-                    }}
+                    recordHistory={inShell()}
+                    projectContext={reviewProjectContext}
+                    onChange={persistReview}
                   />
                 </div>
               ) : null}
@@ -2542,10 +2894,9 @@ export function Workspace() {
                     cards={cards}
                     algorithm="fsrs"
                     dueOnly
-                    onChange={async (next) => {
-                      await storeCardList(next, dir);
-                      setCards(next);
-                    }}
+                    recordHistory={inShell()}
+                    projectContext={reviewProjectContext}
+                    onChange={persistReview}
                   />
                 </div>
               ) : null}
@@ -2595,7 +2946,7 @@ export function Workspace() {
         ref={restoreRef}
         type="file"
         accept=".kfbackup,.zip,.json"
-        aria-label="选择完整备份包"
+        aria-label="选择备份包"
         onChange={(e) => {
           if (e.target.files) void restoreFromBackup(e.target.files);
           e.target.value = "";

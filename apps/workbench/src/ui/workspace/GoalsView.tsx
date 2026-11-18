@@ -7,7 +7,10 @@ import {
   goalCreate,
   goalLinkEvidence,
   goalListActive,
+  goalSetScope,
+  projectList,
   type Goal,
+  type Project,
 } from "../../shell/store";
 
 /** 目标视图（R4/D04）：用户明确设定的目标、完成条件与证据关联。
@@ -23,11 +26,14 @@ export function GoalsView({ dir, materials, notes, onGoalsChange }: {
   onGoalsChange: (goals: Goal[]) => void;
 }) {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
   const [criteria, setCriteria] = useState("");
+  const [scope, setScope] = useState("");
   const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
   // 每个目标独立的「证据选择」打开态。
   const [linkingFor, setLinkingFor] = useState<string | null>(null);
   const [reviewFor, setReviewFor] = useState<string | null>(null);
@@ -35,33 +41,50 @@ export function GoalsView({ dir, materials, notes, onGoalsChange }: {
 
   const refresh = useCallback(async () => {
     try {
-      const current = await goalListActive(dir);
+      const [current, projectListWithArchived] = await Promise.all([goalListActive(dir), projectList(true, dir)]);
       setGoals(current);
+      setProjects(projectListWithArchived);
       onGoalsChange(current);
       setError("");
+      setLoaded(true);
     } catch (e) {
       setError(`读取目标失败：${String(e)}`);
-    } finally {
-      setLoaded(true);
+      setLoaded(false);
     }
   }, [dir, onGoalsChange]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
   const create = async () => {
+    setSaving(true);
     try {
       await goalCreate({
         id: crypto.randomUUID(),
         title: title.trim(),
         doneCriteria: criteria.trim(),
-        scope: null,
+        scope: scope || null,
       }, dir);
       setTitle("");
       setCriteria("");
+      setScope("");
       setCreating(false);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changeScope = async (id: string, value: string) => {
+    setSaving(true);
+    try {
+      await goalSetScope(id, value || null, dir);
+      await refresh();
+    } catch (e) {
+      setError(`调整项目归属失败：${String(e)}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -109,7 +132,7 @@ export function GoalsView({ dir, materials, notes, onGoalsChange }: {
         没有关联证据只是「还没有关联」，不是落后。
       </p>
 
-      {error ? <p className="nv-error" role="alert">{error}</p> : null}
+      {error ? <p className="nv-error" role="alert">{error} {!loaded ? <button type="button" onClick={() => void refresh()}>重新读取</button> : null}</p> : null}
 
       {creating ? (
         <div className="gl-form" role="form" aria-label="新建目标">
@@ -125,8 +148,15 @@ export function GoalsView({ dir, materials, notes, onGoalsChange }: {
             value={criteria}
             onChange={(e) => setCriteria(e.target.value)}
           />
+          <label className="gl-scope">
+            项目归属
+            <select aria-label="新目标的项目归属" value={scope} onChange={(e) => setScope(e.target.value)}>
+              <option value="">不关联项目</option>
+              {projects.filter((p) => p.archivedAt === null).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="ws-primary" type="button" disabled={!title.trim() || !criteria.trim()} onClick={() => void create()}>
+            <button className="ws-primary" type="button" disabled={saving || !title.trim() || !criteria.trim()} onClick={() => void create()}>
               创建
             </button>
             <button className="ws-bordered" type="button" onClick={() => setCreating(false)}>取消</button>
@@ -135,7 +165,7 @@ export function GoalsView({ dir, materials, notes, onGoalsChange }: {
       ) : null}
 
       {!loaded ? (
-        <p className="ws-hint">正在读取目标…</p>
+        <p className="ws-hint">{error ? "目标暂不可用。" : "正在读取目标…"}</p>
       ) : goals.length === 0 ? (
         <div className="ws-list-empty">
           <h2>还没有目标</h2>
@@ -149,6 +179,17 @@ export function GoalsView({ dir, materials, notes, onGoalsChange }: {
                 <strong>{g.title}</strong>
                 <span className="gl-criteria">完成条件：{g.doneCriteria}</span>
                 <span className="gl-meta">关联证据 {g.evidenceCount} 条 · 建立于 {new Date(g.createdAt).toLocaleDateString("zh-CN")}</span>
+                <label className="gl-scope">
+                  项目归属
+                  <select aria-label={`「${g.title}」的项目归属`} value={g.scope ?? ""} disabled={saving}
+                    onChange={(e) => void changeScope(g.id, e.target.value)}>
+                    <option value="">不关联项目</option>
+                    {g.scope && !projects.some((p) => p.id === g.scope) ? <option value={g.scope} disabled>项目不可用</option> : null}
+                    {projects.filter((p) => p.archivedAt === null || p.id === g.scope).map((p) => (
+                      <option key={p.id} value={p.id} disabled={p.archivedAt !== null}>{p.name}{p.archivedAt !== null ? "（已封存）" : ""}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <div className="gl-item-actions">
                 <button type="button" className="ws-bordered" onClick={() => { setLinkingFor(linkingFor === g.id ? null : g.id); }}>

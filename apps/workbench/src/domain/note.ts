@@ -20,6 +20,16 @@ export interface Note {
   updatedAt: number;
   isDeleted: boolean;
   deletedAt: number | null;
+  /** 用户明确选择后，不把这篇笔记用于个人画像提案。 */
+  excludeFromProfile: boolean;
+}
+
+export interface NoteRevision {
+  noteId: string;
+  revision: number;
+  title: string;
+  bodyMd: string;
+  savedAt: number;
 }
 
 export interface KnowledgeBase {
@@ -71,6 +81,7 @@ export function createNoteDraft(now = Date.now()): Note {
     updatedAt: now,
     isDeleted: false,
     deletedAt: null,
+    excludeFromProfile: false,
   };
 }
 
@@ -143,6 +154,7 @@ export function restoreNoteRaw(
         existing.isFavorite === note.isFavorite &&
         existing.archivedAt === note.archivedAt &&
         existing.sourceMaterialId === note.sourceMaterialId &&
+        existing.excludeFromProfile === note.excludeFromProfile &&
         existing.isDeleted === note.isDeleted &&
         existing.deletedAt === note.deletedAt;
       return { state, action: same ? "current" : "skippedDivergent" };
@@ -250,6 +262,8 @@ interface NoteJson {
   is_deleted?: number | boolean;
   deletedAt?: number | null;
   deleted_at?: number | null;
+  excludeFromProfile?: number | boolean;
+  exclude_from_profile?: number | boolean;
 }
 
 /** 兼容 Rust DTO 的 snake_case 与前端 camelCase 两种形状（备份来自 Rust 侧导出）。 */
@@ -272,6 +286,7 @@ export function noteFromJson(raw: unknown): Note {
     updatedAt: Number(j.updatedAt ?? j.updated_at ?? 0),
     isDeleted: truthy(j.isDeleted ?? j.is_deleted),
     deletedAt: j.deletedAt ?? j.deleted_at ?? null,
+    excludeFromProfile: truthy(j.excludeFromProfile ?? j.exclude_from_profile),
   };
 }
 

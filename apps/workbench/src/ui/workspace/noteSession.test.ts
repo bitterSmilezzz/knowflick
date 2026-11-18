@@ -86,6 +86,7 @@ const seedNote = (over: Partial<Note> = {}): Note => ({
   updatedAt: 100,
   isDeleted: false,
   deletedAt: null,
+  excludeFromProfile: false,
   ...over,
 });
 
@@ -138,6 +139,16 @@ describe("NoteSession 元数据与正文同源（KF-004）", () => {
     await drain();
     expect(store.state.notes[0].currentRevision).toBe(1);
     expect(s.snapshot().phase).toBe("clean");
+  });
+
+  it("个人画像排除设置随元数据保存且不追加正文修订", async () => {
+    const seed = seedNote({ currentRevision: 1 });
+    const store = makeStoreIo(seed);
+    const s = new NoteSession(seed, store.io);
+    s.patchMeta({ excludeFromProfile: true });
+    await drain();
+    expect(store.state.notes[0].excludeFromProfile).toBe(true);
+    expect(store.state.notes[0].currentRevision).toBe(1);
   });
 });
 

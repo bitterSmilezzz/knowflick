@@ -52,12 +52,12 @@ describe("恢复备份：什么该被放回去", () => {
     expect(restorableCards([card({ id: "" })])).toHaveLength(0);
   });
 
-  it("产物仍要求有标题（它没有正文可退化）", () => {
+  it("产物的空标题不丢弃，缺少标识才跳过", () => {
     const arts = [
       { id: "a1", title: "标题" },
       { id: "a2", title: "" },
       { id: "", title: "标题" },
     ];
-    expect(restorableArtifacts(arts)).toHaveLength(1);
+    expect(restorableArtifacts(arts)).toHaveLength(2);
   });
 });

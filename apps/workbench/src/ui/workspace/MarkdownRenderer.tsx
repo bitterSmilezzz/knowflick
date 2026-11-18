@@ -1,4 +1,7 @@
 import React from "react";
+import { parseReferenceUri, type ReferenceSourceKind } from "../../domain/noteReference";
+
+type OpenReference = (id: string, kind: ReferenceSourceKind) => void;
 
 /** 库内附件相对路径（media/<kind>/<uuid>.<ext>）——正文里引用附件只认这一种来源。 */
 const MEDIA_PATH_RE = /^media\/(audio|image|ink)\/[A-Za-z0-9._-]+$/;
@@ -13,7 +16,7 @@ const MEDIA_PATH_RE = /^media\/(audio|image|ink)\/[A-Za-z0-9._-]+$/;
 function renderInline(
   text: string,
   resolveAttachment?: (path: string) => string | null,
-  onOpenNote?: (noteId: string) => void
+  onOpenReference?: OpenReference
 ): React.ReactNode {
   // 正则匹配: **bold**, `code`, [label](url), ![alt](media/...)
   const regex = /(!\[[^\]]*\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
@@ -37,17 +40,15 @@ function renderInline(
     }
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
-      // 库内笔记引用（T13/G01）：knowflick://note/<id> 是应用内部导航，
-      // 交给调用方处理——外链协议仍然只放行 http/https（导入的邮件里
-      // 可能有任意 scheme 的链接，不能给它们可执行导航）。
-      if (linkMatch[2].startsWith("knowflick://note/") && onOpenNote) {
-        const noteId = linkMatch[2].slice("knowflick://note/".length);
+      // 与引用检查共用解析器，内容指纹不参与原件定位。
+      const reference = parseReferenceUri(linkMatch[2]);
+      if (reference && onOpenReference) {
         return (
           <button
             key={idx}
             type="button"
             className="ws-md-note-link"
-            onClick={() => onOpenNote(noteId)}
+            onClick={() => onOpenReference(reference.id, reference.kind)}
           >
             {linkMatch[1]}
           </button>
@@ -71,12 +72,12 @@ function renderInline(
 /**
  * 结构化轻量 Markdown 渲染器 (纯 React 节点，免 XSS 风险)
  */
-export function MarkdownRenderer({ text, resolveAttachment, onOpenNote }: {
+export function MarkdownRenderer({ text, resolveAttachment, onOpenReference }: {
   text: string;
   /** 给了才把正文里的 `![](media/…)` 渲染成 <img>（见 renderInline 的安全口径）。 */
   resolveAttachment?: (path: string) => string | null;
-  /** 给了才把 `knowflick://note/<id>` 渲染成可点的内部链接（T13/G01）。 */
-  onOpenNote?: (noteId: string) => void;
+  /** 允许在正文中打开库内笔记或素材。 */
+  onOpenReference?: OpenReference;
 }): React.ReactElement {
   if (!text) return <div className="ws-prose" />;
 
@@ -115,8 +116,8 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenNote }: {
     const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       elements.push(heading[1].length <= 2
-        ? <h2 key={`heading-${i}`}>{renderInline(heading[2], resolveAttachment, onOpenNote)}</h2>
-        : <h3 key={`heading-${i}`}>{renderInline(heading[2], resolveAttachment, onOpenNote)}</h3>);
+        ? <h2 key={`heading-${i}`}>{renderInline(heading[2], resolveAttachment, onOpenReference)}</h2>
+        : <h3 key={`heading-${i}`}>{renderInline(heading[2], resolveAttachment, onOpenReference)}</h3>);
       i++;
       continue;
     }
@@ -129,7 +130,7 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenNote }: {
       }
       elements.push(
         <blockquote key={`quote-${i}`}>
-          <p>{renderInline(quoteLines.join(" "), resolveAttachment, onOpenNote)}</p>
+          <p>{renderInline(quoteLines.join(" "), resolveAttachment, onOpenReference)}</p>
         </blockquote>
       );
       continue;
@@ -145,7 +146,7 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenNote }: {
       elements.push(
         <ul key={`ul-${i}`}>
           {listItems.map((item, idx) => (
-            <li key={idx}>{renderInline(item, resolveAttachment, onOpenNote)}</li>
+            <li key={idx}>{renderInline(item, resolveAttachment, onOpenReference)}</li>
           ))}
         </ul>
       );
@@ -162,7 +163,7 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenNote }: {
       elements.push(
         <ol key={`ol-${i}`}>
           {listItems.map((item, idx) => (
-            <li key={idx}>{renderInline(item, resolveAttachment, onOpenNote)}</li>
+            <li key={idx}>{renderInline(item, resolveAttachment, onOpenReference)}</li>
           ))}
         </ol>
       );
@@ -183,7 +184,7 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenNote }: {
       paraLines.push(lines[i]);
       i++;
     }
-    elements.push(<p key={`p-${i}`}>{renderInline(paraLines.join("\n"), resolveAttachment, onOpenNote)}</p>);
+    elements.push(<p key={`p-${i}`}>{renderInline(paraLines.join("\n"), resolveAttachment, onOpenReference)}</p>);
   }
 
   return <div className="ws-prose">{elements}</div>;

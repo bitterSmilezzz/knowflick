@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   dbListMaterials,
+  dbListArtifacts,
+  dbDeleteArtifact,
+  dbSaveArtifact,
   dbLoadCards,
   dbSaveMaterial,
   dbUpsertCard,
@@ -14,6 +17,7 @@ import {
   loadStore,
   readImportReport,
   saveImportReport,
+  SEARCH_HISTORY_STORAGE_KEY,
   readMedia,
   noteDelete,
   goalListActive,
@@ -26,6 +30,7 @@ import {
   saveSettings,
   writeApiKey,
   type RawMaterial,
+  type Artifact,
 } from "../../shell/store";
 import { parseImportReport, serializeImportReport, type ImportReport } from "../../domain/importReport";
 import {
@@ -46,12 +51,13 @@ import {
   type NoteSaveOutcome,
   type NotesState,
 } from "../../domain/note";
-import type { KnowledgeCard } from "../../domain/card";
+import { cardFromJson, type KnowledgeCard } from "../../domain/card";
 import type { Goal } from "../../shell/store";
 import { encodeSettings, parseSettings, type SettingsFile } from "../../domain/settings";
 
 interface BrowserData { materials: RawMaterial[]; cards: KnowledgeCard[]; settings: string | null }
 const browserKey = "knowflick.workspace.v1";
+const browserArtifactsKey = "knowflick.workspace.artifacts";
 function browserData(): BrowserData {
   const raw = localStorage.getItem(browserKey);
   if (!raw) return { materials: [], cards: [], settings: null };
@@ -81,11 +87,17 @@ function browserWrite(data: BrowserData) {
     throw err;
   }
 }
-export interface WorkspaceSnapshot { dir: string; materials: RawMaterial[]; cards: KnowledgeCard[]; file: SettingsFile; apiKey: string }
+export interface WorkspaceSnapshot { dir: string; materials: RawMaterial[]; cards: KnowledgeCard[]; file: SettingsFile; apiKey: string; searchHistory: string | null }
 export async function readWorkspace(): Promise<WorkspaceSnapshot> {
   if (!inShell()) {
     const data = browserData();
-    return { dir: "", ...data, file: parseSettings(data.settings), apiKey: sessionStorage.getItem("knowflick.workspace.key") || "" };
+    return {
+      dir: "",
+      ...data,
+      file: parseSettings(data.settings),
+      apiKey: sessionStorage.getItem("knowflick.workspace.key") || "",
+      searchHistory: localStorage.getItem(SEARCH_HISTORY_STORAGE_KEY),
+    };
   }
   const snapshot = await loadStore();
   const cards: KnowledgeCard[] = [];
@@ -94,7 +106,14 @@ export async function readWorkspace(): Promise<WorkspaceSnapshot> {
     cards.push(...page);
     if (page.length < 200) break;
   }
-  return { dir: snapshot.dir, materials: await dbListMaterials(false, snapshot.dir, 10000), cards, file: parseSettings(snapshot.settings), apiKey: await readApiKey(snapshot.dir) };
+  return {
+    dir: snapshot.dir,
+    materials: await dbListMaterials(false, snapshot.dir, 10000),
+    cards,
+    file: parseSettings(snapshot.settings),
+    apiKey: await readApiKey(snapshot.dir),
+    searchHistory: snapshot.searchHistory,
+  };
 }
 export async function storeMaterial(material: RawMaterial, dir: string): Promise<void> {
   if (inShell()) { await dbSaveMaterial(material, dir); return; }
@@ -105,6 +124,125 @@ export async function storeCard(card: KnowledgeCard, dir: string): Promise<void>
   if (inShell()) { await dbUpsertCard(card, dir); return; }
   const data = browserData();
   browserWrite({ ...data, cards: [card, ...data.cards.filter(c => c.id !== card.id)] });
+}
+
+function isArtifact(value: unknown): value is Artifact {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const item = value as Partial<Artifact>;
+  return typeof item.id === "string" && item.id.length > 0 &&
+    typeof item.artifactType === "string" && typeof item.title === "string" &&
+    typeof item.contentMarkdown === "string" &&
+    Array.isArray(item.sourceCardIds) && item.sourceCardIds.every((id) => typeof id === "string") &&
+    (item.sourceNoteIds === undefined || (Array.isArray(item.sourceNoteIds) && item.sourceNoteIds.every((id) => typeof id === "string"))) &&
+    typeof item.createdAt === "number" && Number.isFinite(item.createdAt) &&
+    typeof item.updatedAt === "number" && Number.isFinite(item.updatedAt) &&
+    (item.isDeleted === undefined || typeof item.isDeleted === "boolean");
+}
+
+function browserArtifacts(): Artifact[] {
+  const raw = localStorage.getItem(browserArtifactsKey);
+  if (raw === null) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (err) {
+    throw new Error(`浏览器产物存储无法解析：${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!Array.isArray(parsed) || !parsed.every(isArtifact)) {
+    throw new Error("浏览器产物存储格式损坏；备份与恢复已停止，原数据未覆盖");
+  }
+  return parsed;
+}
+
+function writeBrowserArtifacts(artifacts: Artifact[]): void {
+  try {
+    localStorage.setItem(browserArtifactsKey, JSON.stringify(artifacts));
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "QuotaExceededError") {
+      throw new Error("浏览器存储已满，这次产物没有保存。导出备份后清理内容，或改用桌面客户端。");
+    }
+    throw err;
+  }
+}
+
+/** 产物库的统一读取入口；浏览器数据损坏会抛错，供备份回执明确报告缺口。 */
+export async function readArtifacts(dir: string): Promise<Artifact[]> {
+  if (!inShell()) return browserArtifacts();
+  const artifacts: Artifact[] = [];
+  for (let offset = 0; ; offset += 200) {
+    const page = await dbListArtifacts(200, dir, offset);
+    artifacts.push(...page);
+    if (page.length < 200) break;
+  }
+  return artifacts;
+}
+
+/** 保存新产物；浏览器与桌面都通过仓储层写入。 */
+export async function storeArtifact(artifact: Artifact, dir: string): Promise<void> {
+  if (inShell()) {
+    await dbSaveArtifact(artifact, dir);
+    return;
+  }
+  const existing = browserArtifacts();
+  writeBrowserArtifacts([artifact, ...existing.filter((item) => item.id !== artifact.id)]);
+}
+
+/** 浏览器恢复按稳定 ID 合并：同 ID 完全相同则幂等跳过，冲突时保留本地内容。 */
+export async function restoreBrowserArtifact(artifact: Artifact): Promise<boolean> {
+  const artifacts = browserArtifacts();
+  const matches = artifacts.filter((item) => item.id === artifact.id);
+  if (matches.length > 1) throw new Error("本地存在多个同标识产物，未覆盖");
+  const existing = matches[0];
+  if (existing) {
+    if (canonicalJson(existing) !== canonicalJson(artifact)) throw new Error("本地同标识产物内容不同，未覆盖");
+    return false;
+  }
+  writeBrowserArtifacts([artifact, ...artifacts]);
+  return true;
+}
+
+/** 删除产物：保持浏览器旧版的硬删除语义。 */
+export async function deleteArtifact(id: string, dir: string): Promise<void> {
+  if (inShell()) {
+    await dbDeleteArtifact(id, dir);
+    return;
+  }
+  writeBrowserArtifacts(browserArtifacts().filter((item) => item.id !== id));
+}
+
+// Key ordering must not make identical JSON look like a conflict.
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+  });
+}
+
+/** Browser restore keeps existing records unless they match the backup exactly. */
+export async function restoreBrowserMaterial(material: RawMaterial): Promise<boolean> {
+  const data = browserData();
+  const matches = data.materials.filter((item) => item.id === material.id);
+  if (matches.length > 1) throw new Error("本地存在多个同标识素材，未覆盖");
+  const existing = matches[0];
+  if (existing) {
+    if (canonicalJson(existing) !== canonicalJson(material)) throw new Error("本地同标识素材内容不同，未覆盖");
+    return false;
+  }
+  browserWrite({ ...data, materials: [material, ...data.materials] });
+  return true;
+}
+
+export async function restoreBrowserCard(card: KnowledgeCard): Promise<boolean> {
+  const data = browserData();
+  const matches = data.cards.filter((item) => item.id === card.id);
+  if (matches.length > 1) throw new Error("本地存在多个同标识卡片，未覆盖");
+  const existing = matches[0];
+  if (existing) {
+    if (canonicalJson(cardFromJson(existing)) !== canonicalJson(card)) throw new Error("本地同标识卡片内容或学习进度不同，未覆盖");
+    return false;
+  }
+  browserWrite({ ...data, cards: [card, ...data.cards] });
+  return true;
 }
 export async function storeCardList(cards: KnowledgeCard[], dir: string): Promise<void> {
   if (inShell()) { await invoke("db_replace_cards", { dir, cards }); return; }
@@ -286,6 +424,7 @@ export async function saveNote(note: Note, baseRevision: number, dir: string): P
           updatedAt: note.updatedAt,
           isDeleted: note.isDeleted,
           deletedAt: note.deletedAt,
+          excludeFromProfile: note.excludeFromProfile,
         },
         baseRevision,
         dir
@@ -362,7 +501,7 @@ export async function restoreNoteFromBackup(
   note: Note,
   dir: string
 ): Promise<NoteRestoreAction> {
-  if (inShell()) return noteRestoreUpsert(note, dir);
+  if (inShell()) return noteRestoreUpsert({ ...note, tagsJson: JSON.stringify(note.tags) }, dir);
   const { state, action } = domainRestoreNoteRaw(browserNotes(), note);
   if (action !== "skippedLocalNewer" && action !== "skippedDivergent" && action !== "current") {
     browserNotesWrite(state);

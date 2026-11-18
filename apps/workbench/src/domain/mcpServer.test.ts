@@ -50,7 +50,8 @@ describe("未接入授权的嵌入式 MCP", () => {
   });
 
   it("配置保留已安装的绝对脚本路径和库目录", () => {
-    const parsed = JSON.parse(generateMcpConfigSnippet("/installed/mcp-server.mjs", "/library"));
+    const parsed = JSON.parse(generateMcpConfigSnippet("/installed/mcp-server.mjs", "/library", "test-token"));
     expect(parsed.mcpServers.knowflick.args).toEqual(["/installed/mcp-server.mjs", "--dir", "/library"]);
+    expect(parsed.mcpServers.knowflick.env.KNOWFLICK_MCP_TOKEN).toBe("test-token");
   });
 });

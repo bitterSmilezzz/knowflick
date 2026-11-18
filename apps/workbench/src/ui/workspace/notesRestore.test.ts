@@ -38,6 +38,7 @@ const pkgNote = (id: string, over: Partial<Note> = {}): Note => ({
   isDeleted: false,
   deletedAt: null,
   ...over,
+  excludeFromProfile: over.excludeFromProfile ?? false,
 });
 
 const pkgKb = (id: string, name: string): KnowledgeBase => ({

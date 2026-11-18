@@ -25,6 +25,8 @@ export interface StoreSnapshot {
   searchHistory: string | null;
 }
 
+export const SEARCH_HISTORY_STORAGE_KEY = "knowflick.searchHistory.v1";
+
 export function inShell(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -41,8 +43,12 @@ export function saveSettings(dir: string, text: string): Promise<void> {
   return invoke("save_settings", { dir, text });
 }
 
-export function saveSearchHistory(dir: string, text: string): Promise<void> {
-  return invoke("save_search_history", { dir, text });
+export async function saveSearchHistory(dir: string, text: string): Promise<void> {
+  if (inShell()) {
+    await invoke("save_search_history", { dir, text });
+    return;
+  }
+  localStorage.setItem(SEARCH_HISTORY_STORAGE_KEY, text);
 }
 
 export function readArchive(path: string): Promise<{ cards: string; settings: string | null }> {
@@ -187,6 +193,95 @@ export function dbLoadCards(dir?: string, limit?: number, offset?: number): Prom
   return invoke("db_load_cards", { dir: dir ?? null, limit: limit ?? null, offset: offset ?? null });
 }
 
+export interface DatabaseBackupSnapshot {
+  materials: RawMaterial[];
+  cards: KnowledgeCard[];
+  notes: unknown[];
+  noteRevisions: import("../domain/note").NoteRevision[];
+  subscriptions: import("../domain/systemBackup").SubscriptionSnapshot | null;
+  subscriptionsError: string | null;
+  mail: import("../domain/systemBackup").MailSnapshot | null;
+  mailError: string | null;
+  reviewHistory: import("../domain/reviewHistory").ReviewHistorySnapshot | null;
+  reviewHistoryError: string | null;
+  knowledgeBases: import("../domain/note").KnowledgeBase[];
+  membership: Record<string, number>;
+  artifacts: Artifact[];
+  artifactsError: string | null;
+  deletedRecords: import("../domain/systemBackup").DeletedRecordsSnapshot | null;
+  deletedRecordsError: string | null;
+  r4: unknown | null;
+  r4Error: string | null;
+}
+
+export function backupCaptureDatabase(dir?: string): Promise<DatabaseBackupSnapshot> {
+  return invoke("backup_capture_database", { dir: dir ?? null });
+}
+
+export function backupValidateR4(snapshot: unknown, dir?: string): Promise<void> {
+  return invoke("backup_validate_r4", { snapshot, dir: dir ?? null });
+}
+
+export function backupRestoreR4(snapshot: unknown, dir?: string): Promise<number> {
+  return invoke("backup_restore_r4", { snapshot, dir: dir ?? null });
+}
+
+export function backupValidateSubscriptions(snapshot: unknown, dir?: string): Promise<void> {
+  return invoke("backup_validate_subscriptions", { snapshot, dir: dir ?? null });
+}
+
+export function backupRestoreSubscriptions(snapshot: unknown, dir?: string): Promise<number> {
+  return invoke("backup_restore_subscriptions", { snapshot, dir: dir ?? null });
+}
+
+export function backupValidateMail(snapshot: unknown, dir?: string): Promise<void> {
+  return invoke("backup_validate_mail", { snapshot, dir: dir ?? null });
+}
+
+export function backupRestoreMail(snapshot: unknown, dir?: string): Promise<import("../domain/systemBackup").MailRestoreCounts> {
+  return invoke("backup_restore_mail", { snapshot, dir: dir ?? null });
+}
+
+export function reviewHistoryPeriod(from: number, to: number, dir?: string): Promise<import("../domain/reviewHistory").ReviewHistorySnapshot> {
+  return invoke("review_history_period", { from, to, dir: dir ?? null });
+}
+
+export function reviewRecord(card: KnowledgeCard, event: import("../domain/reviewHistory").ReviewEvent, dir?: string): Promise<boolean> {
+  return invoke("review_record", { card, event, dir: dir ?? null });
+}
+
+export function backupValidateReviewHistory(snapshot: unknown, dir?: string): Promise<void> {
+  return invoke("backup_validate_review_history", { snapshot, dir: dir ?? null });
+}
+
+export function backupRestoreReviewHistory(snapshot: unknown, dir?: string): Promise<import("../domain/reviewHistory").ReviewRestoreCounts> {
+  return invoke("backup_restore_review_history", { snapshot, dir: dir ?? null });
+}
+
+export function backupRestoreMaterial(binding: { protected: boolean; fingerprint: string | null }, material: RawMaterial, dir?: string): Promise<boolean> {
+  return invoke("backup_restore_material", { ...binding, material, dir: dir ?? null });
+}
+
+export function backupRestoreCard(binding: { protected: boolean; fingerprint: string | null }, card: KnowledgeCard, dir?: string): Promise<boolean> {
+  return invoke("backup_restore_card", { ...binding, card, dir: dir ?? null });
+}
+
+export function backupRestoreArtifact(artifact: Artifact, dir?: string): Promise<boolean> {
+  return invoke("backup_restore_artifact", { artifact, dir: dir ?? null });
+}
+
+export function backupRestoreDeletedRecords(snapshot: import("../domain/systemBackup").DeletedRecordsSnapshot, dir?: string): Promise<import("../domain/systemBackup").DeletedRestoreCounts> {
+  return invoke("backup_restore_deleted_records", { snapshot, dir: dir ?? null });
+}
+
+export function backupRestoreNote(binding: { protected: boolean; fingerprint: string | null }, note: import("../domain/note").Note, dir?: string): Promise<NoteRestoreActionShell> {
+  return invoke("backup_restore_note", { ...binding, note: { ...note, tagsJson: JSON.stringify(note.tags) }, dir: dir ?? null });
+}
+
+export function backupRestoreNoteHistory(binding: { protected: boolean; fingerprint: string | null }, note: import("../domain/note").Note, history: import("../domain/note").NoteRevision[], dir?: string): Promise<NoteRestoreActionShell> {
+  return invoke("backup_restore_note_history", { ...binding, note: { ...note, tagsJson: JSON.stringify(note.tags) }, history, dir: dir ?? null });
+}
+
 export function dbUpsertCard(card: KnowledgeCard, dir?: string): Promise<void> {
   return invoke("db_upsert_card", { dir: dir ?? null, card });
 }
@@ -237,6 +332,31 @@ export interface Project {
   archivedAt: number | null;
 }
 
+// 授权令牌只在创建时返回；列表不包含令牌或其摘要。
+export interface McpGrantRequest {
+  clientLabel: string;
+  scope: "project" | "library";
+  projectId: string | null;
+  libraryRead: boolean;
+  cardWrite: boolean;
+  materialWrite: boolean;
+}
+export interface McpGrant extends McpGrantRequest {
+  id: string;
+  createdAt: number;
+  revokedAt: number | null;
+  policyVersion: number;
+}
+export function mcpGrantCreate(request: McpGrantRequest, dir?: string): Promise<{ grant: McpGrant; token: string }> {
+  return invoke("mcp_grant_create", { request, dir: dir ?? null });
+}
+export function mcpGrantList(dir?: string): Promise<McpGrant[]> {
+  return invoke("mcp_grant_list", { dir: dir ?? null });
+}
+export function mcpGrantRevoke(id: string, dir?: string): Promise<boolean> {
+  return invoke("mcp_grant_revoke", { id, dir: dir ?? null });
+}
+
 // ---------- 个人画像（R4/D05：可治理的声明） ----------
 
 export interface ProfileClaim {
@@ -266,6 +386,17 @@ export function goalListActive(dir?: string): Promise<Goal[]> {
   return invoke("goal_list_active", { dir: dir ?? null });
 }
 
+export type { GoalEvidenceItem } from "../domain/dto";
+import type { GoalEvidenceItem } from "../domain/dto";
+
+export function goalReviewSnapshot(from: number, to: number, dir?: string): Promise<{ goals: Goal[]; evidence: GoalEvidenceItem[] }> {
+  return invoke("goal_review_snapshot", { from, to, dir: dir ?? null });
+}
+
+export function goalSetScope(id: string, scope: string | null, dir?: string): Promise<void> {
+  return invoke("goal_set_scope_cmd", { id, scope, dir: dir ?? null });
+}
+
 export function goalLinkEvidence(goalId: string, evidenceId: string, kind: "note" | "material", dir?: string): Promise<number> {
   return invoke("goal_link_evidence_cmd", { goalId, evidenceId, kind, dir: dir ?? null });
 }
@@ -279,11 +410,30 @@ export function goalAbandon(id: string, reviewNote: string, dir?: string): Promi
 }
 
 export function profileClaimAdd(claim: Omit<ProfileClaim, "createdAt" | "confirmedAt" | "expiresAt" | "deniedAt" | "supersededBy" | "status">, dir?: string): Promise<number> {
-  return invoke("profile_claim_add", { claim, dir: dir ?? null });
+  // Rust currently deserializes the full ProfileClaim DTO even though claim_add
+  // owns the timestamp and always creates an active, unconfirmed claim.
+  const payload: ProfileClaim = {
+    ...claim,
+    createdAt: Date.now(),
+    confirmedAt: null,
+    expiresAt: null,
+    deniedAt: null,
+    supersededBy: null,
+    status: "active",
+  };
+  return invoke("profile_claim_add", { claim: payload, dir: dir ?? null });
 }
 
 export function profileClaimsActive(dir?: string): Promise<ProfileClaim[]> {
   return invoke("profile_claims_active", { dir: dir ?? null });
+}
+
+export function profileClaimsAll(dir?: string): Promise<ProfileClaim[]> {
+  return invoke("profile_claims_all", { dir: dir ?? null });
+}
+
+export function profileClaimsForAnswer(projectId?: string, dir?: string): Promise<ProfileClaim[]> {
+  return invoke("profile_claims_for_answer", { dir: dir ?? null, projectId: projectId ?? null });
 }
 
 export function profileClaimConfirm(id: string, dir?: string): Promise<boolean> {
@@ -341,7 +491,7 @@ export function projectMemberList(projectId: string, dir?: string): Promise<Proj
 
 /**
  * 笔记 → 项目归属索引（复盘限定项目范围时用来反查）。
- * 返回 [笔记 id, 项目 id] 列表——同一篇笔记只保留最近加入的那个项目。
+ * 返回 [笔记 id, 项目 id] 列表——一篇笔记可对应多个项目。
  */
 export function projectMemberIndex(dir?: string): Promise<[string, string][]> {
   return invoke("project_member_index", { dir: dir ?? null });
@@ -428,18 +578,21 @@ export interface NoteChunkTextShell {
   contentRevision: number;
 }
 
-export function noteListChunkTexts(limit?: number): Promise<NoteChunkTextShell[]> {
-  return invoke("note_list_chunk_texts", { limit: limit ?? null });
+export function noteListChunkTexts(limit: number, identity: EmbeddingIdentity, dir?: string): Promise<NoteChunkTextShell[]> {
+  return invoke("note_list_chunk_texts", { dir: dir ?? null, limit, ...identity });
 }
 
 export function noteSaveChunkEmbeddings(
-  items: Array<{ noteId: string; chunkIndex: number; embedding: number[] }>,
-  identity?: EmbeddingIdentity
+  items: Array<Pick<NoteChunkTextShell, "noteId" | "chunkIndex" | "contentRevision"> & { embedding: number[] }>,
+  identity: EmbeddingIdentity,
+  dir?: string,
 ): Promise<number> {
   return invoke("note_save_chunk_embeddings", {
-    items: items.map((it) => ({ note_id: it.noteId, chunk_index: it.chunkIndex, embedding: it.embedding })),
-    provider: identity?.provider ?? "",
-    model: identity?.model ?? "",
+    dir: dir ?? null,
+    items: items.map((it) => ({
+      note_id: it.noteId, chunk_index: it.chunkIndex, content_revision: it.contentRevision, embedding: it.embedding,
+    })),
+    ...identity,
   });
 }
 
@@ -456,13 +609,17 @@ export interface NoteChunkVectorHitShell {
 export function noteSearchChunksVector(
   queryEmbedding: number[],
   identity?: EmbeddingIdentity,
-  limit?: number
+  limit?: number,
+  projectId?: string,
+  dir?: string,
 ): Promise<NoteChunkVectorHitShell[]> {
   return invoke("note_search_chunks_vector", {
+    dir: dir ?? null,
     queryEmbedding,
     provider: identity?.provider ?? "",
     model: identity?.model ?? "",
     limit: limit ?? null,
+    projectId: projectId ?? null,
   });
 }
 
@@ -563,7 +720,8 @@ export function dbSearchCardsHybrid(
   queryEmbedding?: number[] | null,
   identity?: EmbeddingIdentity,
   limit?: number,
-  dir?: string
+  dir?: string,
+  projectId?: string
 ): Promise<KnowledgeCard[]> {
   return invoke("db_search_cards_hybrid", {
     dir: dir ?? null,
@@ -572,6 +730,7 @@ export function dbSearchCardsHybrid(
     provider: identity?.provider ?? "",
     model: identity?.model ?? "",
     limit: limit ?? 10,
+    projectId: projectId ?? null,
   });
 }
 
@@ -670,6 +829,10 @@ export function asrTranscribe(path: string, model?: string): Promise<Transcripti
  */
 export async function saveMedia(kind: "audio" | "ink" | "image", mime: string, data: Uint8Array, dir?: string): Promise<string> {
   return invoke("save_media", { dir: dir ?? null, kind, mime, dataB64: await bytesToBase64(data) });
+}
+
+export async function backupRestoreMedia(relative: string, data: Uint8Array, dir?: string): Promise<string> {
+  return invoke("backup_restore_media", { dir: dir ?? null, relative, dataB64: await bytesToBase64(data) });
 }
 
 /**

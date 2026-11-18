@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
-import { dbListArtifacts, inShell, type Artifact } from "../../shell/store";
+import type { Artifact } from "../../shell/store";
+import { deleteArtifact, readArtifacts } from "./repository";
 import { userError } from "./userError";
 
 /**
@@ -10,7 +11,7 @@ import { userError } from "./userError";
  * 界面上没有入口——存进去的东西只有导出备份才看得见。现在它是应用阶段
  * 的一等页面，能列出、查看、复制、删除。
  */
-export function ArtifactsView({ dir, cards, notes = [], onOpenCard, onOpenNote, onBack }: {
+export function ArtifactsView({ dir, cards, notes = [], onOpenCard, onOpenNote, onArtifactDeleted, onBack }: {
   dir: string;
   /** 当前卡片库：用来把 sourceCardIds 解析成可点的标题。 */
   cards: Array<{ id: string; headline: string }>;
@@ -19,6 +20,7 @@ export function ArtifactsView({ dir, cards, notes = [], onOpenCard, onOpenNote, 
   onOpenCard: (cardId: string) => void;
   /** 打开原笔记（笔记证据可回原件）。 */
   onOpenNote?: (noteId: string) => void;
+  onArtifactDeleted?: (artifactId: string) => void;
   onBack: () => void;
 }) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
@@ -31,9 +33,7 @@ export function ArtifactsView({ dir, cards, notes = [], onOpenCard, onOpenNote, 
     setLoading(true);
     setError("");
     try {
-      const list = inShell()
-        ? await dbListArtifacts(200, dir)
-        : JSON.parse(localStorage.getItem("knowflick.workspace.artifacts") || "[]") as Artifact[];
+      const list = await readArtifacts(dir);
       setArtifacts(list.filter((item) => !item.isDeleted));
     } catch (err) {
       setError(userError(err));
@@ -48,17 +48,9 @@ export function ArtifactsView({ dir, cards, notes = [], onOpenCard, onOpenNote, 
     // 产物是可再生的（简报随时能重新分析），但删除不可撤销，所以要确认。
     if (!window.confirm(`删除产物「${artifact.title}」？`)) return;
     try {
-      if (inShell()) {
-        const { dbDeleteArtifact } = await import("../../shell/store");
-        await dbDeleteArtifact(artifact.id, dir);
-      } else {
-        const raw = JSON.parse(localStorage.getItem("knowflick.workspace.artifacts") || "[]") as Artifact[];
-        localStorage.setItem(
-          "knowflick.workspace.artifacts",
-          JSON.stringify(raw.filter((item) => item.id !== artifact.id))
-        );
-      }
+      await deleteArtifact(artifact.id, dir);
       setArtifacts((current) => current.filter((item) => item.id !== artifact.id));
+      onArtifactDeleted?.(artifact.id);
       if (openId === artifact.id) setOpenId(null);
     } catch (err) {
       setError(userError(err));

@@ -14,12 +14,23 @@ describe("项目技能包", () => {
   it("ZIP 采用技能目录/SKILL.md 布局，来源与正文一起带走", () => {
     const pkg = buildProjectSkillPackage(snapshot(), options);
     const files = unpackZipStore(pkg.archive);
+    const exportedAt = new Date(options.now).toISOString();
     expect([...files.keys()]).toEqual(pkg.files.map((f) => f.path));
     expect(files.get(`${pkg.skillName}/SKILL.md`)).toBe(pkg.content);
     expect(files.get(`${pkg.skillName}/context.md`)).toContain("正文");
     const manifest = JSON.parse(files.get(`${pkg.skillName}/sources.json`)!);
     expect(manifest.sources[0]).toMatchObject({ noteId: "n1", revision: 9, updatedAt: 100, sourceMaterialId: "m1", bodySha256: sha256Hex("正文") });
-    expect(files.get(`${pkg.skillName}/README.md`)).toContain(`.claude/skills/${pkg.skillName}/SKILL.md`);
+    expect(manifest.exportedAt).toBe(exportedAt);
+    expect(pkg.content).toContain(`producer-version: ${JSON.stringify(options.appVersion)}`);
+    expect(pkg.content).toContain(`format: ${JSON.stringify("agent-skills-v1")}`);
+    expect(pkg.content).toContain(`target-host: ${JSON.stringify("Claude Code project skills")}`);
+    expect(pkg.content).toContain(`target-host-version: ${JSON.stringify("not-verified")}`);
+    expect(pkg.content).toContain(`exported-at: ${JSON.stringify(exportedAt)}`);
+    const readme = files.get(`${pkg.skillName}/README.md`)!;
+    expect(readme).toContain(`.claude/skills/${pkg.skillName}/SKILL.md`);
+    expect(readme).toContain(`生成器版本：KnowFlick ${options.appVersion}`);
+    expect(readme).toContain("Claude Code 宿主版本：未验证");
+    expect(readme).toContain(`导出时间：${exportedAt}`);
   });
 
   it("中文、标点与长名称生成合法且稳定的 ASCII 名称，项目 id 防碰撞", () => {

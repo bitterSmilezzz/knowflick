@@ -44,6 +44,7 @@ export function buildProjectSkillPackage(
     `  producer-version: ${scalar(options.appVersion)}`,
     `  format: ${scalar("agent-skills-v1")}`,
     `  target-host: ${scalar("Claude Code project skills")}`,
+    `  target-host-version: ${scalar("not-verified")}`,
     `  exported-at: ${scalar(date)}`,
     `  project-id: ${scalar(project.id)}`,
     "---",
@@ -84,7 +85,8 @@ export function buildProjectSkillPackage(
   }, null, 2);
   const readme = [
     "# 项目技能包", "",
-    `目标格式：Agent Skills v1 的目录 + SKILL.md 布局；目标宿主：Claude Code。生产者：KnowFlick ${options.appVersion}。`,
+    `目标格式：Agent Skills v1 的目录 + SKILL.md 布局；目标宿主：Claude Code。生成器版本：KnowFlick ${options.appVersion}。`,
+    "Claude Code 宿主版本：未验证（导出环境未安装 Claude Code 客户端）；实际兼容性需在目标客户端确认。",
     `导出时间：${date}。未在外部客户端中自动安装或运行。`, "",
     `在目标项目中将解压后的 ${skillName} 目录放到 .claude/skills/ 下。`,
     `最终路径应为 .claude/skills/${skillName}/SKILL.md；在支持此布局的 Claude Code 中可用 /${skillName} 调用。`,

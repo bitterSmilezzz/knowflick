@@ -84,9 +84,10 @@ interface Props {
   openNoteId?: string | null;
   /** 素材列表：引用可以指向素材（多来源引用），过期判定也要看素材正文。 */
   materials?: RawMaterial[];
+  onOpenMaterial?: (id: string) => void;
 }
 
-export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, materials = [] }: Props) {
+export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, materials = [], onOpenMaterial }: Props) {
   const [state, setState] = useState<NotesState>(emptyNotesState);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -94,9 +95,10 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [body, setBody] = useState("");
   const [status, setStatus] = useState<SaveStatus>("clean");
   const [statusNote, setStatusNote] = useState("");
-  const [metaValues, setMetaValues] = useState<{ notebook: string | null; tags: string[] }>({
+  const [metaValues, setMetaValues] = useState<{ notebook: string | null; tags: string[]; excludeFromProfile: boolean }>({
     notebook: null,
     tags: [],
+    excludeFromProfile: false,
   });
   const [listQuery, setListQuery] = useState("");
   const [notebookFilter, setNotebookFilter] = useState("");
@@ -259,7 +261,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setSelectedId(note.id);
       setTitle(snap.draft.title);
       setBody(snap.draft.bodyMd);
-      setMetaValues({ notebook: snap.note.notebook, tags: [...snap.note.tags] });
+      setMetaValues({ notebook: snap.note.notebook, tags: [...snap.note.tags], excludeFromProfile: snap.note.excludeFromProfile });
       syncFromSession(s);
       if (restoredHint) setStatusNote(restoredHint);
       setViewError("");
@@ -292,7 +294,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     setSelectedId(draft.id);
     setTitle("");
     setBody("");
-    setMetaValues({ notebook: null, tags: [] });
+    setMetaValues({ notebook: null, tags: [], excludeFromProfile: false });
     setStatus("dirty");
     setStatusNote("");
     setViewError("");
@@ -341,7 +343,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   };
 
   /** 笔记本/标签等元数据编辑：进同一保存队列（内容不变 → 不追加修订）。 */
-  const saveMeta = (patch: Partial<Pick<Note, "notebook" | "tags">>) => {
+  const saveMeta = (patch: Partial<Pick<Note, "notebook" | "tags" | "excludeFromProfile">>) => {
     const s = currentSession();
     if (!s) return;
     setMetaValues((prev) => ({ ...prev, ...patch }));
@@ -399,7 +401,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
    */
   const referenceIssues = useMemo(() => {
     const sources = new Map<string, ReferenceSource>();
-    for (const n of state.notes) {
+    for (const n of activeNotes) {
       sources.set(n.id, { id: n.id, title: n.title, bodyMd: n.bodyMd, kind: "note" });
     }
     for (const m of materials) {
@@ -411,7 +413,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       if (status !== "ok") issues.push({ noteId: ref.noteId, title: ref.title, status });
     }
     return issues;
-  }, [body, state.notes, materials]);
+  }, [body, activeNotes, materials]);
 
   /** 可引用的来源：其它笔记 + 素材（R2「多来源引用」）。 */
   const referenceCandidates = useMemo(() => {
@@ -461,7 +463,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
         s.adoptRemote(remote);
         setTitle(s.snapshot().draft.title);
         setBody(s.snapshot().draft.bodyMd);
-        setMetaValues({ notebook: s.snapshot().note.notebook, tags: [...s.snapshot().note.tags] });
+        setMetaValues({ notebook: s.snapshot().note.notebook, tags: [...s.snapshot().note.tags], excludeFromProfile: s.snapshot().note.excludeFromProfile });
         syncFromSession(s);
         setStatusNote("本地草稿已另存为新笔记；编辑器已加载远端最新内容。");
       } else {
@@ -485,7 +487,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       s.adoptRemote(remote);
       setTitle(s.snapshot().draft.title);
       setBody(s.snapshot().draft.bodyMd);
-      setMetaValues({ notebook: s.snapshot().note.notebook, tags: [...s.snapshot().note.tags] });
+        setMetaValues({ notebook: s.snapshot().note.notebook, tags: [...s.snapshot().note.tags], excludeFromProfile: s.snapshot().note.excludeFromProfile });
       syncFromSession(s);
       setStatusNote("已加载最新内容（本地草稿被替换）。");
     } catch (e) {
@@ -760,9 +762,16 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               <MarkdownRenderer
                 text={body}
                 resolveAttachment={(p) => objectUrls.get(p) ?? null}
-                onOpenNote={(noteId) => {
-                  // 「回原件」：跳到被引用的那篇笔记（引用带 id，改标题不破坏引用）
-                  const target = state.notes.find((n) => n.id === noteId);
+                onOpenReference={(id, kind) => {
+                  if (kind === "material") {
+                    if (onOpenMaterial && materials.some((material) => material.id === id)) {
+                      onOpenMaterial(id);
+                    } else {
+                      setStatusNote("引用的原始素材不可用，这条引用已失效。");
+                    }
+                    return;
+                  }
+                  const target = activeNotes.find((n) => n.id === id);
                   if (target) {
                     openNote(target);
                     setStatusNote(`已跳到《${target.title || "无标题笔记"}》。`);
@@ -799,6 +808,18 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                       saveMeta({ tags: e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean) })
                     }
                   />
+                </label>
+                <label className="nv-profile-exclude">
+                  <input
+                    type="checkbox"
+                    aria-label="排除于个人画像学习"
+                    checked={metaValues.excludeFromProfile}
+                    onChange={(event) => saveMeta({ excludeFromProfile: event.currentTarget.checked })}
+                  />
+                  <span>
+                    <strong>排除于个人画像</strong>
+                    <small>不用于生成个人记忆建议；不影响笔记搜索或其他 AI 功能。</small>
+                  </span>
                 </label>
               </div>
             ) : null}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { quizSessionView } from "../domain/quizSession";
 import { playSwipeTone } from "../shell/sounds";
 import {
@@ -13,6 +13,7 @@ import {
 } from "../domain/review";
 import { reviewOverview, dueForecast } from "../domain/reviewStats";
 import type { KnowledgeCard } from "../domain/card";
+import { createReviewEvent, type ReviewEvent } from "../domain/reviewHistory";
 import { Icon } from "./workspace/Icon";
 import { userError } from "./workspace/userError";
 
@@ -84,17 +85,23 @@ export function QuizView({
   algorithm,
   dueOnly = false,
   onChange,
+  recordHistory = false,
+  projectContext,
 }: {
   cards: KnowledgeCard[];
   algorithm: SpacedAlgorithm;
   dueOnly?: boolean;
-  onChange: (cards: KnowledgeCard[]) => Promise<void>;
+  onChange: (cards: KnowledgeCard[], event?: ReviewEvent) => Promise<void>;
+  recordHistory?: boolean;
+  projectContext?: (card: KnowledgeCard) => { projectIds: string[]; complete: boolean };
 }) {
   const today = todayStamp();
   const [ids, setIds] = useState<string[] | null>(null);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState("");
+  const [savingReview, setSavingReview] = useState(false);
+  const pendingReview = useRef<{ cardId: string; rating: SpacedRating; cards: KnowledgeCard[]; event?: ReviewEvent } | null>(null);
   // 默认按记忆算法的安排复习；「额外练习」必须由用户显式选择，
   // 否则「今日待复习 0」下面紧接着出现一张待评分卡，用户会以为计数坏了。
   const [extraPractice, setExtraPractice] = useState(false);
@@ -107,7 +114,7 @@ export function QuizView({
   const session = quizSessionView(cards, queueIds, index);
 
   const rate = (rating: SpacedRating) => {
-    if (session.kind !== "active") return;
+    if (session.kind !== "active" || savingReview) return;
     if (!revealed) {
       setRevealed(true);
       return;
@@ -115,16 +122,40 @@ export function QuizView({
     // 评分给一声轻提示；开关在设置里（跨端共享的 soundEffectsEnabled）。
     playSwipeTone(rating === "again" ? "left" : rating === "hard" ? "skip" : "right");
     const { card } = session;
-    const next = cards.map((item) =>
-      item.id === card.id
-        ? applyReview(item, calculateReview(item, rating, algorithm))
-        : item
-    );
+    const pending = pendingReview.current;
+    if (pending && (pending.cardId !== card.id || pending.rating !== rating)) return;
+    let next: KnowledgeCard[];
+    let event: ReviewEvent | undefined;
+    if (pending) {
+      next = pending.cards;
+      event = pending.event;
+    } else {
+      const reviewedAt = Date.now();
+      next = cards.map((item) =>
+        item.id === card.id
+          ? applyReview(item, calculateReview(item, rating, algorithm, reviewedAt))
+          : item
+      );
+      if (recordHistory) {
+        const context = projectContext?.(card) ?? { projectIds: [], complete: false };
+        event = createReviewEvent({ cardId: card.id, reviewedAt, rating, algorithm, projectIds: context.projectIds, projectAttributionComplete: context.complete });
+      }
+      pendingReview.current = { cardId: card.id, rating, cards: next, ...(event ? { event } : {}) };
+    }
     if (ids === null) setIds(queueIds);
     setRevealed(false);
-    onChange(next)
-      .then(() => setIndex((value) => value + 1))
-      .catch((err: unknown) => setError(userError(err)));
+    setSavingReview(true);
+    setError("");
+    onChange(next, event)
+      .then(() => {
+        pendingReview.current = null;
+        setIndex((value) => value + 1);
+      })
+      .catch((err: unknown) => {
+        setRevealed(true);
+        setError(userError(err));
+      })
+      .finally(() => setSavingReview(false));
   };
 
   useEffect(() => {
@@ -246,6 +277,7 @@ export function QuizView({
 
   const { card } = session;
   const preview = previewIntervals(card, algorithm);
+  const pendingRating = pendingReview.current?.cardId === card.id ? pendingReview.current.rating : null;
   const progressPct = Math.round(((session.index + 1) / session.total) * 100);
 
   return (
@@ -314,7 +346,7 @@ export function QuizView({
         <footer className="ws-review-ratings">
           <button
             type="button"
-            disabled={!revealed}
+            disabled={!revealed || savingReview || (pendingRating !== null && pendingRating !== "again")}
             className="ws-rating-btn rating-again"
             onClick={() => rate("again")}
           >
@@ -324,7 +356,7 @@ export function QuizView({
           </button>
           <button
             type="button"
-            disabled={!revealed}
+            disabled={!revealed || savingReview || (pendingRating !== null && pendingRating !== "hard")}
             className="ws-rating-btn rating-hard"
             onClick={() => rate("hard")}
           >
@@ -334,7 +366,7 @@ export function QuizView({
           </button>
           <button
             type="button"
-            disabled={!revealed}
+            disabled={!revealed || savingReview || (pendingRating !== null && pendingRating !== "good")}
             className="ws-rating-btn rating-good"
             onClick={() => rate("good")}
           >
@@ -344,7 +376,7 @@ export function QuizView({
           </button>
           <button
             type="button"
-            disabled={!revealed}
+            disabled={!revealed || savingReview || (pendingRating !== null && pendingRating !== "easy")}
             className="ws-rating-btn rating-easy"
             onClick={() => rate("easy")}
           >

@@ -57,7 +57,7 @@ export async function handleMcpRequest(
 }
 
 /** MCP 客户端配置；调用方需传已安装脚本的绝对路径与当前库目录。 */
-export function generateMcpConfigSnippet(serverScriptPath: string, libraryDir?: string): string {
+export function generateMcpConfigSnippet(serverScriptPath: string, libraryDir?: string, token?: string): string {
   const args = libraryDir ? [serverScriptPath, "--dir", libraryDir] : [serverScriptPath];
-  return JSON.stringify({ mcpServers: { knowflick: { command: "node", args } } }, null, 2);
+  return JSON.stringify({ mcpServers: { knowflick: { command: "node", args, ...(token ? { env: { KNOWFLICK_MCP_TOKEN: token } } : {}) } } }, null, 2);
 }

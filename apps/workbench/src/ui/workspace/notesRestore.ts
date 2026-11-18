@@ -47,7 +47,8 @@ export async function restoreNotesBundle(
   notes: Note[],
   knowledgeBases: KnowledgeBase[],
   membership: Record<string, number>,
-  dir: string
+  dir: string,
+  restoreNote: typeof restoreNoteFromBackup = restoreNoteFromBackup
 ): Promise<NotesRestoreReport> {
   const report = emptyNotesRestoreReport();
   const existing = await readNotes(dir);
@@ -81,7 +82,7 @@ export async function restoreNotesBundle(
   // ---------- 笔记：专用恢复写入，逐条处置 ----------
   for (const note of notes) {
     try {
-      const action = await restoreNoteFromBackup(note, dir);
+      const action = await restoreNote(note, dir);
       switch (action) {
         case "created":
           report.notes.created++;

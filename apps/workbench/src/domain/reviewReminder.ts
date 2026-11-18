@@ -28,6 +28,10 @@ export interface ReviewSchedule {
   projectScope: string[];
   /** 上次提醒的时间戳（0 = 从未提醒过）。 */
   lastRemindedAt: number;
+  /** 是否允许操作系统通知；默认关闭，必须由用户主动开启。 */
+  systemNotificationsEnabled: boolean;
+  /** 上次系统通知投递尝试时间；不代表用户已完成回顾。 */
+  lastNotificationAt: number;
 }
 
 export const defaultReviewSchedule: ReviewSchedule = {
@@ -36,6 +40,8 @@ export const defaultReviewSchedule: ReviewSchedule = {
   paused: false,
   projectScope: [],
   lastRemindedAt: 0,
+  systemNotificationsEnabled: false,
+  lastNotificationAt: 0,
 };
 
 /** 可处理事项的种类。 */
@@ -61,6 +67,19 @@ export interface ReviewReminder {
    * 属于「项目 A 的回顾」。
    */
   projectId?: string;
+  /** 一篇笔记可以同时属于多个项目。 */
+  projectIds?: readonly string[];
+}
+
+/** 把桌面返回的成员关系转为可用于范围筛选的多值索引。 */
+export function indexNoteProjects(pairs: ReadonlyArray<readonly [string, string]>): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  for (const [noteId, projectId] of pairs) {
+    const existing = index.get(noteId);
+    if (!existing) index.set(noteId, [projectId]);
+    else if (!existing.includes(projectId)) existing.push(projectId);
+  }
+  return index;
 }
 
 /** 判定现在该不该出声。 */
@@ -69,6 +88,23 @@ export function shouldRemindNow(schedule: ReviewSchedule, now: number): boolean 
   if (schedule.paused) return false;
   if (inQuietHours(schedule, now)) return false;
   return isDue(schedule, now);
+}
+
+/**
+ * 系统通知按所选频率限频。通知投递与用户回顾分开计时：未回顾时，
+ * 每个频率周期最多投递一次；用户完成回顾后，从回顾时间重新计时。
+ */
+export function shouldSendSystemReviewNotification(schedule: ReviewSchedule, now: number): boolean {
+  if (!schedule.systemNotificationsEnabled || schedule.frequency === "off" || schedule.paused) return false;
+  if (inQuietHours(schedule, now)) return false;
+  const anchor = Math.max(schedule.lastRemindedAt, schedule.lastNotificationAt);
+  return anchor === 0 || now - anchor >= reminderPeriodMs(schedule.frequency);
+}
+
+/** 记录通知投递尝试，不修改 `lastRemindedAt`。 */
+export function markSystemReviewNotificationAttempted(schedule: ReviewSchedule, now: number): ReviewSchedule {
+  if (!shouldSendSystemReviewNotification(schedule, now)) return schedule;
+  return { ...schedule, lastNotificationAt: now };
 }
 
 /**
@@ -112,14 +148,17 @@ export function inQuietHours(schedule: ReviewSchedule, now: number): boolean {
 
 /** 按频率看「到点了没」：上次提醒距今是否已过一个周期。 */
 export function isDue(schedule: ReviewSchedule, now: number): boolean {
-  const periodMs =
-    schedule.frequency === "daily"
-      ? 24 * 3600 * 1000
-      : schedule.frequency === "weekly"
-        ? 7 * 24 * 3600 * 1000
-        : 30 * 24 * 3600 * 1000;
+  const periodMs = reminderPeriodMs(schedule.frequency);
   if (schedule.lastRemindedAt === 0) return true;
   return now - schedule.lastRemindedAt >= periodMs;
+}
+
+function reminderPeriodMs(frequency: ReviewFrequency): number {
+  return frequency === "daily"
+    ? 24 * 3600 * 1000
+    : frequency === "weekly"
+      ? 7 * 24 * 3600 * 1000
+      : 30 * 24 * 3600 * 1000;
 }
 
 /** 下次提醒时间（用于界面显示「下次回顾」）。 */
@@ -158,7 +197,9 @@ export interface ReminderInput {
    * 笔记 → 项目归属。限定项目范围时据此判断一条引用/笔记提醒属于哪个项目。
    * 未提供时不推断归属（宁可漏掉也不乱归）。
    */
-  noteProject?: ReadonlyMap<string, string>;
+  noteProject?: ReadonlyMap<string, readonly string[]>;
+  /** 已知的活跃项目；缺省表示调用方没有提供项目状态。 */
+  activeProjectIds?: ReadonlySet<string>;
   /** 收件箱堆积多少条才算值得提醒（低于这个数不打扰）。 */
   inboxThreshold?: number;
 }
@@ -175,6 +216,7 @@ export function reviewReminders(input: ReminderInput): ReviewReminder[] {
   // 1. 有达成证据但还没确认的目标 —— 需要用户确认（系统不替他判定）
   for (const goal of input.goals) {
     if (goal.achievedAt !== null || goal.abandonedAt !== null) continue;
+    if (goal.scope && input.activeProjectIds && !input.activeProjectIds.has(goal.scope)) continue;
     if (goal.evidenceCount > 0) {
       out.push({
         kind: "goal-achieve",
@@ -195,7 +237,7 @@ export function reviewReminders(input: ReminderInput): ReviewReminder[] {
       title: ref.title,
       action: ref.status === "missing" ? "来源已不在库里——这条引用已失效" : "来源内容改过了——这条引用可能已过期",
       targetId: ref.noteId,
-      projectId: input.noteProject?.get(ref.noteId),
+      projectIds: input.noteProject?.get(ref.noteId),
     });
   }
 
@@ -237,7 +279,7 @@ export function reviewReminders(input: ReminderInput): ReviewReminder[] {
  */
 export function filterByProjectScope(reminders: ReviewReminder[], scope: string[]): ReviewReminder[] {
   if (scope.length === 0) return reminders;
-  return reminders.filter((r) => r.projectId !== undefined && scope.includes(r.projectId));
+  return reminders.filter((r) => (r.projectId !== undefined && scope.includes(r.projectId)) || r.projectIds?.some((id) => scope.includes(id)));
 }
 
 /** 读取设置里的回顾计划（settings.json 的 raw.reviewSchedule）。 */
@@ -264,12 +306,15 @@ export function readReviewSchedule(raw: Record<string, unknown>): ReviewSchedule
       : defaultReviewSchedule.quietHours;
   const scope = Array.isArray(v.projectScope) ? v.projectScope.map(String) : [];
   const last = Number(v.lastRemindedAt);
+  const lastNotification = Number(v.lastNotificationAt);
   return {
     frequency,
     quietHours,
     paused: v.paused === true,
     projectScope: scope,
     lastRemindedAt: Number.isFinite(last) ? last : 0,
+    systemNotificationsEnabled: v.systemNotificationsEnabled === true,
+    lastNotificationAt: Number.isFinite(lastNotification) && lastNotification > 0 ? lastNotification : 0,
   };
 }
 

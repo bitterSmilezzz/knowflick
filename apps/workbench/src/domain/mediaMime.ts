@@ -24,6 +24,11 @@ const BY_EXTENSION: Record<string, string> = {
   json: "application/json",
 };
 
+/** 库内附件引用；采集和恢复使用同一规则，避免只备份了素材而漏掉笔记引用。 */
+export function noteMediaPaths(body: string): string[] {
+  return [...new Set([...body.matchAll(/!\[[^\]]*\]\((media\/(?:audio|image|ink)\/[A-Za-z0-9._-]+)\)/g)].map((match) => match[1]))];
+}
+
 /** 由扩展名反查 MIME；不认识就返回 undefined（调用方据此拒绝该附件）。 */
 export function mediaMimeOfExtension(ext: string): string | undefined {
   return BY_EXTENSION[ext.toLowerCase()];

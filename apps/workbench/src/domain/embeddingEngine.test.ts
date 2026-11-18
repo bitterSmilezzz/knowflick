@@ -6,6 +6,7 @@ import {
   cosineSimilarity,
   EmbeddingEngine,
   syncCardEmbeddings,
+  syncNoteChunkEmbeddings,
 } from "./embeddingEngine";
 import { cardFromJson } from "./card";
 
@@ -150,6 +151,36 @@ describe("向量嵌入引擎 (EmbeddingEngine)", () => {
       expect(savedBatches[2].length).toBe(5);
       expect(staleIds.length).toBe(0);
       vi.restoreAllMocks();
+    });
+
+    it("笔记索引跨批处理，并把读到的库目录与修订号交给桌面保存", async () => {
+      const pending = [
+        { noteId: "a", chunkIndex: 0, content: "alpha", contentRevision: 2 },
+        { noteId: "b", chunkIndex: 0, content: "beta", contentRevision: 4 },
+      ];
+      const dir = "/qa/other-library";
+      const written: unknown[] = [];
+      try {
+        const invoke = async (command: string, args: unknown) => {
+          if (command === "local_embed_status") return { downloaded: false };
+          expect(args).toMatchObject({ dir, provider: "hash", model: "char-ngram-128" });
+          if (command === "note_list_chunk_texts") return pending.slice(0, 1);
+          if (command === "note_save_chunk_embeddings") {
+            written.push(args);
+            pending.shift();
+            return 1;
+          }
+          throw new Error(`意外命令：${command}`);
+        };
+        vi.stubGlobal("window", { __TAURI_INTERNALS__: { invoke } });
+        expect(await syncNoteChunkEmbeddings(new EmbeddingEngine(), { dir, batchSize: 1 })).toEqual({ indexedCount: 2 });
+        expect(written).toMatchObject([
+          { items: [{ note_id: "a", chunk_index: 0, content_revision: 2, embedding: localSemanticHashEmbedding("alpha") }] },
+          { items: [{ note_id: "b", chunk_index: 0, content_revision: 4, embedding: localSemanticHashEmbedding("beta") }] },
+        ]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 });

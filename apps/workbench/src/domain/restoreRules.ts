@@ -21,15 +21,15 @@ export interface RestorableMaterial {
  * 标题/正文为空不代表它无效——那可能是用户自己建的空标题笔记。
  */
 export function restorableMaterials<T extends RestorableMaterial>(materials: T[]): T[] {
-  return materials.filter((m) => Boolean(m.id) && typeof m.rawText === "string");
+  return materials.filter((m) => Boolean(m) && Boolean(m.id) && typeof m.rawText === "string");
 }
 
 /** 同上，对卡片。 */
 export function restorableCards(cards: KnowledgeCard[]): KnowledgeCard[] {
-  return cards.filter((c) => Boolean(c.id));
+  return cards.filter((c) => Boolean(c) && Boolean(c.id));
 }
 
-/** 同上，对认知产物（产物仍要求有标题——它没有正文可退化）。 */
+/** 同上，对认知产物；空标题仍可能有正文或引用，不能静默丢弃。 */
 export function restorableArtifacts<T extends { id: string; title: string }>(artifacts: T[]): T[] {
-  return artifacts.filter((a) => Boolean(a.id) && Boolean(a.title));
+  return artifacts.filter((a) => Boolean(a) && Boolean(a.id) && typeof a.title === "string");
 }

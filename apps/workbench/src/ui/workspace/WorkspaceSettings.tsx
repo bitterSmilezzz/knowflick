@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import {
   readWebdavCredential,
   writeWebdavCredential,
@@ -8,19 +8,22 @@ import { AI_PROVIDER_PRESETS, findPresetById } from "../../domain/aiPresets";
 import { probeConnection } from "../../domain/aiChat";
 import { OFFICIAL_PLUGINS, PERMISSION_DESCRIPTIONS } from "../../domain/pluginRegistry";
 import { pluginEnabledIn, readPluginSettings, togglePluginIn, writePluginSettings } from "../../domain/pluginSettings";
-import { generateMcpConfigSnippet } from "../../domain/mcpServer";
+import { McpGrantPanel } from "./McpGrantPanel";
 import { DEFAULT_ASR_MODEL } from "../../domain/asr";
 import { AsrModelPanel } from "./AsrModelPanel";
 import { LocalEmbedPanel } from "./LocalEmbedPanel";
-import { inShell, mcpServerPaths, type RawMaterial } from "../../shell/store";
+import { inShell, type RawMaterial } from "../../shell/store";
 import type { KnowledgeCard } from "../../domain/card";
 import { SourceInsightPanel } from "./SourceInsightPanel";
 import { Icon } from "./Icon";
 import { DesktopOnlyHint } from "./DesktopOnlyHint";
 import { invoke } from "@tauri-apps/api/core";
 import { userError } from "./userError";
+import { webdavBackupReceipt } from "./backupCollect";
+import { BACKUP_BROWSER_FORMAT_GAP, BACKUP_V11_FORMAT_GAP } from "../../domain/systemBackup";
 
 export interface WorkspaceSettingsProps {
+  dir: string;
   file: SettingsFile;
   apiKey: string;
   reviewEnabled: boolean;
@@ -38,12 +41,13 @@ export interface WorkspaceSettingsProps {
   /** R3：备份到指定目录（版本化文件名 + SHA-256，挑目录的对话框在此触发）。 */
   onBackupToDirectory?: () => void;
   /** R3：上传备份包到 WebDAV（组包与导出同语义；返回文件名/SHA-256/大小）。 */
-  onWebdavUpload?: (target: { url: string; username: string; password: string }) => Promise<{ fileName: string; sha256: string; bytes: number }>;
+  onWebdavUpload?: (target: { url: string; username: string; password: string }) => Promise<{ fileName: string; sha256: string; bytes: number; gaps: string[]; version?: number }>;
   /** T09/KF-012：MCP 模块是否启用（关闭时设置页如实说明外部连接会被阻断）。 */
   mcpServerEnabled?: boolean;
 }
 
 export function WorkspaceSettings({
+  dir,
   file,
   apiKey,
   reviewEnabled,
@@ -66,7 +70,6 @@ export function WorkspaceSettings({
   const [draftPlugins, setDraftPlugins] = useState(() =>
     readPluginSettings(file.raw)
   );
-  const [mcpCopied, setMcpCopied] = useState(false);
   // R3 WebDAV：非敏感配置存 settings.raw.sync，应用密码存独立凭据文件
   // （与 apiKey 同模式——不进 settings.json、不进任何导出格式）。
   const sync = (file.raw.sync ?? {}) as { webdavUrl?: string; webdavUser?: string };
@@ -83,7 +86,7 @@ export function WorkspaceSettings({
     }).catch(() => setWebdavReady(true));
   }, []);
   useEffect(() => {
-    if (!webdavMessage) return;
+    if (!webdavMessage || webdavMessage.includes("部分备份")) return;
     const timer = window.setTimeout(() => setWebdavMessage(""), 6000);
     return () => window.clearTimeout(timer);
   }, [webdavMessage]);
@@ -91,32 +94,6 @@ export function WorkspaceSettings({
   const [draftRaw, setDraftRaw] = useState<Record<string, unknown>>(() => file.raw);
   const asrModel =
     (draftPlugins["official-speech-asr"]?.preferences?.model as string | undefined) ?? DEFAULT_ASR_MODEL;
-  // T10（KF-013）：配置指向真实存在的绝对入口，不用仓库相对路径。
-  const [mcpPaths, setMcpPaths] = useState<{ scriptPath: string; libraryDir: string; scriptExists: boolean } | null>(null);
-  useEffect(() => {
-    if (!inShell()) return;
-    void mcpServerPaths()
-      .then(setMcpPaths)
-      .catch(() => setMcpPaths(null));
-  }, []);
-  const mcpSnippet = useMemo(
-    () =>
-      generateMcpConfigSnippet(
-        mcpPaths?.scriptPath ?? "tools/mcp-server.mjs",
-        mcpPaths?.libraryDir
-      ),
-    [mcpPaths]
-  );
-
-  const copyMcpConfig = async () => {
-    try {
-      await navigator.clipboard.writeText(mcpSnippet);
-      setMcpCopied(true);
-      window.setTimeout(() => setMcpCopied(false), 2500);
-    } catch {
-      setMcpCopied(false);
-    }
-  };
   const [shortcutStatus, setShortcutStatus] = useState<{ shortcut: string; registered: boolean; error: string | null } | null>(null);
   useEffect(() => {
     let disposed = false;
@@ -557,7 +534,7 @@ export function WorkspaceSettings({
                     data-action="export-kfbackup"
                     onClick={onExportKfBackup}
                   >
-                    导出完整备份包 (.kfbackup)
+                    导出备份包 (.kfbackup)
                   </button>
                   {onBackupToDirectory ? (
                     <button
@@ -586,7 +563,7 @@ export function WorkspaceSettings({
                               username: webdavUser.trim(),
                               password: webdavPass,
                             });
-                            setWebdavMessage(`已上传 ${result.fileName}（${(result.bytes / 1024 / 1024).toFixed(1)} MB，SHA-256 ${result.sha256.slice(0, 12)}…）——单向备份快照，不是双向同步。`);
+                            setWebdavMessage(webdavBackupReceipt(result));
                           } catch (err) {
                             setWebdavMessage(`上传失败：${err instanceof Error ? err.message : String(err)}`);
                           } finally {
@@ -658,7 +635,7 @@ export function WorkspaceSettings({
                 ) : null}
                 <p className="ws-hint" style={{ margin: 0 }}>
                   Markdown 归档带 YAML Frontmatter，按分类与收件箱分目录，可直接在 Obsidian 打开；
-                  `.kfbackup` 是含清单、校验和与全部层级（素材 / 卡片 / 设置 / 认知产物 / 笔记 / 知识库）的完整备份，可无损还原；「备份到指定目录」生成带日期序号的版本化文件与 SHA-256 校验文件，方便拷到别的设备或网盘目录（这是备份，不是双向同步）；
+                  `.kfbackup` 包含素材、卡片、设置、认知产物、笔记当前版本与知识库关系。桌面 v10 前置快照齐全时包含搜索历史，v11 还包含回收站；浏览器 v12 分支包含最近搜索历史，不含桌面项目、目标、画像、逐次复习、订阅、邮箱和回收站数据。搜索词、订阅名称及邮箱地址、用户名、服务器、文件夹和邮件标识可能含私人信息；带查询参数、片段或账号密码的订阅地址不会入包。邮箱密码和可能含服务器内容的错误文本不会迁移，恢复后需重新输入密码；已启用的订阅和邮箱自动同步可能联网。被排除的记录和素材缺口会写入回执。恢复会替换当前设置；同标识的不同素材、卡片及桌面产物会保留本地内容并报告冲突。{inShell() ? BACKUP_V11_FORMAT_GAP : BACKUP_BROWSER_FORMAT_GAP}，不能作为完整备份。新包最高采用桌面 v11 或浏览器 v12 格式，旧版工作台无法恢复。「备份到指定目录」生成带日期序号的文件与 SHA-256 校验文件（这是备份，不是双向同步）；
                   `cards.json` 是与安卓端同一份线格式，拷过去就能打开；
                   `.tsv` 是 Anki 可直接导入的词表（正面主张 / 背面解析 / 分类）。
                 </p>
@@ -685,31 +662,7 @@ export function WorkspaceSettings({
                     MCP 模块已停用——外部 Agent 的请求会被拒绝（在模块管理里重新启用即可恢复）。
                   </p>
                 ) : null}
-                {mcpPaths && !mcpPaths.scriptExists ? (
-                  <p className="ws-hint" role="status">
-                    找不到服务端脚本（{mcpPaths.scriptPath}）。请改用源码方式运行，或在设置里确认安装包完整。
-                  </p>
-                ) : null}
-                <div className="ws-settings-row" style={{ padding: 0 }}>
-                  <div className="ws-settings-label">
-                    <strong>Model Context Protocol (stdio)</strong>
-                    <span>
-                      暴露 search_knowledge / search_materials / create_flash_card / add_material /
-                      get_weekly_briefing / get_knowledge_stats 六个工具，以及 knowflick:// 资源
-                    </span>
-                  </div>
-                  <div className="ws-settings-control">
-                    <button
-                      type="button"
-                      className="ws-bordered"
-                      data-action="copy-mcp-config"
-                      onClick={() => void copyMcpConfig()}
-                    >
-                      {mcpCopied ? "已复制配置片段" : "复制 MCP 配置"}
-                    </button>
-                  </div>
-                </div>
-                <pre className="ws-mcp-snippet" data-mcp-snippet>{mcpSnippet}</pre>
+                <McpGrantPanel dir={dir} enabled={mcpServerEnabled !== false} />
               </div>
             </section>
           </form>

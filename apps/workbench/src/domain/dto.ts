@@ -24,6 +24,15 @@ export interface RawMaterial {
   updatedAt: number;
 }
 
+/** 一条目标与来源的关联，标题缺失表示原件不可用。 */
+export interface GoalEvidenceItem {
+  goalId: string;
+  evidenceId: string;
+  kind: "note" | "material";
+  linkedAt: number;
+  title: string | null;
+}
+
 /** 一个目标（R4/D04）：完成条件是判定的唯一依据。 */
 export interface Goal {
   id: string;

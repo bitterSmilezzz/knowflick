@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   defaultReviewSchedule,
   inQuietHours,
+  indexNoteProjects,
   isDue,
+  markSystemReviewNotificationAttempted,
   markReminded,
   nextReminderAt,
   readReviewSchedule,
   reviewReminders,
   shouldRemindNow,
+  shouldSendSystemReviewNotification,
   writeReviewSchedule,
   type ReviewSchedule,
 } from "./reviewReminder";
@@ -60,6 +63,38 @@ describe("提醒频率与安静时段", () => {
 
   it("暂停时不出声", () => {
     expect(shouldRemindNow(schedule({ paused: true }), Date.now())).toBe(false);
+  });
+
+  it("系统通知默认关闭，退订、暂停和安静时段都阻止投递", () => {
+    const now = new Date(2026, 0, 1, 12).getTime();
+    expect(shouldSendSystemReviewNotification(schedule(), now)).toBe(false);
+    expect(shouldSendSystemReviewNotification(schedule({ systemNotificationsEnabled: true, frequency: "off" }), now)).toBe(false);
+    expect(shouldSendSystemReviewNotification(schedule({ systemNotificationsEnabled: true, paused: true }), now)).toBe(false);
+    expect(shouldSendSystemReviewNotification(schedule({ systemNotificationsEnabled: true, quietHours: { start: 11, end: 13 } }), now)).toBe(false);
+  });
+
+  it("系统通知每个频率周期最多一次，且不会冒充用户已回顾", () => {
+    const now = new Date(2026, 0, 1, 12).getTime();
+    const enabled = schedule({ systemNotificationsEnabled: true, frequency: "daily" });
+    expect(shouldSendSystemReviewNotification(enabled, now)).toBe(true);
+    const sent = markSystemReviewNotificationAttempted(enabled, now);
+    expect(sent.lastNotificationAt).toBe(now);
+    expect(sent.lastRemindedAt).toBe(0);
+    expect(shouldSendSystemReviewNotification(sent, now + 23 * 3600 * 1000)).toBe(false);
+    expect(shouldSendSystemReviewNotification(sent, now + 24 * 3600 * 1000)).toBe(true);
+    expect(markReminded(sent, now + 2 * 24 * 3600 * 1000).lastRemindedAt).toBe(now + 2 * 24 * 3600 * 1000);
+  });
+
+  it("用户回顾后从回顾时间重新计算下一次系统通知", () => {
+    const now = new Date(2026, 0, 1, 12).getTime();
+    const scheduleAfterNotification = schedule({
+      systemNotificationsEnabled: true,
+      frequency: "weekly",
+      lastNotificationAt: now - 6 * 24 * 3600 * 1000,
+      lastRemindedAt: now,
+    });
+    expect(shouldSendSystemReviewNotification(scheduleAfterNotification, now + 6 * 24 * 3600 * 1000)).toBe(false);
+    expect(shouldSendSystemReviewNotification(scheduleAfterNotification, now + 7 * 24 * 3600 * 1000)).toBe(true);
   });
 
   it("安静时段内不出声（22:00–08:00 跨午夜）", () => {
@@ -260,10 +295,25 @@ describe("只提醒可处理事项", () => {
     const reminders = reviewReminders({
       goals: [], notes: [], materials: [],
       staleReferences: [{ noteId: "n1", title: "过期引用", status: "changed" }],
-      noteProject: new Map([["n1", "p1"]]),
+      noteProject: new Map([["n1", ["p1"]]]),
       projectScope: ["p1"],
     });
     expect(reminders.filter((r) => r.kind === "reference-stale")).toHaveLength(1);
+  });
+
+  it("共享笔记在每个所属项目都能提醒，范围多选时不重复", () => {
+    const noteProject = indexNoteProjects([["n1", "p1"], ["n1", "p2"], ["n1", "p1"]]);
+    const base = { goals: [], notes: [], materials: [], staleReferences: [{ noteId: "n1", title: "过期引用", status: "changed" as const }], noteProject };
+    expect([["p1"], ["p2"], ["p1", "p2"]].map((projectScope) =>
+      reviewReminders({ ...base, projectScope }).map((r) => r.targetId)
+    )).toEqual([["n1"], ["n1"], ["n1"]]);
+    expect(reviewReminders({ ...base, projectScope: ["p3"] })).toEqual([]);
+  });
+
+  it("封存项目的目标不会在全局或保留的旧项目范围中提醒", () => {
+    const base = { goals: [goal({ scope: "archived" })], notes: [], materials: [], staleReferences: [], activeProjectIds: new Set(["p1"]) };
+    expect(reviewReminders(base)).toEqual([]);
+    expect(reviewReminders({ ...base, projectScope: ["archived"] })).toEqual([]);
   });
 
   it("限定项目范围时，全局事项（收件箱堆积）不出现", () => {
@@ -294,6 +344,8 @@ describe("回顾计划的读写", () => {
       paused: true,
       projectScope: ["p1"],
       lastRemindedAt: 123,
+      systemNotificationsEnabled: true,
+      lastNotificationAt: 456,
     });
     const s = readReviewSchedule(raw);
     expect(s.frequency).toBe("daily");
@@ -301,6 +353,8 @@ describe("回顾计划的读写", () => {
     expect(s.paused).toBe(true);
     expect(s.projectScope).toEqual(["p1"]);
     expect(s.lastRemindedAt).toBe(123);
+    expect(s.systemNotificationsEnabled).toBe(true);
+    expect(s.lastNotificationAt).toBe(456);
   });
 
   it("显式不设安静时段可以写入并读回，缺省值仍采用默认时段", () => {
@@ -314,5 +368,11 @@ describe("回顾计划的读写", () => {
     expect(readReviewSchedule({ reviewSchedule: { frequency: "每小时" } }).frequency).toBe(defaultReviewSchedule.frequency);
     expect(readReviewSchedule({ reviewSchedule: { quietHours: { start: 99, end: 2 } } }).quietHours)
       .toEqual(defaultReviewSchedule.quietHours);
+  });
+
+  it("旧版回顾计划不会在升级后自动开启系统通知", () => {
+    const upgraded = readReviewSchedule({ reviewSchedule: { frequency: "weekly", lastRemindedAt: 123 } });
+    expect(upgraded.systemNotificationsEnabled).toBe(false);
+    expect(upgraded.lastNotificationAt).toBe(0);
   });
 });

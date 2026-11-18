@@ -114,10 +114,11 @@ describe("笔记领域语义（与 Rust notes.rs 对齐）", () => {
       is_deleted: 0,
       deleted_at: null,
     });
-    expect(fromRust).toMatchObject({ id: "n1", bodyMd: "b", tags: ["a", "b"], isPinned: true, currentRevision: 3 });
+    expect(fromRust).toMatchObject({ id: "n1", bodyMd: "b", tags: ["a", "b"], isPinned: true, currentRevision: 3, excludeFromProfile: false });
 
-    const fromTs = noteFromJson({ id: "n2", title: "t2", bodyMd: "b2", tags: ["x"] });
-    expect(fromTs).toMatchObject({ id: "n2", bodyMd: "b2", tags: ["x"], isPinned: false, currentRevision: 1 });
+    const fromTs = noteFromJson({ id: "n2", title: "t2", bodyMd: "b2", tags: ["x"], excludeFromProfile: true });
+    expect(fromTs).toMatchObject({ id: "n2", bodyMd: "b2", tags: ["x"], isPinned: false, currentRevision: 1, excludeFromProfile: true });
+    expect(noteFromJson({ id: "n3", exclude_from_profile: 1 }).excludeFromProfile).toBe(true);
   });
 
   it("恢复专用写入：修订、时间与删除态按包保留（审计 KF-003 反例）", () => {
@@ -133,6 +134,7 @@ describe("笔记领域语义（与 Rust notes.rs 对齐）", () => {
       isDeleted: true,
       deletedAt: 8001,
       isFavorite: true,
+      excludeFromProfile: true,
     };
     const first = restoreNoteRaw(state, pkg, 99999);
     expect(first.action).toBe("created");
@@ -143,9 +145,11 @@ describe("笔记领域语义（与 Rust notes.rs 对齐）", () => {
     expect(got.updatedAt).toBe(8000);
     expect(got.isDeleted).toBe(true);
     expect(got.deletedAt).toBe(8001);
+    expect(got.excludeFromProfile).toBe(true);
 
     // 重复恢复：幂等 current
     expect(restoreNoteRaw(state, pkg, 99999).action).toBe("current");
+    expect(restoreNoteRaw(state, { ...pkg, excludeFromProfile: false }, 99999).action).toBe("skippedDivergent");
 
     // 恢复后的下一笔编辑从包内修订继续：9 → 10
     const edited = { ...pkg, title: "改", bodyMd: "新内容", isDeleted: false, deletedAt: null };

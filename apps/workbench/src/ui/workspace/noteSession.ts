@@ -31,6 +31,7 @@ export interface MetaPatch {
   isPinned?: boolean;
   isFavorite?: boolean;
   archivedAt?: number | null;
+  excludeFromProfile?: boolean;
 }
 
 export interface SessionSnapshot {

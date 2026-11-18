@@ -10,6 +10,7 @@ import {
   localEmbedStatus,
   requestEmbeddings,
 } from "../shell/store";
+import type { EmbeddingIdentity } from "../shell/store";
 
 export interface EmbeddingConfig {
   providerId?: string;
@@ -26,6 +27,9 @@ export const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
   qwen: "text-embedding-v3",
   ollama: "bge-m3",
 };
+
+const HASH_IDENTITY = { provider: "hash", model: "char-ngram-128" };
+const LOCAL_IDENTITY = { provider: "local", model: "multilingual-e5-small" };
 
 /** 解析生成标准的 OpenAI 兼容 embeddings 端点 */
 export function embeddingURL(baseURL: string): string {
@@ -158,7 +162,7 @@ export class EmbeddingEngine {
    * 落库时用它而不是猜测——回退路径（API 失败转本地、本地失败转哈希）
    * 改变了空间，向量与身份必须同步，否则不同空间的向量会混算。
    */
-  private lastIdentity: { provider: string; model: string } = { provider: "hash", model: "char-ngram-128" };
+  private lastIdentity: EmbeddingIdentity = HASH_IDENTITY;
 
   /**
    * 向量空间身份（R2 版本化）：同维度不同 provider/model 的向量不混算，
@@ -166,7 +170,7 @@ export class EmbeddingEngine {
    * API 路径的 model 是 embeddingModel 或按 providerId 的默认表；
    * 本地路径（whisper 风格的 ONNX 模型）按本地模型名报。
    */
-  identity(): { provider: string; model: string } {
+  identity(): EmbeddingIdentity {
     return this.lastIdentity;
   }
 
@@ -177,6 +181,17 @@ export class EmbeddingEngine {
   canUseApi(): boolean {
     const { baseURL, apiKey } = this.config;
     return !!(baseURL?.trim() && apiKey?.trim() && inShell());
+  }
+
+  private remoteIdentity(): EmbeddingIdentity {
+    const { providerId, embeddingModel } = this.config;
+    const model = embeddingModel || (providerId && DEFAULT_EMBEDDING_MODELS[providerId]) || "text-embedding-3-small";
+    return { provider: providerId || "api", model };
+  }
+
+  async preferredIdentity(): Promise<EmbeddingIdentity> {
+    if (this.canUseApi()) return this.remoteIdentity();
+    return inShell() && await this.localModelReady() ? LOCAL_IDENTITY : HASH_IDENTITY;
   }
 
   /**
@@ -194,12 +209,8 @@ export class EmbeddingEngine {
     if (this.canUseApi()) {
       try {
         const endpoint = embeddingURL(this.config.baseURL!);
-        const model =
-          this.config.embeddingModel ||
-          (this.config.providerId ? DEFAULT_EMBEDDING_MODELS[this.config.providerId] : undefined) ||
-          "text-embedding-3-small";
-        this.lastIdentity = { provider: this.config.providerId || "api", model };
-        return await requestEmbeddings(endpoint, this.config.apiKey!, model, texts);
+        this.lastIdentity = this.remoteIdentity();
+        return await requestEmbeddings(endpoint, this.config.apiKey!, this.lastIdentity.model, texts);
       } catch (err) {
         console.warn("[EmbeddingEngine] API 嵌入生成失败，尝试本地语义模型:", err);
       }
@@ -208,14 +219,14 @@ export class EmbeddingEngine {
     if (inShell() && (await this.localModelReady())) {
       try {
         const vectors = await localEmbed(texts, isQuery);
-        this.lastIdentity = { provider: "local", model: "multilingual-e5-small" };
+        this.lastIdentity = LOCAL_IDENTITY;
         return vectors;
       } catch (err) {
         console.warn("[EmbeddingEngine] 本地语义模型不可用，回退到哈希投影:", err);
       }
     }
 
-    this.lastIdentity = { provider: "hash", model: "char-ngram-128" };
+    this.lastIdentity = HASH_IDENTITY;
     return texts.map((t) => localSemanticHashEmbedding(t, 128));
   }
 
@@ -328,23 +339,26 @@ export async function syncCardEmbeddings(
  */
 export async function syncNoteChunkEmbeddings(
   engine: EmbeddingEngine,
-  options: { batchSize?: number; dir?: string } = {}
+  options: { batchSize?: number; dir?: string; signal?: AbortSignal } = {}
 ): Promise<{ indexedCount: number }> {
   if (!inShell()) return { indexedCount: 0 };
   const batchSize = options.batchSize ?? 16;
   let indexedCount = 0;
   try {
-    for (let round = 0; round < 50; round++) {
-      const chunks = await noteListChunkTexts(batchSize);
-      if (!chunks.length) break;
+    let identity = await engine.preferredIdentity();
+    for (let round = 0; round < 50 && !options.signal?.aborted; round++) {
+      const chunks = await noteListChunkTexts(batchSize, identity, options.dir);
+      if (!chunks.length || options.signal?.aborted) break;
       const embeddings = await engine.embedTexts(chunks.map((c) => c.content));
-      if (embeddings.length !== chunks.length) break;
+      if (options.signal?.aborted || embeddings.length !== chunks.length) break;
+      const actual = engine.identity();
       const saved = await noteSaveChunkEmbeddings(
-        chunks.map((c, i) => ({ noteId: c.noteId, chunkIndex: c.chunkIndex, embedding: embeddings[i] })),
-        engine.identity()
+        chunks.map(({ noteId, chunkIndex, contentRevision }, i) => ({ noteId, chunkIndex, contentRevision, embedding: embeddings[i] })),
+        actual, options.dir,
       );
       indexedCount += saved;
-      if (chunks.length < batchSize) break;
+      if (actual.provider === identity.provider && actual.model === identity.model && !saved) break;
+      identity = actual;
     }
   } catch (err) {
     console.warn("[EmbeddingEngine] 分块向量同步失败（下次再试）:", err);
