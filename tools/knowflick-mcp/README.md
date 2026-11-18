@@ -1,23 +1,22 @@
 # KnowFlick MCP server（本地知识库 → AI Agent）
 
 让 Qoder / Claude Desktop / Cursor 这类支持 MCP 的 Agent 把 KnowFlick 卡库当知识源来查、来补卡。
-**零第三方依赖**（中国大陆网络下 npm 安装与供应链都不可靠，stdio 上的 JSON-RPC 手写更稳、可审计）。
+**零第三方依赖**（使用 Node.js 22.13 或更新版的内置 `node:sqlite`）。
 
 ## 接入
 
-```bash
-# Qoder CLI（配置写入 ~/.qoder/settings.json，可 /mcp reload 热加载）
-qoder mcp add knowflick -- node "$HOME/workspace/02-AI开发/KnowFlick/tools/knowflick-mcp/server.mjs"
-```
-
-Claude Desktop / Cursor 写进各自的 MCP 配置即可，形状相同：
+先在工作台设置中为该客户端创建**全库授权**：检索需勾选「读取」，暂存需勾选
+「建卡」。复制一次性令牌并妥善保管。Claude Desktop / Cursor / Qoder 的 MCP 配置
+中使用此令牌；旧配置和单独的 `--allow-write` 不能授予访问：
 
 ```json
-{ "mcpServers": { "knowflick": { "command": "node", "args": ["/绝对路径/tools/knowflick-mcp/server.mjs"] } } }
+{ "mcpServers": { "knowflick": { "command": "node", "args": ["/绝对路径/tools/knowflick-mcp/server.mjs", "--cards", "/库目录/cards.json"], "env": { "KNOWFLICK_MCP_TOKEN": "粘贴一次性令牌" } } } }
 ```
 
 参数：`--cards <path>` 指定 cards.json（默认 `<数据根>/store/cards.json`——两套 App 都写这里，见 [ADR-0002 §3](../../docs/adr/0002-desktop-web-split-from-android.md)；若只有已删除的 mac 端遗留在数据根下的 `cards.json`，也认它）；
-`--allow-write` 打开写回；`--selftest [查询词]` 不起 stdio，直接跑一遍全部工具。
+`--allow-write` 在已授予建卡权限时额外开启暂存；`--selftest [查询词]` 是不启动
+MCP 的本机命令，直接读所选文件。MCP 卡片文件须与授权的 `knowflick.db`、
+`settings.json` 同目录；跨目录符号链接被拒绝。首次使用须在工作台保存设置。
 
 ## 工具
 
@@ -50,11 +49,15 @@ node tools/knowflick-mcp/kf.mjs staged
 
 ## 安全边界（重要）
 
-- **默认只读**：`cards.json` 只读；未加 `--allow-write` 时连 `kf_stage_card` 都不出现在 `tools/list` 里。
+- **逐连接授权**：无令牌、项目令牌、撤销后的令牌或模块停用时均拒绝 MCP 数据请求；
+  全库读取与建卡分别授权。`--allow-write` 只是暂存的第二道开关。
 - 写回**不碰卡库**：新卡追加到同目录 `staged_cards.json`。该文件刻意与 `cards.json` 同构，
   所以直接就能用 App 的「导入归档数据」人工确认入库——不需要改 App，也不存在 Agent 静默改库。
 - 队列内按标题归一去重；非法学科/分支/难度（不在 `shared/assets/taxonomy_map.json` 契约里）直接拒绝。
 - 单文件读取上限 64 MiB；不打印卡片正文到日志。
+- 暂存文件和 SQLite 审计不是一个原子事务：写入前先记录不含正文的操作意图；
+  若文件写入后数据库提交失败，回执提示可能已暂存，应检查队列。直接 CLI 与
+  有系统文件权限的程序不受 MCP 令牌限制。
 
 ## 长连接刷新与暂存可靠性
 

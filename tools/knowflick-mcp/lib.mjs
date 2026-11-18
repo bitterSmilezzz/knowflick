@@ -11,13 +11,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 
-export const DEFAULT_APP_DIR = path.join(
-  process.env.HOME ?? "",
-  "Library",
-  "Application Support",
-  "KnowFlick",
-);
+const home = homedir();
+export const DEFAULT_APP_DIR = process.platform === "darwin"
+  ? path.join(home, "Library", "Application Support", "KnowFlick")
+  : process.platform === "win32"
+    ? path.join(process.env.APPDATA || path.join(home, "AppData", "Roaming"), "KnowFlick")
+    : path.join(process.env.XDG_DATA_HOME || path.join(home, ".local", "share"), "KnowFlick");
 
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 
@@ -381,7 +382,11 @@ export function stageCard(library, input, index = indexTaxonomy(library.taxonomy
       lock = fs.openSync(lockPath, "wx", 0o600);
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
-      if (Date.now() >= deadline) throw new Error(`暂存队列正被占用，请重试；若写入进程已异常退出，请确认所有写入进程停止后移除锁：${lockPath}`);
+      if (Date.now() >= deadline) {
+        const locked = new Error(`暂存队列正被占用，请重试；若写入进程已异常退出，请确认所有写入进程停止后移除锁：${lockPath}`);
+        locked.code = "KF_STAGE_LOCKED";
+        throw locked;
+      }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     }
   }

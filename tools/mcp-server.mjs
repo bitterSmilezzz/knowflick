@@ -13,15 +13,15 @@
  *   }
  *
  * 库目录解析顺序：$KNOWFLICK_LIBRARY_DIR → 平台默认 <data_root>/store（含 knowflick.db）。
- * 只读能力（search / stats / briefing）在 SQLite 只读连接上执行；
- * 写能力（create_flash_card / add_material）会真实写入同一 SQLite，Tauri 主窗口收到文件监听后自动刷新。
+ * 数据请求按 KNOWFLICK_MCP_TOKEN 逐次检查范围与权限；授权、审计和读写在同一事务中执行。
  */
 import { createInterface } from "node:readline";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { withMcpGrant, canUse, mcpEnabled, searchProjectNotes, readProjectNote } from "./mcp-access.mjs";
 
 const SERVER_NAME = "knowflick-second-brain";
 const SERVER_VERSION = "0.1.0";
@@ -49,56 +49,6 @@ function resolveLibraryDir() {
   return join(dataRoot(), "store");
 }
 
-/** 检查 KnowFlick 设置中的 official-mcp-server 启用状态（T09，收口审计 KF-012） */
-function isServerEnabled() {
-  const settingsFile = join(libraryDir, "settings.json");
-  if (!existsSync(settingsFile)) return true;
-  try {
-    const raw = JSON.parse(readFileSync(settingsFile, "utf-8"));
-    const plugins = raw?.plugins || raw?.raw?.plugins;
-    if (plugins && plugins["official-mcp-server"] && plugins["official-mcp-server"].enabled === false) {
-      return false;
-    }
-  } catch {
-    /* 忽略损坏 */
-  }
-  return true;
-}
-
-/**
- * E06（R4）：MCP 默认**只读**。
- *
- * 写工具（create_flash_card / add_material）须显式授权：
- *   KNOWFLICK_MCP_WRITE=1            开启全部写工具
- *   KNOWFLICK_MCP_ALLOW=card,material 细粒度（card=建卡，material=加素材）
- * 未授权时写工具返回明确错误与开启方法——不是静默消失（外部 Agent 猜
- * 「工具坏了」比「被拒绝」更糟）。这是向「独立客户端/项目授权」迁移的
- * 第一步：单一环境变量先统一策略，按项目签发凭据属后续批次。
- */
-function writePermission() {
-  const fine = (process.env.KNOWFLICK_MCP_ALLOW || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const all = process.env.KNOWFLICK_MCP_WRITE === "1";
-  return {
-    card: all || fine.includes("card"),
-    material: all || fine.includes("material"),
-  };
-}
-
-function denyWrite(tool) {
-  const which = tool === "create_flash_card" ? "card" : "material";
-  return {
-    isError: true,
-    content: [
-      {
-        type: "text",
-        text:
-          `写入被拒绝：${tool} 需要显式授权（E06 默认只读）。\n` +
-          `开启方法：设置环境变量 KNOWFLICK_MCP_WRITE=1（全部写工具）或 KNOWFLICK_MCP_ALLOW=${which}（仅此项）。\n` +
-          `只读检索（search_knowledge / search_materials / get_knowledge_stats）不受影响。`,
-      },
-    ],
-  };
-}
 
 const libraryDir = resolveLibraryDir();
 const dbPath = join(libraryDir, "knowflick.db");
@@ -201,9 +151,7 @@ function excerptAround(text, query, radius = 220) {
  *   所以「索引是全的」这个前提在这里不成立。
  * 于是这里直接扫 `materials` 判定命中：慢一点，但**不会漏、不会报旧**。
  */
-function searchMaterials(query, limit) {
-  const db = openDb(true);
-  try {
+function searchMaterials(db, query, limit) {
     const trimmed = (query || "").trim();
     const cap = Number.isFinite(limit) && limit > 0 ? Math.min(50, Math.floor(limit)) : 5;
     const rows = db
@@ -230,15 +178,11 @@ function searchMaterials(query, limit) {
     return hits
       .slice(0, cap)
       .map((row) => rowToMaterialHit(row, excerptAround(row.raw_text, trimmed)));
-  } finally {
-    db.close();
-  }
+
 }
 
 /** 按 id 读一条素材的全文与出处。 */
-function readMaterial(id) {
-  const db = openDb(true);
-  try {
+function readMaterial(db, id) {
     const row = db
       .prepare(
         `SELECT id, source_type, title, source_url, raw_text, inbox_status, created_at, metadata_json
@@ -264,15 +208,11 @@ function readMaterial(id) {
       text: String(row.raw_text ?? ""),
       resourceUri: `knowflick://materials/${row.id}`,
     };
-  } finally {
-    db.close();
-  }
+
 }
 
 /** 检索：FTS5 前缀查询 + LIKE 兜底，与主程序检索语义保持一致。 */
-function searchKnowledge(query, limit) {
-  const db = openDb(true);
-  try {
+function searchKnowledge(db, query, limit) {
     const trimmed = (query || "").trim();
     const cap = Number.isFinite(limit) && limit > 0 ? Math.min(50, Math.floor(limit)) : 5;
     if (!trimmed) {
@@ -315,14 +255,10 @@ function searchKnowledge(query, limit) {
     }
 
     return rows.map(rowToCard);
-  } finally {
-    db.close();
-  }
+
 }
 
-function knowledgeStats() {
-  const db = openDb(true);
-  try {
+function knowledgeStats(db) {
     const one = (sql) => db.prepare(sql).get();
     const totalCards = one("SELECT COUNT(*) AS n FROM cards WHERE is_deleted = 0").n;
     const favoriteCards = one("SELECT COUNT(*) AS n FROM cards WHERE is_deleted = 0 AND is_favorite = 1").n;
@@ -347,15 +283,11 @@ function knowledgeStats() {
       artifactCount,
       categoriesDistribution: Object.fromEntries(distribution.map((r) => [r.category, r.n])),
     };
-  } finally {
-    db.close();
-  }
+
 }
 
 /** 周度认知简报：三板块（新收录聚类 / 趋势演变 / 待温故），与主程序口径一致。 */
-function weeklyBriefing() {
-  const db = openDb(true);
-  try {
+function weeklyBriefing(db) {
     const weekMs = 7 * 24 * 3600 * 1000;
     const since = Date.now() - weekMs;
     const recent = db
@@ -399,12 +331,10 @@ function weeklyBriefing() {
       lines.push("");
     }
     return lines.join("\n");
-  } finally {
-    db.close();
-  }
+
 }
 
-function saveFlashCard(args) {
+function saveFlashCard(db, args) {
   const headline = String(args.headline ?? "").trim();
   const summary = String(args.summary ?? "").trim();
   const details = String(args.details ?? "").trim();
@@ -414,8 +344,6 @@ function saveFlashCard(args) {
   const now = Date.now();
   const id = randomUUID();
 
-  const db = openDb(false);
-  try {
     db.exec("PRAGMA foreign_keys = ON");
     db.prepare(
       `INSERT INTO cards (id, material_id, category, headline, summary, details, links_json, tags_json,
@@ -427,13 +355,11 @@ function saveFlashCard(args) {
     db.prepare(
       "INSERT INTO fts_cards (card_id, headline, summary, details, category, tags) VALUES (?, ?, ?, ?, ?, ?)"
     ).run(id, headline, summary || headline, details, category, tags.join(" "));
-  } finally {
-    db.close();
-  }
+
   return { id, headline, category };
 }
 
-function addMaterial(args) {
+function addMaterial(db, args) {
   const title = String(args.title ?? "").trim();
   const text = String(args.text ?? "").trim();
   if (!title || !text) throw new Error("title 与 text 为必填项");
@@ -442,8 +368,6 @@ function addMaterial(args) {
   const id = randomUUID();
   const hash = createHash(text);
 
-  const db = openDb(false);
-  try {
     db.prepare(
       `INSERT INTO materials (id, source_type, title, source_url, raw_text, cleaned_markdown, content_hash,
         media_path, media_size_bytes, metadata_json, inbox_status, created_at, updated_at, is_deleted)
@@ -459,12 +383,11 @@ function addMaterial(args) {
       db.prepare(
         "INSERT INTO fts_materials (material_id, title, raw_text, source_url) VALUES (?, ?, ?, ?)"
       ).run(id, title, text, sourceUrl ?? "");
-    } catch {
+    } catch (error) {
       // 没有 fts_materials 表的旧库：跳过索引写入。
+      if (!String(error?.message).includes("no such table: fts_materials")) throw error;
     }
-  } finally {
-    db.close();
-  }
+
   return { id, title, inboxStatus: "inbox" };
 }
 
@@ -548,186 +471,127 @@ function textResult(text) {
   return { content: [{ type: "text", text }] };
 }
 
-function handleToolCall(name, args) {
+const PROJECT_TOOL = {
+  name: "search_project_notes",
+  description: "检索此连接被授权的项目成员笔记；结果可按 resourceUri 读取原文。",
+  inputSchema: { type: "object", properties: { query: { type: "string", description: "检索词" }, limit: { type: "number", description: "最多 50 条" } }, required: ["query"] },
+};
+
+function handleToolCall(db, grant, name, args) {
   switch (name) {
+    case "search_project_notes": {
+      const notes = searchProjectNotes(db, grant.project_id, args.query ?? "", args.limit);
+      return textResult(JSON.stringify({ totalFound: notes.length, notes }, null, 2));
+    }
     case "search_knowledge": {
-      const cards = searchKnowledge(args.query, args.limit);
-      return textResult(
-        JSON.stringify({ query: args.query, totalFound: cards.length, cards }, null, 2)
-      );
+      const cards = searchKnowledge(db, args.query, args.limit);
+      return textResult(JSON.stringify({ query: args.query, totalFound: cards.length, cards }, null, 2));
     }
     case "create_flash_card": {
-        if (!writePermission().card) return denyWrite("create_flash_card");
-      const created = saveFlashCard(args ?? {});
+      const created = saveFlashCard(db, args);
       return textResult(`知识卡片创建成功！\nID: ${created.id}\n标题: ${created.headline}\n分类: ${created.category}`);
     }
     case "add_material": {
-        if (!writePermission().material) return denyWrite("add_material");
-      const created = addMaterial(args ?? {});
+      const created = addMaterial(db, args);
       return textResult(`素材已加入收件箱！\nID: ${created.id}\n标题: ${created.title}`);
     }
     case "search_materials": {
-      const materials = searchMaterials(args?.query ?? "", args?.limit);
-      return textResult(
-        JSON.stringify(
-          {
-            query: args?.query ?? "",
-            totalFound: materials.length,
-            materials,
-            /** 命中之后按这个地址读全文。 */
-            readHint: "按 materials[].resourceUri 调用 resources/read 读原文",
-          },
-          null,
-          2
-        )
-      );
+      const materials = searchMaterials(db, args.query ?? "", args.limit);
+      return textResult(JSON.stringify({ query: args.query ?? "", totalFound: materials.length, materials, readHint: "按 materials[].resourceUri 调用 resources/read 读原文" }, null, 2));
     }
-    case "get_weekly_briefing":
-      return textResult(weeklyBriefing());
-    case "get_knowledge_stats":
-      return textResult(JSON.stringify(knowledgeStats(), null, 2));
-    default: {
-      const err = new Error(`未知工具: ${name}`);
-      err.code = -32601;
-      throw err;
-    }
+    case "get_weekly_briefing": return textResult(weeklyBriefing(db));
+    case "get_knowledge_stats": return textResult(JSON.stringify(knowledgeStats(db), null, 2));
+    default: throw rpcError(-32601, "未知工具。");
   }
 }
 
-function dispatch(request) {
-  const { method, params = {}, id = null } = request;
-  try {
-    // 模块开关检查（T09）：用户在界面关闭 official-mcp-server 时，外部进程必须吊销执行能力
-    if (!isServerEnabled() && method !== "initialize" && method !== "ping") {
-      return {
-        jsonrpc: "2.0",
-        id,
-        error: {
-          code: -32000,
-          message: "KnowFlick MCP 服务已被停用（设置中关闭了 official-mcp-server 模块），外部连接已被阻断。",
-        },
-      };
-    }
+function rpcError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
 
-    switch (method) {
-      case "initialize":
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            protocolVersion: PROTOCOL_VERSION,
-            serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-            capabilities: { tools: {}, resources: {} },
-          },
-        };
-      case "notifications/initialized":
-        return null; // 通知无需响应
-      case "ping":
-        return { jsonrpc: "2.0", id, result: {} };
-      case "tools/list":
-        return { jsonrpc: "2.0", id, result: { tools: TOOLS } };
-      case "tools/call":
-        return { jsonrpc: "2.0", id, result: handleToolCall(params.name, params.arguments ?? {}) };
-      case "resources/list":
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            resources: [
-              { uri: "knowflick://cards", name: "知识卡片集合", mimeType: "application/json" },
-              { uri: "knowflick://materials", name: "原始素材集合", mimeType: "application/json" },
-              { uri: "knowflick://briefing", name: "周度认知简报", mimeType: "text/markdown" },
-              {
-                uri: "knowflick://materials/{id}",
-                name: "单条素材（含全文与出处）",
-                description: "把 {id} 换成素材 id，即可读到那条素材的正文与来源信息。",
-                mimeType: "application/json",
-              },
-            ],
-          },
-        };
-      case "resources/read": {
-        const uri = String(params.uri ?? "");
-        if (uri === "knowflick://cards") {
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: {
-              contents: [
-                {
-                  uri,
-                  mimeType: "application/json",
-                  text: JSON.stringify(searchKnowledge("", 100), null, 2),
-                },
-              ],
-            },
-          };
-        }
-        if (uri === "knowflick://briefing") {
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: { contents: [{ uri, mimeType: "text/markdown", text: weeklyBriefing() }] },
-          };
-        }
-        if (uri === "knowflick://materials") {
-          const db = openDb(true);
-          let rows = [];
-          try {
-            rows = db
-              .prepare(
-                `SELECT id, source_type, title, source_url, inbox_status, created_at
-                 FROM materials WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT 100`
-              )
-              .all();
-          } finally {
-            db.close();
-          }
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(rows, null, 2) }] },
-          };
-        }
-        // 单条素材：命中之后要能读到原文与出处。
-        // 规范里本来就要求 `knowflick://materials/{id}`（PLUGIN_SPECIFICATION §6）。
-        const materialMatch = /^knowflick:\/\/materials\/(.+)$/.exec(uri);
-        if (materialMatch) {
-          const material = readMaterial(materialMatch[1]);
-          if (!material) {
-            const missing = new Error(`找不到素材: ${materialMatch[1]}`);
-            missing.code = -32602;
-            throw missing;
-          }
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: {
-              contents: [
-                { uri, mimeType: "application/json", text: JSON.stringify(material, null, 2) },
-              ],
-            },
-          };
-        }
-        const notFound = new Error(`未知资源: ${uri}`);
-        notFound.code = -32602;
-        throw notFound;
-      }
-      default: {
-        const err = new Error(`不支持的方法: ${method}`);
-        err.code = -32601;
-        throw err;
-      }
-    }
+function operationFor(method, params) {
+  if (method === "tools/list") return "tools_list";
+  if (method === "resources/list" || method === "resources/templates/list") return "resources_list";
+  if (method === "tools/call") return String(params.name ?? "");
+  if (method === "resources/read") return String(params.uri ?? "").startsWith("knowflick://notes/") ? "note_read" : "resource_read";
+  throw rpcError(-32601, "不支持的方法。");
+}
+
+function authorizedDispatch(db, grant, method, params, id) {
+  if (method === "tools/list") {
+    const available = grant.scope === "project" ? [PROJECT_TOOL] : TOOLS.filter(t => canUse(grant, t.name));
+    return { jsonrpc: "2.0", id, result: { tools: available } };
+  }
+  if (method === "tools/call") {
+    const args = params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments) ? params.arguments : {};
+    return { jsonrpc: "2.0", id, result: handleToolCall(db, grant, String(params.name ?? ""), args) };
+  }
+  if (method === "resources/list") {
+    const resources = grant.scope === "library" && grant.library_read === 1 ? [
+      { uri: "knowflick://cards", name: "知识卡片集合", mimeType: "application/json" },
+      { uri: "knowflick://materials", name: "原始素材集合", mimeType: "application/json" },
+      { uri: "knowflick://briefing", name: "周度认知简报", mimeType: "text/markdown" },
+    ] : [];
+    return { jsonrpc: "2.0", id, result: { resources } };
+  }
+  if (method === "resources/templates/list") {
+    const resourceTemplates = grant.scope === "project"
+      ? [{ uriTemplate: "knowflick://notes/{id}", name: "项目笔记", mimeType: "application/json" }]
+      : grant.library_read === 1 ? [{ uriTemplate: "knowflick://materials/{id}", name: "单条素材", mimeType: "application/json" }] : [];
+    return { jsonrpc: "2.0", id, result: { resourceTemplates } };
+  }
+  if (method === "resources/read") {
+    const uri = String(params.uri ?? "");
+    let content;
+    if (uri.startsWith("knowflick://notes/")) {
+      let noteId;
+      try { noteId = decodeURIComponent(uri.slice("knowflick://notes/".length)); }
+      catch { throw rpcError(-32602, "资源地址无效。"); }
+      const note = readProjectNote(db, grant.project_id, noteId);
+      if (!note) throw rpcError(-32004, "资源不存在或不可访问。");
+      content = JSON.stringify(note, null, 2);
+    } else if (uri === "knowflick://cards") content = JSON.stringify(searchKnowledge(db, "", 100), null, 2);
+    else if (uri === "knowflick://briefing") content = weeklyBriefing(db);
+    else if (uri === "knowflick://materials") {
+      content = JSON.stringify(db.prepare(`SELECT id, source_type, title, source_url, inbox_status, created_at
+        FROM materials WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT 100`).all(), null, 2);
+    } else if (uri.startsWith("knowflick://materials/")) {
+      let materialId;
+      try { materialId = decodeURIComponent(uri.slice("knowflick://materials/".length)); }
+      catch { throw rpcError(-32602, "资源地址无效。"); }
+      const material = readMaterial(db, materialId);
+      if (!material) throw rpcError(-32004, "资源不存在或不可访问。");
+      content = JSON.stringify(material, null, 2);
+    } else throw rpcError(-32004, "资源不存在或不可访问。");
+    return { jsonrpc: "2.0", id, result: { contents: [{ uri, mimeType: uri === "knowflick://briefing" ? "text/markdown" : "application/json", text: content }] } };
+  }
+  throw rpcError(-32601, "不支持的方法。");
+}
+
+function dispatch(request) {
+  const { method, id = null } = request;
+  const params = request.params && typeof request.params === "object" && !Array.isArray(request.params) ? request.params : {};
+  try {
+    if (method === "initialize") return { jsonrpc: "2.0", id, result: {
+      protocolVersion: PROTOCOL_VERSION, serverInfo: { name: SERVER_NAME, version: SERVER_VERSION }, capabilities: { tools: {}, resources: {} },
+    } };
+    if (method === "ping") return { jsonrpc: "2.0", id, result: {} };
+    if (method === "notifications/initialized") return null;
+    if (!mcpEnabled(libraryDir)) throw rpcError(-32000, "MCP 模块已停用或设置不可读取，请在 KnowFlick 中检查设置。");
+    const operation = operationFor(method, params);
+    const db = openDb(false);
+    try {
+      return withMcpGrant(db, process.env.KNOWFLICK_MCP_TOKEN, operation,
+        grant => authorizedDispatch(db, grant, method, params, id));
+    } finally { db.close(); }
   } catch (error) {
-    return {
-      jsonrpc: "2.0",
-      id,
-      error: {
-        code: typeof error?.code === "number" ? error.code : -32603,
-        message: String(error?.message ?? error),
-      },
-    };
+    const known = typeof error?.code === "number";
+    return { jsonrpc: "2.0", id, error: {
+      code: known ? error.code : -32603,
+      message: known ? error.message : "请求未完成，请检查知识库、授权与审计设置。",
+    } };
   }
 }
 

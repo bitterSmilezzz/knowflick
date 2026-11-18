@@ -21,11 +21,13 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 const serverScript = join(repoRoot, "tools", "mcp-server.mjs");
+const token = "d".repeat(64);
 
 let passed = 0;
 function ok(label) {
@@ -39,7 +41,7 @@ function rpc(args, cwd, env, request) {
     const child = execFile(
       "node",
       args,
-      { cwd, env: { ...process.env, ...env }, timeout: 20000 },
+      { cwd, env: { ...process.env, KNOWFLICK_MCP_TOKEN: token, ...env }, timeout: 20000 },
       (err, stdout) => {
         if (err && !stdout) {
           reject(new Error(`MCP 进程失败: ${err.message}`));
@@ -71,6 +73,9 @@ try {
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(dbPath);
   db.exec(`
+    CREATE TABLE projects (id TEXT PRIMARY KEY, archived_at INTEGER);
+    CREATE TABLE mcp_grants (id TEXT PRIMARY KEY, token_hash TEXT, scope TEXT, project_id TEXT, library_read INTEGER, card_write INTEGER, material_write INTEGER, revoked_at INTEGER, policy_version INTEGER);
+    CREATE TABLE mcp_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT, occurred_at INTEGER, operation TEXT, outcome TEXT);
     CREATE TABLE cards (id TEXT PRIMARY KEY, material_id TEXT, category TEXT, headline TEXT,
       summary TEXT, details TEXT, links_json TEXT, tags_json TEXT, source TEXT, is_favorite INTEGER,
       review_count INTEGER, mastery_level INTEGER, repetition INTEGER, interval_days REAL,
@@ -81,6 +86,8 @@ try {
       inbox_status TEXT, created_at INTEGER, updated_at INTEGER, is_deleted INTEGER DEFAULT 0);
     CREATE VIRTUAL TABLE fts_cards USING fts5(card_id, headline, summary, details, category, tags);
   `);
+  db.prepare("INSERT INTO mcp_grants VALUES ('test', ?, 'library', NULL, 1, 1, 1, NULL, 1)").run(createHash("sha256").update(token).digest("hex"));
+  writeFileSync(join(libraryDir, "settings.json"), "{}");
   const now = Date.now();
   db.prepare(
     `INSERT INTO cards (id, material_id, category, headline, summary, details, links_json, tags_json,
@@ -102,13 +109,14 @@ try {
   ).catch(() => ({ generateMcpConfigSnippet: null }));
   // TS 模块在 node 下不能直接 import——退回到等价形状的验证：配置必须是绝对路径 + --dir
   const config = JSON.parse(generateMcpConfigSnippet
-    ? generateMcpConfigSnippet(serverScript, libraryDir)
+    ? generateMcpConfigSnippet(serverScript, libraryDir, token)
     : JSON.stringify({
-        mcpServers: { knowflick: { command: "node", args: [serverScript, "--dir", libraryDir] } },
+        mcpServers: { knowflick: { command: "node", args: [serverScript, "--dir", libraryDir], env: { KNOWFLICK_MCP_TOKEN: token } } },
       }));
   const args = config.mcpServers.knowflick.args;
   assert.ok(path_is_abs(args[0]), "配置里的脚本路径必须是绝对路径");
   assert.ok(args.includes("--dir"), "配置必须显式带库目录");
+  assert.equal(config.mcpServers.knowflick.env.KNOWFLICK_MCP_TOKEN, token, "配置必须带该连接令牌");
   ok("配置片段使用绝对路径并显式带 --dir 库目录");
 
   // 3) 在**与仓库无关**的 cwd 里按配置启动
@@ -143,16 +151,15 @@ try {
   ok("resources/read 能读到库里的卡片");
 
   // 4) 默认只读：写工具被明确拒绝
-  const denied = await rpc(args, unrelatedCwd, {}, {
+  const denied = await rpc(args, unrelatedCwd, { KNOWFLICK_MCP_TOKEN: "", KNOWFLICK_MCP_ALLOW: "card" }, {
     jsonrpc: "2.0", id: 5, method: "tools/call",
     params: { name: "create_flash_card", arguments: { headline: "不该写入", details: "正文" } },
   });
-  assert.ok(denied.result?.isError === true, "未授权时写工具必须被拒绝");
-  assert.ok((denied.result?.content?.[0]?.text ?? "").includes("显式授权"), "拒绝消息要说明开启方法");
-  ok("默认只读：写工具被明确拒绝并说明开启方法");
+  assert.equal(denied.error?.code, -32001, "未授权时旧环境变量不能绕过写入拒绝");
+  ok("无令牌时旧环境变量不能绕过授权");
 
   // 5) 显式授权后写成功，且真的落进那个库
-  const allowed = await rpc(args, unrelatedCwd, { KNOWFLICK_MCP_ALLOW: "card" }, {
+  const allowed = await rpc(args, unrelatedCwd, {}, {
     jsonrpc: "2.0", id: 6, method: "tools/call",
     params: { name: "create_flash_card", arguments: { headline: "授权写入的卡片", details: "正文" } },
   });

@@ -10,7 +10,8 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const serverPath = join(here, "mcp-server.mjs");
 const libraryDir = mkdtempSync(join(tmpdir(), "knowflick-mcp-"));
 const dbPath = join(libraryDir, "knowflick.db");
+const token = "c".repeat(64);
 
 let assertions = 0;
 function pass(label) {
@@ -40,6 +42,9 @@ function readRow(sql, ...params) {
 function seed() {
   const db = new DatabaseSync(dbPath);
   db.exec(`
+    CREATE TABLE projects (id TEXT PRIMARY KEY, archived_at INTEGER);
+    CREATE TABLE mcp_grants (id TEXT PRIMARY KEY, token_hash TEXT, scope TEXT, project_id TEXT, library_read INTEGER, card_write INTEGER, material_write INTEGER, revoked_at INTEGER, policy_version INTEGER);
+    CREATE TABLE mcp_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT, occurred_at INTEGER, operation TEXT, outcome TEXT);
     CREATE TABLE cards (
       id TEXT PRIMARY KEY, material_id TEXT, category TEXT NOT NULL, headline TEXT NOT NULL,
       summary TEXT NOT NULL, details TEXT NOT NULL, links_json TEXT NOT NULL DEFAULT '[]',
@@ -70,6 +75,8 @@ function seed() {
       material_id UNINDEXED, title, raw_text, source_url, tokenize = 'unicode61 remove_diacritics 2'
     );
   `);
+  db.prepare("INSERT INTO mcp_grants VALUES ('test', ?, 'library', NULL, 1, 1, 1, NULL, 1)").run(createHash("sha256").update(token).digest("hex"));
+  writeFileSync(join(libraryDir, "settings.json"), "{}");
   const now = Date.now();
   db.prepare(
     `INSERT INTO cards (id, category, headline, summary, details, tags_json, source, is_favorite, review_count, created_at, updated_at)
@@ -142,7 +149,7 @@ function seed() {
 async function verifyReadOnlyDefault() {
   // E06（R4）：默认只读——写工具被明确拒绝并告知开启方法（不是静默消失）。
   const denied = spawn(process.execPath, [serverPath], {
-    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir, KNOWFLICK_MCP_WRITE: "", KNOWFLICK_MCP_ALLOW: "" },
+    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir, KNOWFLICK_MCP_TOKEN: "", KNOWFLICK_MCP_WRITE: "1", KNOWFLICK_MCP_ALLOW: "card,material" },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const pendingDenied = new Map();
@@ -169,17 +176,17 @@ async function verifyReadOnlyDefault() {
   const callDenied = (method, params) =>
     new Promise((resolve, reject) => {
       const id = ++nextIdDenied;
-      pendingDenied.set(String(id), resolve);
+      const timer = setTimeout(() => { pendingDenied.delete(String(id)); reject(new Error(`只读段 ${method} 超时`)); }, 15000);
+      pendingDenied.set(String(id), response => { clearTimeout(timer); resolve(response); });
       denied.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-      setTimeout(() => reject(new Error(`只读段 ${method} 超时`)), 15000);
     });
   await callDenied("initialize", {});
   const deniedWrite = await callDenied("tools/call", { name: "create_flash_card", arguments: { headline: "不应写入", details: "默认只读" } });
-  assert.ok(deniedWrite.result?.isError === true && /写入被拒绝/.test(deniedWrite.result?.content?.[0]?.text ?? ""), `默认只读：create_flash_card 应被明确拒绝并说明开启方法（实际：${JSON.stringify(deniedWrite).slice(0, 200)}）`);
-  pass("E06 默认只读：create_flash_card 被拒绝且给出开启方法");
+  assert.equal(deniedWrite.error?.code, -32001, "未持令牌的旧写入环境变量不能绕过授权");
+  pass("E06 无令牌：create_flash_card 被拒绝");
   const deniedMaterial = await callDenied("tools/call", { name: "add_material", arguments: { title: "不应写入", text: "默认只读" } });
-  assert.ok(deniedMaterial.result?.isError === true && /写入被拒绝/.test(deniedMaterial.result.content[0].text), "默认只读：add_material 应同样被拒");
-  pass("E06 默认只读：add_material 同样被拒");
+  assert.equal(deniedMaterial.error?.code, -32001, "无令牌时 add_material 同样被拒");
+  pass("E06 无令牌：add_material 同样被拒");
   denied.kill();
   await new Promise((r) => setTimeout(r, 200));
 }
@@ -187,7 +194,7 @@ async function verifyReadOnlyDefault() {
 function startServer() {
   // 显式授权后，原有写入断言全部照跑（spawn 带授权）。
   const child = spawn(process.execPath, [serverPath], {
-    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir, KNOWFLICK_MCP_WRITE: "1" },
+    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libraryDir, KNOWFLICK_MCP_TOKEN: token },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const pending = new Map();
@@ -355,7 +362,7 @@ try {
 
   // 读一条不存在的素材要给出明确错误，而不是空壳。
   const missingRead = await call("resources/read", { uri: "knowflick://materials/does-not-exist" });
-  assert.equal(missingRead.error.code, -32602, "读不存在的素材应报标准错误码");
+  assert.equal(missingRead.error.code, -32004, "读不存在的素材应报不可访问");
   pass("读不存在的素材返回标准错误码");
 
   // 真实落库校验：重新打开 SQLite 确认写入与 FTS 同步
@@ -383,9 +390,11 @@ try {
   pass("get_weekly_briefing 生成三板块 Markdown 简报");
 
   const resources = await call("resources/list", {});
-  assert.equal(resources.result.resources.length, 4);
+  assert.equal(resources.result.resources.length, 3);
   const uris = resources.result.resources.map((r) => r.uri);
-  assert.ok(uris.includes("knowflick://materials/{id}"), "资源清单要暴露单条素材地址");
+  assert.ok(uris.includes("knowflick://materials"), "资源清单要暴露素材集合");
+  const templates = await call("resources/templates/list", {});
+  assert.ok(templates.result.resourceTemplates.some((r) => r.uriTemplate === "knowflick://materials/{id}"));
   pass("resources/list 暴露卡片、素材、简报与单条素材");
 
   const readCards = await call("resources/read", { uri: "knowflick://cards" });
@@ -393,7 +402,7 @@ try {
   pass("resources/read 可读取卡片集合");
 
   const unknown = await call("tools/call", { name: "no_such_tool", arguments: {} });
-  assert.equal(unknown.error.code, -32601);
+  assert.equal(unknown.error.code, -32001);
   pass("未知工具返回标准 JSON-RPC 错误码");
 
   console.log(`\nMCP server smoke: ${assertions} assertions passed.`);

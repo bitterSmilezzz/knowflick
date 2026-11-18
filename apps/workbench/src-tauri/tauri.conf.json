@@ -56,7 +56,8 @@
       "minimumSystemVersion": "11.0"
     },
     "resources": {
-      "../../../tools/mcp-server.mjs": "tools/mcp-server.mjs"
+      "../../../tools/mcp-server.mjs": "tools/mcp-server.mjs",
+      "../../../tools/mcp-access.mjs": "tools/mcp-access.mjs"
     }
   }
 }
