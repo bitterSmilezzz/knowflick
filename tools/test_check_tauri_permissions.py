@@ -100,6 +100,37 @@ class TauriPermissionConsistencyTest(unittest.TestCase):
         finally:
             build_rs.write_text(backup, encoding="utf-8")
 
+    def test_check_detects_a_command_declared_but_not_registered(self):
+        """从 generate_handler 里拿掉一条命令（build.rs 仍声明）：守卫必须报出来。
+
+        这是本轮补的洞：给 write_text_file 补齐三处时，先写了 build.rs 与权限文件、
+        后补 invoke_handler，中间那次守卫只打印「133 条已注册 / 134 条声明」就放过了——
+        可真的跑起来，这个命令根本不存在。
+        """
+        lib_rs = checker.SRC_TAURI / "src/lib.rs"
+        backup = lib_rs.read_text(encoding="utf-8")
+        try:
+            lib_rs.write_text(
+                backup.replace("            write_text_file,\n", "", 1), encoding="utf-8"
+            )
+            problems = self._problems()
+            self.assertTrue(
+                any("write_text_file" in p for p in problems),
+                f"守卫没报出「声明了但没注册」：{problems}",
+            )
+        finally:
+            lib_rs.write_text(backup, encoding="utf-8")
+
+    def test_declared_and_registered_commands_are_all_authorized(self):
+        """声明且注册的命令都必须有授权——不管前端此刻有没有调用它。"""
+        manifest = checker.manifest_commands()
+        permitted = checker.permitted_commands(checker.SRC_TAURI / "capabilities")
+        self.assertEqual(
+            sorted(manifest - permitted),
+            [],
+            "这些命令已声明并注册但没授权：现在没人调用不代表以后不会，缺授权只能到运行时才发现",
+        )
+
     def test_check_detects_a_missing_capability_permission(self):
         """从 capability 里拿掉一条授权，守卫必须报出来。"""
         cap = checker.SRC_TAURI / "capabilities" / "default.json"

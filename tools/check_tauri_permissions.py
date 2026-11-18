@@ -92,13 +92,33 @@ def main() -> int:
             "前端调用会报「not allowed by ACL」"
         )
 
-    # 2) 前端调用了但没注册 → 运行时找不到命令
+    # 2) 在 build.rs 声明了、capability 也授权了，但**没注册** → 运行时「命令不存在」。
+    #
+    # 这一条是补的洞：本轮给 `write_text_file` 补齐三处时，先写了 build.rs 与权限文件、
+    # 后补 generate_handler，中间那次守卫**报了「133 条已注册 / 134 条声明」却仍然通过**——
+    # 只比了「注册 - 声明」与「前端调用 - 注册」，没人比「声明 - 注册」。
+    # 漏注册的命令如果前端还没调用到（或被动态调用），这个洞就一直静默存在。
+    for cmd in sorted(manifest - registered):
+        problems.append(
+            f"命令 {cmd} 写进了 build.rs 的 AppManifest，但 lib.rs 的 invoke_handler 里没有注册"
+            "——权限文件会生成、ACL 也会放行，可是运行时根本没有这个命令"
+        )
+
+    # 3) 声明并注册了，但 capability 没授权 → 前端调不到。
+    # 与「前端调用 - 授权」互补：那条只管已经调用到的命令，这条管还没被调用的。
+    for cmd in sorted(manifest - permitted):
+        problems.append(
+            f"命令 {cmd} 已声明并注册，但 capabilities/*.json 里没有 allow-{cmd.replace('_', '-')}"
+            "——现在没人调用不代表以后不会，缺授权时要到运行时才发现"
+        )
+
+    # 4) 前端调用了但没注册 → 运行时找不到命令
     for cmd in sorted(called - registered):
         problems.append(
             f"前端 invoke(\"{cmd}\")，但 lib.rs 的 invoke_handler 里没有注册这个命令"
         )
 
-    # 3) 前端调用了但 capability 没授权 → 运行时 ACL 拒绝
+    # 5) 前端调用了但 capability 没授权 → 运行时 ACL 拒绝
     for cmd in sorted(called - permitted):
         if cmd in ("main",):
             continue
