@@ -116,7 +116,13 @@ for suite in "${SUITES[@]}"; do
     echo "OK $suite"
   else
     echo "::error::$suite 失败" >&2
-    tail -25 "$suite_log" | while IFS= read -r line; do
+    # 注解名额只有 10 条，而且**先到先得**：早先那版取尾部 25 行，10 条名额全花在
+    # 更早的 PASS 上，真正的报错反而被截掉（白等了一轮）。所以这里先挑断言名，
+    # 再用最后几行补上下文——断言名是最能定位的那个信息。
+    {
+      grep -F -m 3 'AssertionError' "$suite_log" || true
+      tail -6 "$suite_log"
+    } | while IFS= read -r line; do
       echo "::error::$suite 现场：$line" >&2
     done
     failed="$failed $suite"

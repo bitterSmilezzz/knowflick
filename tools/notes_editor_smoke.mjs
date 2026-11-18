@@ -21,7 +21,10 @@ async function check(expression, label) {
     if (await ev(expression)) { count++; console.log(`PASS ${label}`); return true; }
     await new Promise(r => setTimeout(r, 120));
   }
-  console.error(`FAIL ${label}；现场：${await ev("JSON.stringify({status:document.querySelector('[data-save-status]')?.getAttribute('data-save-status'),notes:JSON.parse(localStorage.getItem('knowflick.notes.v1')||'{}').notes?.length})")}`);
+  // 现场要够诊断用：只看「保存状态 + 笔记数」看不出「回收站里为什么没有恢复按钮」，
+  // 而 CI 上拿不到日志、注解只留得下最后几行——所以把页面状态一次性打全。
+  const scene = await ev(`JSON.stringify({page:document.querySelector('[data-page]')?.getAttribute('data-page'),status:document.querySelector('[data-save-status]')?.getAttribute('data-save-status'),notes:JSON.parse(localStorage.getItem('knowflick.notes.v1')||'{}').notes?.length,entries:document.querySelectorAll('.nv-entry').length,restore:document.querySelectorAll('.nv-restore').length,query:document.querySelector('[aria-label="搜索笔记"]')?.value})`);
+  console.error(`FAIL ${label}；现场：${scene}`);
   assert.fail(label);
   return false;
 }
