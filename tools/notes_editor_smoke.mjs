@@ -207,6 +207,14 @@ try {
   await b("eval", "(()=>{document.querySelector('[aria-label=\"关闭查找\"]').click();return true})()");
   await check("document.querySelector('.nv-find') === null", "关掉查找栏");
 
+  // 8g. 笔记待办（B10）：正文里的 `- [ ]` 是待办，勾选即改那一行。
+  await check("document.querySelector('[aria-label=\"待办进度\"]')?.textContent.includes('待办')", "正文下方显示待办进度");
+  await b("eval", "(()=>{const d=document.querySelector('details.nv-preview');if(!d)return false;d.open=true;return true})()");
+  await check("document.querySelectorAll('.ws-md-todo input[type=checkbox]').length >= 1", "预览里的待办渲染成复选框");
+  await b("eval", "(()=>{const cbs=[...document.querySelectorAll('.ws-md-todo input[type=checkbox]')].filter(c=>!c.disabled);if(cbs.length===0)return false;cbs[0].click();return true})()");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.some(n=>n.bodyMd.includes('- [x]'))})()", "勾选后正文那一行变成已勾选并保存");
+  await check("document.querySelector('[aria-label=\"待办进度\"]')?.textContent.includes('1 /')", "待办进度随之更新");
+
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(

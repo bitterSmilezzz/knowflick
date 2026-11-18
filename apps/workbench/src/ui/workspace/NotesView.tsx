@@ -44,6 +44,7 @@ import {
   type ReferenceSource,
 } from "../../domain/noteReference";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
+import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -108,6 +109,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [batchNotebook, setBatchNotebook] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  // 待办清单从正文现算：正文是唯一真相，待办状态跟着保存、跟着备份、跟着导出。
   const [status, setStatus] = useState<SaveStatus>("clean");
   const [statusNote, setStatusNote] = useState("");
   const [metaValues, setMetaValues] = useState<{ notebook: string | null; tags: string[]; excludeFromProfile: boolean }>({
@@ -166,6 +168,15 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   }, [listQuery, showTrash, showArchived, notebookFilter]);
 
   const activeNotes = useMemo(() => listNotes(state), [state]);
+  // 待办（B10）从正文现算：正文是唯一真相，不另存一份勾选状态。
+  const todos = useMemo(() => parseNoteTodos(body), [body]);
+  const todoCount = useMemo(() => countNoteTodos(todos), [todos]);
+  // 勾选一条待办：只改那一行，其余正文不动。
+  const toggleTodo = (line: number) => {
+    const out = toggleNoteTodo(body, line);
+    if (!out.changed) return;
+    onEdit(title, out.body);
+  };
   const trashedNotes = useMemo(
     // 归档过的笔记删掉也要能进回收站恢复：两个维度是独立的。
     () => listNotes(state, { includeDeleted: true, includeArchived: true }).filter((n) => n.isDeleted),
@@ -1065,6 +1076,11 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 </p>
               );
             })()}
+            {todoCount.total > 0 ? (
+              <p className="nv-count" aria-label="待办进度">
+                {`待办 ${todoCount.done} / ${todoCount.total} 已完成`}
+              </p>
+            ) : null}
             <div className="nv-insert-row" aria-label="引用其它笔记">
               <span className="nv-kbs-label">引用：</span>
               <button
@@ -1122,6 +1138,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               <summary>预览</summary>
               <MarkdownRenderer
                 text={body}
+                onToggleTodo={(line) => toggleTodo(line)}
                 resolveAttachment={(p) => objectUrls.get(p) ?? null}
                 onOpenReference={(id, kind) => {
                   if (kind === "material") {

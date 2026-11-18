@@ -2905,6 +2905,11 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-find-count { color: var(--muted); min-width: 64px; }
 /* 字数与段落数：放在正文下面，写长文的人会看。 */
 .nv-count { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
+/* 正文里的待办：复选框 + 文字；已完成的对勾淡出但仍可点回去。 */
+.ws-md-todo { list-style: none; }
+.ws-md-todo-label { display: inline-flex; align-items: flex-start; gap: 6px; cursor: pointer; }
+.ws-md-todo-label input { margin: 2px 0 0; }
+.ws-md-todo-done { color: var(--muted); text-decoration: line-through; }
 .nv-batch-notebook { flex: 1; min-width: 140px; font-size: 12px; }
 .nv-unarchive { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
 .nv-pin-badge { font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 6px; color: var(--muted); }

@@ -72,12 +72,17 @@ function renderInline(
 /**
  * 结构化轻量 Markdown 渲染器 (纯 React 节点，免 XSS 风险)
  */
-export function MarkdownRenderer({ text, resolveAttachment, onOpenReference }: {
+export function MarkdownRenderer({ text, resolveAttachment, onOpenReference, onToggleTodo }: {
   text: string;
   /** 给了才把正文里的 `![](media/…)` 渲染成 <img>（见 renderInline 的安全口径）。 */
   resolveAttachment?: (path: string) => string | null;
   /** 允许在正文中打开库内笔记或素材。 */
   onOpenReference?: OpenReference;
+  /**
+   * 勾选正文里的待办。给了才把 `- [ ]` 渲染成可点的复选框——
+   * 没有它的地方（邮件摘要、阅读面板）待办只读，避免「看起来能点却点不动」。
+   */
+  onToggleTodo?: (line: number) => void;
 }): React.ReactElement {
   if (!text) return <div className="ws-prose" />;
 
@@ -136,17 +141,44 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenReference }: {
       continue;
     }
 
-    // 4. 无序列表 - 或 *
+    // 4. 无序列表 - 或 *（含待办：`- [ ]` / `- [x]`）
     if (/^[-*]\s+/.test(trimmed)) {
-      const listItems: string[] = [];
+      const listItems: { text: string; line: number; todo: boolean; done: boolean }[] = [];
       while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
-        listItems.push(lines[i].trim().replace(/^[-*]\s+/, ""));
+        const raw = lines[i];
+        const stripped = raw.trim().replace(/^[-*]\s+/, "");
+        const todo = stripped.match(/^\[([ xX])\]\s+(.*)$/);
+        listItems.push({
+          text: todo ? todo[2] : stripped,
+          line: i,
+          todo: !!todo,
+          done: !!todo && todo[1].toLowerCase() === "x",
+        });
         i++;
       }
       elements.push(
         <ul key={`ul-${i}`}>
           {listItems.map((item, idx) => (
-            <li key={idx}>{renderInline(item, resolveAttachment, onOpenReference)}</li>
+            <li key={idx} className={item.todo ? "ws-md-todo" : undefined}>
+              {item.todo ? (
+                <label className="ws-md-todo-label">
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    // 没有 onToggleTodo 时保持只读：可点的复选框点不动比不可点更糟。
+                    readOnly={!onToggleTodo}
+                    disabled={!onToggleTodo}
+                    aria-label={item.text}
+                    onChange={() => onToggleTodo?.(item.line)}
+                  />
+                  <span className={item.done ? "ws-md-todo-text ws-md-todo-done" : "ws-md-todo-text"}>
+                    {renderInline(item.text, resolveAttachment, onOpenReference)}
+                  </span>
+                </label>
+              ) : (
+                renderInline(item.text, resolveAttachment, onOpenReference)
+              )}
+            </li>
           ))}
         </ul>
       );
