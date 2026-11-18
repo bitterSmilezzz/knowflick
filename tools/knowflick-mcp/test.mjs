@@ -10,7 +10,7 @@ import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { rpcClient } from "./test-client.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -54,9 +54,31 @@ const CARDS = [
   },
 ];
 
-function fixtureLibrary(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kf-mcp-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+// 临时目录统一在这个文件的**所有**用例跑完之后再删。
+//
+// 为什么不能挂在每个用例的 t.after 上：node:test 的 after 钩子按**注册顺序**执行，
+// fixtureLibrary 的清理注册得比「关数据库 / 杀子进程」早，于是删目录那一刻句柄还开着。
+// POSIX 允许删掉正在使用的文件，本机永远看不到问题；Windows 直接 EBUSY/EPERM，
+// 把「系统不允许」错报成「测试失败」——CI 上就是这么红的。
+const tempDirs = [];
+function tempDir(prefix) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+after(() => {
+  for (const dir of tempDirs) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // 还有进程握着句柄就留待系统清理：临时目录残留不影响任何判据，
+      // 把它变成失败才是错的。
+    }
+  }
+});
+
+function fixtureLibrary() {
+  const dir = tempDir("kf-mcp-");
   const cardsFile = path.join(dir, "cards.json");
   fs.writeFileSync(cardsFile, JSON.stringify(CARDS));
   return { ...loadLibrary({ cardsFile, taxonomyFile: TAXONOMY }), allowWrite: true };
@@ -72,7 +94,7 @@ function setupAuthorization(library) {
 }
 
 test("路径：默认卡库优先 store/，旧 mac 位置只作兜底", () => {
-  const both = fs.mkdtempSync(path.join(os.tmpdir(), "kf-path-"));
+  const both = tempDir("kf-path-");
   fs.mkdirSync(path.join(both, "store"), { recursive: true });
   fs.writeFileSync(path.join(both, "store", "cards.json"), "[]");
   assert.equal(defaultCardsPath(both), path.join(both, "store", "cards.json"));
@@ -82,17 +104,17 @@ test("路径：默认卡库优先 store/，旧 mac 位置只作兜底", () => {
   assert.equal(defaultCardsPath(both), path.join(both, "store", "cards.json"));
 
   // 只有旧位置时兜底用它，否则老用户的库会被判成「找不到卡片库」
-  const legacy = fs.mkdtempSync(path.join(os.tmpdir(), "kf-path-legacy-"));
+  const legacy = tempDir("kf-path-legacy-");
   fs.writeFileSync(path.join(legacy, "cards.json"), "[]");
   assert.equal(defaultCardsPath(legacy), path.join(legacy, "cards.json"));
 
   // 两处都没有时给出的是**现行**位置，报错信息才有指导意义
-  const empty = fs.mkdtempSync(path.join(os.tmpdir(), "kf-path-empty-"));
+  const empty = tempDir("kf-path-empty-");
   assert.equal(defaultCardsPath(empty), path.join(empty, "store", "cards.json"));
 });
 
 test("检索：中文 N-Gram 命中正确卡片并给出摘要", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const search = createSearcher(library.cards);
   const hits = search("存货跌价准备 可变现净值");
   assert.ok(hits.length > 0);
@@ -120,7 +142,7 @@ test("检索：不跨标点、空格或英文拼接中文词", () => {
 });
 
 test("暂存：原始输入先校验，拒绝非法类型和被 truthy 判断漏掉的难度", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const before = fs.readFileSync(library.cardsPath, "utf8");
   const valid = { headline: "新卡", summary: "摘要", details: "正文" };
   assert.equal(stageCard(library, valid).ok, true);
@@ -138,7 +160,7 @@ test("暂存：原始输入先校验，拒绝非法类型和被 truthy 判断漏
 });
 
 test("CLI：无卡库时仍可看帮助", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const missing = path.join(path.dirname(library.cardsPath), "missing.json");
   for (const args of [[], ["--help"], ["help"], ["search", "--help"]]) {
     const output = execFileSync(process.execPath, [path.join(HERE, "kf.mjs"), ...args, "--cards", missing], { encoding: "utf8" });
@@ -147,7 +169,7 @@ test("CLI：无卡库时仍可看帮助", (t) => {
 });
 
 test("CLI：旧分类卡片详情使用地图同一学科派生规则", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   fs.writeFileSync(library.cardsPath, JSON.stringify([{ ...CARDS[0], subject: undefined, branch: undefined, track: undefined }]));
   const derived = browseMap(loadLibrary({ cardsFile: library.cardsPath, taxonomyFile: TAXONOMY }))[0];
   const output = execFileSync(process.execPath, [path.join(HERE, "kf.mjs"), "get", "C1", "--cards", library.cardsPath], { encoding: "utf8" });
@@ -155,7 +177,7 @@ test("CLI：旧分类卡片详情使用地图同一学科派生规则", (t) => {
 });
 
 test("资源：仓库路径含空格与中文时仍可加载默认学科契约", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const root = path.join(path.dirname(library.cardsPath), "知识库 with spaces");
   const moduleDir = path.join(root, "tools", "knowflick-mcp");
   const assets = path.join(root, "shared", "assets");
@@ -169,7 +191,7 @@ test("资源：仓库路径含空格与中文时仍可加载默认学科契约",
 });
 
 test("地图：按学科分组、未分级排最后、进度可算", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const map = browseMap(library);
   assert.deepEqual(map.map((row) => row.subject), ["accounting", "english", null]);
   const accounting = map[0];
@@ -182,7 +204,7 @@ test("地图：按学科分组、未分级排最后、进度可算", (t) => {
 });
 
 test("路径：按 orderKey 推进，includeSeen=false 能跳过已学", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const full = learningPath(library, { subject: "accounting", branch: "assets" });
   assert.deepEqual(full.map((step) => step.id), ["C1", "C2"]);
   assert.equal(full[0].position, 1);
@@ -193,7 +215,7 @@ test("路径：按 orderKey 推进，includeSeen=false 能跳过已学", (t) => 
 });
 
 test("统计：未分级数量与学科分布", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const summary = stats(library);
   assert.equal(summary.cards, 4);
   assert.equal(summary.ungraded, 1);
@@ -206,7 +228,7 @@ test("统计：未分级数量与学科分布", (t) => {
 });
 
 test("暂存：非法学科/难度被拦，合法卡进队列且去重", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const index = indexTaxonomy(library.taxonomy);
 
   const bad = stageCard(library, { headline: "x", summary: "y", details: "z", subject: "english", branch: "nope", level: 9 }, index);
@@ -232,7 +254,7 @@ test("暂存：非法学科/难度被拦，合法卡进队列且去重", (t) => 
 });
 
 test("协议：stdio 上 initialize / tools/list / tools/call 往返可用", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const child = spawn(process.execPath, [path.join(HERE, "server.mjs"), "--cards", library.cardsPath, "--allow-write"], {
     stdio: ["pipe", "pipe", "pipe"],
@@ -266,7 +288,7 @@ test("协议：stdio 上 initialize / tools/list / tools/call 往返可用", asy
 });
 
 test("协议：默认只读，不暴露写工具", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const child = spawn(process.execPath, [path.join(HERE, "server.mjs"), "--cards", library.cardsPath], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, KNOWFLICK_MCP_TOKEN: TOKEN } });
   t.after(() => child.kill());
@@ -279,7 +301,7 @@ test("协议：默认只读，不暴露写工具", async (t) => {
 });
 
 test("旧 MCP 必须持全库令牌，长连接撤销和模块关闭即时生效", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const db = new DatabaseSync(path.join(path.dirname(library.cardsPath), "knowflick.db"));
   const readToken = "b".repeat(64), projectToken = "c".repeat(64);
@@ -310,11 +332,10 @@ test("旧 MCP 必须持全库令牌，长连接撤销和模块关闭即时生效
 });
 
 test("旧 MCP 拒绝跨库的卡片符号链接和暂存文件符号链接", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const dir = path.dirname(library.cardsPath);
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "kf-outside-"));
-  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  const outside = tempDir("kf-outside-");
   const externalCards = path.join(outside, "other.json");
   fs.writeFileSync(externalCards, JSON.stringify(CARDS));
   const linkedCards = path.join(dir, "linked.json");
@@ -347,7 +368,7 @@ test("旧 MCP 拒绝跨库的卡片符号链接和暂存文件符号链接", asy
 });
 
 test("暂存后数据库提交失败如实报可能已写入，持久意图仍保留", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const db = new DatabaseSync(path.join(path.dirname(library.cardsPath), "knowflick.db"));
   db.exec(`CREATE TABLE parents(id TEXT PRIMARY KEY);
@@ -369,7 +390,7 @@ test("暂存后数据库提交失败如实报可能已写入，持久意图仍�
 });
 
 test("进程在暂存文件替换后被终止：保留意图与队列，锁阻断并说明恢复步骤", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const dir = path.dirname(library.cardsPath);
   const preload = path.join(dir, "pause-after-rename.mjs");
@@ -426,7 +447,7 @@ test("进程在暂存文件替换后被终止：保留意图与队列，锁阻�
 });
 
 test("进程在暂存文件替换前被终止：原队列保持完整，解除遗留锁后可重试", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const dir = path.dirname(library.cardsPath);
   const before = JSON.stringify([{ headline: "已有卡", summary: "摘要", details: "正文" }]);
@@ -479,7 +500,7 @@ test("进程在暂存文件替换前被终止：原队列保持完整，解除�
 });
 
 test("CLI 与 MCP 同一结果：Skill 里那句「两条路查到的必须一致」是真的", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const query = "定语从句 which that";
 
@@ -506,7 +527,7 @@ test("CLI 与 MCP 同一结果：Skill 里那句「两条路查到的必须一�
 });
 
 test("CLI：暂存是唯一写口，非法学科被拦且绝不碰 cards.json", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const before = fs.readFileSync(library.cardsPath, "utf8");
 
   const rejected = execFileSync(
@@ -529,7 +550,7 @@ test("CLI：暂存是唯一写口，非法学科被拦且绝不碰 cards.json", 
 });
 
 test("快照：未变化复用，等长原子替换与契约更新使缓存失效", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const taxonomyFile = path.join(path.dirname(library.cardsPath), "taxonomy.json");
   fs.copyFileSync(TAXONOMY, taxonomyFile);
   const read = createLibraryReader({ cardsFile: library.cardsPath, taxonomyFile });
@@ -551,7 +572,7 @@ test("快照：未变化复用，等长原子替换与契约更新使缓存失�
 });
 
 test("长连接：增删改刷新所有读取工具，坏文件报错，修复后自动恢复", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   setupAuthorization(library);
   const child = spawn(process.execPath, [path.join(HERE, "server.mjs"), "--cards", library.cardsPath, "--allow-write"], { env: { ...process.env, KNOWFLICK_MCP_TOKEN: TOKEN } });
   t.after(() => child.kill());
@@ -583,7 +604,7 @@ test("长连接：增删改刷新所有读取工具，坏文件报错，修复�
 });
 
 test("暂存：多进程共享写入口不丢卡，重复标题只接受一次", async (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const before = fs.readFileSync(library.cardsPath, "utf8");
   // 子进程先各自启动，再以同一轮请求触发写入，覆盖锁竞争。
   const code = `import readline from 'node:readline';
@@ -612,7 +633,7 @@ test("暂存：多进程共享写入口不丢卡，重复标题只接受一次",
 });
 
 test("暂存：替换失败保留旧文件并清理临时文件与锁", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   const input = { headline: "已有卡", summary: "s", details: "d" };
   stageCard(library, input);
   const before = fs.readFileSync(library.stagedPath, "utf8");
@@ -625,7 +646,7 @@ test("暂存：替换失败保留旧文件并清理临时文件与锁", (t) => {
 });
 
 test("暂存：损坏的队列不会被覆盖，失败后释放锁", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   fs.writeFileSync(library.stagedPath, "[");
   assert.throws(() => stageCard(library, { headline: "新卡", summary: "s", details: "d" }));
   assert.equal(fs.readFileSync(library.stagedPath, "utf8"), "[");
@@ -633,7 +654,7 @@ test("暂存：损坏的队列不会被覆盖，失败后释放锁", (t) => {
 });
 
 test("暂存：已有锁超时后报错，不抢锁或更改队列", (t) => {
-  const library = fixtureLibrary(t);
+  const library = fixtureLibrary();
   fs.writeFileSync(`${library.stagedPath}.lock`, "existing lock");
   assert.throws(() => stageCard(library, { headline: "新卡", summary: "s", details: "d" }), /暂存队列正被占用/);
   assert.equal(fs.readFileSync(`${library.stagedPath}.lock`, "utf8"), "existing lock");

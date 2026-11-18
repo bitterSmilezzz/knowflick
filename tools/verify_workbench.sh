@@ -10,6 +10,28 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 那次门禁失败就是猜的。这里把失败行号与命令写成 ::error:: 注解，至少能直接
 # 看出是 npm test、cargo test、哪个守卫，还是某套浏览器冒烟挂了。
 trap 'status=$?; echo "::error::门禁失败（退出码 ${status}）：第 ${LINENO} 行：${BASH_COMMAND}" >&2; exit ${status}' ERR
+
+# 跑一步并把**失败现场**写成 CI 注解。
+#
+# 为什么：ERR trap 只说得清「哪一行挂了」，说不清「哪条断言挂了」。公开仓库的
+# job 日志要 admin 权限才拿得到，注解是唯一读得到的失败细节——所以把该步输出的
+# 尾部逐行打成 ::error::。正常输出照常流到日志（tee），看日志的人不受影响。
+run_step() {
+  local label="$1"
+  shift
+  local log
+  log="$(mktemp -t "kf-step.XXXXXX.log")"
+  if "$@" 2>&1 | tee "$log"; then
+    rm -f "$log"
+    return 0
+  fi
+  echo "::error::步骤失败：${label}" >&2
+  tail -10 "$log" | while IFS= read -r line; do
+    echo "::error::${label} 现场：${line}" >&2
+  done
+  rm -f "$log"
+  return 1
+}
 cd "$ROOT/apps/workbench"
 npm test
 npx tsc --noEmit
@@ -34,25 +56,25 @@ cd "$ROOT"
 ./tools/lint_shell_vars.sh
 
 # MCP 是外部 agent 读写这个库的入口，坏掉不会有界面报错——纳入门禁。
-node tools/mcp_smoke.mjs
+run_step "MCP smoke" node tools/mcp_smoke.mjs
 # 独立临时库的正常实现也必须通过，不能只运行预期失败的退化版本。
-node tools/mcp_server_smoke.mjs
+run_step "MCP 独立临时库 smoke" node tools/mcp_server_smoke.mjs
 
 # 项目授权、撤销与事务审计的反例测试（实际入口接入前也持续验证底层策略）。
-node --test tools/mcp_access_test.mjs
-node --test tools/mcp_scoped_server_test.mjs
+run_step "MCP 项目授权反例" node --test tools/mcp_access_test.mjs
+run_step "MCP 范围化服务端" node --test tools/mcp_scoped_server_test.mjs
 # 旧卡片 MCP 也要遵守同一授权，保留其检索与人工暂存回归。
-node --test tools/knowflick-mcp/test.mjs
+run_step "旧卡片 MCP" node --test tools/knowflick-mcp/test.mjs
 
 # MCP 安装接入（T10，审计 KF-013）：安装用户复制配置就能用——
 # 绝对路径 + --dir 库目录、任意 cwd、默认只读、显式授权写成功、
 # 模块停用后独立进程被阻断。这套不需要浏览器，CI 上也能跑。
-node tools/mcp_install_smoke.mjs
+run_step "MCP 安装接入" node tools/mcp_install_smoke.mjs
 
 # MCP 素材检索的断言**真的**能抓住缺陷吗？
 # 断言「绿」不等于「在守东西」——把实现改回缺陷状态，它可能照样绿。
 # 这一步把实现逐个改坏，确认对应断言会报红。
-node tools/mcp_material_search_reverse_test.mjs
+run_step "MCP 素材检索反例" node tools/mcp_material_search_reverse_test.mjs
 
 # 品味与可用性门禁：验「看起来对不对、用起来顺不顺」——对比度、点击目标、
 # 焦点可见性、侧栏层级与裁切、重复 CTA。这些是用户能感知、而功能测试查不出的。
