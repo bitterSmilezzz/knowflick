@@ -164,6 +164,9 @@ jobs:
           python3 - <<'PY'
           import glob, sys, xml.etree.ElementTree as ET
           total = failed = skipped = 0
+          # 失败用例名要打进注解：拿不到 job 日志时，「38/98 失败」这句话等于没说——
+          # 不知道是哪一类用例，就没法判断是环境问题还是真的坏了。
+          failed_cases = []
           # 四个测试任务的结果目录都要收：模块拆出去之后，只扫 app 会漏报。
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml') + \
                       glob.glob('domain/build/test-results/jvmTest/*.xml') + \
@@ -174,7 +177,17 @@ jobs:
               total += int(root.get('tests', 0))
               failed += int(root.get('failures', 0)) + int(root.get('errors', 0))
               skipped += int(root.get('skipped', 0))
+              for case in root.iter('testcase'):
+                  for bad in list(case.findall('failure')) + list(case.findall('error')):
+                      detail = (bad.get('message') or bad.text or '').strip().splitlines()
+                      first = detail[0][:160] if detail else ''
+                      failed_cases.append(f"{case.get('classname','?')}#{case.get('name','?')}: {first}")
           print(f'JVM 测试：{total} 项，失败 {failed}，跳过 {skipped}')
+          # 注解每步只留 10 条：先打总览，再打前 9 条失败用例。
+          if failed_cases:
+              print(f'::error::失败用例共 {len(failed_cases)} 条，前 9 条如下')
+              for line in failed_cases[:9]:
+                  print(f'::error::用例：{line}')
           sys.exit(1 if failed else 0)
           PY
 
