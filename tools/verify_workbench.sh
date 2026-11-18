@@ -33,12 +33,15 @@ run_step() {
   return 1
 }
 cd "$ROOT/apps/workbench"
-npm test
-npx tsc --noEmit
+run_step "前端单测" npm test
+run_step "TypeScript 类型检查" npx tsc --noEmit
 cd src-tauri
 # --locked：默认行为在 Cargo.lock 过期时会静默改写它再继续，CI 上完全看不出来；
 # 加上之后 lock 与 Cargo.toml 一漂移就红。
-cargo test --locked
+#
+# 包进 run_step：cargo test 失败时尾部十行里有「failures:」与失败的用例名——
+# Windows 那次只看得到「退出码 101」，连是哪条用例都不知道。
+run_step "Rust 单测" cargo test --locked
 
 # 同一批 Rust 用例，**在代理环境变量下**再跑一遍。
 #
