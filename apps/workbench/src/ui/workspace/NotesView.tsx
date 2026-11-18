@@ -45,6 +45,7 @@ import {
 } from "../../domain/noteReference";
 import { MARKDOWN_ACTIONS, applyMarkdownAction, type MarkdownAction } from "../../domain/markdownEdit";
 import { findBacklinks } from "../../domain/noteBacklink";
+import { auditReferences } from "../../domain/referenceAudit";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import {
@@ -57,6 +58,7 @@ import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { NoteBacklinks } from "./NoteBacklinks";
+import { ReferenceAuditPanel } from "./ReferenceAuditPanel";
 
 /**
  * 笔记工作面（R1 首个纵向切片）——契约见 docs/NOTES_MODEL.md「界面契约」：
@@ -672,6 +674,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   }, [body, activeNotes, materials]);
 
   /** 可引用的来源：其它笔记 + 素材（R2「多来源引用」）。 */
+  // 引用体检（C05）：全库扫一遍失效/过期的引用，不只是打开着的那篇。
+  const auditIssues = useMemo(() => auditReferences(state.notes, materials), [state.notes, materials]);
+
   // 反向链接（B04）：谁引用了当前这篇。
   const backlinks = useMemo(
     () => (selectedId ? findBacklinks(state.notes, selectedId) : []),
@@ -820,6 +825,13 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             ))}
           </select>
         </label>
+        <ReferenceAuditPanel
+          issues={auditIssues}
+          onOpen={(noteId) => {
+            const target = state.notes.find((n) => n.id === noteId);
+            if (target) openNote(target);
+          }}
+        />
         <label className="ws-search">
           <Icon name="search" />
           <input
