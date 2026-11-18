@@ -6,11 +6,16 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile), session = 'knowflick-goal-scope-smoke';
 const b = async (...args) => (await exec('agent-browser', ['--session', session, ...args], { timeout: 20000 })).stdout.trim();
 const ev = async code => { const r = JSON.parse(await b('eval', `JSON.stringify(${code})`)); return typeof r === 'string' ? JSON.parse(r) : r; };
+// 等待窗口按 CI 机器的速度给：真实浏览器渲染 React 需要多久不由断言决定，
+// 而 4 秒的预算在慢机器上会把「还没画出来」误判成「功能坏了」。
 async function check(code, message) {
-  for (let n = 0; n < 40; n++) { if (await ev(code)) { console.log(`PASS ${message}`); return; } await new Promise(r => setTimeout(r, 100)); }
+  for (let n = 0; n < 150; n++) { if (await ev(code)) { console.log(`PASS ${message}`); return; } await new Promise(r => setTimeout(r, 100)); }
   assert.fail(message);
 }
 try {
+  // 固定视口：默认视口高度只有 577px，「目标现状」的证据按钮落在折叠线以下，
+  // 真实点击打不到（eval 点击能打中，所以只有真实点击才暴露）。
+  await b('set', 'viewport', '1040', '760');
   await b('open', process.env.KNOWFLICK_UI_URL || 'http://localhost:1420');
   await b('eval', `(async()=>{
     const projects=[{id:'p1',name:'项目一',archivedAt:null},{id:'p2',name:'旧项目',archivedAt:10}];
@@ -72,6 +77,8 @@ try {
   })()`);
   await check('document.querySelector(\'[aria-label="目标现状"]\')?.innerText.includes("原件已删除或不可用")','已删除的来源保留关联事实并标记不可用');
   await check('document.querySelector(\'[aria-label="目标现状"]\')?.innerText.includes("已达成目标 — 关联证据 1 条（已达成）") && document.querySelector(\'[aria-label="目标现状"]\')?.innerText.includes("达成证据")','周期内已达成目标及其证据仍可回顾');
+  // 先滚到可见处再点：真实点击按坐标命中，视口外的按钮点不到。
+  await b('scrollintoview', 'button.rv-source-link');
   await b('click', 'button.rv-source-link');
   await check('window.__goalTest.opened === "note:note-1"','周期证据可点击回到笔记原件');
   await b('eval', `(()=>{[...document.querySelectorAll('button.rv-source-link')].find(b=>b.textContent==='证据素材').click();return true;})()`);

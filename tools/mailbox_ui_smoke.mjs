@@ -13,7 +13,7 @@ const ev = async code => {
 };
 let count = 0;
 async function check(expression, label) {
-  for (let n = 0; n < 40; n++) {
+  for (let n = 0; n < 100; n++) {
     if (await ev(expression)) { count++; console.log(`PASS ${label}`); return; }
     await new Promise(resolve => setTimeout(resolve, 100));
   }

@@ -14,8 +14,10 @@ const url = process.env.KNOWFLICK_UI_URL || "http://localhost:1420";
 const b = async (...args) => (await exec("agent-browser", ["--session", session, ...args], { timeout: 25000 })).stdout.trim();
 const ev = async code => { const r = JSON.parse(await b("eval", `JSON.stringify(${code})`)); return typeof r === "string" ? JSON.parse(r) : r; };
 let count = 0;
+// 等待预算按「慢机器也能画完」定：原先 50×120ms＝6 秒，本机够用，CI 的共享
+// runner 上首屏 React 还没挂载完就报红。断言本身不变，只是别把机器慢判成功能坏。
 async function check(expression, label) {
-  for (let n = 0; n < 50; n++) {
+  for (let n = 0; n < 100; n++) {
     if (await ev(expression)) { count++; console.log(`PASS ${label}`); return true; }
     await new Promise(r => setTimeout(r, 120));
   }
@@ -37,6 +39,8 @@ const setNative = (selector, value) => b("eval", `(() => {
 try {
   // 开场清掉笔记与工作区状态：本冒烟假设从空笔记库开始，重复跑必须幂等
   // （上一轮的残留会让「第一篇笔记」点开旧条目，后续断言全错位）。
+  // 固定视口：真实点击按坐标命中，默认视口只有 577px 高，下半屏的按钮点不到。
+  await b("set", "viewport", "1040", "760");
   await b("open", url);
   await b("eval", "(()=>{localStorage.removeItem('knowflick.notes.v1');localStorage.removeItem('knowflick.workspace.v1');return true})()");
   await b("open", url);

@@ -24,8 +24,13 @@ async function evaluate(code) {
   const parsed = JSON.parse(out);
   return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
 }
+// 等待预算按「慢机器也能画完」定，不按本机速度定。
+//
+// 原先 30×100ms＝3 秒：本机够用，CI 的共享 runner 上首屏 React 还没挂载完就
+// 报 "three desktop panes render" 失败。断言本身没变——只是别把「机器慢」
+// 判成「功能坏了」。真的坏了仍然会在这 10 秒后报红。
 async function check(expression, label) {
-  for (let n = 0; n < 30; n++) {
+  for (let n = 0; n < 100; n++) {
     if (await evaluate(expression)) {
       console.log(`PASS ${label}`);
       return;
