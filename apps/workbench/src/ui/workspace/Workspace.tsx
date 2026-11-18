@@ -187,6 +187,16 @@ export function Workspace() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
   const searchHistoryRef = useRef<string[]>([]);
+  /**
+   * 用户是否已经动过最近搜索（记录 / 删除 / 清空）。
+   *
+   * 为什么要记这个：首屏读取是异步的，而「清空最近搜索」随时可能先完成。
+   * 读取回来时若无条件写回，用户的清空就被一次**迟到的加载**悄悄撤销——
+   * 界面上最近搜索又冒出来，还正好盖住下面的列表。快机器上加载总是先到，
+   * 本机永远看不到；慢机器（CI）上就变成「点了没反应」。
+   * 动过之后以内存里的为准，落盘由 persistSearchHistory 负责。
+   */
+  const searchHistoryEditedRef = useRef(false);
   const searchHistoryWritesRef = useRef<Promise<void>>(Promise.resolve());
   // T13（G01）：知识库范围——「选定知识库 → 搜原文」这一步此前没有界面入口。
   const [kbScope, setKbScope] = useState<string>("");
@@ -384,9 +394,12 @@ export function Workspace() {
       });
       setApiKey(data.apiKey);
       setDir(data.dir);
-      const history = parseSearchHistory(data.searchHistory);
-      searchHistoryRef.current = history;
-      setSearchHistory(history);
+      // 迟到的加载不能撤销用户已经做过的清空/删除（见 searchHistoryEditedRef 的注释）。
+      if (!searchHistoryEditedRef.current) {
+        const history = parseSearchHistory(data.searchHistory);
+        searchHistoryRef.current = history;
+        setSearchHistory(history);
+      }
       setLastImportReport(await readLastImportReport(data.dir));
       try { setGoalsState(await activeGoals(data.dir)); } catch { /* 目标读取失败不阻断 */ }
     } catch (e) {
@@ -813,17 +826,20 @@ export function Workspace() {
   const rememberSearch = useCallback((value: string) => {
     const next = pushSearchHistory(searchHistoryRef.current, value);
     if (next.length === searchHistoryRef.current.length && next.every((term, index) => term === searchHistoryRef.current[index])) return;
+    searchHistoryEditedRef.current = true;
     searchHistoryRef.current = next;
     setSearchHistory(next);
     void persistSearchHistory(next).catch(() => setNotice("最近搜索记录未能保存；搜索结果仍可使用。"));
   }, [persistSearchHistory]);
   const forgetSearch = useCallback((value: string) => {
     const next = removeSearchHistory(searchHistoryRef.current, value);
+    searchHistoryEditedRef.current = true;
     searchHistoryRef.current = next;
     setSearchHistory(next);
     void persistSearchHistory(next).catch(() => setNotice("最近搜索记录未能更新。"));
   }, [persistSearchHistory]);
   const clearSearchHistory = useCallback(() => {
+    searchHistoryEditedRef.current = true;
     searchHistoryRef.current = [];
     setSearchHistory([]);
     void persistSearchHistory([]).catch(() => setNotice("最近搜索记录未能清空。"));

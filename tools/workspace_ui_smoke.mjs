@@ -162,6 +162,13 @@ try {
   await check('document.querySelector(".ws-search-history")?.innerText.includes("记忆")', "saved search history reopens from the search box");
   await browser("click", ".ws-search-history-head button");
   await check('JSON.parse(localStorage.getItem("knowflick.searchHistory.v1")||"[]").length === 0', "recent searches can be cleared");
+  // 清空之后重新聚焦搜索框，最近搜索不该又冒出来。
+  //
+  // 为什么这条要单独钉：首屏读取是异步的，迟到的加载曾经把已经清空的历史写回去，
+  // 界面上的下拉又盖住下面的列表——点列表行会命中下拉的 <ul>，用户看到的是
+  // 「点了没反应」。CI（慢机器）上稳定复现，本机（快）从来没有。
+  await browser("click", '[aria-label="搜索知识库"]');
+  await check('!document.querySelector(".ws-search-history")', "cleared recent searches stay cleared after refocus");
   await browser("fill", '[aria-label="搜索知识库"]', "不匹配的词语");
   await check('document.body.innerText.includes("没有找到匹配内容")', "honest no-results state");
   await browser("fill", '[aria-label="搜索知识库"]', "");
