@@ -48,6 +48,33 @@ async function clickButton(text) {
   );
 }
 
+// 真实点击「列表第一行」这件事在 CI 上被判成「被 <ul> 遮住」，而本机怎么跑都点得到。
+// 断言不该靠猜：失败时先把现场（矩形、视口、该点最上层元素、下拉是否展开）打出来，
+// 让下一次红自己说明原因，而不是再猜一轮。
+async function clickFirstEntry() {
+  const probe = () =>
+    evaluate(
+      `(()=>{const el=document.querySelector(".ws-entry");if(!el)return {found:false};
+        const r=el.getBoundingClientRect();
+        const at=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2);
+        const list=document.querySelector(".ws-entries");
+        return {found:true, rect:[Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)],
+          vw:innerWidth, vh:innerHeight, at: at ? at.tagName + "." + (at.className || "(no-class)") : null,
+          history: !!document.querySelector(".ws-search-history"),
+          historyItems: document.querySelectorAll(".ws-search-history li").length,
+          entries: document.querySelectorAll(".ws-entry").length,
+          scrollTop: list ? list.scrollTop : null};})()`
+    );
+  const before = await probe();
+  try {
+    await browser("scrollintoview", ".ws-entry");
+    await browser("click", ".ws-entry");
+  } catch (error) {
+    console.error(`ENTRY_CLICK_FAILED before=${JSON.stringify(before)} after=${JSON.stringify(await probe())}`);
+    console.error(String(error).split("\n")[0]);
+    throw error;
+  }
+}
 try {
   // 固定视口（规格的桌面基准尺寸）。默认视口跟窗口一致，CI 的共享 runner 上高度
   // 只有 ~577px：列表与阅读区被折叠线切开，真实点击按坐标命中的就落到父容器上
@@ -144,9 +171,7 @@ try {
   await clickButton("全部知识");
   await check('document.querySelectorAll(".ws-entry").length >= 1', "library lists the new card");
   await browser("fill", '[aria-label="搜索知识库"]', "界面回归");
-  // 先滚到可见处再点：真实点击按坐标命中，被滚动容器切掉一半的元素点不中。
-  await browser("scrollintoview", ".ws-entry");
-  await browser("click", ".ws-entry");
+  await clickFirstEntry();
   const archiveLabel = await evaluate(
     '(document.querySelector(\'[aria-label="归档素材"]\')||document.querySelector(\'[aria-label="移回收件箱"]\'))?.getAttribute("aria-label") ?? ""'
   );
