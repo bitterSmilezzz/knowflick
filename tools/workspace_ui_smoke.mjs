@@ -75,6 +75,23 @@ async function clickFirstEntry() {
     throw error;
   }
 }
+// 清空搜索框不能靠 `fill` + 空字符串。
+//
+// 某些 agent-browser 版本对「设为空」不派发 input 事件：DOM 的 value 变成空了，
+// React 的受控状态却还留着上一个关键词。接下来那一下失焦就把**旧词**记进「最近搜索」，
+// 下次聚焦时下拉冒出来盖住列表——真实点击列表行会命中下拉的 <ul>，用户看到的是
+// 「点了没反应」。中间「点全部知识后列表又有内容」会掩盖这一切（切视图会清查询）。
+// 这里用原生 setter 明确清一次，并断言筛选**真的**解除了。
+async function clearSearch() {
+  await browser(
+    "eval",
+    "(()=>{const el=document.querySelector('.ws-search input');if(!el)throw new Error('missing search box');const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;el.focus();setter.call(el,'');el.dispatchEvent(new Event('input',{bubbles:true}));return true})()"
+  );
+  await check(
+    'document.querySelector(".ws-search input").value === "" && !document.body.innerText.includes("没有找到匹配内容")',
+    "clearing the search box really releases the filter"
+  );
+}
 try {
   // 固定视口（规格的桌面基准尺寸）。默认视口跟窗口一致，CI 的共享 runner 上高度
   // 只有 ~577px：列表与阅读区被折叠线切开，真实点击按坐标命中的就落到父容器上
@@ -171,13 +188,16 @@ try {
   await check('!document.querySelector(".ws-search-history")', "cleared recent searches stay cleared after refocus");
   await browser("fill", '[aria-label="搜索知识库"]', "不匹配的词语");
   await check('document.body.innerText.includes("没有找到匹配内容")', "honest no-results state");
-  await browser("fill", '[aria-label="搜索知识库"]', "");
+  await clearSearch();
 
   // Archive round trip
   await browser("click", '.ws-nav-row[aria-current="page"]');
   await clickButton("全部知识");
   await check('document.querySelectorAll(".ws-entry").length >= 1', "library lists the new card");
   await browser("fill", '[aria-label="搜索知识库"]', "界面回归");
+  // 最近搜索已经清空，这里不该有下拉盖住列表。它一旦出现，真实点击会命中下拉的 <ul>，
+  // 报的是「元素被 <ul> 遮住」——离真正的原因（旧关键词被失焦记进历史）很远。
+  await check('!document.querySelector(".ws-search-history")', "no recent-search dropdown covers the list while searching");
   await clickFirstEntry();
   const archiveLabel = await evaluate(
     '(document.querySelector(\'[aria-label="归档素材"]\')||document.querySelector(\'[aria-label="移回收件箱"]\'))?.getAttribute("aria-label") ?? ""'
@@ -186,7 +206,7 @@ try {
     await browser("click", '[aria-label="归档素材"]');
     await check('document.body.innerText.includes("已归档")', "archiving reports where the material went");
   }
-  await browser("fill", '[aria-label="搜索知识库"]', "");
+  await clearSearch();
 
   // Settings: three appearance options and module toggle
   await clickButton("设置");
@@ -510,7 +530,7 @@ try {
     "confirmed delete removes exactly one card"
   );
   await check('document.body.innerText.includes("已删除知识卡")', "delete reports what happened");
-  await browser("fill", '[aria-label="搜索知识库"]', "");
+  await clearSearch();
 
   // 笔记转知识卡：解析器早就有，却一直没有入口——笔记软件最该有的能力
   await check('!!document.querySelector(\'[aria-label="笔记转知识卡"]\')', "有「笔记转知识卡」入口");
