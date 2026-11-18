@@ -2885,6 +2885,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 /* 已处于开启状态的图标按钮：颜色要能看出来，不能只靠 aria-pressed。 */
 .nv-is-active { color: var(--accent-text); }
 .nv-error { color: var(--danger); font-size: 12px; margin: 0; white-space: pre-wrap; }
+/* 成功回执：与错误区分开（复制/导出做成的事不该显示成红色告警）。 */
+.nv-notice { color: var(--muted); font-size: 12px; margin: 0; white-space: pre-wrap; }
 /* 笔记列表要占满左栏剩余高度并自己滚动。
    之前它没有 flex: 1，于是作为 .nv-list 的 flex 子项被压到 30px；
    条目里的标题/摘要带 overflow: hidden（自动最小尺寸归零）跟着塌成 0 高——

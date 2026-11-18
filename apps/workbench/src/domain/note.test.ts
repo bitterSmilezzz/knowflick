@@ -5,10 +5,12 @@ import {
   createKnowledgeBase,
   createNoteDraft,
   deleteNote,
+  duplicateNoteDraft,
   emptyNotesState,
   listNotes,
   NoteConflictError,
   noteFromJson,
+  noteToMarkdown,
   restoreNote,
   restoreNoteRaw,
   searchNotes,
@@ -226,5 +228,59 @@ describe("笔记领域语义（与 Rust notes.rs 对齐）", () => {
     // 置顶的笔记归档后也不再出现在主列表。
     state = upsertNote(state, { ...state.notes.find((n) => n.id === "old")!, archivedAt: 4000 }, 1, 4000).state;
     expect(listNotes(state).map((n) => n.id)).toEqual(["fresh"]);
+  });
+  it("复制笔记是新建：新 id、修订 1，保留内容与笔记本/标签，清掉原篇的状态", () => {
+    let state = emptyNotesState();
+    const src = createNoteDraft(1000);
+    src.id = "src";
+    src.title = "项目复盘";
+    state = upsertNote(state, { ...src, bodyMd: "正文第一段" }, 0, 1000).state;
+    // 原篇带上「属于它自己」的状态：置顶、收藏、归档、来源素材、修订 3。
+    state = upsertNote(state, { ...state.notes[0], bodyMd: "正文第二段" }, 1, 2000).state;
+    state = upsertNote(state, {
+      ...state.notes[0],
+      isPinned: true,
+      isFavorite: true,
+      archivedAt: 2500,
+      notebook: "项目A",
+      tags: ["工作", "灵感"],
+      excludeFromProfile: true,
+      sourceMaterialId: "m-1",
+    }, 2, 3000).state;
+
+    const draft = duplicateNoteDraft(state, "src", 9000);
+    expect(draft.currentRevision).toBe(0); // 草稿尚未落库
+    const saved = upsertNote(state, draft, 0, 9000);
+    const copy = saved.state.notes[0];
+    expect(saved.outcome).toEqual({ id: draft.id, revision: 1, created: true });
+    expect(copy.id).not.toBe("src");
+    expect(copy.currentRevision).toBe(1);
+    expect(copy.title).toBe("项目复盘（副本）");
+    expect(copy.bodyMd).toBe("正文第二段");
+    expect(copy.notebook).toBe("项目A");
+    expect(copy.tags).toEqual(["工作", "灵感"]);
+    expect(copy.excludeFromProfile).toBe(true);
+    // 属于原篇的状态不复制。
+    expect(copy.isPinned).toBe(false);
+    expect(copy.isFavorite).toBe(false);
+    expect(copy.archivedAt).toBeNull();
+    expect(copy.isDeleted).toBe(false);
+    expect(copy.sourceMaterialId).toBeNull();
+    // 原篇不动，副本进状态且可被列表看到。
+    expect(saved.state.notes.find((n) => n.id === "src")!.currentRevision).toBe(2);
+    // 原篇仍是置顶：置顶优先于「谁更新」，所以它排在副本前面。
+    expect(listNotes(saved.state, { includeArchived: true }).map((n) => n.id)).toEqual(["src", copy.id]);
+    expect(() => duplicateNoteDraft(state, "missing", 9000)).toThrow(/笔记不存在/);
+  });
+
+  it("单篇导出即正文本身，正文为空时退化为标题", () => {
+    const note = createNoteDraft(1000);
+    note.title = "标题";
+    note.bodyMd = "# 自带标题\n\n正文里的 `代码` 与列表：\n\n- 甲\n- 乙\n";
+    // 逐字一致：不补标题、不包装 front matter。
+    expect(noteToMarkdown(note)).toBe(note.bodyMd);
+    // 空正文导出空文件等于丢内容，退化为一行标题。
+    expect(noteToMarkdown({ ...note, bodyMd: "   " })).toBe("# 标题\n");
+    expect(noteToMarkdown({ ...note, title: "  ", bodyMd: "" })).toBe("# 无标题笔记\n");
   });
 });

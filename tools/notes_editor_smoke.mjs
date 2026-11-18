@@ -161,6 +161,17 @@ try {
   await b("eval", "(()=>{document.querySelector('.nv-archive-toggle').click();return true})()");
   await check("document.querySelectorAll('.nv-entry').length === 1", "移出归档后回到笔记列表");
 
+  // 8c. 复制与单篇导出（B02）：复制是新笔记（新 id、修订 1），导出是正文原样。
+  const revBeforeCopy = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"复制这篇笔记\"]').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry').length === 2", "复制后列表多出一篇");
+  await check("document.body.innerText.includes('已复制为')", "复制有成功回执");
+  await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const copy=s.notes.find(n=>n.title.includes('（副本）'));const src=s.notes.find(n=>!n.title.includes('（副本）'));return !!copy && copy.currentRevision === 1 && copy.id !== src.id && copy.bodyMd === src.bodyMd})()`, "副本是新笔记（新 id、修订 1），正文与原文一致");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const copy=s.notes.find(n=>n.title.includes('（副本）'));return !!copy && !copy.isPinned && !copy.isFavorite && copy.archivedAt===null})()", "副本不继承置顶/收藏/归档");
+  await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const src=s.notes.find(n=>!n.title.includes('（副本）'));return src.currentRevision === ${revBeforeCopy}})()`, "原文修订号不变");
+  await check("(()=>{document.querySelector('[aria-label=\"导出为 Markdown\"]').click();return true})()", "点了导出按钮");
+  await check("document.body.innerText.includes('已导出 Markdown')", "导出有成功回执并说明落到哪里");
+
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(

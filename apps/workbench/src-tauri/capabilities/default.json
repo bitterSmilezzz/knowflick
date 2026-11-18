@@ -92,6 +92,7 @@
     "allow-db-upsert-card",
     "allow-export-archive",
     "allow-export-cards-json",
+    "allow-write-text-file",
     "allow-fetch-clip",
     "allow-get-shortcut-status",
     "allow-hide-capsule",

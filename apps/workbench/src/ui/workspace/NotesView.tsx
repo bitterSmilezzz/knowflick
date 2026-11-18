@@ -4,6 +4,8 @@ import {
   createKnowledgeBaseNamed,
   readNoteMedia,
   deleteNoteById,
+  duplicateNoteById,
+  exportNoteMarkdown,
   readNotes,
   removeNoteFromKnowledgeBase,
   restoreNoteById,
@@ -112,6 +114,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [refQuery, setRefQuery] = useState("");
   const [kbName, setKbName] = useState("");
   const [viewError, setViewError] = useState("");
+  // 成功回执（复制/导出）：与错误分开，别把做成的事显示成红色告警。
+  const [viewNotice, setViewNotice] = useState("");
 
   const sessionsRef = useRef<Map<string, NoteSession>>(new Map());
   const dirRef = useRef(dir);
@@ -368,6 +372,34 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewError(`更新笔记属性失败：${String(e)}`);
     }
   };
+  /** 复制当前笔记：落库走正常 upsert（新 id、修订 1），随后打开副本继续写。 */
+  const duplicateCurrent = async () => {
+    if (!selected) return;
+    setViewError("");
+    try {
+      const draft = await duplicateNoteById(selected.id, dirRef.current);
+      await refresh();
+      setViewNotice(`已复制为「${draft.title}」`);
+      // 复制完直接把副本打开：只 setSelectedId 不会建会话，编辑器会继续绑在原文上，
+      // 接着输入就写进了原文——那样「复制」看起来成功、实际是原地继续编辑。
+      openNote(draft);
+    } catch (e) {
+      setViewError(`复制笔记失败：${String(e)}`);
+    }
+  };
+
+  /** 导出当前笔记为 Markdown：正文原样落盘（契约），文件名用标题。 */
+  const exportCurrent = async () => {
+    if (!selected) return;
+    setViewError("");
+    try {
+      const where = await exportNoteMarkdown(selected);
+      setViewNotice(where ? `已导出 Markdown：${where}` : "已取消导出");
+    } catch (e) {
+      setViewError(`导出 Markdown 失败：${String(e)}`);
+    }
+  };
+
   const toggleFavorite = () => {
     const s = currentSession();
     if (!s) return;
@@ -615,6 +647,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
           </button>
         </div>
         {viewError ? <p className="nv-error" role="alert">{viewError}</p> : null}
+        {viewNotice ? <p className="nv-notice" role="status">{viewNotice}</p> : null}
         <div className="nv-entries" role="listbox" aria-label="笔记条目">
           {!loaded ? (
             <p className="ws-hint">正在读取笔记…</p>
@@ -727,6 +760,24 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                       onClick={toggleFavorite}
                     >
                       <Icon name="star" />
+                    </button>
+                    <button
+                      type="button"
+                      className="ws-bordered"
+                      aria-label="复制这篇笔记"
+                      title="复制成一篇新笔记（新修订号，保留正文、笔记本与标签）"
+                      onClick={() => void duplicateCurrent()}
+                    >
+                      复制
+                    </button>
+                    <button
+                      type="button"
+                      className="ws-bordered"
+                      aria-label="导出为 Markdown"
+                      title="导出正文原样为 .md 文件"
+                      onClick={() => void exportCurrent()}
+                    >
+                      导出
                     </button>
                     <button
                       type="button"

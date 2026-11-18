@@ -29,6 +29,7 @@ fn main() {
             "write_api_key",
             "export_archive",
             "export_cards_json",
+            "write_text_file",
             "fetch_clip",
             "read_text_file",
             "complete_chat",

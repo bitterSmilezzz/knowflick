@@ -206,6 +206,44 @@ export function archivedNotes(state: NotesState): Note[] {
     .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
 }
 
+/**
+ * 复制一篇笔记（B02）。
+ *
+ * 语义上是一次**新建**，不是「同一篇的两个版本」：新 id、修订 1、当前时间。
+ * 保留正文 / 标题 / 笔记本 / 标签 / 画像排除偏好；清掉的是「属于原来那一篇」的状态——
+ * 置顶、收藏、归档、回收站，以及 `source_material_id`（否则同一份素材会被两篇笔记声明
+ * 为「已转笔记」，界面与索引都会给出错误结论）。
+ */
+/**
+ * 复制一篇笔记（B02）：只产出**草稿**，落库仍走正常的 upsert（两份实现同一语义）。
+ *
+ * 这里刻意不自己往 state 里塞：修订号、时间与冲突判定都是 upsert 的职责，
+ * 复制若自己拼一条「已保存」的记录，就会绕过那份语义（修订从 0 变 1 的规则两处各写一遍）。
+ */
+export function duplicateNoteDraft(state: NotesState, id: string, now = Date.now()): Note {
+  const source = state.notes.find((n) => n.id === id);
+  if (!source) throw new Error("笔记不存在");
+  return {
+    ...createNoteDraft(now),
+    title: `${source.title || "无标题"}（副本）`,
+    bodyMd: source.bodyMd,
+    notebook: source.notebook,
+    tags: [...source.tags],
+    excludeFromProfile: source.excludeFromProfile,
+  };
+}
+
+/**
+ * 单篇笔记导出为 Markdown。
+ *
+ * 契约是「导出 Markdown 即正文本身」（docs/NOTES_MODEL.md），所以这里**原样**返回 `body_md`：
+ * 不补标题、不包装 front matter——否则导出的文件与库里的正文不再逐字相同。
+ * 唯一的例外是正文为空：那种笔记导出一个空文件等于丢内容，于是退化为一行标题。
+ */
+export function noteToMarkdown(note: Note): string {
+  if (note.bodyMd.trim().length > 0) return note.bodyMd;
+  return `# ${note.title.trim() || "无标题笔记"}\n`;
+}
 export function createKnowledgeBase(
   state: NotesState,
   kb: Omit<KnowledgeBase, "createdAt" | "updatedAt">,

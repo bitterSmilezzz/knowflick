@@ -26,6 +26,8 @@ import {
   noteRestore,
   noteRestoreUpsert,
   noteUpsert,
+  pickMarkdownSavePath,
+  writeTextFile,
   readApiKey,
   saveSettings,
   writeApiKey,
@@ -39,7 +41,9 @@ import {
   createKnowledgeBase as domainCreateKb,
   deleteNote as domainDeleteNote,
   createNoteDraft,
+  duplicateNoteDraft,
   emptyNotesState,
+  noteToMarkdown,
   restoreNote as domainRestoreNote,
   restoreNoteRaw as domainRestoreNoteRaw,
   noteFromJson,
@@ -357,6 +361,84 @@ function browserNotesWrite(state: NotesState) {
   }
 }
 
+/**
+ * 复制一篇笔记（B02）。
+ *
+ * 两份实现同一语义：都只构造草稿，再走各自的 upsert（base=0）——修订号、时间与冲突
+ * 判定都留在那一处，复制不自己拼「已保存」的记录。
+ */
+/** 笔记对象 → Rust 命令入参。两条写入路径（保存、复制）共用一份，避免字段各写一遍。 */
+function notePayload(note: Note) {
+  return {
+    id: note.id,
+    title: note.title,
+    bodyMd: note.bodyMd,
+    notebook: note.notebook,
+    tagsJson: JSON.stringify(note.tags),
+    isPinned: note.isPinned,
+    isFavorite: note.isFavorite,
+    archivedAt: note.archivedAt,
+    sourceMaterialId: note.sourceMaterialId,
+    currentRevision: note.currentRevision,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+    isDeleted: note.isDeleted,
+    deletedAt: note.deletedAt,
+    excludeFromProfile: note.excludeFromProfile,
+  };
+}
+
+export async function duplicateNoteById(id: string, dir: string): Promise<Note> {
+  // 返回**落库后**的那条记录，不是草稿：草稿的 currentRevision 还是 0，
+  // 拿它去开编辑器会让下一次保存的 base 与库里的修订对不上（表现为一编辑就冲突）。
+  if (inShell()) {
+    const state = await readNotes(dir);
+    const draft = duplicateNoteDraft(state, id);
+    await noteUpsert(notePayload(draft), 0, dir);
+    const after = await readNotes(dir);
+    return after.notes.find((n) => n.id === draft.id) ?? draft;
+  }
+  const state = browserNotes();
+  const draft = duplicateNoteDraft(state, id);
+  const { state: next } = domainUpsert(state, draft, 0);
+  browserNotesWrite(next);
+  return next.notes.find((n) => n.id === draft.id) ?? draft;
+}
+
+/** 导出文件名：去掉路径分隔与控制字符，空标题给个可读的兜底。 */
+export function noteExportFileName(note: Note): string {
+  const raw = (note.title || "无标题笔记").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").trim();
+  const base = raw.slice(0, 80) || "无标题笔记";
+  return `${base}.md`;
+}
+
+/**
+ * 单篇笔记导出为 Markdown（B02）。
+ *
+ * 桌面端走原生保存对话框 + `write_text_file`；浏览器体验用下载（同样落成 .md 文件）。
+ * 返回实际写到的位置或文件名，取消则返回 null——界面据此决定是否说「已导出」。
+ */
+export async function exportNoteMarkdown(note: Note): Promise<string | null> {
+  const markdown = noteToMarkdown(note);
+  const fileName = noteExportFileName(note);
+  if (inShell()) {
+    const dest = await pickMarkdownSavePath(fileName);
+    if (!dest) return null;
+    await writeTextFile(dest, markdown);
+    return dest;
+  }
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return fileName;
+}
+
 /** 读库内附件字节；浏览器体验没有 media/ 文件，返回 null（界面显示「附件缺失」）。 */
 export async function readNoteMedia(relative: string, dir: string): Promise<Uint8Array | null> {
   if (!inShell()) return null;
@@ -408,27 +490,7 @@ export async function readNotes(dir: string): Promise<NotesState> {
 export async function saveNote(note: Note, baseRevision: number, dir: string): Promise<NoteSaveOutcome> {
   if (inShell()) {
     try {
-      return await noteUpsert(
-        {
-          id: note.id,
-          title: note.title,
-          bodyMd: note.bodyMd,
-          notebook: note.notebook,
-          tagsJson: JSON.stringify(note.tags),
-          isPinned: note.isPinned,
-          isFavorite: note.isFavorite,
-          archivedAt: note.archivedAt,
-          sourceMaterialId: note.sourceMaterialId,
-          currentRevision: note.currentRevision,
-          createdAt: note.createdAt,
-          updatedAt: note.updatedAt,
-          isDeleted: note.isDeleted,
-          deletedAt: note.deletedAt,
-          excludeFromProfile: note.excludeFromProfile,
-        },
-        baseRevision,
-        dir
-      );
+      return await noteUpsert(notePayload(note), baseRevision, dir);
     } catch (err) {
       // Rust 侧冲突消息带「当前修订 N」——还原成带结构的错误，界面才能给出
       // 「内容已在别处更新」而不是一句英文异常。

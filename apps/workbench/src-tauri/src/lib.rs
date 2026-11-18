@@ -368,6 +368,24 @@ fn export_cards_json(dir: String, dest: String) -> Result<(), String> {
     store::export_cards_json(path.as_path(), PathBuf::from(dest).as_path())
 }
 
+/// 把一段文本写到用户选定的路径（单篇笔记导出 Markdown 用）。
+///
+/// 与 `read_text_file` 对称：路径由用户在原生保存对话框里选定，宿主不替用户挑位置。
+/// 空路径直接拒绝——那说明对话框被取消或调用方搞错了，不能变成「静默没导出」。
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    if target.as_os_str().is_empty() {
+        return Err("没有选择导出位置".to_string());
+    }
+    if let Some(parent) = target.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|_| "无法创建导出目录".to_string())?;
+        }
+    }
+    std::fs::write(&target, contents.as_bytes()).map_err(|_| "写入导出文件失败".to_string())
+}
+
 #[tauri::command]
 async fn fetch_clip(url: String) -> Result<ClipPayload, String> {
     let page = http::fetch_clip(&url).await?;
@@ -1853,6 +1871,7 @@ pub fn run() {
             write_api_key,
             export_archive,
             export_cards_json,
+            write_text_file,
             fetch_clip,
             read_text_file,
             complete_chat,
@@ -2072,6 +2091,40 @@ mod shortcut_and_tray_tests {
             assert_eq!(platform_capture_tray_label(true), "快速闪念 (Alt+Space)");
         }
         assert_eq!(platform_capture_tray_label(false), "快速闪念");
+    }
+}
+
+#[cfg(test)]
+mod write_text_file_tests {
+    use super::*;
+
+    /// 导出就是「写用户选的那条路」：内容逐字节落盘，父目录不存在也能建出来。
+    #[test]
+    fn writes_exact_bytes_and_creates_missing_parent() {
+        let dir = std::env::temp_dir().join(format!("kf-export-{}", std::process::id()));
+        let target = dir.join("nested").join("笔记.md");
+        let body = "# 标题\n\n正文里的 `代码` 与列表：\n\n- 甲\n- 乙\n";
+        write_text_file(target.to_string_lossy().to_string(), body.to_string()).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), body);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 空路径必须报错：那是「对话框被取消」或调用方搞错了，不能静默当成功。
+    #[test]
+    fn rejects_an_empty_path() {
+        let err = write_text_file(String::new(), "x".into()).unwrap_err();
+        assert!(err.contains("没有选择导出位置"), "{err}");
+    }
+
+    /// 写入失败要给出中文原因，而不是把 io::Error 的英文原文抛给界面。
+    #[test]
+    fn reports_a_chinese_reason_when_the_target_cannot_be_written() {
+        // 把目录当文件写：任何平台都会失败，且信息来自我们自己的文案。
+        let dir = std::env::temp_dir().join(format!("kf-export-dir-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let err = write_text_file(dir.to_string_lossy().to_string(), "x".into()).unwrap_err();
+        assert!(err.contains("写入导出文件失败"), "{err}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
 

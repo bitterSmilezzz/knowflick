@@ -76,6 +76,21 @@ export function readTextFile(path: string): Promise<string> {
   return invoke("read_text_file", { path });
 }
 
+/** 把文本写到用户选定的位置（单篇笔记导出用；与 readTextFile 对称）。 */
+export function writeTextFile(path: string, contents: string): Promise<void> {
+  return invoke("write_text_file", { path, contents });
+}
+
+/** 保存对话框：Markdown 单篇导出。文件类型写 md，别让用户以为导出的是备份包。 */
+export async function pickMarkdownSavePath(defaultName = "笔记.md"): Promise<string | null> {
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const selected = await save({
+    defaultPath: defaultName,
+    filters: [{ name: "Markdown 笔记", extensions: ["md", "markdown", "txt"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
 export async function pickNoteFile(): Promise<string | null> {
   const selected = await open({
     directory: false,
