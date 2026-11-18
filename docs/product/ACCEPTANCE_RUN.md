@@ -7,7 +7,79 @@
 口径沿用路线图：**实际 PASS/FAIL/SKIP 分开报，声明数不当作通过数**。
 缺真实账号、设备或凭据的项一律记 SKIP 并写明原因——不拿合成测试冒充真实验收。
 
-## 一、本轮门禁运行（工作台第一套）
+## 2026-11-12 至 11-13：来源、引用与混合备份
+
+环境为 macOS arm64，分支 `workbench/second-brain-validation`，HEAD `ca0858d` 加本轮工作树。使用本机构建的 `KnowFlick Plan QA.app` 调试包，源库和空目标库各用独立测试目录。网页用公开资料，文件用仓库内的 `NOTES_MODEL.md` 和 `AppIcon.png`。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| A02/A10、B04：网页与本机文件 | PASS | 原生窗口抓取 [W3C 无障碍介绍](https://www.w3.org/WAI/fundamentals/accessibility-intro/)，正文与来源 URL 出现在素材。系统文件选择器导入 Markdown 和 PNG，分别返回「已导入 1 条」。网页和 Markdown 转为可编辑笔记，用正文短语「基线修订行」找到文档笔记。 |
+| B04：引用回原件 | PASS（修复并复验） | 修复前，原生窗口点击含 `?fp=` 的引用仍停在当前笔记。修复后，在恢复库点击同一条引用，编辑器标题切到 W3C 笔记。另插入对 Markdown 素材的引用，点击进入「全部知识」并打开对应原始文档。`note_retrieval_smoke.mjs` 核对打开后标题和正文，并覆盖回收站中笔记的失效提示。 |
+| C08/E02：桌面 v11 指定目录备份、空库恢复、同包重放 | PASS（混合活动数据） | SHA-256 与校验文件一致。原生回执为素材 3/3、卡片 1/1、笔记 2/2、附件 1/1、最近搜索新增 1。重复导入后素材跳过 3、卡片跳过 1、笔记跳过 2、搜索词已存在 1。用只读 SQLite 核对原件关系、3 条笔记修订及卡片数据，包内、源库、目标库的 PNG 字节一致，重放后仍只有一个附件文件。两条素材的内部 `version` 从 2 回到 1，v11 未保存此字段。 |
+| 工作台完整门禁 | PASS（本机） | 前端 685 项、TypeScript 类型检查、Rust 186 项（3 项忽略）、代理环境 13 项及 18 套浏览器冒烟通过。专用外部写入冒烟因个人库写入护栏跳过。CI 执行清单和触发路径已对齐并通过静态核对，待 GitHub 上实际运行。 |
+| 安装包与外部条件 | SKIP | 本轮使用 macOS 调试包。Windows MSI 和 Linux DEB 的安装、升级与首启需目标桌面环境。本样本未包含非空邮箱、订阅或软删除素材、卡片和产物，也未验证跨设备恢复。见 [目标机验收步骤](future-plan/05-DELIVERY-AND-VALIDATION.md#windows-和-linux-安装验收)。 |
+
+验收包文件名为 `knowflick-backup-20261112-01.kfbackup`，SHA-256 为 `3f462ca841e9687f6cebc4f9a8de1689d5892fa6247b6530479e53f35ede1ceb`。本机核对结果保存在 `.scratch/plan-20261112/restore-evidence.log`。
+
+## 2026-11-18：含回收站的混合备份恢复与门禁复跑
+
+环境同为 macOS arm64，分支 `workbench/second-brain-validation`，HEAD `ca0858d` 加工作树；桌面端用本机构建的 `KnowFlick Plan QA.app` 调试包，`KNOWFLICK_DEBUG_DATA_ROOT` 指向仓库内隔离数据根，全程未写个人库。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| C08/E02：桌面 v11 含回收站的混合备份恢复到空库 | PASS | 包 `knowflick-backup-20261112-02.kfbackup`，SHA-256 `0a211d072de65a3bffb2b0b20a519546f344b992659745886dd79299ceed57f4`。恢复前目标库 materials/cards/artifacts/notes/note_revisions 全为 0。经界面「设置 → 从备份包恢复…」走原生文件选择器提交后：materials 3（其中 1 条删除态）、cards 2（1 条删除态）、artifacts 2（1 条删除态）、notes 2、note_revisions 3；`fts_materials` 2、`fts_cards` 1，删除项不进全文索引；`PRAGMA foreign_key_check` 为空；恢复附件 1 个且 SHA-256 与包内一致。`check-mixed.py restore` 对账活动与删除记录、删除时间（1794499200000 / 1794499200001）、历史、关联原件、全文不可见性与附件字节全部通过。 |
+| 工作台完整门禁 | PASS（复跑） | 前端 93 个测试文件 / 686 项、TypeScript 类型检查、Rust 187 项（3 项忽略）、代理环境 13 项、守卫全绿（含反例验证 6 个退化用例、Tauri 命令 133 条三处一致）、18 套浏览器冒烟与 `project_memory_smoke` 通过。`workspace_ui_smoke` 首跑在 3 秒轮询内未读到三个桌面窗格即报错，单套重跑通过——按「首跑抖动、重跑通过」登记，不当作代码缺陷。专用外部写入冒烟仍需 `KNOWFLICK_DESKTOP_SMOKE_ALLOW_PERSONAL_DB=1`，本轮保持 SKIP。 |
+| 安装包与外部条件 | SKIP | 仍为 macOS 调试包；Windows MSI / Linux DEB 的安装升级首启、真实 IMAP、真实模型、Claude Code `/skill`、通知目视、跨设备恢复待目标环境或凭据。 |
+
+混合备份的恢复侧证据保存在 `.scratch/plan-20261113/restore-evidence.log`，打包侧证据在同目录 `package-evidence.log`；门禁日志为 `.scratch/plan-20261118/verify.log`。
+
+## 一、2026-11-01 R4 增量门禁运行
+
+- 平台：macOS 14（darwin arm64），Node 26.7.0，Rust stable，Python 3.15
+- 分支：`workbench/second-brain-validation`（工作区含未提交的 R4 改动）
+- 命令：Vite 使用 `npm run dev -- --host 127.0.0.1` 绑定本机回环并监听 1420；随后运行 `./tools/verify_workbench.sh`
+
+| 门禁段 | 结果 | 实际数字 |
+| --- | --- | --- |
+| `npm test`（vitest） | PASS | 93 个测试文件、685 项用例全部通过 |
+| `npx tsc --noEmit` | PASS | 无输出 |
+| `cargo test --locked` | PASS | 185 passed、0 failed、3 ignored |
+| 代理环境复跑（`cargo test --lib http::tests`） | PASS | 13 项通过 |
+| MCP / 权限 / 文案 / 删除确认 / 设计令牌等守卫 | PASS | 全部通过 |
+| 浏览器冒烟 | PASS | 18 套全部通过；含知识问答/笔记引用 39 项、笔记检索 15 项、创作台 13 项（含产物保存、来源保留与产物库查看）、复盘 19 项、主动回顾与 AI 建议 22 项、桌面交互 24 项 |
+| D01 项目范围问答检索 | PASS | 卡片 FTS/向量与笔记块向量在排名前按项目成员关系过滤；前端降级检索、来源明确的产物和追问历史也按当前范围约束；定向前端/Rust 测试及完整门禁通过 |
+| D08 项目范围创作 | PASS（自动化） | 创作候选先按项目成员关系过滤再搜索/截断；归属未就绪时按空集处理；切换范围清空旧稿，成员变化后阻止带旧证据的导出/保存；应用模板覆盖会议纪要、阅读总结、周报、学习计划、方案对比和营销素材包。Markdown 导出注明知识范围并保留原件 URI。`CreativeView.test.ts` 22 项及完整工作台门禁通过；原生窗口交互仍待解锁后验收 |
+| D07 浏览器创作产物 | PASS（自动化） | 创作台保存草稿和笔记来源到浏览器产物库；v1–v4 基础备份采集并恢复产物，相同 ID 幂等、异内容冲突保留本地，损坏的本地产物库会报告备份缺口；`creative_smoke.mjs` 13 项覆盖保存和查看 |
+| 浏览器最近搜索与 v12 备份 | PASS（自动化） | 主搜索记录最多 8 条最近查询，可重用、逐条删除或清空；浏览器 v12 独立携带 `browser_search_history.json`，严格校验 SHA-256、数量和 profile，恢复时按本机顺序合并。`workspace_ui_smoke.mjs` 覆盖写入、重载读取和清空；`settings_plugins_smoke.mjs` 实际点击导出与恢复，从 ZIP 往返并验证保留本机顺序、再追加备份搜索词；`systemBackup.test.ts` 覆盖包生成、篡改拒绝和旧客户端拒绝 v12 |
+| D03 复盘 AI 建议 | PASS（自动化与界面同意链路） | `reviewSuggestions.test.ts` 6 项验证来源白名单、不可用与零条区分、严格引用解析和模型配置；`review_reminder_smoke.mjs` 22 项覆盖来源预览、逐次同意、来源变化时中止、模拟模型返回引用和不自动写回。 | 未发起真实模型请求，原生窗口仍待验收 |
+| D03 真实模型请求 | SKIP | 本轮未配置隔离模型与合成复盘资料，没有向模型发送真实内容。 | 需在隔离资料与可控模型环境验收 |
+| D05 用户选择笔记生成画像建议 | PASS（自动化规则） | 笔记属性持久化 `exclude_from_profile`；旧库升级默认不排除，备份/恢复保留该值。提案列表和发送前复核会过滤标记笔记，提示构造器也会拒绝绕过过滤的输入。`profileLearning.test.ts`、`note.test.ts`、`noteSession.test.ts` 与 Rust 迁移/恢复测试覆盖上述规则。未调用外部真实模型或使用真实用户资料；原生隔离流程见下一行 |
+| D05 原生画像建议流程（隔离 QA） | PASS（macOS + 本机模拟模型） | 2026-11-07 独立 `com.knowflick.qa.d05` release bundle 与 `.scratch/r4-d05/data`：原生笔记编辑器创建 1 篇可用笔记和 1 篇排除笔记；画像页只列出可用笔记。逐次同意后，请求只发往 `127.0.0.1`；模拟端记录 1 篇可用笔记、未见排除哨兵，且没有 Authorization/API-key 头；空凭据文件为 0 字节。严格 JSON 回包生成引用所选笔记的建议，页面保存为“待确认”；只读 SQLite 核对 `kind=inference`、全局范围、`confirmed_at IS NULL` 和 1 条证据。未确认建议、未调用外部模型、未使用真实用户资料。 |
+| 已安装包 MCP 服务与原生隔离首授权 | PASS（合成库，macOS 标准配置 release bundle） | Codex app-server 调用 `/Applications/KnowFlick.app`、DMG 抽取包内脚本通过项目隔离与撤销检查。独立 `KnowFlick QA Restore.app` 调试版设置页创建项目只读授权后，只暴露 `search_project_notes`、返回项目内合成笔记且排除项目外哨兵；UI 撤销后相同令牌被拒绝。另构建 `KnowFlick QA Release.app`（`qa-release-data-root` 仅用于本机 QA，未用于正式构建），从设置页完成首次项目授权；Codex app-server 启动 bundle 内 MCP 脚本，仅暴露 `search_project_notes`，读到项目合成笔记且未返回哨兵；UI 撤销后数据库权限标志均为 0、`revoked_at` 已设置，同一令牌的新客户端未获项目笔记访问。2026-11-06 以标准标识 `com.knowflick.workbench`、未启用 QA data-root 的当前 release 构建，在 `.scratch/r4-qa-restore/production-home/home` 隔离 HOME 首启；初始界面为空，合成项目与成员笔记落入该 HOME 的 `Application Support/KnowFlick/store/knowflick.db`。2026-11-07 在同一隔离 HOME 的标准 bundle 设置页创建项目只读授权；只暴露 `search_project_notes` 并仅返回项目内合成笔记。只读 SQLite 确认授权范围为 project，library-read、card-write、material-write 均为 0；设置页撤销后 `revoked_at` 已设置，同一令牌启动的新 Codex app-server 无可用工具且请求被拒绝，未返回笔记。一次性配置与临时脚本已删除，剪贴板已恢复；Windows/Linux 实机仍待验收 |
+| v11 原生调试版空包/非空包备份恢复 | PASS（隔离 QA） | 独立 `KnowFlick QA` 调试应用在 `.scratch` 数据根通过设置页导出与恢复：空包在全新隔离库恢复为 `0/0`；含一条合成收件箱笔记的非空包恢复为 `1/1`。两份 `.sha256` 均与包体一致。未包含软删除记录，不代表 release 安装版或真实用户资料验收 |
+| v11 正式配置 release bundle 活动数据备份恢复与幂等重放 | PASS（隔离 HOME） | 标准标识 `com.knowflick.workbench`、未启用 QA data-root 的 release bundle 从 `.scratch/r4-qa-restore/production-home/home` 中含 1 条合成素材、1 篇笔记和项目成员关系的库导出 v11 包；manifest 计数为素材 1、笔记 1、项目 1、成员 1，软删除素材/卡片/产物均为 0。包 SHA-256：`55c64b10f4c564f9e641755a188a600471a349a0f23fb746c9b16a1fce01305f`。同一 bundle 在全新 `restore-empty/home` 中通过原生设置恢复，AX 回执为素材 `1/1`、笔记 `1/1`，界面收件箱和全部笔记各显示 1；再次导入同包时素材和笔记均 `0/1（跳过 1）`，未重复新增。只覆盖活动数据和空回收站，不代表软删除记录或真实用户资料验收 |
+| v11 正式配置 release bundle 软删除笔记备份恢复与幂等重放 | PASS（隔离 HOME） | 在独立隔离 HOME 用原生界面创建并软删除一篇合成笔记，再由设置页导出 v11 包；`notes.json` 保留 `isDeleted=true` 与 `deletedAt`，包 SHA-256：`6ed79d11b0abfcbfaab00a60661f34e58454abb78d72f9511d921e2cc225ec68`。恢复到全新 HOME 后全部笔记为 0、回收站为 1，AX 中笔记仍列在回收站并提供「恢复」操作；第二次导入回执为笔记 `0/1（跳过 1）`，回收站仍为 1。包中软删除素材、卡片、产物均为 0；真实用户资料未参与 |
+| v11 QA release bundle 活动认知产物备份恢复与幂等重放 | PASS（隔离 QA release bundle） | `KnowFlick QA Release.app` 以 `qa-release-data-root` 固定到 `.scratch/r4-qa-restore/data`，通过原生界面保存并导出 1 个合成认知产物；包 `knowflick-backup-20261106-02.kfbackup` 为 schema v11、8,900 bytes，SHA-256：`b6d13bb5d339b1924e65887722d7ea064edf5fe8209f13783321419a0c378ce4`，软删除记录计数为素材/卡片/产物各 0。首次导入全新 `.scratch/r4-qa-restore/target-data` 后，SQLite 为素材 1、卡片 0、笔记 2、产物 1，原生产物库显示该合成简报。将同字节包复制为 `.scratch/r4-qa-restore/soft-delete/replay/knowflick-replay.zip` 后从原生恢复入口重放；AX 回执为素材 `0/1（跳过 1）`、卡片 `0/0`、产物 `0/1（跳过 1）`、笔记 `0/2（跳过 2）`、回收站新增 0。重放后 SQLite 仍为素材 1、卡片 0、活动产物 1、删除产物 0，界面仍只显示一条简报。证明活动产物包在隔离 QA release bundle 中可恢复且同字节重放幂等；不代表标准生产配置 bundle |
+| v11 D05 QA release bundle 画像提案与笔记排除标记恢复、重放 | PASS（隔离 macOS QA release bundle） | `KnowFlick D05 QA` 从「备份到指定目录」导出 `knowflick-backup-20261106-01.kfbackup`（7,991 bytes；schema v11；SHA-256 `00e3e153c920882975d57743cbd196320bb4393bbc5079ca1d8300c107f9f64a`，`.sha256` 校验通过）。manifest 含素材 1、笔记 2、画像声明 1、笔记修订 4；卡片、产物和回收站记录为 0。通过 `KnowFlick D05 Restore QA.app` 原生入口恢复到空隔离数据根，AX 回执为素材 `1/1`、笔记 `2/2`，画像新增 1 条；画像声明仍是未确认推测，证据数为 1。SQLite 确认两篇笔记的 `exclude_from_profile` 分别为 0/1，画像证据仅指向可用笔记，候选列表不显示排除笔记。对同一目标库重放同一字节包后，回执为素材 `0/1（跳过 1）`、笔记 `0/2（跳过 2）`、画像新增 0；SQLite 仍只有 1 条待确认画像声明和 2 篇笔记，排除标记保持。只覆盖隔离 QA 的合成数据，不代表标准生产 bundle、真实用户资料、软删除数据或跨平台验收 |
+| v11 D05 QA release bundle 非空目标笔记版本冲突保护 | PASS（修复并复验，隔离 QA release bundle） | 在 `.scratch/r4-d05/restore-data` 用原生编辑器把排除态合成笔记改为本机冲突版本，形成修订 3；备份中同 ID 仍为修订 2。首次复验确认正文、修订 3 和 `exclude_from_profile=1` 均保留，但恢复器把可安全跳过的本机较新笔记误报为历史冲突，并连带阻断邮件与订阅段。修复后重建隔离 bundle、重导同一 v11 包，AX 回执为「备份恢复完成」、素材 `0/1（跳过 1）`、笔记 `0/2（跳过 2）`、画像新增 0、订阅新增 0、邮箱账号/导入/隔离记录均新增 0。只读 SQLite 确认本机正文与修订 3 保留、排除标记仍为 1；可用笔记仍为修订 2，画像声明仍为 1 条待确认推测且证据数为 1，修订表共 5 条。邮件账号与订阅快照均为空，因此未覆盖非空同步记录的迁移。首次失败时应用把合成恢复报告复制到剪贴板并下载到 Downloads；下载文件已移至 `.scratch/r4-d05/restore-failures-conflict.md`，此前剪贴板内容未读取或恢复。未覆盖同修订号内容分歧、其他记录类型冲突、真实用户资料或跨平台验收 |
+| v11 QA release bundle 逐次复习事件备份恢复与幂等重放 | PASS（macOS 隔离 QA release bundle 双数据根） | 在空源库通过原生 Markdown 转卡与知识测验评分生成 1 张合成卡；SQLite 确认 `review_count=1`、1 条 `good/fsrs` 事件。原生「备份到指定目录」导出 schema v11 包 `knowflick-backup-20261106-01.kfbackup`（SHA-256 `a188faf3e38788ee51120f01428bd657634de6fd12bb42ef49665651ec087709`），manifest 的 `reviewEvents=1`，`review_history.json` 含稳定事件 ID、卡片 ID 与覆盖起点。通过独立 `com.knowflick.qa.reviewtarget` QA release bundle 原生恢复到全新目标数据根，回执为卡片 `1/1`、逐次复习事件新增 `1`；只读 SQLite 确认原事件 ID、评分、算法与 `review_count=1` 均保留。对同一目标库重放同一包后，回执为卡片 `0/1（跳过 1）`、复习事件新增 `0`、已存在 `1`；SQLite 仍只有 1 条事件。目标覆盖起点取源、目标两端较晚值，按既定规则保持保守。只证明本机隔离目录间的 macOS 原生往返与幂等性，不代表 Windows/Linux 或真实设备间验收 |
+| D09 原生主动回顾通知设置与后台投递 | PASS（macOS QA 与标准配置 release bundle 隔离验收；用户目视待确认） | 2026-11-07 在修正数据根后的 QA release bundle 中确认 1 条合成可处理事项（目标已有 1 条关联证据）；为绕过每周频率及 22:00–08:00 安静时段，临时改为每天且不设安静时段。隐藏主窗口后，`lastNotificationAt` 更新为 `1793991486801`（本地 2026-11-07 02:58:06）；macOS `usernoted` 记录通知送达 `.alert`、锁屏和通知中心并以 `banner` 呈现，用户当时不确定是否实际看见。2026-11-08 在标准配置 `com.knowflick.workbench` release bundle 的隔离 HOME 中，以原生界面创建一条带失效来源引用的合成笔记，复盘页确认 1 条可处理事项；保留每周计划和 22:00–08:00 安静时段，仅开启应用内通知并在 macOS 系统设置临时允许通知。隐藏主窗口后，`usernoted` 于本地 19:16:15.474 记录通知送达 `.alert`、锁屏和通知中心并以临时 `banner` 呈现，`lastNotificationAt` 更新为 `1794136575334`。测试后通过原生界面关闭应用内开关，将隔离库恢复为每周、22:00–08:00、通知时间戳为 0；macOS 系统通知权限也恢复为关闭。标准配置 bundle 的实际横幅目视反馈待确认；Windows/Linux 通知仍待验收 |
+| `desktop_external_write_smoke` | **SKIP** | 默认护栏阻止向当前个人库写入；未设置 `KNOWFLICK_DESKTOP_SMOKE_ALLOW_PERSONAL_DB=1` |
+| v11 安装版软删除素材、卡片与产物回收站往返 | **SKIP** | 标准配置 release bundle 已完成活动数据和软删除笔记的隔离 HOME 往返；QA release bundle 的活动产物导出/恢复见上行。素材界面只提供归档；卡片与产物的软删除安装版快照尚未构造，不能把笔记回收站结果推广到这些类型。产物删除没有产品内恢复入口，删除合成简报前需单独确认；本轮未收到确认、未执行删除。未直接改写数据库伪造删除态；真实用户资料未参与 |
+| D05 外部真实模型/真实用户资料发送 | **SKIP** | 本轮只向隔离库内 `com.knowflick.qa.d05` 的本机回环模拟模型发送合成笔记；未连接外部模型、未使用个人库凭据或真实资料。原生本机模拟流程见上行。 |
+| E07 Claude Code `/skill` | **SKIP** | 2026-11-07 检查本机应用清单未发现 Claude Code，`claude` 命令也不可用；需在有 Claude Code 客户端的环境验证 |
+
+2026-11-07 隔离复核：本轮曾打开一次标准标识 bundle，发现该进程继承默认用户 `HOME`，因此这次启动不能作为隔离 HOME 证据，也不能排除应用启动时读取了默认库；在任何写入前已退出该进程。只对默认库做了精确合成简报标题的只读查询，未找到匹配项；没有扫描其它个人记录。随后使用上表所述固定 `qa-release-data-root` 的独立 QA bundle 完成产物备份恢复。此前单独记录的标准 bundle 运行仍按各自证据保留，不由这次启动推断或改写。
+
+本次完整门禁覆盖 D03 复盘 AI 建议层（逐次同意、来源预览与引用白名单）、E07 元数据、D05 项目记忆请求范围与画像建议规则、D01 项目范围问答、D07 浏览器产物保存与基础备份恢复、D08 项目范围创作，以及桌面 v10 搜索历史、v11 回收站和浏览器 v12 最近搜索备份。画像建议只处理用户本次选中的笔记；全局范围排除仍属于活跃项目的笔记，项目范围只保留该项目成员；个人画像排除标记在选择与发送前复核时过滤，并由提示构造器再次拒绝。发送前和保存前校验修订及归属。模型输出先经 JSON 与证据 ID 校验，用户选择后才保存为待确认推测。项目问答先在 SQLite 检索中按活跃项目成员关系过滤卡片和笔记，再融合排名；前端降级检索、来源明确的产物和后续对话历史也沿用该范围。范围切换不会携带其它范围的回答。创作台复用同一项目成员索引，先限制笔记与来源卡片候选，再按查询过滤；切换范围会清空当前草稿与已选证据；应用模板包括会议纪要、阅读总结、周报、学习计划、方案对比和营销素材包；Markdown 导出保留来源 URI 并标注范围。浏览器产物可通过基础备份迁移，损坏时按部分备份回执说明。v11 仅在 v10 前置快照与回收站快照均可用时携带删除态原件，并严格核对文件哈希、数量、字段、邮件删除素材指纹、同 ID 冲突和删除时间；恢复保持删除态。恢复编排还验证删除素材附件路径重写、回收站写入先于 R4、来源失败时跳过依赖的删除卡片与产物。备份定向回归（`systemBackup`、`backupCollect`、`backupRestore`）71 项通过；全量前端 685 项、Rust 185 项（3 项忽略）、18 套浏览器冒烟通过。Claude Code 实际加载、v11 安装版软删除素材/卡片/产物恢复，以及 D05 外部真实模型与真实用户资料验收仍按上表记为 SKIP。
+
+本节汇总中的 v11 安装版 SKIP 专指软删除素材、卡片与产物的往返；软删除笔记已在标准配置 release bundle 的隔离 HOME 中通过，并验证同包幂等重放。
+
+D05 仅在用户对当前问题明确勾选时，才会把已确认、未过期、未暂停/否认、未被替代的全局记忆交给模型；项目记忆需另行选择未封存项目并单独勾选。画像提案另有一次性范围与发送同意：本轮只发用户勾选且未排除的笔记，按范围过滤并在模型调用前和保存前检查修订与项目成员关系；笔记级排除设置随 SQLite 与备份持久化，旧库升级默认关闭排除；未经用户选择的模型草稿不会写入库，保存后的推测仍需逐条确认。当前没有后台学习。D01 的项目资料范围与记忆授权分开：检索只包含所选项目的笔记、来源卡片和所有来源均在该项目的产物；切换范围会排除其它范围的问答历史。跟进提问仍须重新同意当前回答引用的全部记忆来源。Rust 用例覆盖授权与项目检索隔离，前端用例覆盖默认关闭、范围切换和旧上下文过滤。D01 项目范围问答的真实模型请求与端到端仍记为 SKIP；D05 外部真实模型验收仍记为 SKIP，macOS 本机模拟流程见上表。D09 的 macOS QA 与标准配置 release bundle 均已由系统日志确认通知投递和临时横幅呈现，标准配置 bundle 的用户目视反馈待确认；Windows/Linux 通知仍待实机验收。
+
+前序全量门禁之后曾新增默认拒绝/逐次同意用例，并运行 `npm test`（90 文件、637 项 PASS）、`npx tsc --noEmit` 与文档/权限守卫；本记录中的完整门禁已再次覆盖这批改动。
+
+## 二、此前门禁运行（工作台第一套）
 
 - 平台：macOS 14（darwin arm64），Node 26.7.0，Rust stable，Python 3.15
 - 分支：`workbench/second-brain-validation`，提交 `d3b8041`（真机替换用的构建）
@@ -46,7 +118,7 @@
 | `desktop_interaction_smoke` | PASS | 22 |
 | `desktop_external_write_smoke` | PASS（真机） | 9 项：应用在运行、窗口在屏、交通灯可辨、切到卡库页且截图指纹稳定、**MCP 脚本取自已安装应用内随包分发的那份**、默认只读时写工具被明确拒绝并说明开启方法、显式授权后独立进程写入成功、新卡写进应用正在用的那个库、外部写入后界面自动刷新 |
 
-## 二、审计项 ↔ 反例测试绑定
+## 三、审计项 ↔ 反例测试绑定
 
 审计 [2026-10-25](../audits/2026-10-25/REPORT.md) 的每条 P0/P1 都绑定一个
 **旧实现必失败**的测试；修复说明与提交号见 FIXES.md。
@@ -69,7 +141,7 @@
 | KF-014 | P2 | 本轮 T11 收口：恢复与导出各只有一个规则入口 | 旧两处编排 → 改一处漂移 |
 | KF-015 | P1 | `tools/test_windows_console.py` 等守卫的反向验证 | 旧门禁假绿 → 断言不真守东西 |
 
-## 三、外部条件相关（保持「待真实验收」）
+## 四、外部条件相关（保持「待真实验收」）
 
 | 项 | 状态 | 缺什么 |
 | --- | --- | --- |
@@ -93,7 +165,7 @@
 - 用户数据未受影响：库在 `~/Library/Application Support/KnowFlick/`，在 app 包之外，
   替换只换应用本体。
 
-## 四、复核方式
+## 五、复核方式
 
 ```sh
 # 全量门禁（= CI 同口径）

@@ -48,6 +48,9 @@
 
 规则：对 `seenAt`/`swiped` 的任何写入都必须经由本端状态机的意图化方法——Android 是 `CardStore` 的 `swipe` / `undoLastSwipe` / `clearHistory`，第一套桌面是 `card.ts` 的 `swipeCard` / `undoSwipe` / `clearHistory`；视图不得直接改字段。卡堆重算在两端分别是 `CardStore.recompute()` 与 `deckSession.ts` 的 `refreshDeckIds`（mac 时代的 `AppStore` 及其 `refreshDeck` 已随端删除）。
 
+## 逐次复习事件（ReviewEvent）
+一次评分是不可变的学习事件，带独立稳定 ID、卡片 ID、时间、评分与使用的排程算法；它与卡片上的 `reviewCount`、`lastReviewedAt` 等累计排程状态不是同一份数据。当前未逐次记录的旧历史不回填。`coverageStartedAt` 是可靠复习事件历史的起点；复盘只能对覆盖起点之后的完整周期声称精确次数，较早周期必须标注历史不完整。删除卡片不删除已发生事件，恢复事件也不恢复卡片。
+
 ## 学习范围与学习地图（StudyScope / StudyMap）
 **「专学一条支线，一点点看」与「多选混合」是同一个模型的两面**。`StudyScope(subjects, branches, levels, sequential)`：三个维度都是**空集 = 不限**；`branches` 用 `subject/branch` 复合键，避免不同学科下的同名分支互相串（`trivia/assets` ≠ `accounting/assets`）。`sequential = true` 表示按 `orderKey` 顺序推进。
 两条硬契约：① **范围生效时接管分类维度**（`preferredCategories` 让位），否则用户看不出"现在到底在学什么"；② **顺序模式跳过背景图防重打散**——推进顺序就是产品语义，打散会把它冲掉。作为代价，专学模式下撤销一张卡是回到它在 orderKey 上的原位，而不是队首。

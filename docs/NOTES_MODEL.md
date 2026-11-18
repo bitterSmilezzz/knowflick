@@ -21,6 +21,7 @@ notes                一篇可持续编辑的笔记（当前态）
   created_at / updated_at INTEGER NOT NULL
   is_deleted         INTEGER NOT NULL DEFAULT 0  回收站软删（B02）
   deleted_at         INTEGER
+  exclude_from_profile INTEGER NOT NULL DEFAULT 0  不用于个人画像提案；默认关闭排除
 
 note_revisions       修订历史（append-only，不 UPDATE 不 DELETE）
   (note_id, revision) PRIMARY KEY
@@ -70,6 +71,10 @@ R1 契约只保证：`body_md` 可无损往返（读回==写入），导出 Mark
 `note_restore` 恢复并回填 FTS。修订历史在软删期间保留。R1 不做物理清除
 （引用计数与墓碑是 R3 的同步前提，见 LOCAL_DATA_AND_AI）。
 
+## 个人画像提案排除
+
+笔记属性 `exclude_from_profile` 默认 `0`。用户开启后，该笔记不进入画像提案选择列表；提案发送前重新读取笔记时也会再次过滤。此标记只控制个人画像提案，不改变搜索、问答或其他 AI 功能范围。旧库升级时为既有笔记补 `0`，备份与恢复保留该属性。
+
 ## 知识库
 
 - `kb_create(name)` 名称非空唯一（同名列唯一约束由应用层保证并返回可读错误）。
@@ -85,8 +90,8 @@ R1 契约只保证：`body_md` 可无损往返（读回==写入），导出 Mark
 - `schemaVersion: 2`；读取端按「有 notes.json 就恢复」兼容 v1 旧包（无笔记即空集）。
 - 恢复到新目录后：笔记正文、修订号、笔记本/标签/收藏、库与成员关系逐项一致；
   既有素材/卡片/附件/学习进度恢复行为不变（回归既有 systemBackup 测试）。
-- 修订历史明细（note_revisions 全量）不入包：包携带当前态与修订号，足够恢复与后续修订；
-  全量历史归档是后续批次（与 Job/Change 一起设计）。
+- v1–v5 包不含完整历史，携带当前态与修订号；桌面 v6 包增加 `note_revisions.json`，
+  保存数据库中实际存在的历史及其原始保存时间，并收集历史正文所引用的附件。浏览器备份仍不含历史。
 
 ### 恢复专用写入（T04，审计 KF-003/KF-006 收口）
 
@@ -97,8 +102,9 @@ R1 契约只保证：`body_md` 可无损往返（读回==写入），导出 Mark
   `is_deleted`/`deleted_at`（回收站内容不复活、保持不可检索）、收藏/置顶/归档、
   `source_material_id` 与全部属性；成员关系的 `added_at` 保留包内值
   （`kb_restore_membership` 逐条处置）。
-- **不伪造历史**：只落一条恢复时的基线修订行（沿用包内修订号）；后续编辑
-  从包内修订继续计数（修订 9 恢复 → 下一笔编辑修订 10）。
+- **不伪造历史**：旧包只落一条恢复时的基线修订行（沿用包内修订号）；v6 包按原样恢复
+  实际历史，不补造缺失修订。笔记及其历史在一个事务里写入，已有历史不同则拒绝覆盖；
+  后续编辑从当前修订继续计数（修订 9 恢复 → 下一笔编辑修订 10）。
 - **逐条处置**（`NoteRestoreOutcome`）：`created` / `updated`（包内修订更大，覆盖）
   / `skipped_local_newer`（本地修订更新，不回退） / `skipped_divergent`（同修订号
   内容分歧，保守保留本地等人工处置） / `current`（重复恢复幂等）。
