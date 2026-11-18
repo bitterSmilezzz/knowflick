@@ -56,6 +56,9 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
  * 冲突时不自动覆盖（KF-002），属性与正文同一份组合状态（KF-004）。
  */
 
+/** 首屏渲染行数。与 Workspace 的 visibleCount 同步：两处都是「一页 60 行 + 加载更多」。 */
+const NOTES_PAGE = 60;
+
 type SaveStatus = "clean" | "dirty" | "saving" | "conflict" | "error";
 
 /** data-save-status 对外的值是稳定契约（冒烟测试断言 `saved`）。 */
@@ -129,6 +132,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [previewRevision, setPreviewRevision] = useState<NoteRevision | null>(null);
   // 两段式恢复：先点「恢复」，按钮变成「确认恢复」，再点才真的覆盖当前内容。
   const [restoreArmed, setRestoreArmed] = useState<number | null>(null);
+  // 首屏只渲染一页：几千篇笔记时把每一行都挂到 DOM 上，光是建节点就够卡住界面了。
+  // 与「全部知识」列表同一口径（那里是 60），改口径时两处一起改。
+  const [visibleCount, setVisibleCount] = useState(NOTES_PAGE);
 
   const sessionsRef = useRef<Map<string, NoteSession>>(new Map());
   const dirRef = useRef(dir);
@@ -140,6 +146,11 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     persistDraft: persistDraftMirror,
     clearDraft: clearDraftMirror,
   });
+
+  // 换筛选/换查询就回到第一页：否则「加载更多」之后换个词搜索，会莫名其妙地渲染一大截。
+  useEffect(() => {
+    setVisibleCount(NOTES_PAGE);
+  }, [listQuery, showTrash, showArchived, notebookFilter]);
 
   const activeNotes = useMemo(() => listNotes(state), [state]);
   const trashedNotes = useMemo(
@@ -726,7 +737,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               }</p>
             </div>
           ) : (
-            visible.map((n) => {
+            visible.slice(0, visibleCount).map((n) => {
               // 回收站与「已归档」的行都不是可点开的笔记，而是一个带动作按钮的普通行——
               // 按钮嵌按钮是无效 HTML（嵌套交互元素），读屏与键盘都会出问题。
               if (showTrash || showArchived) {
@@ -779,6 +790,15 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               );
             })
           )}
+          {loaded && visible.length > visibleCount ? (
+            <button
+              type="button"
+              className="nv-load-more"
+              onClick={() => setVisibleCount((n) => n + NOTES_PAGE)}
+            >
+              {`加载更多（还有 ${visible.length - visibleCount} 篇）`}
+            </button>
+          ) : null}
         </div>
       </section>
 

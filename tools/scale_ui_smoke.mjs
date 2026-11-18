@@ -53,6 +53,13 @@ try {
       materials, cards,
       settings: JSON.stringify({ providerId: 'x', baseURL: 'https://x.test', model: 'm', enableAI: true, paperTheme: 'RICE_PAPER' }),
     }));
+    // 笔记也要在同一规模上验：几千篇时如果每一篇都挂进 DOM，光是建节点就够卡住界面。
+    const notes = Array.from({ length: ${N} }, (_, i) => ({
+      id: 'sc-n' + i, title: '规模笔记 ' + i, bodyMd: '笔记正文 '.repeat(30) + i, notebook: null, tags: [],
+      isPinned: false, isFavorite: false, archivedAt: null, sourceMaterialId: null, currentRevision: 1,
+      createdAt: now - i * 1000, updatedAt: now - i * 1000, isDeleted: false, deletedAt: null, excludeFromProfile: false,
+    }));
+    localStorage.setItem('knowflick.notes.v1', JSON.stringify({ notes, knowledgeBases: [], membership: {} }));
     return true;
   })()`);
   // 打开耗时：同样受机器负载影响，取三轮中位数。
@@ -142,6 +149,48 @@ try {
   const back = await ev("document.querySelectorAll('.ws-entry').length");
   assert.ok(back >= 60, `清空搜索后应恢复分页（当前 ${back}）`);
   pass("清空搜索后恢复列表", `${back} 行`);
+
+  // ---- 笔记规模：同一套判据（行数确定性 + 按键 p90 预算）----
+  await ev("(() => { [...document.querySelectorAll('.ws-nav-row')].find(e => e.textContent.includes('全部笔记')).click(); return true; })()");
+  await new Promise(r => setTimeout(r, 1200));
+  const noteRows = await ev("document.querySelectorAll('.nv-entry').length");
+  assert.ok(noteRows > 0, "笔记列表应有条目");
+  assert.ok(noteRows <= 120, `笔记首屏渲染了 ${noteRows} 行，过多（几千篇时必须分页）`);
+  pass("笔记首屏行数受控", `${noteRows} 行`);
+  assert.ok(
+    await ev("document.querySelector('.nv-load-more') !== null"),
+    "几千篇笔记却没有「加载更多」——超出部分会静默消失",
+  );
+  await ev("(() => { document.querySelector('.nv-load-more').click(); return true; })()");
+  await new Promise(r => setTimeout(r, 300));
+  const noteRowsAfter = await ev("document.querySelectorAll('.nv-entry').length");
+  assert.ok(noteRowsAfter > noteRows, `点「加载更多」后行数没变（${noteRows} → ${noteRowsAfter}）`);
+  pass("「加载更多」能接着渲染", `${noteRows} → ${noteRowsAfter} 行`);
+
+  // 笔记搜索的按键预算：与「全部知识」同一阈值，理由见上面的注释。
+  const noteKeys = await ev(`(() => {
+    const el = document.querySelector('[aria-label="搜索笔记"]');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    const all = [];
+    for (let r = 0; r < 8; r++) {
+      for (let i = 0; i < 4; i++) {
+        const t = performance.now();
+        setter.call(el, '规模笔记 ' + r + ' ' + i);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        void document.body.offsetHeight;
+        all.push(Math.round(performance.now() - t));
+      }
+    }
+    all.sort((a, b) => a - b);
+    return { p50: all[Math.floor(all.length / 2)], p90: all[Math.floor(all.length * 0.9)], max: all[all.length - 1] };
+  })()`);
+  assert.ok(
+    noteKeys.p90 <= KEYSTROKE_BUDGET_MS,
+    `笔记搜索按键阻塞 p90 ${noteKeys.p90}ms 超过预算 ${KEYSTROKE_BUDGET_MS}ms（p50 ${noteKeys.p50}ms）`,
+  );
+  const noteHits = await ev("document.querySelectorAll('.nv-entry').length");
+  assert.ok(noteHits > 0, "笔记搜索应命中");
+  pass("笔记搜索不卡顿", `p50 ${noteKeys.p50}ms / p90 ${noteKeys.p90}ms，命中 ${noteHits} 行`);
 
   console.log(`Scale UI smoke: ${count} checks passed.`);
 } finally { await b("close").catch(() => {}); }

@@ -2880,6 +2880,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 }
 .nv-archive-toggle[aria-pressed="true"] { color: var(--ink); }
 .nv-entry-archived { cursor: default; }
+/* 首屏只渲染一页；「加载更多」与「全部知识」列表同一样式。 */
+.nv-load-more { margin: 8px 0; padding: 6px 8px; background: none; border: 1px dashed var(--line); border-radius: 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
 .nv-unarchive { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
 .nv-pin-badge { font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 6px; color: var(--muted); }
 /* 已处于开启状态的图标按钮：颜色要能看出来，不能只靠 aria-pressed。 */
