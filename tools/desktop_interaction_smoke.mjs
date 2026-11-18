@@ -96,7 +96,15 @@ try {
   await check('document.querySelector(".ws-entry[aria-selected=true]").dataset.entryId==="keyboard-63"', "input arrow keys do not change selection");
   await browser("press", "Escape");
   await check('!document.querySelector(".ws-editor") && document.querySelector(".ws-reader h1").textContent==="操作验收 63"', "Escape cancels draft without overwriting original");
-  await browser("press", "/");
+  // 「/」是全局快捷键，前提是焦点不在输入框里。CI 上 Escape 关掉编辑器后，焦点交接有几十毫秒的
+  // 窗口（runner 比本机慢得多），第一次按键可能落在还没交出去的焦点上被当成输入。按一次没生效
+  // 就再按一次——真人也这么用；但每次都要重新确认，不能把「快捷键完全失效」也吞掉。
+  let slashFocused = false;
+  for (let attempt = 0; attempt < 4 && !slashFocused; attempt++) {
+    await browser("press", "/");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    slashFocused = await value('document.activeElement?.getAttribute("aria-label")==="搜索知识库"');
+  }
   await check('document.activeElement?.getAttribute("aria-label")==="搜索知识库"', "slash focuses search");
   await browser("press", "Escape");
   await browser("click", '[aria-label="收起导航栏"]');
