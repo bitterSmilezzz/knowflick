@@ -43,6 +43,7 @@ import {
   referenceStatus,
   type ReferenceSource,
 } from "../../domain/noteReference";
+import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -136,10 +137,18 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [previewRevision, setPreviewRevision] = useState<NoteRevision | null>(null);
   // 两段式恢复：先点「恢复」，按钮变成「确认恢复」，再点才真的覆盖当前内容。
   const [restoreArmed, setRestoreArmed] = useState<number | null>(null);
+  // 查找替换（B01）：在正文里找得到、跳得到、改得掉，比「自己按 Ctrl+F 找浏览器搜索」强。
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [findIndex, setFindIndex] = useState(0);
   // 首屏只渲染一页：几千篇笔记时把每一行都挂到 DOM 上，光是建节点就够卡住界面了。
   // 与「全部知识」列表同一口径（那里是 60），改口径时两处一起改。
   const [visibleCount, setVisibleCount] = useState(NOTES_PAGE);
 
+  // 正文 textarea 的引用：查找定位要在这里设置选区。
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
   const sessionsRef = useRef<Map<string, NoteSession>>(new Map());
   const dirRef = useRef(dir);
   dirRef.current = dir;
@@ -400,6 +409,41 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewError(`更新笔记属性失败：${String(e)}`);
     }
   };
+  /** 正文里的查找与替换：定位用 textarea 的选区，替换走同一条 onEdit 保存路径。 */
+  const selectMatch = (at: number) => {
+    const el = bodyRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(at, at + findQuery.length);
+  };
+
+  const gotoMatch = (delta: number) => {
+    const hits = findMatches(body, findQuery);
+    if (hits.length === 0) return;
+    const next = (findIndex + delta + hits.length) % hits.length;
+    setFindIndex(next);
+    selectMatch(hits[next]);
+  };
+
+  const replaceOne = () => {
+    const hits = findMatches(body, findQuery);
+    if (hits.length === 0) return;
+    const at = hits[Math.min(findIndex, hits.length - 1)];
+    onEdit(title, `${body.slice(0, at)}${replaceText}${body.slice(at + findQuery.length)}`);
+    setFindIndex(0);
+  };
+
+  const replaceEvery = () => {
+    const result = replaceAllMatches(body, findQuery, replaceText);
+    if (result.count === 0) {
+      setViewNotice("没有找到可替换的内容");
+      return;
+    }
+    onEdit(title, result.text);
+    setFindIndex(0);
+    setViewNotice(`已替换 ${result.count} 处`);
+  };
+
 /** 批量移动：只改笔记本，不追加修订；结果如实说清移动了几篇、几篇没找到。 */
   const moveSelected = async () => {
     if (batchIds.size === 0) return;
@@ -958,14 +1002,69 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 </button>
               </div>
             ) : null}
+            {findOpen ? (
+              <div className="nv-find" role="group" aria-label="正文查找替换">
+                <input
+                  ref={findInputRef}
+                  className="nv-find-input"
+                  aria-label="查找正文"
+                  placeholder="查找"
+                  value={findQuery}
+                  onChange={(e) => { setFindQuery(e.target.value); setFindIndex(0); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); gotoMatch(e.shiftKey ? -1 : 1); }
+                    if (e.key === "Escape") { e.preventDefault(); setFindOpen(false); }
+                  }}
+                />
+                <span className="nv-find-count" aria-live="polite">
+                  {findQuery
+                    ? (() => {
+                        const total = findMatches(body, findQuery).length;
+                        return total === 0 ? "没有匹配" : `第 ${Math.min(findIndex + 1, total)} / ${total} 处`;
+                      })()
+                    : ""}
+                </span>
+                <button type="button" className="ws-bordered" aria-label="上一处" onClick={() => gotoMatch(-1)}>上一个</button>
+                <button type="button" className="ws-bordered" aria-label="下一处" onClick={() => gotoMatch(1)}>下一个</button>
+                <input
+                  className="nv-find-input"
+                  aria-label="替换为"
+                  placeholder="替换为"
+                  value={replaceText}
+                  onChange={(e) => setReplaceText(e.target.value)}
+                />
+                <button type="button" className="ws-bordered" aria-label="替换当前" onClick={() => replaceOne()}>替换</button>
+                <button type="button" className="ws-bordered" aria-label="全部替换" onClick={() => replaceEvery()}>全部替换</button>
+                <button type="button" className="ws-icon-button" aria-label="关闭查找" onClick={() => setFindOpen(false)}>
+                  <Icon name="close" size={12} />
+                </button>
+              </div>
+            ) : null}
             <textarea
+              ref={bodyRef}
               className="nv-body"
               aria-label="笔记正文"
               placeholder="开始写…（Markdown：# 标题、- 列表、- [ ] 待办、> 引用、``` 代码）"
               value={body}
               onChange={(e) => onEdit(title, e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape") e.currentTarget.blur(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") e.currentTarget.blur();
+                // Ctrl/Cmd+F：打开正文查找（不用再去浏览器搜索里绕一圈）。
+                if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+                  e.preventDefault();
+                  setFindOpen(true);
+                  window.setTimeout(() => findInputRef.current?.focus(), 0);
+                }
+              }}
             />
+            {(() => {
+              const c = countNoteText(body);
+              return (
+                <p className="nv-count" aria-label="正文字数">
+                  {`字数 ${c.chars} · 段落 ${c.paragraphs}`}
+                </p>
+              );
+            })()}
             <div className="nv-insert-row" aria-label="引用其它笔记">
               <span className="nv-kbs-label">引用：</span>
               <button

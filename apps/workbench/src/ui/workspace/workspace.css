@@ -2899,6 +2899,12 @@ body.capsule-window { overflow: hidden; background: transparent; }
   font-size: 12px;
 }
 .nv-batch-count { color: var(--ink); }
+/* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
+.nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
+.nv-find-input { font-size: 12px; min-width: 96px; }
+.nv-find-count { color: var(--muted); min-width: 64px; }
+/* 字数与段落数：放在正文下面，写长文的人会看。 */
+.nv-count { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
 .nv-batch-notebook { flex: 1; min-width: 140px; font-size: 12px; }
 .nv-unarchive { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
 .nv-pin-badge { font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 6px; color: var(--muted); }

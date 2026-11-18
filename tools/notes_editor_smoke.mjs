@@ -191,6 +191,22 @@ try {
   await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.notebook==='项目B').length===2})()", "两篇笔记的笔记本都已更新");
   await check("document.querySelector('.nv-batch-bar') === null", "移动后批量栏收起");
 
+  // 8f. 查找替换与字数（B01）：找得到、跳得到、改得掉。
+  await check("document.querySelector('[aria-label=\"正文字数\"]')?.textContent.includes('字数')", "正文下方显示字数");
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));return true})()");
+  await check("document.querySelector('.nv-find') !== null", "Ctrl+F 打开正文查找栏");
+  // 用正文里确实存在的词：这一段之前写过「待办事项」。
+  await setNative('[aria-label="查找正文"]', "待办");
+  await check("document.querySelector('.nv-find-count').textContent.includes('处')", "查找栏显示命中处数");
+  // 替换词不能包含原词，否则替换完「待办」还会命中（这里用「任务」）。
+  await setNative('[aria-label="替换为"]', "任务");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"全部替换\"]').click();return true})()");
+  await check("document.body.innerText.includes('已替换')", "全部替换有回执并给出处数");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.some(n=>n.bodyMd.includes('任务事项'))})()", "替换结果落进正文并保存");
+  await check("document.querySelector('.nv-find-count').textContent.includes('没有匹配')", "替换后查找词不再命中");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"关闭查找\"]').click();return true})()");
+  await check("document.querySelector('.nv-find') === null", "关掉查找栏");
+
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(
