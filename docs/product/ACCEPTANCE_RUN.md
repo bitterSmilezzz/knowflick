@@ -68,6 +68,17 @@ Android ✅、Desktop 三平台 ✅、Workbench ❌（浏览器冒烟）、Workb
 本机门禁日志：`.scratch/plan-20261118/verify-final2.log`（提交后复跑，退出码 0）；CI 结论与注解来自 GitHub REST API
 （匿名可读 `actions/runs`、`check-runs/*/annotations`）。
 
+## 2026-11-19 凌晨：笔记置顶与归档（R1/B03）
+
+功能缺口是「字段在、入口没有」：`is_pinned` / `archived_at` 早在契约、Rust 与备份里，
+但界面上没有入口、列表也不按归档过滤。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 置顶与归档（R1/B03） | PASS（本机 + CI） | 领域：`note.test.ts` 新增 2 项（归档不进主列表/检索、归档+软删共存、移出归档回到列表；置顶排最前且不追加修订），`model.test.ts` 新增 2 项（全局检索排除回收站与已归档）。界面：`notes_editor_smoke` 由 28 项增至 40 项，覆盖置顶徽标与按钮态、归档后离开列表、「已归档（N）」计数、归档不进回收站、已归档视图移出后回到列表。全量门禁 `./tools/verify_workbench.sh` 退出码 0（前端 93 文件 / 690 项）。CI：`9f8e5ba` 的 run `44362677786`（浏览器冒烟全过）与 `44362677681`（Release 三平台安装包）均 success。 |
+| 未覆盖 | SKIP | 批量移动、置顶/归档状态跨设备备份往返的实机验收（v11 包已保存这两个字段，但只在隔离数据根验证）；大集合（万篇）下的列表性能。 |
+
+
 ## 一、2026-11-01 R4 增量门禁运行
 
 - 平台：macOS 14（darwin arm64），Node 26.7.0，Rust stable，Python 3.15
