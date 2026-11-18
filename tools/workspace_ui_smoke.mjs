@@ -49,6 +49,11 @@ async function clickButton(text) {
 }
 
 try {
+  // 固定视口（规格的桌面基准尺寸）。默认视口跟窗口一致，CI 的共享 runner 上高度
+  // 只有 ~577px：列表与阅读区被折叠线切开，真实点击按坐标命中的就落到父容器上
+  // （报的是「.ws-entry 被 <ul> 盖住」——不是元素没了，是它有一部分在视口外）。
+  // 后面的窄窗用例自己会把视口调到 900 再调回来，不受影响。
+  await browser("set", "viewport", "1040", "760");
   await browser("open", url);
   await browser("eval", "localStorage.clear();sessionStorage.clear()");
   await browser("open", url);
@@ -139,6 +144,8 @@ try {
   await clickButton("全部知识");
   await check('document.querySelectorAll(".ws-entry").length >= 1', "library lists the new card");
   await browser("fill", '[aria-label="搜索知识库"]', "界面回归");
+  // 先滚到可见处再点：真实点击按坐标命中，被滚动容器切掉一半的元素点不中。
+  await browser("scrollintoview", ".ws-entry");
   await browser("click", ".ws-entry");
   const archiveLabel = await evaluate(
     '(document.querySelector(\'[aria-label="归档素材"]\')||document.querySelector(\'[aria-label="移回收件箱"]\'))?.getAttribute("aria-label") ?? ""'
