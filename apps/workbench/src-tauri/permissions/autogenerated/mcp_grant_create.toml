@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mcp-grant-create"
+description = "Enables the mcp_grant_create command without any pre-configured scope."
+commands.allow = ["mcp_grant_create"]
+
+[[permission]]
+identifier = "deny-mcp-grant-create"
+description = "Denies the mcp_grant_create command without any pre-configured scope."
+commands.deny = ["mcp_grant_create"]

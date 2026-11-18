@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-backup-restore-r4"
+description = "Enables the backup_restore_r4 command without any pre-configured scope."
+commands.allow = ["backup_restore_r4"]
+
+[[permission]]
+identifier = "deny-backup-restore-r4"
+description = "Denies the backup_restore_r4 command without any pre-configured scope."
+commands.deny = ["backup_restore_r4"]
