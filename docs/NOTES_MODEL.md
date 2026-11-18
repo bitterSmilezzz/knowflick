@@ -79,6 +79,21 @@ R1 契约只保证：`body_md` 可无损往返（读回==写入），导出 Mark
 - **都是元数据变化**：不追加修订（与收藏、笔记本、标签同一口径），
   已开着的笔记走同一条保存队列，列表行上的动作用当前修订保存一次。
 
+## 复制与单篇导出（B02）
+
+- **复制**是一次新建：新 `id`、`current_revision = 1`、`created_at/updated_at` 取当前时间。
+  保留 `title`（追加「（副本）」后缀，避免列表里两行同名）、`body_md`、`notebook`、`tags`、
+  `exclude_from_profile`；**不复制**「属于原来那一篇」的状态：`is_pinned`、`is_favorite`、
+  `archived_at`、`is_deleted/deleted_at`，以及 `source_material_id`——保留会让同一份素材被
+  两篇笔记声明为「已转笔记」，界面与索引都会给出错误结论。
+  复制只产出草稿，落库仍走 `note_upsert`（base=0）：修订号推进与冲突判定只有一处实现。
+  返回给界面的是**落库后**的记录，不是草稿——草稿的 `current_revision` 还是 0，
+  拿它开编辑器会让下一次保存的 base 与库里的修订对不上。
+- **单篇导出**把 `body_md` **原样**写成 `.md`（契约「导出 Markdown 即正文本身」，不补标题、
+  不包 front matter，导出文件与库里的正文逐字相同）。文件名取标题并去掉路径分隔与控制字符；
+  正文为空时退化为一行 `# 标题`——导出空文件等于丢内容。桌面端用原生保存对话框 +
+  `write_text_file`，浏览器体验用下载；取消时界面说「已取消导出」，不假称写入成功。
+
 ## 删除与回收站
 
 `note_delete` = 软删（is_deleted=1, deleted_at），FTS 同步移除 → 搜不到；
