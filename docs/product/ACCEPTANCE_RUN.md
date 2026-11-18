@@ -33,6 +33,41 @@
 
 混合备份的恢复侧证据保存在 `.scratch/plan-20261113/restore-evidence.log`，打包侧证据在同目录 `package-evidence.log`；门禁日志为 `.scratch/plan-20261118/verify.log`。
 
+## 2026-11-18 晚至 11-19 凌晨：CI 首轮两红与逐条定位（PR #95）
+
+环境 macOS arm64，分支 `workbench/second-brain-validation`。CI 对 `0c8dccf` 的结论是：
+Android ✅、Desktop 三平台 ✅、Workbench ❌（浏览器冒烟）、Workbench Release ❌（Windows 门禁）。
+本机同一份代码门禁 exit 0，所以两类红都不是「功能坏了」——逐条定位后修了七处。
+
+| # | CI 失败点 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 1 | 浏览器冒烟：四套同时红 | 等待预算 3–6 秒按本机速度定，CI 共享 runner 上首屏 React 还没挂载完 | 预算抬到 10–15 秒；`goal_scope`/`notes_editor` 固定 1040×760 |
+| 2 | 浏览器冒烟：`goal_scope_smoke` 真实点击打不到 | 默认视口只有 577px 高，证据按钮落在折叠线以下 | 固定视口 + 点击前 `scrollintoview` |
+| 3 | 浏览器冒烟：`workspace_ui_smoke` 点列表行被「<ul> 遮住」 | 清空搜索框用 `fill` 传空串**不派发 input 事件**，React 状态留着旧词；随后的失焦把旧词记进「最近搜索」，下拉盖住列表 | 清空走原生 setter + input 事件，并断言筛选真的解除 |
+| 4 | 浏览器冒烟：同上（更早一层） | 首屏读取是异步的，迟到的加载把用户已清空的最近搜索写回去 | 加 `searchHistoryEditedRef`：动过之后以内存为准 |
+| 5 | 浏览器冒烟：`mailbox_ui_smoke` 点隐藏开关 | 「按使用习惯个性化」是视觉隐藏的原生 checkbox（`opacity:0`、0×0），可见的是旁边的滑块 | 点可见滑块，并核对 `checked` 确实变了 |
+| 6 | 浏览器冒烟：`notes_editor_smoke` 报 JSON 解析错误 | eval 返回 undefined 时 `JSON.parse(undefined)` 抛 SyntaxError，现场离真正原因隔了多层 | undefined 就当 undefined；失败现场扩成页面全貌 |
+| 7 | Workbench Release：Windows 门禁失败 | node:test 的 after 钩子按**注册顺序**执行，临时目录在子进程退出前就被删；POSIX 允许删正在使用的文件，Windows 报 EBUSY | 临时目录统一登记，模块级 `after()` 在全部用例之后删 |
+
+另有三处「本机绿、只有 CI 红」的 POSIX 假设一并修掉：`knowflick-mcp/test.mjs` 第二处
+`symlinkSync` 没包 try（Windows 抛 EPERM 会被记成失败）、`db.rs` 拿 `/tmp/...` 当自定义库目录
+样本（Windows 上不是绝对路径）。
+
+为了让下一次红能自己说明原因，工具层补了三样：门禁的 ERR trap 打出失败行号与命令；
+`run_step` 把该步输出尾部写成 `::error::` 注解（公开仓库的 job 日志要 admin 权限才拿得到，
+注解是唯一读得到的失败细节）；CI 冒烟脚本先把首屏预热一遍，免得一次性代价算进第一套的预算。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 工作台完整门禁（本地） | PASS | 前端 93 个测试文件 / 686 项、TypeScript 类型检查、Rust 187 项（3 项忽略）、代理环境 13 项、守卫全绿（Tauri 命令 133 条三处一致）、18 套浏览器冒烟与 `project_memory_smoke` 通过，`verify_workbench.sh` 退出码 0 |
+| CI：Workbench（Web + Tauri） | PASS | run `44350594084`：`npm test + cargo test` ✅、浏览器冒烟 ✅ |
+| CI：Workbench Release（三平台安装包） | PASS | run `44350593906`：Linux (deb) ✅、macOS (dmg) ✅、Windows (msi) ✅，三档门禁与打包全绿 |
+| CI：Desktop 三平台 / Android | PASS | run `44350594535` / `44350594007` |
+| 安装包与外部条件 | SKIP | 本轮仍是 macOS 调试包；Windows MSI / Linux DEB 的安装、升级与首启需目标桌面环境，真实 IMAP、真实模型、物理麦克风仍待凭据与设备 |
+
+本机门禁日志：`.scratch/plan-20261118/verify-round6b.log`；CI 结论与注解来自 GitHub REST API
+（匿名可读 `actions/runs`、`check-runs/*/annotations`）。
+
 ## 一、2026-11-01 R4 增量门禁运行
 
 - 平台：macOS 14（darwin arm64），Node 26.7.0，Rust stable，Python 3.15
