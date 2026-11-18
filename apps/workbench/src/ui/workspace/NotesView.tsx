@@ -45,6 +45,12 @@ import {
 } from "../../domain/noteReference";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
+import {
+  NOTE_TEMPLATES,
+  findNoteTemplate,
+  instantiateTemplate,
+  type NoteTemplateId,
+} from "../../domain/noteTemplate";
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -346,7 +352,13 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     openNote(target);
   }, [loaded, state.notes, openNote]);
 
-  const createNote = useCallback(() => {
+  /**
+   * 新建笔记；给了模板就先摆好标题与骨架。
+   *
+   * 模板只在用户点选那一刻起作用：**没有定时任务、不会自动堆积空笔记**。
+   * 模板内容通过 `session.edit` 走正常编辑路径，因此照常自动保存、推进修订。
+   */
+  const createNote = useCallback((templateId: NoteTemplateId = "blank") => {
     const prev = currentSession();
     if (prev && prev.isDirty && prev.snapshot().phase !== "conflict") void prev.flush();
     const draft = createNoteDraft();
@@ -355,12 +367,22 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     attachSession(s);
     selectedIdRef.current = draft.id;
     setSelectedId(draft.id);
-    setTitle("");
-    setBody("");
     setMetaValues({ notebook: null, tags: [], excludeFromProfile: false });
-    setStatus("dirty");
     setStatusNote("");
     setViewError("");
+    const tpl = instantiateTemplate(templateId);
+    if (templateId === "blank") {
+      setTitle("");
+      setBody("");
+      setStatus("dirty");
+    } else {
+      // 模板内容进会话：照常自动保存，不是「先写进 local state 再假装保存过」。
+      s.edit(tpl.title, tpl.body);
+      setTitle(tpl.title);
+      setBody(tpl.body);
+      setStatus("dirty");
+      setViewNotice(`已按「${findNoteTemplate(templateId).label}」模板新建`);
+    }
     // 空笔记先不落库：等第一段内容进来再保存，避免堆积空笔记。
   }, [attachSession, currentSession]);
 
@@ -753,10 +775,24 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       <section className="nv-list" aria-label="笔记列表">
         <div className="nv-list-head">
           <h1>笔记</h1>
-          <button className="ws-primary" type="button" onClick={createNote} disabled={!loaded}>
+          <button className="ws-primary" type="button" onClick={() => createNote()} disabled={!loaded}>
             <Icon name="plus" size={14} /> 新建笔记
           </button>
         </div>
+        <label className="nv-template">
+          <span className="ws-hint">从模板新建</span>
+          <select
+            aria-label="从模板新建笔记"
+            value=""
+            disabled={!loaded}
+            onChange={(e) => { if (e.target.value) createNote(e.target.value as NoteTemplateId); }}
+          >
+            <option value="">选择模板…</option>
+            {NOTE_TEMPLATES.filter((t) => t.id !== "blank").map((t) => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+        </label>
         <label className="ws-search">
           <Icon name="search" />
           <input

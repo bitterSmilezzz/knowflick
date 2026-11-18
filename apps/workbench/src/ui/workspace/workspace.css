@@ -2899,6 +2899,9 @@ body.capsule-window { overflow: hidden; background: transparent; }
   font-size: 12px;
 }
 .nv-batch-count { color: var(--ink); }
+/* 模板选择：放在「新建笔记」下面一行，说明文字小一号。 */
+.nv-template { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0 2px; }
+.nv-template select { font-size: 12px; }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }

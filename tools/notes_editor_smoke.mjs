@@ -234,6 +234,13 @@ try {
   await setNative('[aria-label="搜索笔记"]', "noted-attach");
   await check("(()=>{const t=document.querySelector('.nv-entry-title');return t && t.textContent.includes('冒烟笔记')})()", "附件引用路径也参与全文检索");
 
+  // 8h. 笔记模板（B05）：选模板新建 → 标题与骨架摆好 → 照常自动保存。
+  const notesBeforeTpl = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.length");
+  await b("eval", `(()=>{const sel=document.querySelector('[aria-label=\"从模板新建笔记\"]');sel.value='journal';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+  await check("(()=>{const t=document.querySelector('[aria-label=\"笔记标题\"]');return (t?.value||'').includes('日记')})()", "模板把标题摆好了（带日期）");
+  await check("document.querySelector('.nv-body').value.includes('## 今天做了什么')", "模板把正文骨架摆好了");
+  await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.length === ${notesBeforeTpl + 1}})()`, "模板新建的笔记会落库（不是只停在编辑器里）");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});
