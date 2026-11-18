@@ -113,6 +113,10 @@ await b("eval", `(()=>{
   const s = JSON.parse(localStorage.getItem('knowflick.notes.v1'));
   s.notes.push({ id:'n-marker-2', title:'来源笔记', bodyMd:'这是被引用的原始结论。', notebook:null, tags:[], isPinned:false, isFavorite:false, archivedAt:null, sourceMaterialId:null, currentRevision:1, createdAt:now, updatedAt:now, isDeleted:false, deletedAt:null });
   localStorage.setItem('knowflick.notes.v1', JSON.stringify(s));
+  localStorage.setItem('knowflick.workspace.v1', JSON.stringify({cards:[],settings:null,materials:[{
+    id:'m-marker', sourceType:'document', title:'来源文档', rawText:'这是导入文档的原始正文。',
+    contentHash:'fixture', metadataJson:'{}', inboxStatus:'processed', createdAt:now, updatedAt:now,
+  }]}));
   return true;
 })()`);
 await b("open", url);
@@ -127,7 +131,7 @@ await b("eval", "(()=>{const el=[...document.querySelectorAll('button')].find(b=
 await check("!!document.querySelector('input[aria-label=\"搜索要引用的笔记\"]')", "引用选择器打开");
 await b("eval", "(()=>{const el=[...document.querySelectorAll('.nv-ref-item')].find(b=>b.textContent.includes('来源笔记'));if(el){el.click();return true}return false})()");
 await check(
-  "(()=>{const ta=document.querySelector('textarea[aria-label=\"笔记正文\"]');return !!ta && ta.value.includes('《来源笔记》') && ta.value.includes('knowflick://note/n-marker-2')})()",
+  "(()=>{const ta=document.querySelector('textarea[aria-label=\"笔记正文\"]');return !!ta && ta.value.includes('《来源笔记》') && ta.value.includes('knowflick://note/n-marker-2?fp=')})()",
   "引用插入正文（带可回原件链接）"
 );
 
@@ -142,8 +146,23 @@ await b("eval", "(()=>{const d=document.querySelector('.nv-preview');if(d&&!d.op
 await check("document.querySelector('.nv-preview .ws-md-note-link') !== null", "预览里「回原件」是可点的内部链接");
 await b("eval", "(()=>{const el=document.querySelector('.nv-preview .ws-md-note-link');el.click();return true})()");
 await check(
-  "(()=>{const ta=document.querySelector('textarea[aria-label=\"笔记正文\"]');return !!ta && ta.value.includes('这是被引用的原始结论')})()",
+  "document.querySelector('input[aria-label=\"笔记标题\"]')?.value === '来源笔记' && document.querySelector('textarea[aria-label=\"笔记正文\"]')?.value === '这是被引用的原始结论。'",
   "点「回原件」跳回源笔记"
+);
+
+// 文档素材也由引用选择器生成链接，点击应打开阅读区里的原文。
+await b("eval", "[...document.querySelectorAll('.nv-entry')].find(row=>row.textContent.includes('北极项目决策记录')).click()");
+await b("eval", "[...document.querySelectorAll('button')].find(button=>button.textContent.includes('引用另一篇笔记')).click()");
+await b("eval", "[...document.querySelectorAll('.nv-ref-item')].find(item=>item.textContent.includes('来源文档')).click()");
+await check(
+  "JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.find(note=>note.id==='n-marker-1').bodyMd.includes('knowflick://material/m-marker?fp=')",
+  "素材引用带内容指纹并保存到正文"
+);
+await b("eval", "document.querySelector('.nv-preview').open=true");
+await b("eval", "[...document.querySelectorAll('.nv-preview blockquote')].find(quote=>quote.textContent.includes('来源文档')).querySelector('.ws-md-note-link').click()");
+await check(
+  "document.querySelector('.ws-reader h1')?.textContent === '来源文档' && document.querySelector('.ws-reader')?.textContent.includes('这是导入文档的原始正文。')",
+  "点素材引用打开对应的原始文档"
 );
 
 // 10. 过期提示：源笔记内容改过 → 界面提示「可能已过期」
@@ -166,7 +185,9 @@ await check(
 // 11. 源笔记被删 → 提示「引用已失效」
 await b("eval", `(()=>{
   const s = JSON.parse(localStorage.getItem('knowflick.notes.v1'));
-  s.notes = s.notes.filter(x=>x.id!=='n-marker-2');
+  const src = s.notes.find(x=>x.id==='n-marker-2');
+  src.isDeleted = true;
+  src.deletedAt = Date.now();
   localStorage.setItem('knowflick.notes.v1', JSON.stringify(s));
   return true;
 })()`);

@@ -139,4 +139,21 @@ await check(
   "界面明确说明不代发到外部平台"
 );
 
+// 10. 保存为产物，并能从产物库重新打开
+await b("eval", "(()=>{const btn=[...document.querySelectorAll('button')].find(x=>x.textContent.includes('保存为产物'));if(btn){btn.click();return true}return false})()");
+await check(
+  "(()=>{const items=JSON.parse(localStorage.getItem('knowflick.workspace.artifacts')||'[]');return items.some(a=>a.title==='我的创作稿' && a.contentMarkdown.includes('## 研究问题') && a.sourceNoteIds.includes('n-creative-1'))})()",
+  "浏览器产物库保存草稿、正文和笔记来源"
+);
+await b("eval", "(()=>{const rows=[...document.querySelectorAll('.ws-nav-row')];const row=rows.find(x=>x.textContent.includes('产物库'));if(row){row.click();return true}return false})()");
+await check(
+  "(()=>{const page=document.querySelector('[data-page=\"artifacts\"]');return !!page && page.innerText.includes('我的创作稿')})()",
+  "浏览器产物库显示刚保存的草稿"
+);
+await b("eval", "(()=>{const button=document.querySelector('button[aria-label=\"展开产物内容\"]');if(button){button.click();return true}return false})()");
+await check(
+  "(()=>{const page=document.querySelector('[data-page=\"artifacts\"]');return !!page && page.innerText.includes('我的创作稿') && page.innerText.includes('## 研究问题')})()",
+  "浏览器产物库可展开并查看刚保存的正文"
+);
+
 console.log(`\n创作工作台 smoke：${count} 项检查通过。`);

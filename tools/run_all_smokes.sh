@@ -43,6 +43,7 @@ SUITES=(
   note_retrieval_smoke
   creative_smoke
   review_reminder_smoke
+  goal_scope_smoke
   mailbox_ui_smoke
   review_ui_smoke
   scale_ui_smoke

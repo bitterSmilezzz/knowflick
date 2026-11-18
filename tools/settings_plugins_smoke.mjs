@@ -53,6 +53,7 @@ try {
 
   await clickButton("设置");
   await check('!!document.querySelector(\'[data-page="settings"]\')', "settings page renders");
+  await check('document.body.innerText.includes("浏览器备份包含最近搜索历史") && document.body.innerText.includes("不含桌面项目、目标、画像")', "备份前说明浏览器格式与范围");
 
   // 浏览器体验里多处写着「需要桌面客户端」，但**没告诉用户怎么去**——
   // 被告知要去却没地方去，是断链。设置页是最显眼的落点，必须给可点的路。
@@ -136,16 +137,10 @@ try {
   );
 
   // MCP 面板
-  await check('!!document.querySelector("[data-mcp-snippet]")', "MCP 配置片段面板渲染");
-  // T10（KF-013）：浏览器模式没有绝对路径可用——片段退回到仓库相对路径，
-  // 但**必须**说明这一点，而不是假装那就是安装用户的可用配置。
+  await check('!!document.querySelector(\'[data-group="mcp"]\')', "MCP 授权面板渲染");
+  await check('!document.querySelector("[data-mcp-snippet]")', "浏览器模式不展示不可用的连接配置");
   await check(
-    '(()=>{const a=JSON.parse(document.querySelector("[data-mcp-snippet]").textContent).mcpServers.knowflick.args;' +
-    'return a[0]==="tools/mcp-server.mjs" && typeof a[0]==="string"})()',
-    "MCP 片段给出服务端脚本路径"
-  );
-  await check(
-    '(()=>{const el=document.querySelector("[data-mcp-snippet]").closest("section");' +
+    '(()=>{const el=document.querySelector(\'[data-group="mcp"]\');' +
     'return !!el && /MCP|桌面|安装|源码/.test(el.textContent)})()',
     "MCP 区块说明接入前提（不是无条件可用）"
   );
@@ -197,6 +192,16 @@ try {
     'JSON.parse(localStorage.getItem("knowflick.workspace.v1")).cards.some(c => c.id === "restore-empty-title")',
     "边界样本仍在存储里"
   );
+  await browser(
+    "eval",
+    "localStorage.setItem('knowflick.searchHistory.v1', JSON.stringify(['备份搜索往返验证']));true"
+  );
+  await browser("open", url);
+  await new Promise((r) => setTimeout(r, 900));
+  await check(
+    'JSON.parse(localStorage.getItem("knowflick.searchHistory.v1"))[0] === "备份搜索往返验证"',
+    "浏览器最近搜索样本已装载"
+  );
 
   // 拦下导出的 Blob，这样拿到的是「用户点导出按钮」真实产出的字节
   await browser(
@@ -205,10 +210,11 @@ try {
       URL.createObjectURL=(blob)=>{window.__kfBackup=blob;return "blob:intercepted";};return true})()`
   );
   await clickButton("设置");
-  await clickButton("导出完整备份包");
+  await clickButton("导出备份包");
   await check("window.__kfBackup instanceof Blob", "导出按钮产出了一个备份 Blob");
+  await check('document.body.innerText.includes("部分备份包") && document.body.innerText.includes("邮箱账户")', "导出回执说明备份缺口");
   await check(
-    'JSON.parse(document.querySelector("[data-mcp-snippet]").textContent) !== null',
+    '!!document.querySelector(\'[data-group="mcp"]\')',
     "导出后设置页仍在"
   );
 
@@ -233,6 +239,10 @@ try {
 
   // 清掉浏览器库，验证是从文件里恢复回来的
   await browser("eval", "localStorage.clear();sessionStorage.clear();true");
+  await browser(
+    "eval",
+    "localStorage.setItem('knowflick.searchHistory.v1', JSON.stringify(['本机保留搜索']));true"
+  );
   await browser("open", url);
   await check(
     'JSON.parse(localStorage.getItem("knowflick.workspace.v1")||\'{"materials":[]}\').materials.length === 0',
@@ -241,12 +251,17 @@ try {
 
   await clickButton("设置");
   await browser("click", '[data-action="restore-kfbackup"]');
-  await browser("upload", '[aria-label="选择完整备份包"]', backupPath);
+  await browser("upload", '[aria-label="选择备份包"]', backupPath);
   await check('document.body.innerText.includes("备份恢复完成")', "提示里报告备份恢复完成");
+  await check('document.body.innerText.includes("这些内容无法从此包恢复")', "恢复回执说明包中缺失的数据");
   await browser("open", url);
   await check(
     'document.body.innerText.includes("备份往返记录")',
     "恢复后的素材出现在工作台里"
+  );
+  await check(
+    'JSON.stringify(JSON.parse(localStorage.getItem("knowflick.searchHistory.v1"))) === JSON.stringify(["本机保留搜索", "备份搜索往返验证"])',
+    "浏览器 v12 恢复保留本机顺序并合并备份搜索词"
   );
   // 备份的承诺是「无损」：边界内容也必须回来，不能被静默丢弃。
   const restoredIds = await browser(
@@ -273,6 +288,22 @@ try {
     'JSON.parse(JSON.parse(localStorage.getItem("knowflick.workspace.v1")).settings).plugins["official-review-fsrs"].enabled === true',
     "备份里的插件设置也一并还原"
   );
+  await clickButton("设置");
+  await browser("click", '[data-action="restore-kfbackup"]');
+  await browser("upload", '[aria-label="选择备份包"]', backupPath);
+  await check('document.body.innerText.includes("备份恢复完成") && document.body.innerText.includes("跳过")', "相同备份再次恢复时安全跳过已有记录");
+  await browser("eval", `(()=>{const raw=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));
+    raw.materials.find(m=>m.id==='restore-empty-title-mat').title='本地新素材';
+    raw.cards.find(c=>c.id==='restore-empty-title').reviewCount=9;
+    localStorage.setItem('knowflick.workspace.v1',JSON.stringify(raw));return true})()`);
+  await browser("open", url);
+  await clickButton("设置");
+  await browser("click", '[data-action="restore-kfbackup"]');
+  await browser("upload", '[aria-label="选择备份包"]', backupPath);
+  await check('document.body.innerText.includes("备份恢复是部分完成")', "旧版备份与本地内容冲突时报告部分恢复");
+  await check(`(()=>{const data=JSON.parse(localStorage.getItem('knowflick.workspace.v1'));
+    return data.materials.find(m=>m.id==='restore-empty-title-mat').title==='本地新素材' &&
+      data.cards.find(c=>c.id==='restore-empty-title').reviewCount===9})()`, "冲突恢复不覆盖本地素材与学习进度");
   rmSync(backupPath, { force: true });
   console.log("PASS .kfbackup 从导出按钮到恢复输入框的整条链路可用");
 
@@ -304,6 +335,56 @@ try {
     return true;
   })()`);
   await check(String(backupRoundTrip) === "true", "准备了一份含空标题/空正文/空标题素材的备份样本");
+
+  // 模拟桌面命令，独立挂载实际授权面板；不接触用户数据库或真实令牌。
+  await browser("eval", `(async()=>{
+    const token='a'.repeat(64), grants=[];
+    window.__TAURI_INTERNALS__={invoke:async(command,args)=>{
+      if(command==='mcp_grant_list') return grants.map(g=>({...g}));
+      if(command==='project_list') return [{id:'p1',name:'项目 A',description:'',createdAt:1,updatedAt:1,archivedAt:null}];
+      if(command==='mcp_server_paths') return {scriptPath:'/test/tools/mcp-server.mjs',libraryDir:'/test/library',scriptExists:true};
+      if(command==='mcp_grant_create'){const grant={id:'g1',...args.request,createdAt:1,revokedAt:null,policyVersion:1};grants.push(grant);return {grant,token};}
+      if(command==='mcp_grant_revoke'){const grant=grants.find(g=>g.id===args.id);if(grant)grant.revokedAt=2;return !!grant;}
+      throw new Error('unexpected command');
+    }};
+    window.confirm=()=>true;
+    document.body.innerHTML='<div id="mcp-panel-test"></div>';
+    const React=(await import('/node_modules/.vite/deps/react.js')).default;
+    const dom=(await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+    const {McpGrantPanel}=await import('/src/ui/workspace/McpGrantPanel.tsx');
+    dom.createRoot(document.getElementById('mcp-panel-test')).render(React.createElement(McpGrantPanel,{dir:'/test/library',enabled:true}));
+    return true;
+  })()`);
+  await check('!!document.querySelector(\'input[aria-label="连接名称"]\')', "桌面授权面板加载");
+  await browser("fill", 'input[aria-label="连接名称"]', "测试客户端");
+  await browser("select", 'select[aria-label="授权项目"]', "p1");
+  await clickButton("创建连接授权");
+  await check('!!document.querySelector(\'[aria-label="一次性连接配置"]\')', "创建授权后展示一次性配置");
+  await clickButton("撤销");
+  await check('document.body.innerText.includes("已撤销") && !document.querySelector(\'[aria-label="一次性连接配置"]\') && !document.body.innerText.includes("a".repeat(64))', "撤销时清除当前配置并更新状态");
+
+  // 独立挂载设置页，以模拟上传回执验证缺口会展示给用户；不连接任何服务器。
+  await browser("eval", `(async()=>{
+    window.__TAURI_INTERNALS__={invoke:async(command)=>{
+      if(command==='read_webdav_credential') return '';
+      if(command==='write_webdav_credential') return null;
+      throw new Error('unavailable in test');
+    }};
+    document.body.innerHTML='<div id="webdav-test"></div>';
+    const React=(await import('/node_modules/.vite/deps/react.js')).default;
+    const dom=(await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+    const {WorkspaceSettings}=await import('/src/ui/workspace/WorkspaceSettings.tsx');
+    const {parseSettings}=await import('/src/domain/settings.ts');
+    const {BACKUP_FORMAT_GAP}=await import('/src/domain/systemBackup.ts');
+    dom.createRoot(document.getElementById('webdav-test')).render(React.createElement(WorkspaceSettings,{
+      dir:'/test/library',file:parseSettings('{}'),apiKey:'',reviewEnabled:false,materials:[],cards:[],
+      onSave:async()=>{},onBack:()=>{},onWebdavUpload:async()=>({fileName:'test.kfbackup',bytes:10,sha256:'a'.repeat(64),gaps:[BACKUP_FORMAT_GAP]})
+    }));return true;
+  })()`);
+  await check('!!document.querySelector(\'input[aria-label="WebDAV 地址"]\')', "桌面 WebDAV 设置已加载");
+  await browser("fill", 'input[aria-label="WebDAV 地址"]', "https://example.test/backup");
+  await browser("eval", `(()=>{document.querySelector('[data-action="webdav-upload"]').click();return true;})()`);
+  await check('document.querySelector(\'[data-section="webdav"] [role="status"]\')?.innerText.includes("部分备份") && document.querySelector(\'[data-section="webdav"] [role="status"]\')?.innerText.includes("个人画像")', "WebDAV 回执明确显示缺口");
 
   console.log("Plugins / backup / MCP settings smoke complete.");
 } finally {

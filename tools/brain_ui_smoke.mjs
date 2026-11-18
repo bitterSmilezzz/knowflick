@@ -156,7 +156,32 @@ try {
     "点已删除的引用有明确说明"
   );
 
-  // 4. 认知简报：不依赖模型也能出结构化内容
+  // 5. 有效的笔记引用必须跳到那篇原笔记，而不只显示标题
+  await b("eval", `(() => {
+    const now = Date.now();
+    localStorage.setItem('knowflick.notes.v1', JSON.stringify({
+      notes: [{ id: "cite-note-active", title: "引用回原件验收", bodyMd: "这段正文来自被引用的原笔记。",
+        notebook: null, tags: [], isPinned: false, isFavorite: false, archivedAt: null, sourceMaterialId: null,
+        currentRevision: 1, createdAt: now, updatedAt: now, isDeleted: false, deletedAt: null }],
+      knowledgeBases: [], membership: {},
+    }));
+    localStorage.setItem('knowflick.workspace.chat', JSON.stringify([
+      { role: "assistant", content: "你好！我是你的知识库助手。我会基于你的笔记和卡片回答问题，并指出引用来源。" },
+      { role: "user", content: "打开引用来源" },
+      { role: "assistant", content: "请查看这篇笔记。", cited: [{ id: "cite-note-active", headline: "引用回原件验收", kind: "note" }] },
+    ]));
+    return true;
+  })()`);
+  await b("open", url);
+  await new Promise(r => setTimeout(r, 900));
+  await goTo("知识问答");
+  await check("!!document.querySelector('button.ws-cite-note')", "有效笔记引用可点击");
+  await ev("(() => { const button = document.querySelector('button.ws-cite-note'); button?.click(); return !!button; })()");
+  await new Promise(r => setTimeout(r, 1200));
+  await check("!!document.querySelector('[data-page=\"notes\"]')", "点击笔记引用打开笔记页");
+  await check("document.querySelector('input[aria-label=\"笔记标题\"]')?.value === '引用回原件验收'", "点击笔记引用定位到对应原件");
+
+  // 6. 认知简报：不依赖模型也能出结构化内容
   await seed(false);
   await goTo("认知简报");
   await check("document.body.innerText.includes('认知洞察简报')", "简报页有标题");
@@ -170,7 +195,7 @@ try {
   await new Promise(r => setTimeout(r, 400));
   await check("document.body.innerText.includes('已按当前卡片重算')", "重新分析后给出反馈而不是没反应");
 
-  // 5. 存入产物库的简报必须能再看到——存进去却无处可读等于白存
+  // 7. 存入产物库的简报必须能再看到——存进去却无处可读等于白存
   await seed(false);
   await goTo("认知简报");
   await ev("(() => { const b=[...document.querySelectorAll('button')].find(x=>/存入产物库/.test(x.textContent)); if(b){b.click();return true} return false })()");

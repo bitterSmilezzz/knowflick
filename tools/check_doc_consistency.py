@@ -5,7 +5,7 @@
 
 背景：这轮手工核对时发现 README / UI_CONSOLIDATION 写着的门禁内容与实际
 已经差了好几轮（文档说「npm test + tsc + cargo test」，实际还有 MCP、
-来源矩阵、taste gate 与 13 套浏览器冒烟）。这类漂移靠人查迟早会再犯。
+来源矩阵、taste gate 与 18 套浏览器冒烟）。这类漂移靠人查迟早会再犯。
 
 范围只管**描述当前状态的文档**——CHANGELOG 记的是「当时的事实」，
 历史条目的数字本来就不该跟着变，不在检查范围内。
@@ -81,14 +81,7 @@ def count_smoke_suites() -> int:
     不能直接数 tools/*_smoke.mjs：mcp_smoke 与 mcp_server_smoke 不需要浏览器，
     已在门禁里单独跑，不属于「浏览器冒烟」。
     """
-    runner = ROOT / "tools/run_all_smokes.sh"
-    if not runner.exists():
-        return 0
-    text = runner.read_text(encoding="utf-8")
-    match = re.search(r"SUITES=\((.*?)\)", text, re.S)
-    if not match:
-        return 0
-    return len(re.findall(r"^\s+[a-z_]+$", match.group(1), re.M))
+    return len(browser_smoke_suites("run_all_smokes.sh"))
 
 
 
@@ -216,22 +209,43 @@ def ci_browser_smoke_suites() -> set[str]:
     只支持当前这套写法（每行一个标识符）。格式变了就**明确报错**，
     不猜、不假装支持。
     """
-    script = ROOT / "tools/ci_run_browser_smokes.sh"
+    return browser_smoke_suites("ci_run_browser_smokes.sh")
+
+
+def browser_smoke_suites(filename: str) -> set[str]:
+    script = ROOT / "tools" / filename
     if not script.exists():
         return set()
     text = script.read_text(encoding="utf-8")
     block = re.search(r"^SUITES=\(\n(.*?)\n\)", text, re.M | re.S)
     if not block:
-        raise ValueError("ci_run_browser_smokes.sh 里找不到 SUITES=(...) 数组")
+        raise ValueError(f"{filename} 里找不到 SUITES=(...) 数组")
     suites: set[str] = set()
     for line in block[1].splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue  # 注释不是执行项
         if not re.fullmatch(r"[a-z0-9_]+", stripped):
-            raise ValueError(f"无法识别的 SUITES 条目：{line!r}")
+            raise ValueError(f"{filename} 的 SUITES 条目无效：{line!r}")
+        if stripped in suites:
+            raise ValueError(f"{filename} 的 SUITES 条目重复：{stripped}")
         suites.add(stripped)
     return suites
+
+
+def check_browser_smoke_coverage(problems: list[str]) -> None:
+    local = browser_smoke_suites("run_all_smokes.sh")
+    ci = ci_browser_smoke_suites()
+    for missing, runner in ((local - ci, "CI"), (ci - local, "本机门禁")):
+        if missing:
+            problems.append(f"{runner}的浏览器冒烟清单缺少：{', '.join(sorted(missing))}")
+    workflow = (ROOT / ".github/workflows/workbench.yml").read_text(encoding="utf-8")
+    scripts = ["tools/ci_run_browser_smokes.sh", *(f"tools/{name}.mjs" for name in sorted(ci))]
+    for event in ("push", "pull_request"):
+        patterns = _workflow_paths(workflow, event)
+        for script in scripts:
+            if not any(_path_matches(script, pattern) for pattern in patterns):
+                problems.append(f"workbench.yml 的 {event} 路径未覆盖浏览器冒烟脚本 {script}")
 
 
 def check_evidence_is_executed(problems: list[str]) -> None:
@@ -497,6 +511,7 @@ def main() -> int:
                 problems.append(f"{rel}:{lineno} 提到 tools/{script}，但该文件不存在")
 
     check_gate_claims(problems)
+    check_browser_smoke_coverage(problems)
     check_evidence(problems)
     check_evidence_is_executed(problems)
     check_evidence_assertions(problems)

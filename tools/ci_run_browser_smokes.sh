@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # 在 CI 上真的跑浏览器冒烟。
 #
-# 背景：13 套浏览器冒烟此前只在本机跑（`run_all_smokes.sh` 缺 agent-browser 时
+# 背景：整套浏览器冒烟此前只在本机跑（`run_all_smokes.sh` 缺 agent-browser 时
 # 打印 SKIP 并 exit 0）。于是验收清单里 19 条「已修缺陷 → 证据测试」的登记，
 # 在 CI 上**一条断言都不产生**，却仍被算成「已覆盖」——证据被改弱时无人察觉。
 #
-# 这个脚本把三件事凑齐：agent-browser（含浏览器二进制）、运行中的 Vite、13 套冒烟。
+# 这个脚本准备 agent-browser（含浏览器二进制）和 Vite，然后运行全部浏览器冒烟。
 # 单独成 job 而不是塞进 verify 步骤：它要装浏览器、要起服务，失败原因与
 # 编译/单测不同，混在一起会让日志难读；也会拖慢每个 PR 的主门禁。
 #
@@ -44,7 +44,7 @@ cleanup() {
 trap cleanup EXIT
 
 # 等前端就绪。冒烟脚本自己也探测一次，但这里要先确认服务真的起来了——
-# 否则 13 套会各自报「打不开页面」，看不出是服务没起还是断言失败。
+# 前端未就绪时统一报告启动失败。
 up=0
 for _ in $(seq 1 30); do
   if curl -fsS --max-time 3 "$URL" >/dev/null 2>&1; then
@@ -74,6 +74,10 @@ SUITES=(
   import_ui_smoke
   notes_ui_smoke
   notes_editor_smoke
+  note_retrieval_smoke
+  creative_smoke
+  review_reminder_smoke
+  goal_scope_smoke
   mailbox_ui_smoke
   review_ui_smoke
   scale_ui_smoke
@@ -93,6 +97,8 @@ for suite in "${SUITES[@]}"; do
     echo "::error::$suite 失败" >&2
     failed="$failed $suite"
   fi
+  # 浏览器会话异步关闭，给下一套留出与本机门禁相同的清理时间。
+  sleep 1
 done
 
 if [ -n "$failed" ]; then

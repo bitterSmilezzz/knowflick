@@ -30,6 +30,12 @@ node tools/mcp_smoke.mjs
 # 独立临时库的正常实现也必须通过，不能只运行预期失败的退化版本。
 node tools/mcp_server_smoke.mjs
 
+# 项目授权、撤销与事务审计的反例测试（实际入口接入前也持续验证底层策略）。
+node --test tools/mcp_access_test.mjs
+node --test tools/mcp_scoped_server_test.mjs
+# 旧卡片 MCP 也要遵守同一授权，保留其检索与人工暂存回归。
+node --test tools/knowflick-mcp/test.mjs
+
 # MCP 安装接入（T10，审计 KF-013）：安装用户复制配置就能用——
 # 绝对路径 + --dir 库目录、任意 cwd、默认只读、显式授权写成功、
 # 模块停用后独立进程被阻断。这套不需要浏览器，CI 上也能跑。
@@ -99,7 +105,7 @@ python3 tools/check_responsibility.py
 # 文字色不用裸 accent、纯文本里不留 Markdown 标记。
 python3 tools/check_design_tokens.py
 
-# 全部浏览器冒烟：13 套界面级回归。
+# 全部浏览器冒烟：18 套界面级回归。
 # 它们要真实浏览器与运行中的 Vite，CI 环境两者都没有（脚本会 SKIP）；
 # 但在本机，门禁应当把它们一起跑完——否则界面退化只在「谁记得手动跑」时才被发现。
 ./tools/run_all_smokes.sh

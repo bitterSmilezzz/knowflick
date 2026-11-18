@@ -17,15 +17,17 @@
  * 6. **`swift -e` 只吃单行。** 传多行它会把脚本文本原样打印出来（不是执行结果），
  *    于是永远「找不到窗口」。要写成临时文件再 `swift <file>`。
  *
- * 跑法：node tools/desktop_external_write_smoke.mjs
+ * 跑法：确认当前测试窗口与个人库可写后，
+ * `KNOWFLICK_DESKTOP_SMOKE_ALLOW_PERSONAL_DB=1 node tools/desktop_external_write_smoke.mjs`
+ * （默认 SKIP，避免自动门禁向个人库写临时数据。）
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { screenShowsKnowFlick } from "./knowflick_window_probe.mjs";
 
@@ -38,6 +40,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let count = 0;
 const pass = (label) => { count++; console.log(`PASS ${label}`); };
 const skip = (why) => { console.log(`SKIP ${why}`); process.exit(0); };
+
+if (process.env.KNOWFLICK_DESKTOP_SMOKE_ALLOW_PERSONAL_DB !== "1") {
+  skip("此冒烟会向当前用户库写入并清理临时卡；确认测试窗口和库后，手动设置 KNOWFLICK_DESKTOP_SMOKE_ALLOW_PERSONAL_DB=1 再运行");
+}
 
 mkdirSync(workDir, { recursive: true });
 
@@ -169,65 +175,61 @@ const headline = `外部写入验证 ${randomUUID().slice(0, 8)}`;
 /** 用**已安装应用里**的那份服务端脚本——T10 承诺的是「安装用户可用」，
  *  拿仓库里的源码脚本去验，等于没验到随包分发这件事。 */
 const installedScript = "/Applications/KnowFlick.app/Contents/Resources/tools/mcp-server.mjs";
-const serverScript = existsSync(installedScript) ? installedScript : join(process.cwd(), "tools/mcp-server.mjs");
-pass(`MCP 服务端脚本：${serverScript}${serverScript === installedScript ? "（已安装应用内随包分发）" : "（仓库源码，安装包未找到）"}`);
+if (!existsSync(installedScript) || !existsSync(join(dirname(installedScript), "mcp-access.mjs"))) {
+  skip("已安装的桌面应用尚未包含新的 MCP 授权服务，需要先安装新版再做真机验收");
+}
+const serverScript = installedScript;
+const checkSchema = new DatabaseSync(dbPath, { readOnly: true });
+const hasGrantTables = checkSchema.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('mcp_grants','mcp_audit')").get().n === 2;
+checkSchema.close();
+if (!hasGrantTables) skip("桌面库尚未迁移到 MCP 授权结构");
+pass("MCP 授权服务来自已安装应用");
 
 async function mcpCall(env, request) {
-  const child = execFile("node", [serverScript], {
-    env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libDir, ...env },
-  });
+  const child = execFile("node", [serverScript], { env: { ...process.env, KNOWFLICK_LIBRARY_DIR: libDir, ...env } });
   let out = "";
-  child.stdout.on("data", (d) => { out += d.toString(); });
+  child.stdout.on("data", d => { out += d.toString(); });
   child.stderr.on("data", () => {});
-  child.stdin.write(JSON.stringify(request) + "\n");
-  await sleep(2000);
-  child.stdin.end();
-  await sleep(400);
-  return out;
+  child.stdin.end(JSON.stringify(request) + "\n");
+  await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", code => code === 0 ? resolve() : reject(new Error("MCP 进程异常退出"))); });
+  return JSON.parse(out.trim().split("\n")[0]);
 }
-
-const writeRequest = {
-  jsonrpc: "2.0", id: 1, method: "tools/call",
-  params: { name: "create_flash_card", arguments: { headline, details: "外部进程写入的正文", category: "计算机" } },
-};
-
-// 1. 默认只读：未授权时写工具必须被明确拒绝（E06 口径）
-const deniedOut = await mcpCall({}, writeRequest);
-assert.ok(deniedOut.includes("写入被拒绝") && deniedOut.includes("显式授权"),
-  `未授权时写工具应被明确拒绝，实际：${deniedOut.slice(0, 200)}`);
-pass("MCP 默认只读：未授权的写工具被明确拒绝并说明开启方法");
-
-// 2. 显式授权后写入成功（独立进程，直接写 SQLite）
-const out = await mcpCall({ KNOWFLICK_MCP_ALLOW: "card" }, writeRequest);
-assert.ok(out.includes("成功"), `MCP 写入失败：${out.slice(0, 300)}`);
-pass("MCP server 显式授权后写入成功（独立进程，直接写 SQLite）");
-
-const after = new DatabaseSync(dbPath, { readOnly: true });
-const countAfter = after.prepare("SELECT COUNT(*) AS n FROM cards WHERE is_deleted = 0").get().n;
-const headlines = after.prepare("SELECT headline FROM cards WHERE is_deleted = 0").all().map((r) => r.headline);
-after.close();
-assert.equal(countAfter, countBefore + 1, "库里应多出一张卡");
-assert.ok(headlines.includes(headline), "新卡就在应用正在用的这个库里");
-pass("新卡写进了应用正在用的那个库");
-
-// --- 8. 界面应自动刷新（不必用户切页或重启） ---
-let refreshed = false;
-for (let i = 0; i < 10; i++) {
-  await sleep(2000);
-  const now = await fingerprint();
-  if (now !== baseline) { refreshed = true; break; }
+const writeRequest = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_flash_card", arguments: { headline, details: "外部进程写入的正文", category: "计算机" } } };
+const grantId = `smoke-${randomUUID()}`;
+const token = randomBytes(32).toString("hex");
+const writer = new DatabaseSync(dbPath);
+writer.prepare(`INSERT INTO mcp_grants(id,client_label,scope,project_id,token_hash,library_read,card_write,material_write,created_at,policy_version)
+  VALUES (?, '真机冒烟临时授权', 'library', NULL, ?, 0, 1, 0, ?, 1)`).run(grantId, createHash("sha256").update(token).digest("hex"), Date.now());
+writer.close();
+try {
+  const denied = await mcpCall({ KNOWFLICK_MCP_TOKEN: "", KNOWFLICK_MCP_ALLOW: "card" }, writeRequest);
+  assert.equal(denied.error?.code, -32001, "旧环境变量不能绕过授权");
+  pass("无令牌时旧环境变量无法写入");
+  const out = await mcpCall({ KNOWFLICK_MCP_TOKEN: token }, writeRequest);
+  assert.ok(out.result?.content?.[0]?.text.includes("成功"), `授权写入失败：${JSON.stringify(out).slice(0, 300)}`);
+  pass("临时授权后写入成功");
+  const after = new DatabaseSync(dbPath, { readOnly: true });
+  const countAfter = after.prepare("SELECT COUNT(*) AS n FROM cards WHERE is_deleted = 0").get().n;
+  const headlines = after.prepare("SELECT headline FROM cards WHERE is_deleted = 0").all().map(r => r.headline);
+  after.close();
+  assert.equal(countAfter, countBefore + 1);
+  assert.ok(headlines.includes(headline));
+  pass("新卡写入应用正在使用的库");
+  let refreshed = false;
+  for (let i = 0; i < 10; i++) {
+    await sleep(2000);
+    if (await fingerprint() !== baseline) { refreshed = true; break; }
+  }
+  assert.ok(refreshed, "外部写入后界面没有自动刷新");
+  pass("外部写入后界面自动刷新");
+} finally {
+  const cleanup = new DatabaseSync(dbPath);
+  try {
+    cleanup.prepare("DELETE FROM fts_cards WHERE headline = ?").run(headline);
+    cleanup.prepare("DELETE FROM cards WHERE headline = ?").run(headline);
+    cleanup.prepare("DELETE FROM mcp_audit WHERE grant_id = ?").run(grantId);
+    cleanup.prepare("DELETE FROM mcp_grants WHERE id = ?").run(grantId);
+  } finally { cleanup.close(); }
 }
-assert.ok(refreshed, "外部写入后界面没有自动刷新（10 次轮询内指纹未变）");
-pass("外部写入后界面自动刷新（无需切页或重启）");
-
-// --- 9. 清理：测试卡不该留在用户真实库里 ---
-// 这一套跑的是**用户自己的库**（不是临时库）——留下「外部写入验证 xxxx」
-// 就是往用户数据里塞垃圾。验完就删干净（软删也算留痕，直接硬删这一行）。
-const cleanup = new DatabaseSync(dbPath);
-const removed = cleanup.prepare("DELETE FROM cards WHERE headline = ?").run(headline).changes;
-const fts = cleanup.prepare("DELETE FROM fts_cards WHERE headline = ?").run(headline).changes;
-cleanup.close();
-assert.equal(removed, 1, "测试卡应被删掉");
-pass(`测试卡已从用户库里清理（cards ${removed} 行、fts_cards ${fts} 行）`);
-
+pass("已清理测试卡和临时授权");
 console.log(`Desktop external write smoke: ${count} checks passed.`);

@@ -116,6 +116,15 @@ try {
   // Search
   await browser("fill", '[aria-label="搜索知识库"]', "记忆");
   await check('document.querySelectorAll(".ws-entry").length === 1', "two-character Chinese search matches");
+  await browser("eval", '(()=>{const input=document.querySelector("[aria-label=\\"搜索知识库\\"]");input.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));return true})()');
+  await check('JSON.parse(localStorage.getItem("knowflick.searchHistory.v1")||"[]")[0] === "记忆"', "submitted search is saved locally");
+  await check('document.querySelector(".ws-search-history")?.innerText.includes("记忆")', "recent searches appear below the search box");
+  await browser("open", url);
+  await check('JSON.parse(localStorage.getItem("knowflick.searchHistory.v1")||"[]")[0] === "记忆"', "search history survives reload");
+  await browser("click", '[aria-label="搜索知识库"]');
+  await check('document.querySelector(".ws-search-history")?.innerText.includes("记忆")', "saved search history reopens from the search box");
+  await browser("click", ".ws-search-history-head button");
+  await check('JSON.parse(localStorage.getItem("knowflick.searchHistory.v1")||"[]").length === 0', "recent searches can be cleared");
   await browser("fill", '[aria-label="搜索知识库"]', "不匹配的词语");
   await check('document.body.innerText.includes("没有找到匹配内容")', "honest no-results state");
   await browser("fill", '[aria-label="搜索知识库"]', "");

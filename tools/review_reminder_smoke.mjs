@@ -56,6 +56,9 @@ await b("eval", `(()=>{
     raw = d.settings;
   }
   delete raw.reviewSchedule;
+  raw.baseURL = 'http://127.0.0.1:11434/v1';
+  raw.model = 'review-smoke';
+  raw.enableAI = true;
   d.settings = JSON.stringify(raw);
   localStorage.setItem(key, JSON.stringify(d));
   return true;
@@ -68,7 +71,7 @@ await b("eval", `(()=>{
   d.materials = Array.from({length:6},(_,i)=>({
     id:'m-rem-'+i, sourceType:'manual', title:'待整理 '+i, sourceUrl:null, rawText:'正文',
     contentHash:'', mediaPath:null, mediaSizeBytes:0, metadataJson:'{}', inboxStatus:'inbox',
-    createdAt:1, updatedAt:1
+    createdAt:Date.now()-1000, updatedAt:Date.now()-1000
   }));
   localStorage.setItem(key, JSON.stringify(d));
   return true;
@@ -79,6 +82,57 @@ await new Promise(r => setTimeout(r, 1600));
 // 1. 打开复盘页
 await b("eval", "(()=>{const rows=[...document.querySelectorAll('.ws-nav-row')];const r=rows.find(x=>x.textContent.includes('复盘'));if(r){r.click();return true}return false})()");
 await check("!!document.querySelector('[aria-label=\"主动回顾\"]')", "主动回顾区块存在");
+await check("!!document.querySelector('[aria-label=\"AI 建议\"]')", "复盘 AI 建议区块存在");
+await check(
+  "(()=>{const section=document.querySelector('[aria-label=\"AI 建议\"]');const box=section?.querySelector('input[type=checkbox]');const button=[...(section?.querySelectorAll('button')||[])].find(x=>x.textContent.includes('生成建议'));return !!box && !box.checked && !!button && button.disabled && !!section.querySelector('.rv-ai-preview') && section.textContent.includes('待整理')})()",
+  "AI 请求先展示来源预览并要求逐次同意"
+);
+await b("eval", "(()=>{const box=document.querySelector('[aria-label=\"AI 建议\"] input[type=checkbox]');if(box)box.click();return !!box})()");
+await check(
+  "(()=>{const section=document.querySelector('[aria-label=\"AI 建议\"]');const box=section?.querySelector('input[type=checkbox]');const button=[...(section?.querySelectorAll('button')||[])].find(x=>x.textContent.includes('生成建议'));return !!box?.checked && !!button && !button.disabled})()",
+  "明确同意后才启用生成按钮"
+);
+await b("eval", `(()=>{
+  window.__reviewCalls=0;
+  window.__reviewFetchOriginal=window.fetch.bind(window);
+  window.fetch=async(input,init)=>{
+    if(!String(input).includes('127.0.0.1:11434'))return window.__reviewFetchOriginal(input,init);
+    window.__reviewCalls++;
+    window.__reviewPrompt=JSON.parse(init.body);
+    const answer=JSON.stringify([{text:'把这批待整理素材归成一个主题，并选出一条后续动作',evidenceIds:['material:m-rem-0']}]);
+    return new Response(JSON.stringify({choices:[{message:{content:answer}}]}),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  const key='knowflick.workspace.v1';
+  const data=JSON.parse(localStorage.getItem(key));
+  data.materials=data.materials.map(item=>item.id==='m-rem-0'?{...item,rawText:'刷新后的正文，供发送前核对'}:item);
+  localStorage.setItem(key,JSON.stringify(data));
+  return true;
+})()`);
+await b("eval", "(()=>{const section=document.querySelector('[aria-label=\"AI 建议\"]');const button=[...(section?.querySelectorAll('button')||[])].find(x=>x.textContent.includes('生成建议'));button?.click();return !!button})()");
+await check(
+  "(()=>{const section=document.querySelector('[aria-label=\"AI 建议\"]');const box=section?.querySelector('input[type=checkbox]');const button=[...(section?.querySelectorAll('button')||[])].find(x=>x.textContent.includes('生成建议'));return !!section?.textContent.includes('刷新后的正文') && section.innerText.includes('刷新下方预览') && !!box && !box.checked && !!button?.disabled && window.__reviewCalls===0})()",
+  "来源变化后刷新预览并在发送前中止"
+);
+await b("eval", "(()=>{const box=document.querySelector('[aria-label=\"AI 建议\"] input[type=checkbox]');if(box)box.click();return !!box})()");
+await check(
+  "(()=>{const section=document.querySelector('[aria-label=\"AI 建议\"]');const button=[...(section?.querySelectorAll('button')||[])].find(x=>x.textContent.includes('生成建议'));return !!section?.querySelector('input[type=checkbox]')?.checked && !!button && !button.disabled})()",
+  "核对刷新后的来源并再次同意"
+);
+await b("eval", `(()=>{
+  window.__reviewNotesBefore=localStorage.getItem('knowflick.notes.v1');
+  window.__reviewArtifactsBefore=localStorage.getItem('knowflick.workspace.artifacts');
+  const section=document.querySelector('[aria-label="AI 建议"]');
+  [...section.querySelectorAll('button')].find(x=>x.textContent.includes('生成建议'))?.click();
+  return true;
+})()`);
+await check(
+  "(()=>{const section=document.querySelector('[aria-label=\"AI 建议\"]');return section?.innerText.includes('建议已生成') && section.textContent.includes('把这批待整理素材归成一个主题') && section.textContent.includes('待整理 0') && window.__reviewCalls===1 && window.__reviewPrompt.messages[1].content.includes('刷新后的正文')})()",
+  "模拟模型结果只显示本页且带回原件引用"
+);
+await check(
+  "localStorage.getItem('knowflick.notes.v1')===window.__reviewNotesBefore && localStorage.getItem('knowflick.workspace.artifacts')===window.__reviewArtifactsBefore",
+  "AI 建议不会自动写入笔记或产物"
+);
 
 // 2. 频率可选（含退订）
 await check(
@@ -94,6 +148,12 @@ await check(
 
 // 4. 暂停开关存在
 await check("!!document.querySelector('input[aria-label=\"暂停主动回顾\"]')", "暂停开关存在");
+
+// 系统通知必须由用户显式开启；浏览器预览不应请求桌面权限。
+await check(
+  "(()=>{const el=document.querySelector('input[aria-label=\"启用系统通知\"]');return !!el && !el.checked && el.disabled})()",
+  "系统通知默认关闭，浏览器预览不请求桌面权限"
+);
 
 // 5. 可处理事项清单：收件箱堆积 6 条 → 有提醒
 await check(
