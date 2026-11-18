@@ -177,6 +177,20 @@ try {
   await check("document.querySelector('details.nv-history')?.open === true", "修订历史面板能展开");
   await check("document.querySelector('.nv-history').textContent.includes('浏览器体验不保存修订历史')", "浏览器里如实说明读不到修订历史（不是「暂无历史」）");
 
+  // 8e. 批量移动（B03）：Cmd/Ctrl/Shift 多选 → 一次移到笔记本，只改元数据。
+  // 两次点击必须分开派发：React 的 batchIds 来自闭包，同一帧里连发两次，第二次仍读到空集，
+  // 只会选中 1 篇。真人是分两次点的（中间有渲染），这里也照同一个节奏。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await check("document.querySelector('.nv-batch-bar') !== null", "多选后出现批量操作栏");
+  await check("document.querySelector('.nv-batch-bar').textContent.includes('已选 2 篇')", "批量栏显示已选 2 篇");
+  await setNative('[aria-label="批量移动到笔记本"]', "项目B");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='移动').click();return true})()");
+  await check("document.body.innerText.includes('已把 2 篇移到「项目B」')", "批量移动有回执并说明移到哪");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.notebook==='项目B').length===2})()", "两篇笔记的笔记本都已更新");
+  await check("document.querySelector('.nv-batch-bar') === null", "移动后批量栏收起");
+
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(

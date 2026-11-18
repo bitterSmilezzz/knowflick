@@ -45,6 +45,7 @@ import {
   createNoteDraft,
   duplicateNoteDraft,
   emptyNotesState,
+  moveNotesToNotebook,
   noteToMarkdown,
   restoreNote as domainRestoreNote,
   restoreNoteRaw as domainRestoreNoteRaw,
@@ -407,6 +408,38 @@ export async function duplicateNoteById(id: string, dir: string): Promise<Note> 
   const { state: next } = domainUpsert(state, draft, 0);
   browserNotesWrite(next);
   return next.notes.find((n) => n.id === draft.id) ?? draft;
+}
+
+/**
+ * 批量把笔记移到某个笔记本（空串 = 移出笔记本）。
+ *
+ * 元数据变化，不追加修订：两条写入路径都走 upsert（base = 当前修订），语义与单篇改本一致。
+ * 返回实际移动的篇数与「找不到的 id」数——界面据此说「N 篇已移动、M 篇没找到」，
+ * 而不是笼统的「操作完成」。
+ */
+export async function moveNotesToNotebookById(
+  ids: readonly string[],
+  notebook: string,
+  dir: string
+): Promise<{ moved: number; missing: number; notebook: string | null }> {
+  const now = Date.now();
+  if (inShell()) {
+    const state = await readNotes(dir);
+    const plan = moveNotesToNotebook(state, ids, notebook, now);
+    for (const id of plan.moved) {
+      const before = state.notes.find((n) => n.id === id);
+      const note = plan.state.notes.find((n) => n.id === id);
+      if (!before || !note) continue;
+      // 已经是目标笔记本的不再写一次（省一次 IPC，也不白改 updatedAt）。
+      if (before.notebook === note.notebook) continue;
+      await noteUpsert(notePayload(note), note.currentRevision, dir);
+    }
+    return { moved: plan.moved.length, missing: plan.missing.length, notebook: plan.notebook };
+  }
+  const state = browserNotes();
+  const plan = moveNotesToNotebook(state, ids, notebook, now);
+  browserNotesWrite(plan.state);
+  return { moved: plan.moved.length, missing: plan.missing.length, notebook: plan.notebook };
 }
 
 /**

@@ -252,6 +252,40 @@ export function noteToMarkdown(note: Note): string {
   if (note.bodyMd.trim().length > 0) return note.bodyMd;
   return `# ${note.title.trim() || "无标题笔记"}\n`;
 }
+/**
+ * 批量移动到笔记本（B03）。
+ *
+ * 语义与单篇改笔记本一致：这是**元数据**变化，不追加修订（docs/NOTES_MODEL.md），
+ * 所以它不能各写一份——这里做成纯函数，浏览器与桌面两条写入路径共用同一判定。
+ * `notebook` 传空串或纯空白 = 移出笔记本（设为 null）。
+ * 不存在的 id 收进 `missing` 而不是静默忽略：界面要能说清「有几篇没动」。
+ */
+export function moveNotesToNotebook(
+  state: NotesState,
+  ids: readonly string[],
+  notebook: string,
+  now = Date.now()
+): { state: NotesState; moved: string[]; missing: string[]; notebook: string | null } {
+  const target = notebook.trim() ? notebook.trim() : null;
+  const wanted = new Set(ids);
+  const moved: string[] = [];
+  const missing: string[] = [];
+  for (const id of wanted) {
+    if (!state.notes.some((n) => n.id === id)) missing.push(id);
+  }
+  const notes = state.notes.map((n) => {
+    if (!wanted.has(n.id)) return n;
+    if (n.notebook === target) {
+      // 已经在这个本里：仍然算「移动成功」，但不改时间也不产生写入。
+      moved.push(n.id);
+      return n;
+    }
+    moved.push(n.id);
+    return { ...n, notebook: target, updatedAt: now };
+  });
+  return { state: { ...state, notes }, moved, missing, notebook: target };
+}
+
 export function createKnowledgeBase(
   state: NotesState,
   kb: Omit<KnowledgeBase, "createdAt" | "updatedAt">,

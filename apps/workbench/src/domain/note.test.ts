@@ -8,6 +8,7 @@ import {
   duplicateNoteDraft,
   emptyNotesState,
   listNotes,
+  moveNotesToNotebook,
   NoteConflictError,
   noteFromJson,
   noteToMarkdown,
@@ -229,6 +230,36 @@ describe("笔记领域语义（与 Rust notes.rs 对齐）", () => {
     state = upsertNote(state, { ...state.notes.find((n) => n.id === "old")!, archivedAt: 4000 }, 1, 4000).state;
     expect(listNotes(state).map((n) => n.id)).toEqual(["fresh"]);
   });
+  it("批量移动只改笔记本、不追加修订，并如实报告没找到的 id", () => {
+    let state = emptyNotesState();
+    const a = createNoteDraft(1000); a.id = "a";
+    const b = createNoteDraft(2000); b.id = "b";
+    const c = createNoteDraft(3000); c.id = "c";
+    state = upsertNote(state, { ...a, title: "甲", bodyMd: "甲正文" }, 0, 1000).state;
+    state = upsertNote(state, { ...b, title: "乙", bodyMd: "乙正文" }, 0, 2000).state;
+    state = upsertNote(state, { ...c, title: "丙", bodyMd: "丙正文", notebook: "项目A" }, 0, 3000).state;
+
+    const out = moveNotesToNotebook(state, ["a", "c", "ghost"], "  项目B  ", 9000);
+    // 两端空白要去掉
+    expect(out.notebook).toBe("项目B");
+    expect(out.moved.sort()).toEqual(["a", "c"]);
+    // 找不到的 id 要点名，不能静默吞掉
+    expect(out.missing).toEqual(["ghost"]);
+    expect(out.state.notes.find((n) => n.id === "a")!.notebook).toBe("项目B");
+    expect(out.state.notes.find((n) => n.id === "c")!.notebook).toBe("项目B");
+    expect(out.state.notes.find((n) => n.id === "b")!.notebook).toBeNull();
+    // 三篇的修订号都还是 1：批量移动是元数据变化
+    expect(["a", "b", "c"].map((id) => out.state.notes.find((n) => n.id === id)!.currentRevision)).toEqual([1, 1, 1]);
+
+    const out2 = moveNotesToNotebook(out.state, ["a", "c"], "   ", 99000);
+    expect(out2.notebook).toBeNull();
+    expect(out2.state.notes.find((n) => n.id === "a")!.notebook).toBeNull();
+    const before = out.state.notes.find((n) => n.id === "c")!.updatedAt;
+    const out3 = moveNotesToNotebook(out.state, ["c"], "项目B", 99000);
+    // 已在该本里就不该改动时间
+    expect(out3.state.notes.find((n) => n.id === "c")!.updatedAt).toBe(before);
+  });
+
   it("复制笔记是新建：新 id、修订 1，保留内容与笔记本/标签，清掉原篇的状态", () => {
     let state = emptyNotesState();
     const src = createNoteDraft(1000);

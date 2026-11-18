@@ -2882,6 +2882,24 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-entry-archived { cursor: default; }
 /* 首屏只渲染一页；「加载更多」与「全部知识」列表同一样式。 */
 .nv-load-more { margin: 8px 0; padding: 6px 8px; background: none; border: 1px dashed var(--line); border-radius: 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
+/* 多选行与批量栏：与「全部知识」列表同一套视觉（左竖条 + 淡底，不只靠颜色）。 */
+.nv-entry-picked {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.nv-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.nv-batch-count { color: var(--ink); }
+.nv-batch-notebook { flex: 1; min-width: 140px; font-size: 12px; }
 .nv-unarchive { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
 .nv-pin-badge { font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 6px; color: var(--muted); }
 /* 已处于开启状态的图标按钮：颜色要能看出来，不能只靠 aria-pressed。 */

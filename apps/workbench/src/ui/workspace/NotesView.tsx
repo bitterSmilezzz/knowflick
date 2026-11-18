@@ -6,6 +6,7 @@ import {
   deleteNoteById,
   duplicateNoteById,
   exportNoteMarkdown,
+  moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
   readNotes,
@@ -101,6 +102,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [state, setState] = useState<NotesState>(emptyNotesState);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 多选（Cmd/Ctrl/Shift + 点击）与「全部知识」列表同一套手势；批量移动是 B03 的最后一块。
+  const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [batchNotebook, setBatchNotebook] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [status, setStatus] = useState<SaveStatus>("clean");
@@ -396,6 +400,22 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewError(`更新笔记属性失败：${String(e)}`);
     }
   };
+/** 批量移动：只改笔记本，不追加修订；结果如实说清移动了几篇、几篇没找到。 */
+  const moveSelected = async () => {
+    if (batchIds.size === 0) return;
+    setViewError("");
+    try {
+      const result = await moveNotesToNotebookById([...batchIds], batchNotebook, dirRef.current);
+      await refresh();
+      setBatchIds(new Set());
+      const where = result.notebook ? `「${result.notebook}」` : "未分组";
+      const tail = result.missing ? `，另有 ${result.missing} 篇没找到` : "";
+      setViewNotice(`已把 ${result.moved} 篇移到${where}${tail}`);
+    } catch (e) {
+      setViewError(`批量移动失败：${String(e)}`);
+    }
+  };
+
 /** 展开历史时再读：不给每次进笔记都加一次 IPC。 */
   const loadHistory = async () => {
     if (!selected) return;
@@ -722,6 +742,21 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
         </div>
         {viewError ? <p className="nv-error" role="alert">{viewError}</p> : null}
         {viewNotice ? <p className="nv-notice" role="status">{viewNotice}</p> : null}
+        {batchIds.size > 0 ? (
+          <div className="nv-batch-bar" role="group" aria-label="批量操作">
+            <span className="nv-batch-count">{`已选 ${batchIds.size} 篇`}</span>
+            <input
+              className="nv-batch-notebook"
+              aria-label="批量移动到笔记本"
+              placeholder="笔记本名称（留空 = 移出笔记本）"
+              value={batchNotebook}
+              onChange={(e) => setBatchNotebook(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void moveSelected(); }}
+            />
+            <button type="button" className="ws-primary" onClick={() => void moveSelected()}>移动</button>
+            <button type="button" className="ws-bordered" onClick={() => setBatchIds(new Set())}>取消</button>
+          </div>
+        ) : null}
         <div className="nv-entries" role="listbox" aria-label="笔记条目">
           {!loaded ? (
             <p className="ws-hint">正在读取笔记…</p>
@@ -769,10 +804,21 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               return (
                 <button
                   key={n.id}
-                  className="nv-entry"
+                  className={batchIds.has(n.id) ? "nv-entry nv-entry-picked" : "nv-entry"}
+                  data-picked={batchIds.has(n.id) ? "true" : undefined}
                   role="option"
                   aria-selected={n.id === selectedId}
-                  onClick={() => openNote(n)}
+                  onClick={(event) => {
+                    // Cmd/Ctrl/Shift + 点击 = 多选（与「全部知识」列表同一套手势）。
+                    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                      const next = new Set(batchIds);
+                      if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
+                      setBatchIds(next);
+                      return;
+                    }
+                    setBatchIds(new Set());
+                    openNote(n);
+                  }}
                 >
                   <span className="nv-entry-title">
                     {n.isPinned ? <span className="nv-pin-badge">置顶</span> : null}
