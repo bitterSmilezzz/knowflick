@@ -135,11 +135,15 @@ jobs:
           LOG="$(mktemp -t kf-android.XXXXXX.log)"
           # :desktop 的 Compose 测试走离屏渲染（测试内已设 java.awt.headless=true）；
           # Linux runner 没有 X11，若镜像带 xvfb 就用它兜底，避免渲染路径偶发依赖显示服务。
+          # 这里**故意不加引号**：TASKS 是空格分隔的多个任务名，要按词拆开传给 gradlew。
+          # 加了引号整串会变成一个任务名，Gradle 报「':app:testDebugUnitTest ...' not found
+          # in project ':app'」——注解里那句话就是引号造成的，不是任务写错。
+          # shellcheck disable=SC2086
           run_tasks() {
             if command -v xvfb-run >/dev/null 2>&1; then
-              xvfb-run -a ./gradlew --console=plain "$TASKS"
+              xvfb-run -a ./gradlew --console=plain $TASKS
             else
-              ./gradlew --console=plain "$TASKS"
+              ./gradlew --console=plain $TASKS
             fi
           }
           if run_tasks 2>&1 | tee "$LOG"; then
