@@ -60,12 +60,12 @@ Android ✅、Desktop 三平台 ✅、Workbench ❌（浏览器冒烟）、Workb
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |
 | 工作台完整门禁（本地） | PASS | 前端 93 个测试文件 / 686 项、TypeScript 类型检查、Rust 187 项（3 项忽略）、代理环境 13 项、守卫全绿（Tauri 命令 133 条三处一致）、18 套浏览器冒烟与 `project_memory_smoke` 通过，`verify_workbench.sh` 退出码 0 |
-| CI：Workbench（Web + Tauri） | PASS | run `44350594084`：`npm test + cargo test` ✅、浏览器冒烟 ✅ |
-| CI：Workbench Release（三平台安装包） | PASS | run `44350593906`：Linux (deb) ✅、macOS (dmg) ✅、Windows (msi) ✅，三档门禁与打包全绿 |
-| CI：Desktop 三平台 / Android | PASS | run `44350594535` / `44350594007` |
+| CI：Workbench（Web + Tauri） | PASS | `8b4455b` 的 run `44354919140`：`npm test + cargo test` ✅、浏览器冒烟 ✅（18 套全过） |
+| CI：Workbench Release（三平台安装包） | PASS | `8b4455b` 的 run `44354918980`：Linux (deb) ✅、macOS (dmg) ✅、Windows (msi) ✅，三档门禁与打包全绿 |
+| CI：Desktop 三平台 / Android | PASS | `8b4455b` 的 run `44354919209` / `44354919052` |
 | 安装包与外部条件 | SKIP | 本轮仍是 macOS 调试包；Windows MSI / Linux DEB 的安装、升级与首启需目标桌面环境，真实 IMAP、真实模型、物理麦克风仍待凭据与设备 |
 
-本机门禁日志：`.scratch/plan-20261118/verify-round6b.log`；CI 结论与注解来自 GitHub REST API
+本机门禁日志：`.scratch/plan-20261118/verify-final2.log`（提交后复跑，退出码 0）；CI 结论与注解来自 GitHub REST API
 （匿名可读 `actions/runs`、`check-runs/*/annotations`）。
 
 ## 一、2026-11-01 R4 增量门禁运行
