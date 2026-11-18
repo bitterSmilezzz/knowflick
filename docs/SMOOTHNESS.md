@@ -502,8 +502,8 @@ Rust 侧测试证明签名确实能看出外部写入；前端测试覆盖「变
 > 先用 `CGWindowList` 确认 KnowFlick 的窗口**在屏幕上**（不在就 SKIP），
 > 再自证指纹稳定，然后才用它判断「界面刷新了」。
 > 它列在 `run_all_smokes.sh` 的 **`DESKTOP_ONLY_SUITES`** 里——真机专有，
-> 浏览器冒烟与 CI 都没有这个条件，混进 `SUITES` 会让「13 套浏览器冒烟」这个
-> 说法和实际都对不上。
+> 浏览器冒烟与 CI 都没有这个条件，混进 `SUITES` 会让「N 套浏览器冒烟」这个
+> 说法和实际都对不上（套数以 `run_all_smokes.sh` 的 `SUITES` 为准，守卫在核对）。
 
 ### 灰掉的入口没人知道为什么——禁用的按钮不接收焦点
 
@@ -636,7 +636,7 @@ Rust 允许例外（测试就住在实现文件里），但要求该文件带 `#
 修法不是改标签，是**让 CI 真的跑**：
 
 - 新增 `tools/ci_run_browser_smokes.sh`：装 agent-browser（含浏览器二进制）、
-  起 Vite、**逐套遍历 13 套冒烟**。不用 `run_all_smokes.sh`——它缺 agent-browser
+  起 Vite、**逐套遍历整套浏览器冒烟**。不用 `run_all_smokes.sh`——它缺 agent-browser
   时 exit 0，在 CI 上会变成「什么都没跑也算成功」。
 - `workbench.yml` 新增独立 job `browser-smokes`。单独一个 job：它要装浏览器、
   要起服务，失败原因与编译/单测不同，混进 verify 步骤会让日志难读。
