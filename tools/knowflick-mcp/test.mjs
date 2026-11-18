@@ -318,8 +318,19 @@ test("旧 MCP 拒绝跨库的卡片符号链接和暂存文件符号链接", asy
   const externalCards = path.join(outside, "other.json");
   fs.writeFileSync(externalCards, JSON.stringify(CARDS));
   const linkedCards = path.join(dir, "linked.json");
-  try { fs.symlinkSync(externalCards, linkedCards); } catch (error) {
-    if (error.code === "EPERM" || error.code === "EACCES") { t.skip("当前系统不允许创建符号链接"); return; }
+  const externalStage = path.join(outside, "stage.json");
+  fs.writeFileSync(externalStage, "[]");
+  // 两处符号链接一起建、一起判：Windows 上非管理员/未开开发者模式时
+  // symlink 会抛 EPERM——那说明这台机器验不了这条，跳过即可；只包住第一处
+  // 会让第二处裸抛，把「本机不支持」变成「测试失败」。
+  try {
+    fs.symlinkSync(externalCards, linkedCards);
+    fs.symlinkSync(externalStage, library.stagedPath);
+  } catch (error) {
+    if (error.code === "EPERM" || error.code === "EACCES" || error.code === "UNKNOWN") {
+      t.skip("当前系统不允许创建符号链接");
+      return;
+    }
     throw error;
   }
   const spawnServer = cards => spawn(process.execPath, [path.join(HERE, "server.mjs"), "--cards", cards, "--allow-write"], {
@@ -329,9 +340,6 @@ test("旧 MCP 拒绝跨库的卡片符号链接和暂存文件符号链接", asy
   t.after(() => { bad.kill(); normal.kill(); });
   const b = rpcClient(bad), n = rpcClient(normal);
   assert.equal((await b({ jsonrpc: "2.0", id: 1, method: "tools/list" })).error.code, -32001);
-  const externalStage = path.join(outside, "stage.json");
-  fs.writeFileSync(externalStage, "[]");
-  fs.symlinkSync(externalStage, library.stagedPath);
   const response = await n({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "kf_stage_card", arguments: { headline: "测试", summary: "s", details: "d" } } });
   assert.equal(response.error.code, -32001);
   assert.equal(fs.readFileSync(externalStage, "utf8"), "[]");

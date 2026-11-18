@@ -2,6 +2,14 @@
 # ADR-0002 第一套桌面：与 .github/workflows/workbench.yml 同口径的本地门禁。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# 失败时说清楚是**哪一步**挂的。
+#
+# 为什么：这个脚本一路不打印步骤名。CI 上失败时能看到的只有「进程退出码 1」，
+# 日志又拿不到（公开仓库的 job logs 要 admin 权限），于是只能靠猜——Windows
+# 那次门禁失败就是猜的。这里把失败行号与命令写成 ::error:: 注解，至少能直接
+# 看出是 npm test、cargo test、哪个守卫，还是某套浏览器冒烟挂了。
+trap 'status=$?; echo "::error::门禁失败（退出码 ${status}）：第 ${LINENO} 行：${BASH_COMMAND}" >&2; exit ${status}' ERR
 cd "$ROOT/apps/workbench"
 npm test
 npx tsc --noEmit

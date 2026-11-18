@@ -2462,8 +2462,12 @@ mod tests {
         assert_eq!(resolve_library_dir(Some("   ")), default_dir);
         assert_eq!(resolve_library_dir(Some("  \t\n  ")), default_dir);
 
-        let custom = resolve_library_dir(Some("/tmp/custom_knowflick_dir"));
-        assert_eq!(custom, PathBuf::from("/tmp/custom_knowflick_dir"));
+        // 用平台原生的绝对路径：Windows 上 "/tmp/..." 不是绝对路径（没有盘符），
+        // 拿它当「自定义库目录」的样本会让这条断言在 Windows 上语义失真。
+        let sample_dir = std::env::temp_dir().join("custom_knowflick_dir");
+        let sample = sample_dir.to_str().unwrap().to_string();
+        let custom = resolve_library_dir(Some(&sample));
+        assert_eq!(custom, sample_dir);
 
         // 测试 open_db 面对多级不存在父目录时自动递归创建并成功建库
         let unique_id = uuid::Uuid::new_v4().to_string();
