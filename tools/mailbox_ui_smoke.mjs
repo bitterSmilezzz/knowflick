@@ -7,8 +7,13 @@ const exec = promisify(execFile);
 const session = "knowflick-mailbox-smoke";
 const url = process.env.KNOWFLICK_UI_URL || "http://localhost:1420";
 const b = async (...args) => (await exec("agent-browser", ["--session", session, ...args], { timeout: 25000 })).stdout.trim();
+// eval 的返回值可能是 undefined（页面还没渲染出目标元素时，表达式本身就是 undefined）。
+// JSON.parse(undefined) 会抛 SyntaxError，于是失败现场变成「JSON 解析错误」——
+// 离真正的原因（元素还没出现）隔了好几层。这里把 undefined 老实当作 undefined。
 const ev = async code => {
-  let result = JSON.parse(await b("eval", `JSON.stringify(${code})`));
+  const raw = await b("eval", `JSON.stringify(${code})`);
+  if (raw === "" || raw === "undefined") return undefined;
+  const result = JSON.parse(raw);
   return typeof result === "string" ? JSON.parse(result) : result;
 };
 let count = 0;
@@ -19,6 +24,20 @@ async function check(expression, label) {
   }
   assert.fail(label);
 }
+// 个性化开关是个**视觉隐藏**的原生 checkbox（.ws-switch-input 是 opacity:0/0×0，
+// 真正可见的是旁边的滑块）。真实点击这个隐藏 input 命中不了——CI 上报的是
+// 「element is not visible」。这里点可见的滑块，语义与用户一致。
+async function togglePersonalisation() {
+  const before = await ev("document.querySelector('[aria-label=\"按使用习惯个性化\"]')?.checked");
+  await b("eval", "(()=>{const el=document.querySelector('.ws-insight-panel .ws-switch-slider');if(!el)throw new Error('missing switch slider');el.click();return true})()");
+  await new Promise(r => setTimeout(r, 250));
+  const after = await ev("document.querySelector('[aria-label=\"按使用习惯个性化\"]')?.checked");
+  if (before === after) {
+    console.error(`SWITCH_TOGGLE_FAILED before=${before} after=${after}`);
+    throw new Error("个性化开关状态没有变化");
+  }
+}
+
 const clickText = text => b("eval", `(()=>{const el=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!el)throw Error('Button missing');el.click();return true})()`);
 try {
   await b("set", "viewport", "1040", "760");
@@ -93,7 +112,7 @@ try {
   const orderPersonalised = await ev("[...document.querySelectorAll('.mail-row-heading strong')].map(e=>e.textContent)");
   await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('设置')).click();return true})()");
   await new Promise(r => setTimeout(r, 500));
-  await b("click", '[aria-label="按使用习惯个性化"]');
+  await togglePersonalisation();
   await new Promise(r => setTimeout(r, 300));
   await b("click", ".ws-settings-foot button[type=submit]");
   await new Promise(r => setTimeout(r, 800));
@@ -106,7 +125,7 @@ try {
   // 恢复个性化，后续断言仍按开启状态
   await b("eval", "(()=>{[...document.querySelectorAll('.ws-nav-row')].find(e=>e.textContent.includes('设置')).click();return true})()");
   await new Promise(r => setTimeout(r, 500));
-  await b("click", '[aria-label="按使用习惯个性化"]');
+  await togglePersonalisation();
   await new Promise(r => setTimeout(r, 300));
   await b("click", ".ws-settings-foot button[type=submit]");
   await new Promise(r => setTimeout(r, 600));
@@ -142,10 +161,10 @@ try {
   // 关闭后应说明排序退回时间顺序。
   // 注意：agent-browser 的 check/uncheck 对已处于目标状态的元素是幂等的，不会
   // 触发 change 事件；切换开关必须用 click。
-  await b("click", '[aria-label="按使用习惯个性化"]');
+  await togglePersonalisation();
   await check("document.querySelector('[aria-label=\"来源贡献\"]').textContent.includes('个性化已关闭')", "关闭后如实说明排序退回时间顺序");
   await check("document.querySelector('[aria-label=\"按使用习惯个性化\"]').checked===false", "开关状态与面板文案一致");
-  await b("click", '[aria-label="按使用习惯个性化"]');
+  await togglePersonalisation();
   await check("document.querySelector('[aria-label=\"来源贡献\"]').textContent.includes('按你实际做过的事排序')", "重新开启后恢复说明");
   // 开关随设置落盘
   await b("click", ".ws-settings-foot button[type=submit]");

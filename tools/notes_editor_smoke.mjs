@@ -12,7 +12,15 @@ const exec = promisify(execFile);
 const session = "knowflick-notes-editor-smoke";
 const url = process.env.KNOWFLICK_UI_URL || "http://localhost:1420";
 const b = async (...args) => (await exec("agent-browser", ["--session", session, ...args], { timeout: 25000 })).stdout.trim();
-const ev = async code => { const r = JSON.parse(await b("eval", `JSON.stringify(${code})`)); return typeof r === "string" ? JSON.parse(r) : r; };
+// eval 的返回值可能是 undefined（页面还没渲染出目标元素时，表达式本身就是 undefined）。
+// JSON.parse(undefined) 会抛 SyntaxError，于是失败现场变成「JSON 解析错误」——
+// 离真正的原因（元素还没出现）隔了好几层。这里把 undefined 老实当作 undefined。
+const ev = async code => {
+  const raw = await b("eval", `JSON.stringify(${code})`);
+  if (raw === "" || raw === "undefined") return undefined;
+  const r = JSON.parse(raw);
+  return typeof r === "string" ? JSON.parse(r) : r;
+};
 let count = 0;
 // 等待预算按「慢机器也能画完」定：原先 50×120ms＝6 秒，本机够用，CI 的共享
 // runner 上首屏 React 还没挂载完就报红。断言本身不变，只是别把机器慢判成功能坏。
