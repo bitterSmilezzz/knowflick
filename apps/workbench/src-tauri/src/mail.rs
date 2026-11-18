@@ -18,7 +18,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Largest mail body accepted from the server.
@@ -45,7 +45,7 @@ type Connector = fn(&MailAccountConfig) -> MailResult<Imap>;
 static ACCOUNT_LOCK: Mutex<()> = Mutex::new(());
 
 /// Account settings as edited in the UI. The `id` is a UI-generated UUID.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct MailAccountConfig {
     pub id: String,
@@ -193,6 +193,18 @@ fn validate(mut config: MailAccountConfig) -> MailResult<MailAccountConfig> {
         return Err("服务器地址要填域名或 IP，不能带 https:// 这样的前缀，也不能带端口（端口另有单独一栏）".into());
     }
     Ok(config)
+}
+
+pub(crate) fn validate_backup_config(config: MailAccountConfig) -> MailResult<MailAccountConfig> {
+    validate(config)
+}
+
+pub(crate) fn ensure_backup_schema(conn: &Connection) -> MailResult<()> {
+    ensure_schema(conn).map_err(|_| "邮箱数据表结构初始化失败".into())
+}
+
+pub(crate) fn backup_guard() -> MailResult<MutexGuard<'static, ()>> {
+    ACCOUNT_LOCK.lock().map_err(|_| "邮箱数据锁不可用".into())
 }
 
 // ---------------------------------------------------------------- credentials

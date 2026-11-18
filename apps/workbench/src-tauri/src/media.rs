@@ -2,7 +2,8 @@
 //!
 //! Contract:
 //! - Files live under `<library>/media/<kind>/<uuid>.<ext>` and are only ever
-//!   written there. Names are generated, never taken from the caller.
+//!   written there. New attachments get generated names; backup restores retain
+//!   validated names so links in note bodies remain valid.
 //! - Size is capped per kind; the payload is written atomically and read back
 //!   with the same size, so a half-written recording is never referenced.
 //! - Only the app's own directory is served; the path returned to the UI is
@@ -104,6 +105,68 @@ pub fn save_media(dir: &Path, kind: &str, mime: &str, bytes: &[u8]) -> Result<St
         .unwrap_or("audio")))
 }
 
+/// Restore an archive path without overwriting an existing attachment. A hard
+/// link publishes a fully synced temporary file atomically and never replaces a
+/// destination that appeared concurrently.
+pub fn restore_media(dir: &Path, relative: &str, bytes: &[u8]) -> Result<String, String> {
+    let parts: Vec<_> = relative.split('/').collect();
+    if parts.len() != 3 || parts[0] != "media" ||
+        !matches!(parts[1], "audio" | "image" | "ink") ||
+        parts[2].is_empty() || matches!(parts[2], "." | "..") ||
+        !parts[2].bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-')) {
+        return Err("备份附件路径无效".into());
+    }
+    let ext = parts[2].rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    let allowed = match parts[1] {
+        "audio" => matches!(ext.as_str(), "webm" | "ogg" | "m4a" | "wav"),
+        "image" => matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif" | "heic" | "heif"),
+        "ink" => ext == "json",
+        _ => false,
+    };
+    if !allowed { return Err("备份附件类型与路径不匹配".into()); }
+    let limit = match parts[1] { "audio" => MAX_AUDIO, "image" => MAX_IMAGE, _ => MAX_INK };
+    if bytes.is_empty() || bytes.len() > limit { return Err("备份附件为空或超过大小上限".into()); }
+    let root = dir.join("media");
+    let folder = root.join(parts[1]);
+    fs::create_dir_all(dir).map_err(|_| "无法创建备份附件目录".to_string())?;
+    for path in [&root, &folder] {
+        if let Err(error) = fs::create_dir(path) {
+            if error.kind() != std::io::ErrorKind::AlreadyExists { return Err("无法创建备份附件目录".into()); }
+        }
+        let meta = fs::symlink_metadata(path).map_err(|_| "无法检查备份附件目录".to_string())?;
+        if meta.file_type().is_symlink() || !meta.is_dir() { return Err("备份附件目录无效或为符号链接".into()); }
+    }
+    let target = folder.join(parts[2]);
+    let existing_matches = || -> Result<bool, String> {
+        match fs::symlink_metadata(&target) {
+            Ok(meta) => {
+                if meta.file_type().is_symlink() || !meta.is_file() { return Err("本地附件路径不是普通文件，未覆盖".into()); }
+                if meta.len() != bytes.len() as u64 { return Err("本地同路径附件内容不同，未覆盖".into()); }
+                let existing = fs::read(&target).map_err(|_| "无法读取已有附件，未覆盖".to_string())?;
+                if existing != bytes { return Err("本地同路径附件内容不同，未覆盖".into()); }
+                Ok(true)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(_) => Err("无法检查已有附件，未覆盖".into()),
+        }
+    };
+    if existing_matches()? { return Ok(relative.to_owned()); }
+    let temp = folder.join(format!(".{}.part", uuid::Uuid::new_v4()));
+    let result = (|| -> Result<(), String> {
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temp)
+            .map_err(|_| "无法暂存备份附件".to_string())?;
+        file.write_all(bytes).and_then(|_| file.sync_all()).map_err(|_| "无法写入备份附件".to_string())?;
+        match fs::hard_link(&temp, &target) {
+            Ok(()) => Ok(()),
+            Err(_) if existing_matches()? => Ok(()),
+            Err(_) => Err("无法安全放置备份附件".into()),
+        }
+    })();
+    let _ = fs::remove_file(&temp);
+    result?;
+    Ok(relative.to_owned())
+}
+
 /// Reads back an attachment, refusing anything that escapes the media folder.
 pub fn read_media(dir: &Path, relative: &str) -> Result<Vec<u8>, String> {
     let path = safe_media_path(dir, relative)?;
@@ -169,6 +232,54 @@ mod tests {
         assert!(rel.starts_with("media/audio/"), "{rel}");
         assert!(rel.ends_with(".webm"), "{rel}");
         assert_eq!(read_media(&dir, &rel).expect("read"), payload);
+    }
+
+    #[test]
+    fn restore_preserves_path_bytes_and_rejects_conflicts_without_overwriting() {
+        let dir = temp_dir("restore");
+        let path = "media/image/original.png";
+        assert_eq!(restore_media(&dir, path, b"image").unwrap(), path);
+        assert_eq!(restore_media(&dir, path, b"image").unwrap(), path);
+        assert!(restore_media(&dir, path, b"other").unwrap_err().contains("未覆盖"));
+        assert_eq!(read_media(&dir, path).unwrap(), b"image");
+        assert_eq!(fs::read_dir(dir.join("media/image")).unwrap().count(), 1);
+        for bad in ["../outside", "media/audio/../bad.webm", "media/image/x.webm", "media/image/a/b.png", "media/image/.png/"] {
+            assert!(restore_media(&dir, bad, b"x").is_err(), "{bad}");
+        }
+        assert!(restore_media(&dir, "media/ink/big.json", &vec![0; MAX_INK + 1]).is_err());
+    }
+
+    #[test]
+    fn concurrent_restore_never_replaces_a_different_attachment() {
+        let dir = temp_dir("restore-race");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = [b"first".to_vec(), b"other".to_vec()].into_iter().map(|bytes| {
+            let dir = dir.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || { barrier.wait(); restore_media(&dir, "media/audio/a.webm", &bytes) })
+        }).collect();
+        let outcomes: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+        let content = read_media(&dir, "media/audio/a.webm").unwrap();
+        assert!(content == b"first" || content == b"other");
+        assert_eq!(fs::read_dir(dir.join("media/audio")).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restore_rejects_symlinks_for_files_and_directories() {
+        use std::os::unix::fs::symlink;
+        let dir = temp_dir("restore-symlink");
+        let outside = temp_dir("restore-outside");
+        symlink(&outside, dir.join("media")).unwrap();
+        assert!(restore_media(&dir, "media/image/a.png", b"data").is_err());
+        assert!(!outside.join("image").exists());
+        fs::remove_file(dir.join("media")).unwrap();
+        fs::create_dir_all(dir.join("media/image")).unwrap();
+        fs::write(outside.join("target.png"), b"original").unwrap();
+        symlink(outside.join("target.png"), dir.join("media/image/a.png")).unwrap();
+        assert!(restore_media(&dir, "media/image/a.png", b"data").is_err());
+        assert_eq!(fs::read(outside.join("target.png")).unwrap(), b"original");
     }
 
     #[test]

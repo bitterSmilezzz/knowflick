@@ -2,12 +2,18 @@ mod chunker;
 mod e2ee;
 mod error_text;
 mod asr;
+pub mod backup_r4;
+mod backup_deleted;
+mod backup_mail;
+mod backup_subscriptions;
 pub mod db;
 mod embed;
 mod http;
 mod mail;
 mod media;
+pub mod mcp_grants;
 mod notes;
+pub mod review_history;
 mod store;
 
 use std::io::Read;
@@ -29,6 +35,155 @@ struct StoreSnapshot {
 
 fn library_dir(dir: Option<String>) -> PathBuf {
     db::resolve_library_dir(dir.as_deref())
+}
+
+#[tauri::command]
+fn backup_capture_database(dir: Option<String>) -> Result<backup_r4::DatabaseBackupSnapshot, String> {
+    let path = library_dir(dir);
+    let mut conn = db::open_db(&path.join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    backup_r4::capture_database(&mut conn)
+}
+
+#[tauri::command]
+fn backup_restore_media(dir: Option<String>, relative: String, data_b64: String) -> Result<String, String> {
+    let bytes = media::decode_b64(&data_b64)?;
+    media::restore_media(&library_dir(dir), &relative, &bytes)
+}
+
+#[tauri::command]
+fn backup_validate_r4(dir: Option<String>, snapshot: backup_r4::R4Snapshot) -> Result<(), String> {
+    let conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    backup_r4::validate_destination(&conn, &snapshot)
+}
+
+#[tauri::command]
+fn backup_validate_subscriptions(dir: Option<String>, snapshot: backup_subscriptions::SubscriptionSnapshot) -> Result<(), String> {
+    let conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    backup_subscriptions::validate_destination(&conn, &snapshot)
+}
+
+#[tauri::command]
+fn backup_validate_mail(dir: Option<String>, snapshot: backup_mail::MailSnapshot) -> Result<(), String> {
+    let conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    backup_mail::validate_destination(&conn, &snapshot)
+}
+
+#[tauri::command]
+fn backup_restore_mail(app: tauri::AppHandle, dir: Option<String>, snapshot: backup_mail::MailSnapshot) -> Result<backup_mail::MailRestoreCounts, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    let counts = backup_mail::restore(&mut conn, &snapshot)?;
+    if counts.accounts + counts.sync_states + counts.imports + counts.rejected > 0 { notify_library_changed(&app); }
+    Ok(counts)
+}
+
+#[tauri::command]
+fn review_history_period(dir: Option<String>, from: i64, to: i64) -> Result<review_history::ReviewHistorySnapshot, String> {
+    let conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开复习历史失败", &e))?;
+    review_history::period(&conn, from, to)
+}
+
+#[tauri::command]
+fn review_record(app: tauri::AppHandle, dir: Option<String>, card: db::KnowledgeCardDto, event: review_history::ReviewEvent) -> Result<bool, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("保存复习记录失败", &e))?;
+    let inserted = review_history::record_review(&mut conn, &card, &event)?;
+    if inserted { notify_library_changed(&app); }
+    Ok(inserted)
+}
+
+#[tauri::command]
+fn backup_validate_review_history(dir: Option<String>, snapshot: review_history::ReviewHistorySnapshot) -> Result<(), String> {
+    let conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开复习历史失败", &e))?;
+    review_history::validate_destination(&conn, &snapshot).map(|_| ())
+}
+
+#[tauri::command]
+fn backup_restore_review_history(app: tauri::AppHandle, dir: Option<String>, snapshot: review_history::ReviewHistorySnapshot) -> Result<review_history::ReviewRestoreCounts, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开复习历史失败", &e))?;
+    let counts = review_history::restore(&mut conn, &snapshot)?;
+    if counts.inserted > 0 { notify_library_changed(&app); }
+    Ok(counts)
+}
+
+#[tauri::command]
+fn backup_restore_subscriptions(app: tauri::AppHandle, dir: Option<String>, snapshot: backup_subscriptions::SubscriptionSnapshot) -> Result<usize, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    let inserted = backup_subscriptions::restore(&mut conn, &snapshot)?;
+    if inserted > 0 { notify_library_changed(&app); }
+    Ok(inserted)
+}
+
+#[tauri::command]
+fn backup_restore_material(app: tauri::AppHandle, dir: Option<String>, protected: bool, fingerprint: Option<String>, material: db::RawMaterialDto) -> Result<bool, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    let written = backup_r4::restore_material(&mut conn, protected, fingerprint.as_deref(), &material)?;
+    if written { notify_library_changed(&app); }
+    Ok(written)
+}
+
+#[tauri::command]
+fn backup_restore_card(app: tauri::AppHandle, dir: Option<String>, protected: bool, fingerprint: Option<String>, card: db::KnowledgeCardDto) -> Result<bool, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    let written = backup_r4::restore_card(&mut conn, protected, fingerprint.as_deref(), &card)?;
+    if written { notify_library_changed(&app); }
+    Ok(written)
+}
+
+#[tauri::command]
+fn backup_restore_artifact(app: tauri::AppHandle, dir: Option<String>, artifact: db::ArtifactDto) -> Result<bool, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    let written = backup_r4::restore_artifact(&mut conn, &artifact)?;
+    if written { notify_library_changed(&app); }
+    Ok(written)
+}
+
+#[tauri::command]
+fn backup_restore_deleted_records(app: tauri::AppHandle, dir: Option<String>, snapshot: backup_deleted::DeletedRecordsSnapshot) -> Result<backup_deleted::DeletedRestoreCounts, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开回收站备份数据库失败", &e))?;
+    let counts = backup_deleted::restore(&mut conn, &snapshot)?;
+    if counts.materials + counts.cards + counts.artifacts > 0 { notify_library_changed(&app); }
+    Ok(counts)
+}
+
+#[tauri::command]
+fn backup_restore_note(app: tauri::AppHandle, dir: Option<String>, protected: bool, fingerprint: Option<String>, note: notes::NoteDto) -> Result<notes::NoteRestoreOutcome, String> {
+    let conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    let binding = protected.then_some(fingerprint.as_deref());
+    let outcome = notes::note_restore_upsert_checked(&conn, &note, binding)
+        .map_err(|e| notes::explain_restore_error("恢复笔记失败", &e))?;
+    notify_library_changed(&app);
+    Ok(outcome)
+}
+
+#[tauri::command]
+fn backup_restore_note_history(app: tauri::AppHandle, dir: Option<String>, protected: bool, fingerprint: Option<String>, note: notes::NoteDto, history: Vec<notes::NoteRevision>) -> Result<notes::NoteRestoreOutcome, String> {
+    let conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    let outcome = notes::note_restore_upsert_with_history(&conn, &note, protected.then_some(fingerprint.as_deref()), Some(&history))
+        .map_err(|e| notes::explain_restore_error("恢复笔记及历史失败", &e))?;
+    notify_library_changed(&app);
+    Ok(outcome)
+}
+
+#[tauri::command]
+fn backup_restore_r4(dir: Option<String>, snapshot: backup_r4::R4Snapshot) -> Result<usize, String> {
+    let mut conn = db::open_db(&library_dir(dir).join("knowflick.db"))
+        .map_err(|e| crate::error_text::explain("打开备份数据库失败", &e))?;
+    backup_r4::restore_snapshot(&mut conn, &snapshot)
 }
 
 #[tauri::command]
@@ -496,7 +651,7 @@ fn mcp_server_paths(app: tauri::AppHandle, dir: Option<String>) -> Result<notes:
     Ok(notes::McpServerPaths {
         script_path: script.to_string_lossy().to_string(),
         library_dir: library.to_string_lossy().to_string(),
-        script_exists: script.exists(),
+        script_exists: script.exists() && script.with_file_name("mcp-access.mjs").exists(),
     })
 }
 
@@ -613,68 +768,71 @@ fn note_search(dir: Option<String>, query: String, kb_id: Option<String>, limit:
 }
 
 #[tauri::command]
-fn note_search_chunks(query: String, limit: Option<i64>) -> Result<Vec<notes::NoteChunkHit>, String> {
-    let dir: Option<String> = None;
+fn note_search_chunks(dir: Option<String>, query: String, limit: Option<i64>) -> Result<Vec<notes::NoteChunkHit>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
     notes::search_note_chunks(&conn, &query, limit.unwrap_or(20)).map_err(|e| crate::error_text::explain_text("搜索笔记片段失败", &e.to_string()))
 }
 
 #[tauri::command]
-fn note_list_chunk_texts(limit: Option<i64>) -> Result<Vec<notes::NoteChunkText>, String> {
-    let path = library_dir(None);
+fn note_list_chunk_texts(
+    dir: Option<String>,
+    limit: Option<i64>,
+    provider: Option<String>,
+    model: Option<String>,
+) -> Result<Vec<notes::NoteChunkText>, String> {
+    let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::list_chunk_texts(&conn, limit.unwrap_or(200)).map_err(|e| crate::error_text::explain_text("读取待嵌入分块失败", &e.to_string()))
+    notes::list_chunk_texts(
+        &conn, limit.unwrap_or(200), provider.as_deref().unwrap_or(""), model.as_deref().unwrap_or(""),
+    ).map_err(|e| crate::error_text::explain_text("读取待嵌入分块失败", &e.to_string()))
 }
 
 #[tauri::command]
 fn note_save_chunk_embeddings(
-    app: tauri::AppHandle,
-    items: Vec<NoteChunkEmbeddingItem>,
+    dir: Option<String>,
+    items: Vec<notes::NoteChunkEmbeddingItem>,
     provider: Option<String>,
     model: Option<String>,
 ) -> Result<usize, String> {
-    let path = library_dir(None);
+    let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    let triples: Vec<(String, i64, Vec<f32>)> = items
-        .into_iter()
-        .map(|it| (it.note_id, it.chunk_index, it.embedding))
-        .collect();
-    let saved = notes::save_note_chunk_embeddings(
+    notes::save_note_chunk_embeddings(
         &conn,
-        &triples,
+        &items,
         provider.as_deref().unwrap_or(""),
         model.as_deref().unwrap_or(""),
     )
-    .map_err(|e| crate::error_text::explain_text("保存分块向量失败", &e))?;
-    notify_library_changed(&app);
-    Ok(saved)
-}
-
-#[derive(serde::Deserialize)]
-struct NoteChunkEmbeddingItem {
-    note_id: String,
-    chunk_index: i64,
-    embedding: Vec<f32>,
+    .map_err(|e| crate::error_text::explain_text("保存分块向量失败", &e))
 }
 
 #[tauri::command]
 fn note_search_chunks_vector(
+    dir: Option<String>,
     query_embedding: Vec<f32>,
     provider: Option<String>,
     model: Option<String>,
     limit: Option<i64>,
+    project_id: Option<String>,
 ) -> Result<Vec<notes::NoteChunkVectorHit>, String> {
-    let path = library_dir(None);
+    let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
-    notes::search_note_chunks_vector(
-        &conn,
-        &query_embedding,
-        provider.as_deref().unwrap_or(""),
-        model.as_deref().unwrap_or(""),
-        limit.unwrap_or(20),
-    )
-    .map_err(|e| crate::error_text::explain_text("分块向量检索失败", &e))
+    let provider = provider.as_deref().unwrap_or("");
+    let model = model.as_deref().unwrap_or("");
+    let limit = limit.unwrap_or(20);
+    let result = if let Some(project_id) = project_id.as_deref() {
+        notes::search_note_chunks_vector_scoped(
+            &conn,
+            &query_embedding,
+            provider,
+            model,
+            limit,
+            Some(project_id),
+        )
+    } else {
+        notes::search_note_chunks_vector(&conn, &query_embedding, provider, model, limit)
+    };
+    result.map_err(|e| crate::error_text::explain_text("分块向量检索失败", &e))
 }
 
 /// R3 第 2 项（协议层）：把备份包 PUT 到 WebDAV 目标。
@@ -747,6 +905,32 @@ async fn webdav_upload_backup(
 }
 
 // ---------- 项目记忆（R4/D06 最小闭环） ----------
+
+/// MCP 授权管理只供桌面主窗口调用。服务端策略尚未接入，界面不可提前声称生效。
+#[tauri::command]
+fn mcp_grant_create(dir: Option<String>, request: mcp_grants::GrantRequest) -> Result<mcp_grants::CreatedGrant, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| crate::error_text::explain_text("打开知识库失败", &e.to_string()))?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "无法读取系统时间，未创建授权".to_string())?.as_millis() as i64;
+    mcp_grants::create(&conn, &request, now)
+}
+
+#[tauri::command]
+fn mcp_grant_list(dir: Option<String>) -> Result<Vec<mcp_grants::Grant>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| crate::error_text::explain_text("打开知识库失败", &e.to_string()))?;
+    mcp_grants::list(&conn).map_err(|e| crate::error_text::explain_text("读取授权失败", &e.to_string()))
+}
+
+#[tauri::command]
+fn mcp_grant_revoke(dir: Option<String>, id: String) -> Result<bool, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| crate::error_text::explain_text("打开知识库失败", &e.to_string()))?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "无法读取系统时间，未撤销授权".to_string())?.as_millis() as i64;
+    mcp_grants::revoke(&conn, &id, now).map_err(|e| crate::error_text::explain_text("撤销授权失败", &e.to_string()))
+}
 
 #[tauri::command]
 fn project_create_cmd(app: tauri::AppHandle, id: String, name: String, description: Option<String>, dir: Option<String>) -> Result<(), String> {
@@ -844,6 +1028,24 @@ fn profile_claims_active(dir: Option<String>) -> Result<Vec<notes::ProfileClaimD
 }
 
 #[tauri::command]
+fn profile_claims_all(dir: Option<String>) -> Result<Vec<notes::ProfileClaimDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::claim_list_all(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn profile_claims_for_answer(dir: Option<String>, project_id: Option<String>) -> Result<Vec<notes::ProfileClaimDto>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    match project_id {
+        Some(project_id) => notes::claim_list_for_project_answer(&conn, now, &project_id),
+        None => notes::claim_list_for_answer(&conn, now).map_err(|e| e.to_string()),
+    }
+}
+
+#[tauri::command]
 fn profile_claim_confirm(app: tauri::AppHandle, dir: Option<String>, id: String) -> Result<bool, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
@@ -903,7 +1105,7 @@ fn profile_denial_clear_by_evidence(app: tauri::AppHandle, dir: Option<String>, 
 // ---------- 目标（R4/D04） ----------
 
 #[tauri::command]
-fn goal_create_cmd(app: tauri::AppHandle, dir: Option<String>, goal: notes::GoalDto) -> Result<usize, String> {
+fn goal_create_cmd(app: tauri::AppHandle, dir: Option<String>, goal: notes::GoalCreate) -> Result<usize, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
@@ -913,10 +1115,26 @@ fn goal_create_cmd(app: tauri::AppHandle, dir: Option<String>, goal: notes::Goal
 }
 
 #[tauri::command]
+fn goal_set_scope_cmd(app: tauri::AppHandle, dir: Option<String>, id: String, scope: Option<String>) -> Result<(), String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::goal_set_scope(&conn, &id, scope.as_deref())?;
+    notify_library_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
 fn goal_list_active(dir: Option<String>) -> Result<Vec<notes::GoalDto>, String> {
     let path = library_dir(dir);
     let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
     notes::goal_list_active(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn goal_review_snapshot(dir: Option<String>, from: i64, to: i64) -> Result<notes::GoalReviewSnapshot, String> {
+    let path = library_dir(dir);
+    let mut conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::goal_review_snapshot(&mut conn, from, to)
 }
 
 #[tauri::command]
@@ -1065,17 +1283,19 @@ fn db_search_cards_hybrid(
     provider: Option<String>,
     model: Option<String>,
     limit: Option<usize>,
+    project_id: Option<String>,
 ) -> Result<Vec<db::KnowledgeCardDto>, String> {
     let path = library_dir(dir);
     let db_path = path.join("knowflick.db");
     let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
-    db::search_cards_hybrid(
+    db::search_cards_hybrid_scoped(
         &conn,
         &query_text,
         query_embedding.as_deref(),
         provider.as_deref().unwrap_or(""),
         model.as_deref().unwrap_or(""),
         limit.unwrap_or(10),
+        project_id.as_deref(),
     )
     .map_err(|e| e.to_string())
 }
@@ -1536,6 +1756,7 @@ static IS_QUITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBoo
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             use tauri::Manager;
             let menu = build_menu(app.handle())?;
@@ -1595,6 +1816,24 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             load_store,
+            backup_capture_database,
+            backup_restore_media,
+            backup_validate_r4,
+            backup_validate_subscriptions,
+            backup_validate_mail,
+            backup_restore_subscriptions,
+            backup_restore_mail,
+            review_history_period,
+            review_record,
+            backup_validate_review_history,
+            backup_restore_review_history,
+            backup_restore_r4,
+            backup_restore_material,
+            backup_restore_card,
+            backup_restore_artifact,
+            backup_restore_deleted_records,
+            backup_restore_note,
+            backup_restore_note_history,
             save_media,
             read_media,
             mail_list_accounts,
@@ -1648,6 +1887,9 @@ pub fn run() {
             read_webdav_credential,
             e2ee_encrypt,
             e2ee_decrypt,
+            mcp_grant_create,
+            mcp_grant_list,
+            mcp_grant_revoke,
             project_create_cmd,
             project_list,
             project_add_note,
@@ -1659,6 +1901,8 @@ pub fn run() {
             project_export_snapshot,
             profile_claim_add,
             profile_claims_active,
+            profile_claims_all,
+            profile_claims_for_answer,
             profile_claim_confirm,
             profile_claim_pause,
             profile_claim_resume,
@@ -1666,7 +1910,9 @@ pub fn run() {
             profile_claim_delete,
             profile_denial_clear_by_evidence,
             goal_create_cmd,
+            goal_set_scope_cmd,
             goal_list_active,
+            goal_review_snapshot,
             goal_link_evidence_cmd,
             goal_achieve_cmd,
             goal_abandon_cmd,
@@ -1730,6 +1976,29 @@ pub fn run() {
 #[cfg(test)]
 mod library_command_tests {
     use super::*;
+
+    #[test]
+    fn mcp_grant_commands_use_the_selected_library_and_never_list_the_secret() {
+        let dir = std::env::temp_dir().join(format!("kf_cmd_mcp_{}", uuid::Uuid::new_v4()));
+        let selected = Some(dir.to_string_lossy().to_string());
+        let conn = db::open_db(&dir.join("knowflick.db")).unwrap();
+        notes::project_create(&conn, "p1", "项目 A", "", 1).unwrap();
+        drop(conn);
+
+        let request = mcp_grants::GrantRequest {
+            client_label: "客户端 A".into(), scope: "project".into(), project_id: Some("p1".into()),
+            library_read: false, card_write: false, material_write: false,
+        };
+        let created = mcp_grant_create(selected.clone(), request).unwrap();
+        let listed = mcp_grant_list(selected.clone()).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, created.grant.id);
+        assert!(!serde_json::to_string(&listed).unwrap().contains(&created.token));
+        assert!(mcp_grant_revoke(selected.clone(), created.grant.id.clone()).unwrap());
+        assert!(mcp_grant_list(selected.clone()).unwrap()[0].revoked_at.is_some());
+        assert!(!mcp_grant_revoke(selected, "不存在".into()).unwrap());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     /// 走真实命令函数（目录解析 + 开库 + 落库），覆盖 IPC 层之下的整条链路。
     #[test]

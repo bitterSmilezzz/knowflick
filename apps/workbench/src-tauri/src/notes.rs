@@ -27,6 +27,7 @@ pub struct NoteDto {
     pub updated_at: i64,
     pub is_deleted: bool,
     pub deleted_at: Option<i64>,
+    pub exclude_from_profile: bool,
 }
 
 impl Default for NoteDto {
@@ -46,6 +47,7 @@ impl Default for NoteDto {
             updated_at: 0,
             is_deleted: false,
             deleted_at: None,
+            exclude_from_profile: false,
         }
     }
 }
@@ -84,7 +86,7 @@ pub struct KnowledgeBaseDto {
 }
 
 const NOTE_COLUMNS: &str = "id, title, body_md, notebook, tags_json, is_pinned, is_favorite, \
-     archived_at, source_material_id, current_revision, created_at, updated_at, is_deleted, deleted_at";
+     archived_at, source_material_id, current_revision, created_at, updated_at, is_deleted, deleted_at, exclude_from_profile";
 
 fn map_note_row(row: &rusqlite::Row<'_>) -> Result<NoteDto> {
     Ok(NoteDto {
@@ -102,6 +104,7 @@ fn map_note_row(row: &rusqlite::Row<'_>) -> Result<NoteDto> {
         updated_at: row.get(11)?,
         is_deleted: row.get::<_, i64>(12)? != 0,
         deleted_at: row.get(13)?,
+        exclude_from_profile: row.get::<_, i64>(14)? != 0,
     })
 }
 
@@ -134,7 +137,7 @@ pub fn note_upsert(conn: &Connection, note: &NoteDto, base_revision: i64, now: i
             tx.execute(
                 "UPDATE notes SET title = ?2, body_md = ?3, notebook = ?4, tags_json = ?5, is_pinned = ?6,
                  is_favorite = ?7, archived_at = ?8, source_material_id = ?9, current_revision = ?10,
-                 updated_at = ?11
+                 updated_at = ?11, exclude_from_profile = ?12
                  WHERE id = ?1",
                 params![
                     note.id,
@@ -148,6 +151,7 @@ pub fn note_upsert(conn: &Connection, note: &NoteDto, base_revision: i64, now: i
                     note.source_material_id,
                     next_revision,
                     now,
+                    note.exclude_from_profile as i64,
                 ],
             )
             .map_err(NoteSaveError::Db)?;
@@ -174,8 +178,8 @@ pub fn note_upsert(conn: &Connection, note: &NoteDto, base_revision: i64, now: i
             }
             tx.execute(
                 "INSERT INTO notes (id, title, body_md, notebook, tags_json, is_pinned, is_favorite,
-                 archived_at, source_material_id, current_revision, created_at, updated_at, is_deleted, deleted_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10, 0, NULL)",
+                 archived_at, source_material_id, current_revision, created_at, updated_at, is_deleted, deleted_at, exclude_from_profile)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10, 0, NULL, ?11)",
                 params![
                     note.id,
                     note.title,
@@ -187,6 +191,7 @@ pub fn note_upsert(conn: &Connection, note: &NoteDto, base_revision: i64, now: i
                     note.archived_at,
                     note.source_material_id,
                     now,
+                    note.exclude_from_profile as i64,
                 ],
             )
             .map_err(NoteSaveError::Db)?;
@@ -397,24 +402,108 @@ pub enum NoteRestoreOutcome {
     Current,
 }
 
+pub(crate) fn explain_restore_error(action: &str, error: &rusqlite::Error) -> String {
+    match error {
+        // Restore validation uses this rusqlite variant to carry domain messages.
+        // Keep the useful Chinese reason, without exposing the driver prefix.
+        rusqlite::Error::InvalidParameterName(reason) => format!("{action}：{reason}"),
+        _ => crate::error_text::explain(action, error),
+    }
+}
+
+/// Versioned archive representation of an immutable content revision.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NoteRevision {
+    pub note_id: String,
+    pub revision: i64,
+    pub title: String,
+    pub body_md: String,
+    pub saved_at: i64,
+}
+
+pub(crate) fn revisions_for_backup(conn: &Connection) -> Result<Vec<NoteRevision>> {
+    let mut stmt = conn.prepare("SELECT note_id, revision, title, body_md, saved_at FROM note_revisions ORDER BY note_id, revision")?;
+    let rows = stmt.query_map([], |row| Ok(NoteRevision {
+        note_id: row.get(0)?, revision: row.get(1)?, title: row.get(2)?, body_md: row.get(3)?, saved_at: row.get(4)?,
+    }))?;
+    rows.collect()
+}
+
 /// 备份恢复专用写入：按包内当前态**原样**落库，不追加修订、不重置时间、
 /// 不复活回收站。恢复是「显式用户动作」，与普通编辑（`note_upsert`）是两个
 /// 入口——审计 KF-003 的根因就是恢复走了普通编辑：revision=9 的包落库变成
 /// 修订 1、时间改成恢复时刻、回收站内容自动复活。
 ///
-/// 历史明细不入包的既定范围不变：只落一条恢复时的基线修订行（保留包内
-/// 修订号，不伪造完整历史）。
+/// 旧包没有历史明细，只落一条恢复时的基线修订行。新包通过专用入口
+/// 在同一事务中恢复原有历史，不另造基线。
 pub fn note_restore_upsert(conn: &Connection, note: &NoteDto) -> Result<NoteRestoreOutcome> {
+    note_restore_upsert_checked(conn, note, None)
+}
+
+/// Optional source binding is checked while holding the SQLite write lock.
+pub(crate) fn note_restore_upsert_checked(conn: &Connection, note: &NoteDto, binding: Option<Option<&str>>) -> Result<NoteRestoreOutcome> {
+    note_restore_upsert_with_history(conn, note, binding, None)
+}
+
+/// When supplied, history is restored together with its note in one transaction.
+pub(crate) fn note_restore_upsert_with_history(conn: &Connection, note: &NoteDto, binding: Option<Option<&str>>, history: Option<&[NoteRevision]>) -> Result<NoteRestoreOutcome> {
     if note.id.is_empty() {
         return Err(rusqlite::Error::InvalidParameterName(
             "恢复的笔记缺少 id".to_string(),
         ));
     }
     let revision = if note.current_revision < 1 { 1 } else { note.current_revision };
-    let existing = note_get(conn, &note.id)?;
-
-    let tx = conn.unchecked_transaction()?;
-    let outcome;
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
+    let existing = note_get(&tx, &note.id)?;
+    if let Some(history) = history {
+        let mut incoming = std::collections::BTreeMap::new();
+        if note.current_revision < 1 { return Err(rusqlite::Error::InvalidParameterName("笔记修订号无效".into())); }
+        for item in history {
+            if item.note_id != note.id || item.revision < 1 || item.revision > note.current_revision || incoming.insert(item.revision, item).is_some() {
+                return Err(rusqlite::Error::InvalidParameterName("笔记历史修订无效或重复".into()));
+            }
+            if item.revision == note.current_revision && (item.title != note.title || item.body_md != note.body_md) {
+                return Err(rusqlite::Error::InvalidParameterName("当前笔记与历史修订不一致".into()));
+            }
+        }
+        if existing.as_ref().is_none_or(|local| local.current_revision <= revision) {
+            // A newer local note is skipped below, including all history writes.
+            // Its additional revisions must not turn that safe skip into a restore failure.
+            let mut stmt = tx.prepare("SELECT note_id, revision, title, body_md, saved_at FROM note_revisions WHERE note_id=?1")?;
+            let rows = stmt.query_map([&note.id], |row| Ok(NoteRevision {
+                note_id: row.get(0)?, revision: row.get(1)?, title: row.get(2)?, body_md: row.get(3)?, saved_at: row.get(4)?,
+            }))?;
+            for row in rows {
+                let local = row?;
+                if incoming.get(&local.revision).copied() != Some(&local) {
+                    return Err(rusqlite::Error::InvalidParameterName("本地笔记历史与备份不同，未覆盖".into()));
+                }
+            }
+            if let Some(local) = &existing {
+                if local.current_revision < revision {
+                    let parent = incoming.get(&local.current_revision);
+                    let same_ancestor = parent.is_some_and(|item| item.title == local.title && item.body_md == local.body_md);
+                    let same_metadata = local.notebook == note.notebook && local.tags_json == note.tags_json &&
+                        local.is_pinned == note.is_pinned && local.is_favorite == note.is_favorite &&
+                        local.archived_at == note.archived_at && local.source_material_id == note.source_material_id &&
+                        local.is_deleted == note.is_deleted && local.deleted_at == note.deleted_at &&
+                        local.exclude_from_profile == note.exclude_from_profile;
+                    if !same_ancestor || !same_metadata {
+                        return Err(rusqlite::Error::InvalidParameterName("本地笔记与备份的历史或属性存在分歧，未覆盖".into()));
+                    }
+                }
+            }
+        }
+    }
+    if let Some(expected) = binding {
+        let current = crate::backup_r4::note_fingerprint(&tx, &note.id)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e))))?;
+        if (current.is_some() && current.as_deref() != expected) || (current.is_none() && expected.is_none()) {
+            return Err(rusqlite::Error::InvalidParameterName("本地笔记与备份的关联原件不一致，未覆盖".into()));
+        }
+    }
+    let mut outcome;
     match &existing {
         Some(local) if local.current_revision > revision => {
             outcome = NoteRestoreOutcome::SkippedLocalNewer;
@@ -429,7 +518,8 @@ pub fn note_restore_upsert(conn: &Connection, note: &NoteDto) -> Result<NoteRest
                 && local.archived_at == note.archived_at
                 && local.source_material_id == note.source_material_id
                 && local.is_deleted == note.is_deleted
-                && local.deleted_at == note.deleted_at;
+                && local.deleted_at == note.deleted_at
+                && local.exclude_from_profile == note.exclude_from_profile;
             outcome = if same {
                 NoteRestoreOutcome::Current
             } else {
@@ -440,7 +530,7 @@ pub fn note_restore_upsert(conn: &Connection, note: &NoteDto) -> Result<NoteRest
             tx.execute(
                 "UPDATE notes SET title = ?2, body_md = ?3, notebook = ?4, tags_json = ?5, is_pinned = ?6,
                  is_favorite = ?7, archived_at = ?8, source_material_id = ?9, current_revision = ?10,
-                 created_at = ?11, updated_at = ?12, is_deleted = ?13, deleted_at = ?14
+                 created_at = ?11, updated_at = ?12, is_deleted = ?13, deleted_at = ?14, exclude_from_profile = ?15
                  WHERE id = ?1",
                 params![
                     note.id,
@@ -457,20 +547,20 @@ pub fn note_restore_upsert(conn: &Connection, note: &NoteDto) -> Result<NoteRest
                     note.updated_at,
                     note.is_deleted as i64,
                     note.deleted_at,
+                    note.exclude_from_profile as i64,
                 ],
             )?;
-            tx.execute(
-                "INSERT INTO note_revisions (note_id, revision, title, body_md, saved_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![note.id, revision, note.title, note.body_md, note.updated_at],
-            )?;
+            if history.is_none() {
+                tx.execute("INSERT INTO note_revisions (note_id, revision, title, body_md, saved_at) VALUES (?1, ?2, ?3, ?4, ?5)", params![note.id, revision, note.title, note.body_md, note.updated_at])?;
+            }
             sync_restored_indexes(&tx, note, revision)?;
             outcome = NoteRestoreOutcome::Updated;
         }
         None => {
             tx.execute(
                 "INSERT INTO notes (id, title, body_md, notebook, tags_json, is_pinned, is_favorite,
-                 archived_at, source_material_id, current_revision, created_at, updated_at, is_deleted, deleted_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                 archived_at, source_material_id, current_revision, created_at, updated_at, is_deleted, deleted_at, exclude_from_profile)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
                     note.id,
                     note.title,
@@ -486,14 +576,30 @@ pub fn note_restore_upsert(conn: &Connection, note: &NoteDto) -> Result<NoteRest
                     note.updated_at,
                     note.is_deleted as i64,
                     note.deleted_at,
+                    note.exclude_from_profile as i64,
                 ],
             )?;
-            tx.execute(
-                "INSERT INTO note_revisions (note_id, revision, title, body_md, saved_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![note.id, revision, note.title, note.body_md, note.updated_at],
-            )?;
+            if history.is_none() {
+                tx.execute("INSERT INTO note_revisions (note_id, revision, title, body_md, saved_at) VALUES (?1, ?2, ?3, ?4, ?5)", params![note.id, revision, note.title, note.body_md, note.updated_at])?;
+            }
             sync_restored_indexes(&tx, note, revision)?;
             outcome = NoteRestoreOutcome::Created;
+        }
+    }
+    if let Some(history) = history {
+        if !matches!(outcome, NoteRestoreOutcome::SkippedLocalNewer | NoteRestoreOutcome::SkippedDivergent) {
+            let mut added = 0;
+            for item in history {
+                added += tx.execute("INSERT OR IGNORE INTO note_revisions (note_id, revision, title, body_md, saved_at) VALUES (?1, ?2, ?3, ?4, ?5)", params![item.note_id, item.revision, item.title, item.body_md, item.saved_at])?;
+            }
+            if added > 0 && matches!(outcome, NoteRestoreOutcome::Current) { outcome = NoteRestoreOutcome::Updated; }
+        }
+    }
+    if let Some(expected) = binding {
+        let current = crate::backup_r4::note_fingerprint(&tx, &note.id)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e))))?;
+        if current.as_deref() != expected {
+            return Err(rusqlite::Error::InvalidParameterName("备份笔记与关联原件指纹不一致，未写入".into()));
         }
     }
     tx.commit()?;
@@ -701,7 +807,8 @@ pub fn search_notes(conn: &Connection, query: &str, kb_id: Option<&str>, limit: 
 
     let fts_sql = format!(
         "SELECT n.id, n.title, n.body_md, n.notebook, n.tags_json, n.is_pinned, n.is_favorite,
-                n.archived_at, n.source_material_id, n.current_revision, n.created_at, n.updated_at, n.is_deleted, n.deleted_at
+                n.archived_at, n.source_material_id, n.current_revision, n.created_at, n.updated_at, n.is_deleted, n.deleted_at,
+                n.exclude_from_profile
          FROM fts_notes f JOIN notes n ON f.note_id = n.id
          WHERE n.is_deleted = 0 AND fts_notes MATCH ?1{kb_filter}
          ORDER BY bm25(fts_notes) ASC LIMIT ?2"
@@ -786,6 +893,7 @@ pub fn note_ensure_from_material(
         updated_at: now,
         is_deleted: false,
         deleted_at: None,
+        exclude_from_profile: false,
     };
     note_upsert(conn, &note, 0, now).map_err(|e| match e {
         NoteSaveError::Conflict { current_revision } => {
@@ -825,11 +933,13 @@ mod tests {
 
         let mut v2 = draft("n1", "第一篇（改）", "正文：记忆、知识与检索");
         v2.is_favorite = true;
+        v2.exclude_from_profile = true;
         let out2 = note_upsert(&conn, &v2, 1, 2000).unwrap();
         assert_eq!(out2.revision, 2, "内容变了要追加修订");
 
         let got = note_get(&conn, "n1").unwrap().unwrap();
         assert_eq!((got.title.as_str(), got.body_md.as_str(), got.is_favorite), (v2.title.as_str(), v2.body_md.as_str(), true));
+        assert!(got.exclude_from_profile);
         assert_eq!(got.created_at, 1000, "创建时间不被更新改写");
         assert_eq!(got.updated_at, 2000);
 
@@ -839,8 +949,11 @@ mod tests {
         assert_eq!(revs, 2);
 
         // 只改元数据（收藏）不追加修订
-        let out3 = note_upsert(&conn, &v2, 2, 3000).unwrap();
+        let mut metadata_edit = v2.clone();
+        metadata_edit.exclude_from_profile = false;
+        let out3 = note_upsert(&conn, &metadata_edit, 2, 3000).unwrap();
         assert_eq!(out3.revision, 2, "元数据变化不产生修订");
+        assert!(!note_get(&conn, "n1").unwrap().unwrap().exclude_from_profile);
     }
 
     #[test]
@@ -1084,57 +1197,127 @@ mod tests {
         // 两个标题节 → 两个块（只有标题强制分块；小段落会合并）
         let body = "# 检索\n\n关于检索性能的第一段。\n\n# 索引\n\n关于语义索引的第二段，内容足够长以形成独立的分块边界。";
         note_upsert(&conn, &draft("n1", "长文", body), 0, 1000).unwrap();
-        let chunks = list_chunk_texts(&conn, 100).unwrap();
+        let chunks = list_chunk_texts(&conn, 100, "local", "e5-small").unwrap();
         assert_eq!(chunks.len(), 2);
 
-        // 保存两个块（身份 A）
-        let items: Vec<(String, i64, Vec<f32>)> = chunks
+        let items: Vec<_> = chunks
             .iter()
             .enumerate()
-            .map(|(i, c)| (c.note_id.clone(), c.chunk_index, vec![0.1 * (i as f32 + 1.0); 384]))
+            .map(|(i, c)| embedding_item(c, if i == 0 { vec![1.0, 0.0] } else { vec![0.0, 1.0] }))
             .collect();
-        let saved = save_note_chunk_embeddings(&conn, &items, "local", "e5-small").unwrap();
-        assert_eq!(saved, 2);
+        assert_eq!(save_note_chunk_embeddings(&conn, &items, "local", "e5-small").unwrap(), 2);
+        assert_eq!(save_note_chunk_embeddings(&conn, &items, "local", "e5-small").unwrap(), 0);
+        assert!(list_chunk_texts(&conn, 100, "local", "e5-small").unwrap().is_empty());
+        assert_eq!(list_chunk_texts(&conn, 100, "local", "other-model").unwrap().len(), 2);
 
-        // 同身份召回：两个块的向量与查询同向（都是 0.1 的倍数）→ 都命中，
-        // 第一块余弦最高（与查询完全同向）。断言首块身份与内容，不断言只有一条。
-        let hits = search_note_chunks_vector(&conn, &items[0].2, "local", "e5-small", 10).unwrap();
-        assert!(!hits.is_empty());
+        let query = &items[0].embedding;
+        let hits = search_note_chunks_vector(&conn, query, "local", "e5-small", 10).unwrap();
         assert_eq!(hits[0].note_id, "n1");
         assert_eq!(hits[0].chunk_index, 0);
         assert!(hits[0].content.contains("检索性能"), "{:?}", hits[0].content);
         assert!(hits[0].score > 0.9);
+        assert!(search_note_chunks_vector(&conn, query, "local", "other-model", 10).unwrap().is_empty());
 
-        // 身份隔离：同维度不同模型不混算
-        assert!(search_note_chunks_vector(&conn, &items[0].2, "local", "other-model", 10).unwrap().is_empty());
-
-        // 修订推进 → 分块重建 → 旧向量 content_revision 不匹配，召回里消失；
-        // 过期嵌入（拿旧 revision 保存）被拒绝
+        // 第 0 块仍存在，但不能把旧正文的向量登记为当前修订。
         note_upsert(&conn, &draft("n1", "长文", "全新的正文，与之前完全不同。"), 1, 2000).unwrap();
-        assert!(search_note_chunks_vector(&conn, &items[0].2, "local", "e5-small", 10).unwrap().is_empty(), "编辑后旧向量不参与召回");
-        // 新正文只有一段、没有标题 → 只剩 1 个块（index 0）。
-        // 旧 items 里 index 0 的保存是「对当前块 index 0 的写入」——块表里它
-        // 存在且 revision 就是重建后的 2，所以允许写（这不是过期任务，是
-        // 对新块的写入）；index 1 在新正文里已不存在 → 跳过。
-        // 断言语义改为：旧 items 里的 index-1 块不写回。
-        let stale_save = save_note_chunk_embeddings(&conn, &items, "local", "e5-small").unwrap();
-        assert_eq!(stale_save, 1, "重建后已消失的块（index 1）不写回；对现存块的写入放行");
-        // 旧向量 index-1 仍留在表里（历史行，重建时不清理——召回由
-        // content_revision 匹配挡掉，见上面的空召回断言）。真正守住的语义是：
-        // 过期行不参与召回、对现存块的写入走当前修订。
-        let idx1_rev: Option<i64> = conn
-            .query_row(
-                "SELECT content_revision FROM note_chunk_embeddings WHERE chunk_index = 1",
-                [],
-                |r| r.get(0),
-            )
-            .optional()
-            .unwrap();
-        // index-1 行若被重写，其 revision 必须还是旧值（保存路径对不存在的块跳过）
-        assert!(idx1_rev.is_none() || idx1_rev == Some(1), "被抹掉的块要么没写、要么还是旧修订：{idx1_rev:?}");
+        assert_eq!(save_note_chunk_embeddings(&conn, &items, "local", "e5-small").unwrap(), 0);
+        assert!(search_note_chunks_vector(&conn, query, "local", "e5-small", 10).unwrap().is_empty());
+        let pending = list_chunk_texts(&conn, 100, "local", "e5-small").unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].content_revision, 2);
+        let fresh = [embedding_item(&pending[0], vec![1.0, 0.0])];
+        assert_eq!(save_note_chunk_embeddings(&conn, &fresh, "local", "e5-small").unwrap(), 1);
+        assert_eq!(search_note_chunks_vector(&conn, query, "local", "e5-small", 10).unwrap()[0].content,
+            "全新的正文，与之前完全不同。");
+        note_delete(&conn, "n1", 3000).unwrap();
+        assert_eq!(save_note_chunk_embeddings(&conn, &fresh, "local", "other-model").unwrap(), 0);
+        assert!(search_note_chunks_vector(&conn, query, "local", "e5-small", 10).unwrap().is_empty());
     }
 
-    /// R2 映射：素材 → 笔记，幂等；原素材与旧卡片不受影响；映射后可编辑。
+    fn embedding_item(chunk: &NoteChunkText, embedding: Vec<f32>) -> NoteChunkEmbeddingItem {
+        NoteChunkEmbeddingItem {
+            note_id: chunk.note_id.clone(), chunk_index: chunk.chunk_index,
+            content_revision: chunk.content_revision, embedding,
+        }
+    }
+
+    #[test]
+    fn chunk_commands_keep_same_note_id_isolated_between_libraries() {
+        let root = env::temp_dir().join(format!("kf-chunk-roots-{}", uuid::Uuid::new_v4()));
+        let a = root.join("a");
+        let b = root.join("b");
+        let dir_a = Some(a.to_string_lossy().into_owned());
+        let dir_b = Some(b.to_string_lossy().into_owned());
+        for (dir, body) in [(&a, "alpha island"), (&b, "beta island")] {
+            let conn = crate::db::open_db(&dir.join("knowflick.db")).unwrap();
+            note_upsert(&conn, &draft("same-id", "同名笔记", body), 0, 1000).unwrap();
+            project_create(&conn, "same-project", "同名项目", "", 1000).unwrap();
+            project_add_note(&conn, "same-project", "same-id", 1000).unwrap();
+        }
+
+        let limit = Some(1);
+        let provider = Some("local".to_owned());
+        let model = Some("isolation".to_owned());
+        assert!(crate::note_search_chunks(dir_b.clone(), "alpha".into(), limit).unwrap().is_empty());
+        let fts = crate::note_search_chunks(dir_a.clone(), "alpha".into(), limit).unwrap();
+        assert_eq!(fts[0].content, "alpha island");
+        let pending = crate::note_list_chunk_texts(dir_a.clone(), limit, provider.clone(), model.clone()).unwrap();
+        assert_eq!(pending[0].content, "alpha island");
+        let query = vec![1.0, 0.0];
+        assert_eq!(crate::note_save_chunk_embeddings(
+            dir_a.clone(), vec![embedding_item(&pending[0], query.clone())], provider.clone(), model.clone(),
+        ).unwrap(), 1);
+
+        let vector = |dir, project: &str| crate::note_search_chunks_vector(
+            dir, query.clone(), provider.clone(), model.clone(), limit, Some(project.into()),
+        ).unwrap();
+        assert_eq!(vector(dir_a.clone(), "same-project")[0].content, "alpha island");
+        assert!(vector(dir_a.clone(), "missing-project").is_empty());
+        assert!(vector(dir_b.clone(), "same-project").is_empty());
+        assert!(crate::note_list_chunk_texts(dir_a.clone(), limit, provider.clone(), model.clone()).unwrap().is_empty());
+        let pending_b = crate::note_list_chunk_texts(dir_b, limit, provider.clone(), model.clone()).unwrap();
+        assert_eq!(pending_b[0].content, "beta island");
+
+        // 老版缓存无可信修订；模拟升级，只移除缓存且只执行一次。
+        let conn = crate::db::open_db(&a.join("knowflick.db")).unwrap();
+        conn.execute("DELETE FROM meta WHERE key = 'note_chunk_revision_verified'", []).unwrap();
+        drop(conn);
+        assert!(vector(dir_a.clone(), "same-project").is_empty());
+        let conn = crate::db::open_db(&a.join("knowflick.db")).unwrap();
+        let chunks = list_chunk_texts(&conn, 1, "local", "isolation").unwrap();
+        assert_eq!(save_note_chunk_embeddings(&conn, &[embedding_item(&chunks[0], query.clone())], "local", "isolation").unwrap(), 1);
+        drop(conn);
+        assert_eq!(vector(dir_a, "same-project")[0].content, "alpha island");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn chunk_vector_search_respects_active_project_membership_before_limit() {
+        let conn = temp_db("chunk-project-scope");
+        note_upsert(&conn, &draft("note-a", "项目甲笔记", "scope retrieval notes for project alpha"), 0, 1000).unwrap();
+        note_upsert(&conn, &draft("note-b", "项目乙笔记", "scope retrieval notes for project beta"), 0, 1000).unwrap();
+        project_create(&conn, "project-a", "项目甲", "", 1000).unwrap();
+        project_create(&conn, "project-b", "项目乙", "", 1000).unwrap();
+        project_add_note(&conn, "project-a", "note-a", 1000).unwrap();
+        project_add_note(&conn, "project-b", "note-b", 1000).unwrap();
+
+        let chunks = list_chunk_texts(&conn, 100, "local", "scope-test").unwrap();
+        let embeddings: Vec<_> = chunks.iter().map(|chunk| {
+            let vector = if chunk.note_id == "note-a" { vec![1.0, 0.0] } else { vec![0.0, 1.0] };
+            embedding_item(chunk, vector)
+        }).collect();
+        assert_eq!(save_note_chunk_embeddings(&conn, &embeddings, "local", "scope-test").unwrap(), 2);
+
+        let hits = search_note_chunks_vector_scoped(&conn, &[0.0, 1.0], "local", "scope-test", 1, Some("project-a")).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].note_id, "note-a", "项目范围过滤应先于向量排名与 limit");
+        assert_eq!(search_note_chunks_vector_scoped(&conn, &[0.0, 1.0], "local", "scope-test", 10, Some("project-b")).unwrap()[0].note_id, "note-b");
+        assert_eq!(search_note_chunks_vector(&conn, &[0.0, 1.0], "local", "scope-test", 10).unwrap().len(), 2);
+
+        project_archive(&conn, "project-a", 2000).unwrap();
+        assert!(search_note_chunks_vector_scoped(&conn, &[0.0, 1.0], "local", "scope-test", 10, Some("project-a")).unwrap().is_empty());
+    }
+
     #[test]
     fn material_maps_to_note_idempotently_and_original_survives() {
         let conn = temp_db("m2n");
@@ -1240,15 +1423,19 @@ pub struct NoteChunkText {
     pub content_revision: i64,
 }
 
-/// 列出待嵌入的分块（未删除笔记的全部块）。嵌入流程读它 → embedTexts → 保存。
-pub fn list_chunk_texts(conn: &Connection, limit: i64) -> Result<Vec<NoteChunkText>> {
+/// 跳过当前模型已完成的块，避免每批重复索引最近的同一组笔记。
+pub fn list_chunk_texts(conn: &Connection, limit: i64, provider: &str, model: &str) -> Result<Vec<NoteChunkText>> {
     let mut stmt = conn.prepare(
         "SELECT n.note_id, n.chunk_index, n.content, n.content_revision
          FROM note_chunks n JOIN notes n2 ON n2.id = n.note_id
-         WHERE n2.is_deleted = 0
-         ORDER BY n2.updated_at DESC, n.chunk_index ASC LIMIT ?1",
+         WHERE n2.is_deleted = 0 AND NOT EXISTS (
+             SELECT 1 FROM note_chunk_embeddings e
+             WHERE e.note_id = n.note_id AND e.chunk_index = n.chunk_index
+               AND e.content_revision = n.content_revision AND e.provider = ?2 AND e.model = ?3
+         )
+         ORDER BY n2.updated_at DESC, n.note_id, n.chunk_index LIMIT ?1",
     )?;
-    let rows = stmt.query_map(params![limit], |row| {
+    let rows = stmt.query_map(params![limit, provider, model], |row| {
         Ok(NoteChunkText {
             note_id: row.get(0)?,
             chunk_index: row.get(1)?,
@@ -1263,50 +1450,37 @@ pub fn list_chunk_texts(conn: &Connection, limit: i64) -> Result<Vec<NoteChunkTe
     Ok(out)
 }
 
-/// 保存分块向量：**只在块的 content_revision 仍等于读取时的一致**时写入——
-/// 期间被编辑过的块（修订推进 → 分块重建）视为过期任务，跳过不写回
-/// （契约「过期任务不写回当前索引」）。返回实际写入数。
+#[derive(Deserialize)]
+pub struct NoteChunkEmbeddingItem {
+    pub note_id: String,
+    pub chunk_index: i64,
+    pub content_revision: i64,
+    pub embedding: Vec<f32>,
+}
+
+/// 在写入语句内核对读取时的修订号，避免检查后、写入前发生编辑。
 pub fn save_note_chunk_embeddings(
     conn: &Connection,
-    items: &[(String, i64, Vec<f32>)],
+    items: &[NoteChunkEmbeddingItem],
     provider: &str,
     model: &str,
 ) -> Result<usize, String> {
     let now = crate::db::chrono_or_epoch_now();
     let mut saved = 0usize;
-    for (note_id, chunk_index, embedding) in items {
-        // 读该块当前的修订号；块已被重建（修订变了）就跳过这次嵌入
-        let current_rev: Option<i64> = conn
-            .query_row(
-                "SELECT content_revision FROM note_chunks WHERE note_id = ?1 AND chunk_index = ?2",
-                params![note_id, chunk_index],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
-        let Some(chunk_rev) = current_rev else { continue };
-        let read_rev: Option<i64> = conn
-            .query_row(
-                "SELECT content_revision FROM note_chunk_embeddings WHERE note_id = ?1 AND chunk_index = ?2",
-                params![note_id, chunk_index],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
-        // 已有同身份更新鲜的写入（revision 更大）也跳过
-        if let Some(prev) = read_rev {
-            if prev > chunk_rev {
-                continue;
-            }
+    for NoteChunkEmbeddingItem { note_id, chunk_index, content_revision, embedding } in items {
+        if embedding.is_empty() || embedding.iter().any(|value| !value.is_finite()) {
+            continue;
         }
         let mut bytes = Vec::with_capacity(embedding.len() * 4);
         for &val in embedding {
             bytes.extend_from_slice(&val.to_le_bytes());
         }
-        conn.execute(
+        saved += conn.execute(
             r#"
             INSERT INTO note_chunk_embeddings (note_id, chunk_index, dim, embedding, provider, model, content_revision, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+            FROM note_chunks n JOIN notes n2 ON n2.id = n.note_id
+            WHERE n.note_id = ?1 AND n.chunk_index = ?2 AND n.content_revision = ?7 AND n2.is_deleted = 0
             ON CONFLICT(note_id, chunk_index) DO UPDATE SET
                 dim = excluded.dim,
                 embedding = excluded.embedding,
@@ -1314,11 +1488,12 @@ pub fn save_note_chunk_embeddings(
                 model = excluded.model,
                 content_revision = excluded.content_revision,
                 updated_at = excluded.updated_at
+            WHERE content_revision != excluded.content_revision OR provider != excluded.provider
+               OR model != excluded.model OR dim != excluded.dim
             "#,
-            params![note_id, chunk_index, embedding.len() as i64, bytes, provider, model, chunk_rev, now],
+            params![note_id, chunk_index, embedding.len() as i64, bytes, provider, model, content_revision, now],
         )
         .map_err(|e| e.to_string())?;
-        saved += 1;
     }
     Ok(saved)
 }
@@ -1345,6 +1520,17 @@ pub fn search_note_chunks_vector(
     model: &str,
     limit: i64,
 ) -> Result<Vec<NoteChunkVectorHit>, String> {
+    search_note_chunks_vector_scoped(conn, query_embedding, provider, model, limit, None)
+}
+
+pub fn search_note_chunks_vector_scoped(
+    conn: &Connection,
+    query_embedding: &[f32],
+    provider: &str,
+    model: &str,
+    limit: i64,
+    project_id: Option<&str>,
+) -> Result<Vec<NoteChunkVectorHit>, String> {
     if query_embedding.is_empty() {
         return Ok(Vec::new());
     }
@@ -1356,11 +1542,18 @@ pub fn search_note_chunks_vector(
              JOIN note_chunks n ON n.note_id = e.note_id AND n.chunk_index = e.chunk_index
              JOIN notes n2 ON n2.id = e.note_id
              WHERE n2.is_deleted = 0 AND e.dim = ?1 AND e.provider = ?2 AND e.model = ?3
-               AND e.content_revision = n.content_revision",
+               AND e.content_revision = n.content_revision
+               AND (?4 IS NULL OR EXISTS (
+                   SELECT 1 FROM project_members scope_member
+                   JOIN projects scope_project ON scope_project.id = scope_member.project_id
+                   WHERE scope_member.note_id = n2.id
+                     AND scope_project.archived_at IS NULL
+                     AND scope_project.id = ?4
+               ))",
         )
         .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(params![query_embedding.len() as i64, provider, model], |row| {
+            .query_map(params![query_embedding.len() as i64, provider, model, project_id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Vec<u8>>(2)?))
             })
             .map_err(|e| e.to_string())?;
@@ -1385,8 +1578,15 @@ pub fn search_note_chunks_vector(
             .query_row(
                 "SELECT n.content, n.char_start, n.char_end, n2.title
                  FROM note_chunks n JOIN notes n2 ON n2.id = n.note_id
-                 WHERE n.note_id = ?1 AND n.chunk_index = ?2",
-                params![note_id, chunk_index],
+                 WHERE n.note_id = ?1 AND n.chunk_index = ?2 AND n2.is_deleted = 0
+                   AND (?3 IS NULL OR EXISTS (
+                       SELECT 1 FROM project_members scope_member
+                       JOIN projects scope_project ON scope_project.id = scope_member.project_id
+                       WHERE scope_member.note_id = n2.id
+                         AND scope_project.archived_at IS NULL
+                         AND scope_project.id = ?3
+                   ))",
+                params![note_id, chunk_index, project_id],
                 |r| {
                     Ok((
                         r.get::<_, String>(0)?,
@@ -1504,30 +1704,19 @@ pub fn project_remove_note(conn: &Connection, project_id: &str, note_id: &str) -
 ///
 /// 封存项目的成员**不在索引里**：封存的项目不再参与其它上下文，
 /// 把封存内容算进「项目范围」等于让用户以为它还活跃。
-/// 一篇笔记属于多个项目时取**最近加入**的那个——范围筛选是「属于这个项目吗」
-/// 的判断，不需要同时命中多个项目。
+/// 一篇笔记可以属于多个项目，每条成员关系都必须保留。
 pub fn project_member_index(conn: &Connection) -> Result<Vec<(String, String)>> {
     let mut stmt = conn.prepare(
         "SELECT pm.note_id, pm.project_id
          FROM project_members pm
          JOIN projects p ON p.id = pm.project_id
          WHERE p.archived_at IS NULL
-         ORDER BY pm.added_at ASC",
+         ORDER BY pm.note_id, pm.project_id",
     )?;
     let rows = stmt.query_map(params![], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })?;
-    let mut out: Vec<(String, String)> = Vec::new();
-    for r in rows {
-        let (note_id, project_id) = r?;
-        // 后加入的覆盖先加入的（上面的 ORDER BY 让 added_at 递增）。
-        if let Some(slot) = out.iter_mut().find(|(n, _)| *n == note_id) {
-            slot.1 = project_id;
-        } else {
-            out.push((note_id, project_id));
-        }
-    }
-    Ok(out)
+    rows.collect()
 }
 
 /// 封存：不删数据，导出与检索跳过（「过期项目不继续污染其它项目上下文」）。
@@ -1823,7 +2012,7 @@ mod project_tests {
     /// 项目归属索引：复盘限定项目范围时用来把笔记反查回项目。
     ///
     /// 关键语义：封存项目不在索引里（封存 = 不再参与其它上下文）；
-    /// 一篇笔记属于多个项目时取最近加入的那个。
+    /// 一篇笔记属于多个项目时每条关系都返回。
     #[test]
     fn project_member_index_maps_notes_to_active_projects() {
         let conn = temp_db("member-index");
@@ -1835,16 +2024,12 @@ mod project_tests {
         project_create(&conn, "pc", "封存项目", "", 1100).unwrap();
 
         project_add_note(&conn, "pa", "n1", 1200).unwrap();
-        project_add_note(&conn, "pb", "n1", 1300).unwrap(); // 更晚加入 → 应覆盖
+        project_add_note(&conn, "pb", "n1", 1300).unwrap();
         project_add_note(&conn, "pc", "n2", 1200).unwrap();
 
         let index = project_member_index(&conn).unwrap();
-        // n1 同时属于 A、B → 取最近加入的 B
-        assert_eq!(
-            index.iter().find(|(n, _)| n == "n1").map(|(_, p)| p.as_str()),
-            Some("pb"),
-            "同一笔记属于多个项目时取最近加入的那个"
-        );
+        assert!(index.iter().any(|(n, p)| n == "n1" && p == "pa"));
+        assert!(index.iter().any(|(n, p)| n == "n1" && p == "pb"));
         assert!(
             index.iter().any(|(n, p)| n == "n2" && p == "pc"),
             "未封存项目的成员在索引里"
@@ -1858,7 +2043,7 @@ mod project_tests {
             "封存项目的成员不该出现在归属索引里"
         );
 
-        // n1 同时属于未封存的 A 与已封存的 B → 回落到 A
+        // n1 同时属于未封存的 A 与已封存的 B → 只保留 A
         project_archive(&conn, "pb", 1500).unwrap();
         let after2 = project_member_index(&conn).unwrap();
         assert_eq!(
@@ -1866,6 +2051,7 @@ mod project_tests {
             Some("pa"),
             "封存掉最近加入的项目后，归属回落到仍在的那个"
         );
+        assert!(!after2.iter().any(|(n, p)| n == "n1" && p == "pb"));
     }
 }
 
@@ -1951,6 +2137,78 @@ pub fn claim_list_active(conn: &Connection, now: i64) -> Result<Vec<ProfileClaim
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);
+    }
+    Ok(out)
+}
+
+/// 治理界面读取全部仍保留的声明，包括暂停、否认、过期和已被修正取代的记录。
+pub fn claim_list_all(conn: &Connection) -> Result<Vec<ProfileClaimDto>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CLAIM_COLUMNS} FROM profile_claims ORDER BY created_at DESC"
+    ))?;
+    let rows = stmt.query_map([], map_claim_row)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// 全局问答可以使用的个人记忆：必须已确认、仍生效、未过期、未否认且未被取代。
+/// 项目范围记忆必须由带项目选择器的消费端另行显式筛选，不能进入全局问答。
+pub fn claim_list_for_answer(conn: &Connection, now: i64) -> Result<Vec<ProfileClaimDto>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CLAIM_COLUMNS} FROM profile_claims
+         WHERE confirmed_at IS NOT NULL
+           AND denied_at IS NULL
+           AND status = 'active'
+           AND scope = 'global'
+           AND (expires_at IS NULL OR expires_at > ?1)
+           AND superseded_by IS NULL
+         ORDER BY created_at DESC"
+    ))?;
+    let rows = stmt.query_map(params![now], map_claim_row)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// 项目问答只列所选且仍活跃项目的记忆；项目 ID 无效或已封存时失败关闭。
+pub fn claim_list_for_project_answer(
+    conn: &Connection,
+    now: i64,
+    project_id: &str,
+) -> Result<Vec<ProfileClaimDto>, String> {
+    let active: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1 AND archived_at IS NULL)",
+            params![project_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if !active {
+        return Err("所选项目不存在或已封存".to_string());
+    }
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {CLAIM_COLUMNS} FROM profile_claims
+             WHERE confirmed_at IS NOT NULL
+               AND denied_at IS NULL
+               AND status = 'active'
+               AND scope = ?2
+               AND (expires_at IS NULL OR expires_at > ?1)
+               AND superseded_by IS NULL
+             ORDER BY created_at DESC"
+        ))
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(params![now, project_id], map_claim_row)
+        .map_err(|error| error.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|error| error.to_string())?);
     }
     Ok(out)
 }
@@ -2095,6 +2353,111 @@ mod profile_tests {
             .unwrap();
         assert_eq!(confirmed, Some(3000));
     }
+
+    #[test]
+    fn answer_memory_requires_confirmed_active_global_claims() {
+        let conn = temp_db("answer-scope");
+        let global = claim("global-confirmed", &["n1"]);
+        claim_add(&conn, &global, 1000).unwrap();
+        claim_confirm(&conn, "global-confirmed", 1000).unwrap();
+
+        let unconfirmed = claim("global-unconfirmed", &["n2"]);
+        claim_add(&conn, &unconfirmed, 1000).unwrap();
+
+        let mut project = claim("project-confirmed", &["n3"]);
+        project.scope = "project-a".to_string();
+        claim_add(&conn, &project, 1000).unwrap();
+        claim_confirm(&conn, "project-confirmed", 1000).unwrap();
+
+        let expired = claim("global-expired", &["n4"]);
+        claim_add(&conn, &expired, 1000).unwrap();
+        claim_confirm(&conn, "global-expired", 1000).unwrap();
+        conn.execute("UPDATE profile_claims SET expires_at = 1500 WHERE id = 'global-expired'", []).unwrap();
+
+        let paused = claim("global-paused", &["n5"]);
+        claim_add(&conn, &paused, 1000).unwrap();
+        claim_confirm(&conn, "global-paused", 1000).unwrap();
+        claim_pause(&conn, "global-paused").unwrap();
+
+        let denied = claim("global-denied", &["n6"]);
+        claim_add(&conn, &denied, 1000).unwrap();
+        claim_confirm(&conn, "global-denied", 1000).unwrap();
+        claim_deny(&conn, "global-denied", 1400).unwrap();
+
+        let superseded = claim("global-superseded", &["n7"]);
+        claim_add(&conn, &superseded, 1000).unwrap();
+        claim_confirm(&conn, "global-superseded", 1000).unwrap();
+        conn.execute("UPDATE profile_claims SET superseded_by = 'replacement' WHERE id = 'global-superseded'", []).unwrap();
+
+        let claims = claim_list_for_answer(&conn, 2000).unwrap();
+        assert_eq!(claims.iter().map(|claim| claim.id.as_str()).collect::<Vec<_>>(), vec!["global-confirmed"]);
+    }
+
+    #[test]
+    fn project_answer_memory_is_confirmed_active_and_bound_to_selected_live_project() {
+        let conn = temp_db("project-answer-scope");
+        conn.execute(
+            "INSERT INTO projects (id, name, created_at, updated_at, archived_at) VALUES
+             ('project-a', '项目甲', 1, 1, NULL), ('project-b', '项目乙', 1, 1, NULL), ('project-archived', '已封存', 1, 1, 10)",
+            [],
+        ).unwrap();
+
+        let global = claim("global", &["e-global"]);
+        claim_add(&conn, &global, 1000).unwrap();
+        claim_confirm(&conn, "global", 1000).unwrap();
+        let mut project_a = claim("project-a-active", &["e-project-a"]);
+        project_a.scope = "project-a".to_string();
+        claim_add(&conn, &project_a, 1000).unwrap();
+        claim_confirm(&conn, "project-a-active", 1000).unwrap();
+        let mut project_b = claim("project-b-active", &["e-project-b"]);
+        project_b.scope = "project-b".to_string();
+        claim_add(&conn, &project_b, 1000).unwrap();
+        claim_confirm(&conn, "project-b-active", 1000).unwrap();
+
+        let mut unconfirmed = claim("project-a-unconfirmed", &["e-unconfirmed"]);
+        unconfirmed.scope = "project-a".to_string();
+        claim_add(&conn, &unconfirmed, 1000).unwrap();
+        let mut expired = claim("project-a-expired", &["e-expired"]);
+        expired.scope = "project-a".to_string();
+        claim_add(&conn, &expired, 1000).unwrap();
+        claim_confirm(&conn, "project-a-expired", 1000).unwrap();
+        conn.execute("UPDATE profile_claims SET expires_at = 1500 WHERE id = 'project-a-expired'", []).unwrap();
+        let mut paused = claim("project-a-paused", &["e-paused"]);
+        paused.scope = "project-a".to_string();
+        claim_add(&conn, &paused, 1000).unwrap();
+        claim_confirm(&conn, "project-a-paused", 1000).unwrap();
+        claim_pause(&conn, "project-a-paused").unwrap();
+        let mut denied = claim("project-a-denied", &["e-denied"]);
+        denied.scope = "project-a".to_string();
+        claim_add(&conn, &denied, 1000).unwrap();
+        claim_confirm(&conn, "project-a-denied", 1000).unwrap();
+        claim_deny(&conn, "project-a-denied", 1100).unwrap();
+
+        let selected = claim_list_for_project_answer(&conn, 2000, "project-a").unwrap();
+        assert_eq!(selected.iter().map(|claim| claim.id.as_str()).collect::<Vec<_>>(), vec!["project-a-active"]);
+        let other = claim_list_for_project_answer(&conn, 2000, "project-b").unwrap();
+        assert_eq!(other.iter().map(|claim| claim.id.as_str()).collect::<Vec<_>>(), vec!["project-b-active"]);
+        assert!(claim_list_for_project_answer(&conn, 2000, "project-archived").is_err());
+        assert!(claim_list_for_project_answer(&conn, 2000, "missing-project").is_err());
+        assert_eq!(claim_list_for_answer(&conn, 2000).unwrap().iter().map(|claim| claim.id.as_str()).collect::<Vec<_>>(), vec!["global"]);
+    }
+
+    #[test]
+    fn governance_list_includes_paused_denied_and_expired_claims() {
+        let conn = temp_db("all-claims");
+        claim_add(&conn, &claim("paused", &["n1"]), 1000).unwrap();
+        claim_pause(&conn, "paused").unwrap();
+        claim_add(&conn, &claim("denied", &["n2"]), 1000).unwrap();
+        claim_deny(&conn, "denied", 1100).unwrap();
+        claim_add(&conn, &claim("expired", &["n3"]), 1000).unwrap();
+        conn.execute("UPDATE profile_claims SET expires_at = 900 WHERE id = 'expired'", []).unwrap();
+
+        let ids = claim_list_all(&conn).unwrap().into_iter().map(|claim| claim.id).collect::<Vec<_>>();
+        assert_eq!(ids.len(), 3);
+        assert!(ids.contains(&"paused".to_string()));
+        assert!(ids.contains(&"denied".to_string()));
+        assert!(ids.contains(&"expired".to_string()));
+    }
 }
 
 // ---------- 目标（R4/D04：完成条件 + 证据关联，缺记录不判失败） ----------
@@ -2114,7 +2477,16 @@ pub struct GoalDto {
     pub evidence_count: i64,
 }
 
-pub fn goal_create(conn: &Connection, goal: &GoalDto, now: i64) -> Result<usize, String> {
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalCreate {
+    pub id: String,
+    pub title: String,
+    pub done_criteria: String,
+    pub scope: Option<String>,
+}
+
+pub fn goal_create(conn: &Connection, goal: &GoalCreate, now: i64) -> Result<usize, String> {
     let title = goal.title.trim();
     let criteria = goal.done_criteria.trim();
     if title.is_empty() {
@@ -2123,11 +2495,26 @@ pub fn goal_create(conn: &Connection, goal: &GoalDto, now: i64) -> Result<usize,
     if criteria.is_empty() {
         return Err("完成条件不能为空——判定只认这个，不靠记录多少（这是「缺少记录不得判为失败」的前提：条件必须显式）".to_string());
     }
-    conn.execute(
-        "INSERT INTO goals (id, title, done_criteria, scope, created_at, review_note) VALUES (?1, ?2, ?3, ?4, ?5, '')",
+    let changed = conn.execute(
+        "INSERT INTO goals (id, title, done_criteria, scope, created_at, review_note)
+         SELECT ?1, ?2, ?3, ?4, ?5, ''
+         WHERE ?4 IS NULL OR EXISTS (SELECT 1 FROM projects WHERE id = ?4 AND archived_at IS NULL)",
         params![goal.id, title, criteria, goal.scope, now],
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    if changed == 0 { return Err("项目不存在或已封存，请重新选择".to_string()); }
+    Ok(changed)
+}
+
+/// 仅活跃目标可调整归属；单条语句同时检查项目状态，避免封存与写入竞争。
+pub fn goal_set_scope(conn: &Connection, id: &str, scope: Option<&str>) -> Result<(), String> {
+    let changed = conn.execute(
+        "UPDATE goals SET scope = ?2 WHERE id = ?1 AND achieved_at IS NULL AND abandoned_at IS NULL
+         AND (?2 IS NULL OR EXISTS (SELECT 1 FROM projects WHERE id = ?2 AND archived_at IS NULL))",
+        params![id, scope],
+    ).map_err(|e| e.to_string())?;
+    if changed == 0 { return Err("目标不可用，或项目不存在、已封存；请刷新后重试".to_string()); }
+    Ok(())
 }
 
 /// 活跃目标（未达成未放弃）。证据数是 LEFT JOIN 派生——没有证据的
@@ -2188,6 +2575,65 @@ pub fn goal_link_evidence(conn: &Connection, goal_id: &str, evidence_id: &str, k
     .map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalEvidenceItem {
+    pub goal_id: String,
+    pub evidence_id: String,
+    pub kind: String,
+    pub linked_at: i64,
+    /// 不存在或已删除的原件不返回标题，调用方须标明不可用。
+    pub title: Option<String>,
+}
+
+/// 在闭区间内关联的证据；保留已删除原件的关联事实。
+pub fn goal_evidence_in_period(conn: &Connection, from: i64, to: i64) -> Result<Vec<GoalEvidenceItem>, String> {
+    if from > to { return Err("复盘周期起点不能晚于终点".to_string()); }
+    let mut stmt = conn.prepare(
+        "SELECT e.goal_id, e.evidence_id, e.kind, e.linked_at,
+                CASE e.kind WHEN 'note' THEN n.title WHEN 'material' THEN m.title ELSE NULL END
+         FROM goal_evidence e JOIN goals g ON g.id = e.goal_id
+         LEFT JOIN notes n ON e.kind = 'note' AND n.id = e.evidence_id AND n.is_deleted = 0
+         LEFT JOIN materials m ON e.kind = 'material' AND m.id = e.evidence_id AND m.is_deleted = 0
+         WHERE e.linked_at >= ?1 AND e.linked_at <= ?2 AND g.created_at <= ?2
+           AND (g.achieved_at IS NULL OR g.achieved_at >= ?1)
+           AND (g.abandoned_at IS NULL OR g.abandoned_at >= ?1)
+         ORDER BY e.linked_at DESC, e.goal_id, e.evidence_id"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(params![from, to], |r| Ok(GoalEvidenceItem {
+        goal_id: r.get(0)?, evidence_id: r.get(1)?, kind: r.get(2)?, linked_at: r.get(3)?, title: r.get(4)?,
+    })).map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalReviewSnapshot {
+    pub goals: Vec<GoalDto>,
+    pub evidence: Vec<GoalEvidenceItem>,
+}
+
+/// 同一只读事务中取得周期内存在的目标和关联，避免状态与明细来自不同时间点。
+pub fn goal_review_snapshot(conn: &mut Connection, from: i64, to: i64) -> Result<GoalReviewSnapshot, String> {
+    if from > to { return Err("复盘周期起点不能晚于终点".to_string()); }
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let goals = {
+        let mut stmt = tx.prepare(
+            "SELECT g.id, g.title, g.done_criteria, g.scope, g.created_at, g.achieved_at, g.abandoned_at, g.review_note,
+                    (SELECT COUNT(*) FROM goal_evidence e WHERE e.goal_id = g.id AND e.linked_at <= ?2)
+             FROM goals g WHERE g.created_at <= ?2
+             AND (g.achieved_at IS NULL OR g.achieved_at >= ?1)
+             AND (g.abandoned_at IS NULL OR g.abandoned_at >= ?1)
+             ORDER BY g.created_at ASC, g.id"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![from, to], map_goal_row).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+    };
+    let evidence = goal_evidence_in_period(&tx, from, to)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(GoalReviewSnapshot { goals, evidence })
+}
+
 /// 用户确认达成：判定**只**来自这一步（显式确认），证据多少不参与。
 pub fn goal_achieve(conn: &Connection, id: &str, review_note: &str, now: i64) -> Result<bool, String> {
     let changed = conn.execute(
@@ -2222,18 +2668,68 @@ mod goal_tests {
         NoteDto { id: id.to_string(), title: title.to_string(), body_md: body.to_string(), ..Default::default() }
     }
 
-    fn goal(id: &str, title: &str, criteria: &str) -> GoalDto {
-        GoalDto {
+    fn goal(id: &str, title: &str, criteria: &str) -> GoalCreate {
+        GoalCreate {
             id: id.to_string(),
             title: title.to_string(),
             done_criteria: criteria.to_string(),
             scope: None,
-            created_at: 0,
-            achieved_at: None,
-            abandoned_at: None,
-            review_note: String::new(),
-            evidence_count: 0,
         }
+    }
+
+    #[test]
+    fn goal_input_and_project_scope_work_for_new_and_existing_goals() {
+        let conn = temp_db("scope");
+        let draft: GoalCreate = serde_json::from_str(r#"{"id":"g1","title":"写作","doneCriteria":"完成文章","scope":"p1"}"#).unwrap();
+        project_create(&conn, "p1", "项目一", "", 1).unwrap();
+        goal_create(&conn, &draft, 2).unwrap();
+        goal_create(&conn, &goal("g2", "旧目标", "完成"), 3).unwrap();
+        assert_eq!(goal_list_active(&conn).unwrap()[0].scope.as_deref(), Some("p1"));
+        goal_set_scope(&conn, "g2", Some("p1")).unwrap();
+        assert_eq!(goal_list_active(&conn).unwrap()[1].scope.as_deref(), Some("p1"));
+        assert!(goal_set_scope(&conn, "g2", Some("missing")).is_err());
+        assert!(goal_create(&conn, &GoalCreate { id: "bad".into(), scope: Some("missing".into()), ..goal("x", "X", "完成") }, 4).is_err());
+        conn.execute("UPDATE projects SET archived_at=5 WHERE id='p1'", []).unwrap();
+        assert!(goal_set_scope(&conn, "g2", Some("p1")).is_err());
+        goal_set_scope(&conn, "g2", None).unwrap();
+        assert_eq!(goal_list_active(&conn).unwrap()[1].scope, None);
+        goal_achieve(&conn, "g2", "完成", 6).unwrap();
+        assert!(goal_set_scope(&conn, "g2", None).is_err());
+    }
+
+    #[test]
+    fn evidence_period_has_inclusive_bounds_and_marks_missing_sources() {
+        let mut conn = temp_db("evidence-period");
+        goal_create(&conn, &goal("g1", "目标", "完成"), 1).unwrap();
+        goal_create(&conn, &goal("done", "完成目标", "完成"), 1).unwrap();
+        goal_create(&conn, &goal("abandoned", "放弃目标", "完成"), 1).unwrap();
+        note_upsert(&conn, &draft("n1", "笔记", "内容"), 0, 1).unwrap();
+        note_upsert(&conn, &draft("n2", "旧笔记", "内容"), 0, 1).unwrap();
+        conn.execute("INSERT INTO materials(id,source_type,title,raw_text,content_hash,created_at,updated_at) VALUES ('m1','manual','素材','内容','h',1,1)", []).unwrap();
+        goal_link_evidence(&conn, "g1", "n1", "note", 100).unwrap();
+        goal_link_evidence(&conn, "g1", "m1", "material", 150).unwrap();
+        goal_link_evidence(&conn, "g1", "n2", "note", 200).unwrap();
+        goal_link_evidence(&conn, "done", "n1", "note", 150).unwrap();
+        goal_link_evidence(&conn, "abandoned", "n1", "note", 150).unwrap();
+        goal_achieve(&conn, "done", "已完成", 201).unwrap();
+        goal_abandon(&conn, "abandoned", "变更计划", 199).unwrap();
+        let rows = goal_evidence_in_period(&conn, 100, 200).unwrap();
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[0].linked_at, 200);
+        assert!(rows.iter().any(|row| row.title.as_deref() == Some("素材")));
+        assert!(rows.iter().any(|row| row.title.as_deref() == Some("笔记")));
+        assert_eq!(goal_evidence_in_period(&conn, 101, 199).unwrap().len(), 3);
+        conn.execute("UPDATE notes SET is_deleted=1 WHERE id='n2'", []).unwrap();
+        assert_eq!(goal_evidence_in_period(&conn, 100, 200).unwrap()[0].title, None);
+        let snapshot = goal_review_snapshot(&mut conn, 100, 201).unwrap();
+        assert!(snapshot.goals.iter().any(|g| g.id == "done" && g.achieved_at == Some(201)));
+        assert!(snapshot.goals.iter().any(|g| g.id == "abandoned" && g.abandoned_at == Some(199)));
+        assert!(snapshot.evidence.iter().any(|e| e.goal_id == "done"));
+        let earlier = goal_review_snapshot(&mut conn, 100, 150).unwrap();
+        assert_eq!(earlier.goals.iter().find(|g| g.id == "g1").unwrap().evidence_count, 2);
+        let later = goal_review_snapshot(&mut conn, 202, 300).unwrap();
+        assert!(!later.goals.iter().any(|g| g.id == "done"));
+        assert!(goal_evidence_in_period(&conn, 201, 200).is_err());
     }
 
     #[test]

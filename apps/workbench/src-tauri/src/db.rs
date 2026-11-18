@@ -419,6 +419,20 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             value               TEXT NOT NULL
         );
 
+        -- 逐次复习事实（R4/D09）。旧 review_count 只保留累计状态，不补造历史事件。
+        -- 不设卡片外键：删除卡片不应抹掉已经发生的学习事件。
+        CREATE TABLE IF NOT EXISTS review_events (
+            event_id                    TEXT PRIMARY KEY,
+            card_id                     TEXT NOT NULL,
+            reviewed_at                 INTEGER NOT NULL CHECK (reviewed_at >= 0),
+            rating                      TEXT NOT NULL CHECK (rating IN ('again','hard','good','easy')),
+            algorithm                   TEXT NOT NULL CHECK (algorithm IN ('sm2','fsrs')),
+            project_ids_json            TEXT NOT NULL DEFAULT '[]',
+            project_attribution_complete INTEGER NOT NULL CHECK (project_attribution_complete IN (0,1))
+        );
+        CREATE INDEX IF NOT EXISTS idx_review_events_time ON review_events(reviewed_at,event_id);
+        CREATE INDEX IF NOT EXISTS idx_review_events_card ON review_events(card_id,reviewed_at);
+
         CREATE TABLE IF NOT EXISTS materials (
             id                  TEXT PRIMARY KEY,
             source_type         TEXT NOT NULL,
@@ -556,7 +570,8 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             created_at          INTEGER NOT NULL,
             updated_at          INTEGER NOT NULL,
             is_deleted          INTEGER NOT NULL DEFAULT 0,
-            deleted_at          INTEGER
+            deleted_at          INTEGER,
+            exclude_from_profile INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC);
@@ -645,6 +660,32 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             PRIMARY KEY (project_id, note_id)
         );
 
+        -- 外部连接授权：项目笔记只读和全库能力分开签发；令牌本身不存库。
+        CREATE TABLE IF NOT EXISTS mcp_grants (
+            id                  TEXT PRIMARY KEY,
+            client_label        TEXT NOT NULL,
+            scope               TEXT NOT NULL CHECK (scope IN ('project', 'library')),
+            project_id          TEXT REFERENCES projects(id),
+            token_hash          TEXT NOT NULL UNIQUE,
+            library_read        INTEGER NOT NULL DEFAULT 0 CHECK (library_read IN (0, 1)),
+            card_write          INTEGER NOT NULL DEFAULT 0 CHECK (card_write IN (0, 1)),
+            material_write      INTEGER NOT NULL DEFAULT 0 CHECK (material_write IN (0, 1)),
+            created_at          INTEGER NOT NULL,
+            revoked_at          INTEGER,
+            policy_version      INTEGER NOT NULL,
+            CHECK ((scope = 'project' AND project_id IS NOT NULL AND library_read = 0 AND card_write = 0 AND material_write = 0)
+                OR (scope = 'library' AND project_id IS NULL AND (library_read = 1 OR card_write = 1 OR material_write = 1)))
+        );
+
+        -- 审计只记录授权与动作，不包含查询、正文或令牌。
+        CREATE TABLE IF NOT EXISTS mcp_audit (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            grant_id            TEXT NOT NULL REFERENCES mcp_grants(id),
+            occurred_at         INTEGER NOT NULL,
+            operation           TEXT NOT NULL,
+            outcome             TEXT NOT NULL CHECK (outcome IN ('allowed', 'denied'))
+        );
+
         -- 个人画像（R4/D05）：三类声明（用户填写/行为统计/AI 推测）+ 治理。
         -- confirmed_at 有值 = 用户确认的事实；denied = 用户否认；
         -- superseded_by 指向修正后的新声明（旧声明保留可追溯）。
@@ -693,7 +734,28 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             linked_at           INTEGER NOT NULL,
             PRIMARY KEY (goal_id, evidence_id)
         );
+        CREATE INDEX IF NOT EXISTS idx_goal_evidence_linked_at ON goal_evidence(linked_at);
         "#,
+    )?;
+
+    // 笔记级个人画像排除（D05）：老库默认不排除，升级失败必须中止打开，不能丢掉隐私设置。
+    let has_profile_exclusion: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('notes') WHERE name='exclude_from_profile')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_profile_exclusion {
+        conn.execute(
+            "ALTER TABLE notes ADD COLUMN exclude_from_profile INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+
+    // First open establishes the boundary for trustworthy per-review history.
+    // Legacy aggregate counters are intentionally not backfilled as events.
+    conn.execute(
+        "INSERT OR IGNORE INTO meta (key,value) VALUES ('review_history_started_at',?1)",
+        [chrono_or_epoch_now().to_string()],
     )?;
 
     // 针对可能已存在的旧 cards 表无 edited_at 字段进行平滑兼容升级
@@ -742,6 +804,19 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
     }
     if !has_source_note_ids {
         let _ = conn.execute("ALTER TABLE artifacts ADD COLUMN source_note_ids TEXT NOT NULL DEFAULT '[]'", []);
+    }
+
+    // 旧版未核对任务读取的修订号，已有向量可能与当前正文不符。只重建派生索引。
+    let verified_chunk_index: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM meta WHERE key = 'note_chunk_revision_verified')",
+        [], |row| row.get(0),
+    )?;
+    if !verified_chunk_index {
+        let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
+        if tx.execute("INSERT OR IGNORE INTO meta VALUES ('note_chunk_revision_verified', '1')", [])? > 0 {
+            tx.execute("DELETE FROM note_chunk_embeddings", [])?;
+        }
+        tx.commit()?;
     }
 
     Ok(())
@@ -913,6 +988,29 @@ fn map_material_row(row: &rusqlite::Row) -> rusqlite::Result<RawMaterialDto> {
     })
 }
 
+pub(crate) fn material_for_restore(conn: &Connection, id: &str) -> Result<Option<(RawMaterialDto, bool, Option<i64>)>> {
+    conn.query_row(
+        "SELECT id, source_type, title, source_url, raw_text, cleaned_markdown, content_hash, media_path, media_size_bytes, metadata_json, inbox_status, created_at, updated_at, is_deleted, deleted_at FROM materials WHERE id=?1",
+        [id], |row| Ok((map_material_row(row)?, row.get::<_, i64>(13)? != 0, row.get(14)?)),
+    ).optional()
+}
+
+pub(crate) fn deleted_materials_for_backup(conn: &Connection) -> Result<Vec<(RawMaterialDto, Option<i64>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, source_type, title, source_url, raw_text, cleaned_markdown, content_hash, media_path, media_size_bytes, metadata_json, inbox_status, created_at, updated_at, is_deleted, deleted_at
+         FROM materials WHERE is_deleted = 1 ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        let material = map_material_row(row)?;
+        let is_deleted: i64 = row.get(13)?;
+        if is_deleted != 1 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok((material, row.get(14)?))
+    })?;
+    rows.collect()
+}
+
 pub fn list_materials(conn: &Connection, inbox_only: bool, limit: i64, offset: i64) -> Result<Vec<RawMaterialDto>> {
     // offset 支持分页遍历（备份采集要用；limit-only 的隐含 10000 上限不够）
     let sql = if inbox_only {
@@ -952,7 +1050,7 @@ pub fn upsert_card(conn: &Connection, card: &KnowledgeCardDto) -> Result<()> {
     }
 }
 
-fn upsert_card_inner(conn: &Connection, card: &KnowledgeCardDto) -> Result<()> {
+pub(crate) fn upsert_card_inner(conn: &Connection, card: &KnowledgeCardDto) -> Result<()> {
     let links_json = serde_json::to_string(&card.links).unwrap_or_else(|_| "[]".to_string());
     let tags_json = serde_json::to_string(&card.tags).unwrap_or_else(|_| "[]".to_string());
     let prereq_json = serde_json::to_string(&card.prereq).unwrap_or_else(|_| "[]".to_string());
@@ -1170,6 +1268,46 @@ fn map_card_row(row: &rusqlite::Row) -> rusqlite::Result<KnowledgeCardDto> {
     })
 }
 
+fn validate_json_column<T: serde::de::DeserializeOwned>(row: &rusqlite::Row<'_>, index: usize) -> Result<()> {
+    let value: String = row.get(index)?;
+    serde_json::from_str::<T>(&value)
+        .map(|_| ())
+        .map_err(|error| rusqlite::Error::FromSqlConversionFailure(index, rusqlite::types::Type::Text, Box::new(error)))
+}
+
+fn map_card_row_strict(row: &rusqlite::Row<'_>) -> Result<KnowledgeCardDto> {
+    validate_json_column::<Vec<ScienceLinkDto>>(row, 6)?;
+    validate_json_column::<Vec<String>>(row, 7)?;
+    validate_json_column::<Vec<String>>(row, 26)?;
+    map_card_row(row)
+}
+
+pub(crate) fn cards_for_backup(conn: &Connection) -> Result<Vec<KnowledgeCardDto>> {
+    let mut stmt = conn.prepare(&format!("SELECT {CARD_COLUMN_LIST} FROM cards WHERE is_deleted=0 ORDER BY created_at DESC"))?;
+    let rows = stmt.query_map([], map_card_row_strict)?;
+    rows.collect()
+}
+
+pub(crate) fn card_for_restore(conn: &Connection, id: &str) -> Result<Option<(KnowledgeCardDto, bool, Option<i64>)>> {
+    conn.query_row(&format!("SELECT {CARD_COLUMN_LIST}, is_deleted, deleted_at FROM cards WHERE id=?1"), [id],
+        |row| Ok((map_card_row_strict(row)?, row.get::<_, i64>(29)? != 0, row.get(30)?))).optional()
+}
+
+pub(crate) fn deleted_cards_for_backup(conn: &Connection) -> Result<Vec<(KnowledgeCardDto, Option<i64>)>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CARD_COLUMN_LIST}, is_deleted, deleted_at FROM cards WHERE is_deleted = 1 ORDER BY created_at DESC"
+    ))?;
+    let rows = stmt.query_map([], |row| {
+        let card = map_card_row_strict(row)?;
+        let is_deleted: i64 = row.get(29)?;
+        if is_deleted != 1 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok((card, row.get(30)?))
+    })?;
+    rows.collect()
+}
+
 pub fn list_cards(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<KnowledgeCardDto>> {
     let sql = if limit < 0 {
         r#"
@@ -1218,9 +1356,35 @@ pub fn list_cards(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<Know
 }
 
 pub fn search_cards_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<KnowledgeCardDto>> {
+    search_cards_fts_scoped(conn, query, limit, None)
+}
+
+fn search_cards_fts_scoped(
+    conn: &Connection,
+    query: &str,
+    limit: i64,
+    project_id: Option<&str>,
+) -> Result<Vec<KnowledgeCardDto>> {
     let clean_query = query.trim();
     if clean_query.is_empty() {
-        return list_cards(conn, limit, 0);
+        if project_id.is_none() {
+            return list_cards(conn, limit, 0);
+        }
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {CARD_COLUMN_LIST} FROM cards c
+             WHERE c.is_deleted = 0 AND EXISTS (
+                 SELECT 1 FROM notes scope_note
+                 JOIN project_members scope_member ON scope_member.note_id = scope_note.id
+                 JOIN projects scope_project ON scope_project.id = scope_member.project_id
+                 WHERE scope_note.source_material_id = c.material_id
+                   AND scope_note.is_deleted = 0
+                   AND scope_project.archived_at IS NULL
+                   AND scope_project.id = ?1
+             )
+             ORDER BY c.created_at DESC LIMIT ?2"
+        ))?;
+        let rows = stmt.query_map(params![project_id, limit], map_card_row)?;
+        return rows.collect();
     }
 
     let words: Vec<&str> = clean_query.split_whitespace().collect();
@@ -1242,12 +1406,21 @@ pub fn search_cards_fts(conn: &Connection, query: &str, limit: i64) -> Result<Ve
         FROM fts_cards f
         JOIN cards c ON f.card_id = c.id
         WHERE c.is_deleted = 0 AND fts_cards MATCH ?1
+          AND (?3 IS NULL OR EXISTS (
+              SELECT 1 FROM notes scope_note
+              JOIN project_members scope_member ON scope_member.note_id = scope_note.id
+              JOIN projects scope_project ON scope_project.id = scope_member.project_id
+              WHERE scope_note.source_material_id = c.material_id
+                AND scope_note.is_deleted = 0
+                AND scope_project.archived_at IS NULL
+                AND scope_project.id = ?3
+          ))
         ORDER BY bm25(fts_cards) ASC
         LIMIT ?2
         "#,
     )?;
 
-    let rows = stmt.query_map(params![match_query, limit], map_card_row)?;
+    let rows = stmt.query_map(params![match_query, limit, project_id], map_card_row)?;
     let mut cards = Vec::new();
     for r in rows {
         cards.push(r?);
@@ -1264,13 +1437,22 @@ pub fn search_cards_fts(conn: &Connection, query: &str, limit: i64) -> Result<Ve
                 repetition, interval_days, ease_factor, stability, difficulty,
                 subject, branch, level, track, order_key, prereq_json,
                 created_at, edited_at
-            FROM cards
-            WHERE is_deleted = 0 AND (headline LIKE ?1 OR details LIKE ?1 OR summary LIKE ?1 OR category LIKE ?1)
-            ORDER BY created_at DESC
+            FROM cards c
+            WHERE c.is_deleted = 0 AND (c.headline LIKE ?1 OR c.details LIKE ?1 OR c.summary LIKE ?1 OR c.category LIKE ?1)
+              AND (?3 IS NULL OR EXISTS (
+                  SELECT 1 FROM notes scope_note
+                  JOIN project_members scope_member ON scope_member.note_id = scope_note.id
+                  JOIN projects scope_project ON scope_project.id = scope_member.project_id
+                  WHERE scope_note.source_material_id = c.material_id
+                    AND scope_note.is_deleted = 0
+                    AND scope_project.archived_at IS NULL
+                    AND scope_project.id = ?3
+              ))
+            ORDER BY c.created_at DESC
             LIMIT ?2
             "#,
         )?;
-        let fb_rows = fallback_stmt.query_map(params![wildcard, limit], map_card_row)?;
+        let fb_rows = fallback_stmt.query_map(params![wildcard, limit, project_id], map_card_row)?;
         for r in fb_rows {
             cards.push(r?);
         }
@@ -1453,12 +1635,7 @@ pub fn delete_artifact(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn list_artifacts(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<ArtifactDto>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, artifact_type, title, content_markdown, source_card_ids, source_note_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted
-         FROM artifacts WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
-    )?;
-    let rows = stmt.query_map(params![limit, offset], |row| {
+fn map_artifact_row(row: &rusqlite::Row<'_>) -> Result<ArtifactDto> {
         let source_ids_str: String = row.get(4)?;
         let source_ids: Vec<String> = serde_json::from_str(&source_ids_str).unwrap_or_default();
         let source_note_ids_str: String = row.get(5)?;
@@ -1477,7 +1654,36 @@ pub fn list_artifacts(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<
             updated_at: row.get(9)?,
             is_deleted: is_del_int != 0,
         })
-    })?;
+}
+
+fn map_artifact_row_strict(row: &rusqlite::Row<'_>) -> Result<ArtifactDto> {
+    validate_json_column::<Vec<String>>(row, 4)?;
+    validate_json_column::<Vec<String>>(row, 5)?;
+    map_artifact_row(row)
+}
+
+pub(crate) fn artifacts_for_backup(conn: &Connection) -> Result<Vec<ArtifactDto>> {
+    let mut stmt = conn.prepare("SELECT id, artifact_type, title, content_markdown, source_card_ids, source_note_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted FROM artifacts WHERE is_deleted=0 ORDER BY created_at DESC")?;
+    let rows = stmt.query_map([], map_artifact_row_strict)?;
+    rows.collect()
+}
+
+pub(crate) fn deleted_artifacts_for_backup(conn: &Connection) -> Result<Vec<ArtifactDto>> {
+    let mut stmt = conn.prepare("SELECT id, artifact_type, title, content_markdown, source_card_ids, source_note_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted FROM artifacts WHERE is_deleted=1 ORDER BY created_at DESC")?;
+    let rows = stmt.query_map([], map_artifact_row_strict)?;
+    rows.collect()
+}
+
+pub(crate) fn artifact_for_restore(conn: &Connection, id: &str) -> Result<Option<ArtifactDto>> {
+    conn.query_row("SELECT id, artifact_type, title, content_markdown, source_card_ids, source_note_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted FROM artifacts WHERE id=?1", [id], map_artifact_row_strict).optional()
+}
+
+pub fn list_artifacts(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<ArtifactDto>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, artifact_type, title, content_markdown, source_card_ids, source_note_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted
+         FROM artifacts WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
+    )?;
+    let rows = stmt.query_map(params![limit, offset], map_artifact_row)?;
     let mut list = Vec::new();
     for r in rows {
         list.push(r?);
@@ -1611,6 +1817,17 @@ pub fn search_cards_vector(
     model: &str,
     limit: usize,
 ) -> Result<Vec<(KnowledgeCardDto, f32)>> {
+    search_cards_vector_scoped(conn, query_embedding, provider, model, limit, None)
+}
+
+pub fn search_cards_vector_scoped(
+    conn: &Connection,
+    query_embedding: &[f32],
+    provider: &str,
+    model: &str,
+    limit: usize,
+    project_id: Option<&str>,
+) -> Result<Vec<(KnowledgeCardDto, f32)>> {
     if query_embedding.is_empty() {
         return Ok(Vec::new());
     }
@@ -1626,9 +1843,18 @@ pub fn search_cards_vector(
             "SELECT e.card_id, e.embedding
              FROM card_embeddings e
              JOIN cards c ON c.id = e.card_id
-             WHERE c.is_deleted = 0 AND e.dim = ?1 AND e.provider = ?2 AND e.model = ?3",
+             WHERE c.is_deleted = 0 AND e.dim = ?1 AND e.provider = ?2 AND e.model = ?3
+               AND (?4 IS NULL OR EXISTS (
+                   SELECT 1 FROM notes scope_note
+                   JOIN project_members scope_member ON scope_member.note_id = scope_note.id
+                   JOIN projects scope_project ON scope_project.id = scope_member.project_id
+                   WHERE scope_note.source_material_id = c.material_id
+                     AND scope_note.is_deleted = 0
+                     AND scope_project.archived_at IS NULL
+                     AND scope_project.id = ?4
+               ))",
         )?;
-        let mut rows = stmt.query(params![query_embedding.len() as i64, provider, model])?;
+        let mut rows = stmt.query(params![query_embedding.len() as i64, provider, model, project_id])?;
         while let Some(row) = rows.next()? {
             let card_id: String = row.get(0)?;
             let bytes: Vec<u8> = row.get(1)?;
@@ -1681,13 +1907,25 @@ pub fn search_cards_hybrid(
     model: &str,
     limit: usize,
 ) -> Result<Vec<KnowledgeCardDto>> {
+    search_cards_hybrid_scoped(conn, query_text, query_embedding, provider, model, limit, None)
+}
+
+pub fn search_cards_hybrid_scoped(
+    conn: &Connection,
+    query_text: &str,
+    query_embedding: Option<&[f32]>,
+    provider: &str,
+    model: &str,
+    limit: usize,
+    project_id: Option<&str>,
+) -> Result<Vec<KnowledgeCardDto>> {
     let k = 60.0f32;
     let mut rrf_scores: std::collections::HashMap<String, (KnowledgeCardDto, f32)> =
         std::collections::HashMap::new();
 
     // 1. FTS5 关键词排序
     if !query_text.trim().is_empty() {
-        let fts_results = search_cards_fts(conn, query_text, (limit * 2) as i64).unwrap_or_default();
+        let fts_results = search_cards_fts_scoped(conn, query_text, (limit * 2) as i64, project_id).unwrap_or_default();
         for (rank, card) in fts_results.into_iter().enumerate() {
             let contrib = 1.0 / (k + rank as f32 + 1.0);
             let entry = rrf_scores.entry(card.id.clone()).or_insert_with(|| (card, 0.0));
@@ -1698,7 +1936,7 @@ pub fn search_cards_hybrid(
     // 2. 向量相似度排序
     if let Some(emb) = query_embedding {
         if !emb.is_empty() {
-            let vec_results = search_cards_vector(conn, emb, provider, model, limit * 2).unwrap_or_default();
+            let vec_results = search_cards_vector_scoped(conn, emb, provider, model, limit * 2, project_id).unwrap_or_default();
             for (rank, (card, _sim)) in vec_results.into_iter().enumerate() {
                 let contrib = 1.0 / (k + rank as f32 + 1.0);
                 let entry = rrf_scores.entry(card.id.clone()).or_insert_with(|| (card, 0.0));
@@ -1759,6 +1997,27 @@ pub fn chrono_or_epoch_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_notes_table_gains_profile_exclusion_with_opt_out_disabled() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+        conn.execute("ALTER TABLE notes DROP COLUMN exclude_from_profile", []).unwrap();
+        conn.execute(
+            "INSERT INTO notes(id,title,body_md,created_at,updated_at) VALUES ('legacy','旧笔记','正文',1,1)",
+            [],
+        ).unwrap();
+
+        init_tables(&conn).unwrap();
+
+        let (column_count, excluded): (i64, i64) = conn.query_row(
+            "SELECT (SELECT COUNT(*) FROM pragma_table_info('notes') WHERE name='exclude_from_profile'), exclude_from_profile FROM notes WHERE id='legacy'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+        assert_eq!(column_count, 1);
+        assert_eq!(excluded, 0, "existing notes remain eligible until explicitly excluded");
+    }
 
     #[test]
     fn test_db_lifecycle_and_fts() {
@@ -2765,5 +3024,83 @@ mod tests {
         let hybrid_hits = search_cards_hybrid(&conn, "SQLite", Some(&query_vec), "", "", 2).unwrap();
         assert_eq!(hybrid_hits.len(), 2);
         assert_eq!(hybrid_hits[0].id, "card-vec-1");
+    }
+
+    #[test]
+    fn hybrid_search_scopes_cards_before_fts_and_vector_limits() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_tables(&conn).unwrap();
+
+        for material_id in ["material-a", "material-b"] {
+            save_material(&conn, &RawMaterialDto {
+                id: material_id.to_string(),
+                source_type: "manual".to_string(),
+                title: format!("素材 {material_id}"),
+                source_url: None,
+                raw_text: "来源文本".to_string(),
+                cleaned_markdown: None,
+                content_hash: String::new(),
+                media_path: None,
+                media_size_bytes: 0,
+                metadata_json: "{}".to_string(),
+                inbox_status: "processed".to_string(),
+                created_at: 1,
+                updated_at: 1,
+            }).unwrap();
+        }
+
+        for (project_id, note_id, material_id) in [
+            ("project-a", "note-a", "material-a"),
+            ("project-b", "note-b", "material-b"),
+        ] {
+            crate::notes::project_create(&conn, project_id, project_id, "", 1).unwrap();
+            crate::notes::note_upsert(&conn, &crate::notes::NoteDto {
+                id: note_id.to_string(),
+                title: note_id.to_string(),
+                source_material_id: Some(material_id.to_string()),
+                ..Default::default()
+            }, 0, 1).unwrap();
+            crate::notes::project_add_note(&conn, project_id, note_id, 1).unwrap();
+        }
+
+        let cards = [
+            ("card-a", Some("material-a")),
+            ("card-b", Some("material-b")),
+            ("card-unassigned", None),
+        ];
+        for (card_id, material_id) in cards {
+            let card: KnowledgeCardDto = serde_json::from_value(serde_json::json!({
+                "id": card_id,
+                "materialId": material_id,
+                "headline": format!("scopedneedle {card_id}"),
+                "summary": "scopedneedle",
+                "details": "scopedneedle result",
+                "createdAt": 1
+            })).unwrap();
+            upsert_card(&conn, &card).unwrap();
+            save_card_embedding(&conn, card_id, &[1.0, 0.0], "local", "scope-test").unwrap();
+        }
+
+        let query_embedding = [1.0, 0.0];
+        assert_eq!(
+            search_cards_fts_scoped(&conn, "scopedneedle", 1, Some("project-a")).unwrap()
+                .iter().map(|card| card.id.as_str()).collect::<Vec<_>>(),
+            vec!["card-a"],
+        );
+        assert_eq!(
+            search_cards_vector_scoped(&conn, &query_embedding, "local", "scope-test", 1, Some("project-a")).unwrap()
+                .iter().map(|(card, _)| card.id.as_str()).collect::<Vec<_>>(),
+            vec!["card-a"],
+        );
+        assert_eq!(
+            search_cards_hybrid_scoped(&conn, "scopedneedle", Some(&query_embedding), "local", "scope-test", 1, Some("project-a")).unwrap()
+                .iter().map(|card| card.id.as_str()).collect::<Vec<_>>(),
+            vec!["card-a"],
+            "项目内命中应在 limit 前过滤范围外的更高排名卡片",
+        );
+        assert_eq!(search_cards_hybrid(&conn, "scopedneedle", Some(&query_embedding), "local", "scope-test", 10).unwrap().len(), 3);
+
+        conn.execute("UPDATE projects SET archived_at = 2 WHERE id = 'project-a'", []).unwrap();
+        assert!(search_cards_hybrid_scoped(&conn, "scopedneedle", Some(&query_embedding), "local", "scope-test", 10, Some("project-a")).unwrap().is_empty());
     }
 }

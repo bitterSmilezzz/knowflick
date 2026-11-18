@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "KnowFlick desktop shell"
 
+[features]
+qa-release-data-root = []
+
 [lib]
 name = "knowflick_workbench_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -34,3 +37,4 @@ uuid = { version = "1", features = ["v4"] }
 whisper-rs = "0.16"
 window-vibrancy = "0.5"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
+tauri-plugin-notification = "2"
