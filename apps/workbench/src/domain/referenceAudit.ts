@@ -1,4 +1,4 @@
-import { extractNoteReferences, referenceStatus, type ReferenceSource } from "./noteReference";
+import { extractNoteReferences, parseReferenceUri, referenceStatus, type ReferenceSource } from "./noteReference";
 
 /**
  * 引用体检（C05 的底座）：把「库里所有笔记的引用」扫一遍，找出失效与过期的。
@@ -72,4 +72,44 @@ export function auditReferences(
       a.noteTitle.localeCompare(b.noteTitle, "zh-CN") ||
       a.targetTitle.localeCompare(b.targetTitle, "zh-CN")
   );
+}
+/**
+ * 从正文里删掉指向某个目标的引用块（C05「就地处理」）。
+ *
+ * 引用块是两行（`> 《标题》：片段` + `> [回原件](uri)`）；删除时两行一起删，
+ * 并顺手吸收由此留下的重复空行——否则每删一条就多一片空白。
+ *
+ * 只删指向 `targetId` 的块；同一篇里引用别的内容原样保留。
+ */
+export function removeReferenceFromBody(
+  bodyMd: string,
+  targetId: string,
+): { body: string; removed: number } {
+  const lines = bodyMd.split("\n");
+  const drop = new Set<number>();
+  for (let i = 0; i < lines.length; i++) {
+    const quote = /^>\s*《(.+?)》：(.*)$/.exec(lines[i].trim());
+    if (!quote) continue;
+    let uri: string | null = null;
+    let linkLine = -1;
+    for (let j = i + 1; j < lines.length && j <= i + 2; j++) {
+      const link = /^>\s*\[回原件\]\((.*)\)\s*$/.exec(lines[j]);
+      if (link) { uri = link[1]; linkLine = j; break; }
+      if (!/^>\s*/.test(lines[j])) break;
+    }
+    if (!uri || linkLine === -1) continue;
+    const parsed = parseReferenceUri(uri);
+    if (!parsed || parsed.id !== targetId) continue;
+    drop.add(i);
+    drop.add(linkLine);
+  }
+  if (drop.size === 0) return { body: bodyMd, removed: 0 };
+  const kept = lines.filter((_, index) => !drop.has(index));
+  // 合并连续空行（删除后常见的产物），但保留正文开头的空行语义。
+  const out: string[] = [];
+  for (const line of kept) {
+    if (line.trim() === "" && out.length > 0 && out[out.length - 1].trim() === "") continue;
+    out.push(line);
+  }
+  return { body: out.join("\n"), removed: drop.size / 2 };
 }

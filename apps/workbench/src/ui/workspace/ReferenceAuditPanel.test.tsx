@@ -25,6 +25,22 @@ describe("ReferenceAuditPanel", () => {
     expect(html).toContain("《改过的》的内容改过了");
   });
 
+  it("给了 onRemove 才出现「删除这条引用」，点了把整条问题交出去", () => {
+    const onRemove = vi.fn();
+    const issue = { noteId: "n-1", noteTitle: "甲", targetId: "gone", targetTitle: "被删的", status: "missing" as const };
+    const withRemove = renderToStaticMarkup(
+      <ReferenceAuditPanel issues={[issue]} onOpen={() => {}} onRemove={onRemove} />
+    );
+    expect(withRemove).toContain("删除这条引用");
+    const without = renderToStaticMarkup(<ReferenceAuditPanel issues={[issue]} onOpen={() => {}} />);
+    expect(without).not.toContain("删除这条引用");
+    const tree = ReferenceAuditPanel({ issues: [issue], onOpen: () => {}, onRemove }) as React.ReactElement;
+    const clickable = findAllClickable(tree).find((el) => (el.props as { children?: React.ReactNode }).children === "删除这条引用");
+    expect(clickable).toBeDefined();
+    clickable!.props.onClick();
+    expect(onRemove).toHaveBeenCalledWith(issue);
+  });
+
   it("点条目把引用者笔记 id 交给调用方", () => {
     const onOpen = vi.fn();
     const tree = ReferenceAuditPanel({
@@ -47,4 +63,15 @@ function findClickable(node: React.ReactElement | null): React.ReactElement<{ on
     if (hit) return hit;
   }
   return null;
+}
+
+/** 收集所有带 onClick 的节点（用于区分「打开」与「删除」两个按钮）。 */
+function findAllClickable(node: React.ReactElement | null): React.ReactElement<{ onClick: () => void }>[] {
+  if (!node || typeof node !== "object") return [];
+  const props = node.props as { onClick?: () => void; children?: React.ReactNode };
+  const self = typeof props?.onClick === "function" ? [node as React.ReactElement<{ onClick: () => void }>] : [];
+  const kids = React.Children.toArray(props?.children).flatMap((child) =>
+    findAllClickable(child as React.ReactElement)
+  );
+  return [...self, ...kids];
 }

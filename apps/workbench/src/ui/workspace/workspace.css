@@ -2917,6 +2917,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-audit-list li { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .nv-audit-open { font-size: 12px; padding: 0 4px; border: none; background: none; color: var(--accent-text); cursor: pointer; }
 .nv-audit-target { color: var(--muted); }
+.nv-audit-remove { font-size: 12px; padding: 0 4px; border: none; background: none; color: var(--muted); cursor: pointer; text-decoration: underline; }
+.nv-audit-remove:hover { color: var(--danger); }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }

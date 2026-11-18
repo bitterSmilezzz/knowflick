@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { auditReferences } from "./referenceAudit";
+import { auditReferences, removeReferenceFromBody } from "./referenceAudit";
 import { applyNoteReference, type ReferenceSource } from "./noteReference";
 
 const target: ReferenceSource = { id: "t1", title: "被引用的", bodyMd: "原始正文", kind: "note" };
@@ -40,6 +40,32 @@ describe("引用体检（C05）", () => {
     // 只有「还在的 → 已删笔记」这一条：被删的引用者不扫。
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ noteId: "keeper", targetId: "trash", status: "missing" });
+  });
+
+  it("就地删掉指向某个目标的引用块，别的内容原样保留", () => {
+    const t1 = { id: "t1", title: "被引用的", bodyMd: "正文", kind: "note" as const };
+    const t2 = { ...t1, id: "t2", title: "另一篇" };
+    const body = [
+      "开头一段。",
+      "",
+      applyNoteReference("", t1, "片段一").trimEnd(),
+      "",
+      applyNoteReference("", t2, "片段二").trimEnd(),
+      "",
+      "结尾一段。",
+    ].join("\n");
+    const out = removeReferenceFromBody(body, "t1");
+    expect(out.removed).toBe(1);
+    expect(out.body).toContain("开头一段。");
+    expect(out.body).toContain("结尾一段。");
+    expect(out.body).toContain("另一篇");
+    expect(out.body).not.toContain("被引用的");
+    expect(out.body).not.toContain("\n\n\n");
+  });
+
+  it("没有指向该目标的引用时原文不动", () => {
+    const body = "只有正文，没有引用。";
+    expect(removeReferenceFromBody(body, "t1")).toEqual({ body, removed: 0 });
   });
 
   it("素材也能是被引用方；结果按引用者标题拼音序稳定排序", () => {

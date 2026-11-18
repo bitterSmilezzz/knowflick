@@ -6,9 +6,11 @@ import type { ReferenceIssue } from "../../domain/referenceAudit";
  * 抽成组件 + 单独测试：这条链路（扫描结果 → 列表渲染 → 点开原笔记）放在笔记页里测要先铺
  * 一堆会话与列表状态，测出来多半是「环境不对」而不是「功能不对」（B04 那次已经踩过）。
  */
-export function ReferenceAuditPanel({ issues, onOpen }: {
+export function ReferenceAuditPanel({ issues, onOpen, onRemove }: {
   issues: readonly ReferenceIssue[];
   onOpen: (noteId: string) => void;
+  /** 就地删掉这条引用；不传就只有查看。 */
+  onRemove?: (issue: ReferenceIssue) => void;
 }): React.ReactElement | null {
   if (issues.length === 0) return null;
   const missing = issues.filter((i) => i.status === "missing").length;
@@ -32,6 +34,16 @@ export function ReferenceAuditPanel({ issues, onOpen }: {
                 ? `→ 《${issue.targetTitle}》已不在库里，这条引用已失效`
                 : `→ 《${issue.targetTitle}》的内容改过了，这条引用可能过期`}
             </span>
+            {onRemove ? (
+              <button
+                type="button"
+                className="nv-audit-remove"
+                aria-label={`删除指向 ${issue.targetTitle} 的引用`}
+                onClick={() => onRemove(issue)}
+              >
+                删除这条引用
+              </button>
+            ) : null}
           </li>
         ))}
       </ul>

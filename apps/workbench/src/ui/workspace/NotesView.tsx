@@ -45,7 +45,7 @@ import {
 } from "../../domain/noteReference";
 import { MARKDOWN_ACTIONS, applyMarkdownAction, type MarkdownAction } from "../../domain/markdownEdit";
 import { findBacklinks } from "../../domain/noteBacklink";
-import { auditReferences } from "../../domain/referenceAudit";
+import { auditReferences, removeReferenceFromBody, type ReferenceIssue } from "../../domain/referenceAudit";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import {
@@ -432,6 +432,37 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
    * 这篇笔记正开着就用会话补丁（保存队列与状态条一起走）；没开着（列表行上的动作）
    * 就直接按当前修订保存一次——两条路都经由同一个 upsert 语义，不额外发明入口。
    */
+  /**
+   * 引用体检的「就地删除」：把指向目标的那一段引用从正文里拿掉。
+   *
+   * 打开的笔记走会话（正常自动保存 + 推进修订）；没打开的走 `saveNote`，同样产生新修订——
+   * 删除是可回退的：旧内容仍在修订历史里。
+   */
+  const removeAuditIssue = async (issue: ReferenceIssue) => {
+    const note = state.notes.find((n) => n.id === issue.noteId);
+    if (!note) return;
+    const { body: nextBody, removed } = removeReferenceFromBody(note.bodyMd, issue.targetId);
+    if (removed === 0) {
+      setViewError("没有找到这条引用——可能已经被删掉了。");
+      return;
+    }
+    const session = sessionsRef.current.get(note.id);
+    if (session) {
+      session.edit(note.title, nextBody);
+      if (selectedId === note.id) {
+        setTitle(note.title);
+        setBody(nextBody);
+      }
+      return;
+    }
+    try {
+      await saveNote({ ...note, bodyMd: nextBody }, note.currentRevision, dirRef.current);
+      await refresh();
+    } catch (e) {
+      setViewError(`删除这条引用失败：${String(e)}`);
+    }
+  };
+
   const patchNoteMeta = async (id: string, patch: { isPinned?: boolean; archivedAt?: number | null }) => {
     const session = sessionsRef.current.get(id);
     if (session) {
@@ -831,6 +862,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             const target = state.notes.find((n) => n.id === noteId);
             if (target) openNote(target);
           }}
+          onRemove={(issue) => void removeAuditIssue(issue)}
         />
         <label className="ws-search">
           <Icon name="search" />
