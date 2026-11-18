@@ -215,6 +215,16 @@ try {
   await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.some(n=>n.bodyMd.includes('- [x]'))})()", "勾选后正文那一行变成已勾选并保存");
   await check("document.querySelector('[aria-label=\"待办进度\"]')?.textContent.includes('1 /')", "待办进度随之更新");
 
+  // 8i. 编辑动作（B01）：选整段点「待办」，每个非空行加上 `- [ ] `，再点一次去掉。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(0, ta.value.length);return true})()");
+  const bodyBeforeFmt = await ev("document.querySelector('.nv-body').value");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"插入待办\"]').click();return true})()");
+  await check("document.querySelector('.nv-body').value.split('\\n').every(l => !l.trim() || l.startsWith('- [ ] '))", "选中多行后点「待办」，每行都加上标记");
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.some(n=>n.bodyMd.includes('- [ ] '))", "编辑动作的结果照常自动保存");
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(0, ta.value.length);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"插入待办\"]').click();return true})()");
+  await check(`document.querySelector('.nv-body').value === ${JSON.stringify(bodyBeforeFmt)}`, "再点一次把标记去掉（恢复到原来）");
+
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(

@@ -2906,6 +2906,10 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-backlinks { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-backlink { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
 .nv-backlink:hover { color: var(--accent-text); }
+/* 编辑动作条：贴着正文上方，点一下给选区加/去 Markdown 标记。 */
+.nv-format-row { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 4px; }
+.nv-format { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
+.nv-format:hover { color: var(--accent-text); }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }

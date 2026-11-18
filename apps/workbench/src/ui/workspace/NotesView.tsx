@@ -43,6 +43,7 @@ import {
   referenceStatus,
   type ReferenceSource,
 } from "../../domain/noteReference";
+import { MARKDOWN_ACTIONS, applyMarkdownAction, type MarkdownAction } from "../../domain/markdownEdit";
 import { findBacklinks } from "../../domain/noteBacklink";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
@@ -444,6 +445,24 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewError(`更新笔记属性失败：${String(e)}`);
     }
   };
+  /** 编辑动作：按当前选区加/去 Markdown 标记，走同一条 onEdit 保存路径。 */
+  const applyMarkdownButton = (action: MarkdownAction) => {
+    const el = bodyRef.current;
+    const next = applyMarkdownAction(
+      { text: body, start: el?.selectionStart ?? body.length, end: el?.selectionEnd ?? body.length },
+      action
+    );
+    if (next.text === body) return;
+    onEdit(title, next.text);
+    // 受控组件重渲染后选区会丢，下一帧再设回去（用户接着敲就行）。
+    window.requestAnimationFrame(() => {
+      const target = bodyRef.current;
+      if (!target) return;
+      target.focus();
+      target.setSelectionRange(next.start, next.end);
+    });
+  };
+
   /** 正文里的查找与替换：定位用 textarea 的选区，替换走同一条 onEdit 保存路径。 */
   const selectMatch = (at: number) => {
     const el = bodyRef.current;
@@ -1095,6 +1114,21 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 </button>
               </div>
             ) : null}
+            <div className="nv-format-row" role="group" aria-label="正文格式">
+              {MARKDOWN_ACTIONS.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className="nv-format"
+                  aria-label={`插入${action.label}`}
+                  title={`${action.label}（再点一次取消）`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyMarkdownButton(action)}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
             <textarea
               ref={bodyRef}
               className="nv-body"
