@@ -84,4 +84,25 @@ describe("订阅来源", () => {
     const entries = entriesFor([sub], [card({})], "library");
     expect(filterEntries(entries, "", "", "subscription").map(e => e.id)).toEqual(["s1"]);
   });
+
+describe("笔记进入全局检索", () => {
+  const note = (extra: Record<string, unknown>) => ({
+    id: "n1", title: "笔记标题", bodyMd: "笔记正文里的关键词", notebook: null, tags: [],
+    isPinned: false, isFavorite: false, archivedAt: null, sourceMaterialId: null,
+    currentRevision: 1, createdAt: NOW, updatedAt: NOW, isDeleted: false, deletedAt: null,
+    excludeFromProfile: false, ...extra,
+  }) as any;
+
+  it("活跃笔记能被全局检索命中", () => {
+    const entries = entriesFor([], [], "library", [note({})]);
+    expect(entries.map((e) => e.id)).toEqual(["n1"]);
+    expect(filterEntries(entries, "关键词")).toHaveLength(1);
+  });
+
+  it("回收站与已归档的笔记都不进全局检索", () => {
+    const notes = [note({}), note({ id: "deleted", isDeleted: true, deletedAt: NOW }), note({ id: "archived", archivedAt: NOW })];
+    const ids = entriesFor([], [], "library", notes).map((e) => e.id);
+    expect(ids).toEqual(["n1"]);
+  });
+});
 });

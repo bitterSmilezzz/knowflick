@@ -135,6 +135,32 @@ try {
   await check("document.querySelectorAll('.nv-entry').length === 1", "按笔记本筛选只显示该本笔记");
   await b("eval", `(()=>{const sel=document.querySelector('.nv-notebook-filter');sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
 
+  // 8b. 置顶与归档（B03）：都能在界面上完成，且都不追加修订
+  //
+  // 这两件事此前只写不读：`is_pinned` / `archived_at` 早就在契约与 Rust 里，
+  // 但界面上既没有入口、列表也不按归档过滤——等于字段不存在。
+  const revBeforeOrder = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"置顶笔记\"]').click();return true})()");
+  await check("document.querySelector('.nv-entry .nv-pin-badge') !== null", "置顶后列表条目显示置顶标记");
+  await check("document.querySelector('[aria-label=\"取消置顶\"]') !== null", "置顶后按钮变成取消置顶");
+  await check(`JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision === ${revBeforeOrder}`, "置顶不追加修订（契约）");
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].isPinned === true", "置顶已落盘");
+
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"归档这篇笔记\"]').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry').length === 0", "归档后从笔记列表消失");
+  await check("document.querySelector('.nv-archive-toggle').textContent.includes('已归档（1）')", "「已归档」计数变成 1");
+  await check(`JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision === ${revBeforeOrder}`, "归档不追加修订（契约）");
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].archivedAt !== null", "归档时间已落盘");
+  // 归档不是删除：回收站里不该有它。
+  await check("document.querySelector('.nv-trash-toggle').textContent.includes('回收站（0）')", "归档不会把笔记丢进回收站");
+
+  await b("eval", "(()=>{document.querySelector('.nv-archive-toggle').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry-archived').length === 1", "已归档视图能看到它");
+  await b("eval", "(()=>{document.querySelector('.nv-unarchive').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry-archived').length === 0", "移出归档后离开已归档视图");
+  await b("eval", "(()=>{document.querySelector('.nv-archive-toggle').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry').length === 1", "移出归档后回到笔记列表");
+
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(

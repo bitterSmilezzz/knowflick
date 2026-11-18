@@ -1935,7 +1935,8 @@ export function Workspace() {
               onClick={() => navigate("notes")}
             >
               <Icon name="edit" /><span>全部笔记</span>
-              <span className="ws-count">{notesState.notes.filter(n => !n.isDeleted).length}</span>
+              {/* 徽标数要与列表一致：归档的笔记不显示在列表里，就不该算进这个数。 */}
+              <span className="ws-count">{notesState.notes.filter(n => !n.isDeleted && n.archivedAt === null).length}</span>
             </button>
             <button
               className="ws-nav-row"

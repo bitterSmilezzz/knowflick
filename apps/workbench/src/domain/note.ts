@@ -179,9 +179,31 @@ export function restoreNote(state: NotesState, id: string): NotesState {
   };
 }
 
-export function listNotes(state: NotesState, opts: { includeDeleted?: boolean } = {}): Note[] {
+/**
+ * 列表读取。
+ *
+ * 归档与回收站是两件事，默认都**不进**主列表（契约见 docs/NOTES_MODEL.md：
+ * `archived_at` 非空=已归档，`is_deleted`=回收站）。之前 `archived_at` 只写不读：
+ * 界面上没有归档入口、列表也不按它过滤，这个字段等于不存在。
+ * 置顶排在最前，其余按更新时间倒序。
+ */
+export function listNotes(
+  state: NotesState,
+  opts: { includeDeleted?: boolean; includeArchived?: boolean } = {}
+): Note[] {
   const all = [...state.notes].sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || b.updatedAt - a.updatedAt);
-  return opts.includeDeleted ? all : all.filter((n) => !n.isDeleted);
+  return all.filter((n) => {
+    if (!opts.includeDeleted && n.isDeleted) return false;
+    if (!opts.includeArchived && n.archivedAt !== null) return false;
+    return true;
+  });
+}
+
+/** 已归档且未删除的笔记（「已归档」视图用；按归档时间倒序）。 */
+export function archivedNotes(state: NotesState): Note[] {
+  return listNotes(state, { includeArchived: true })
+    .filter((n) => n.archivedAt !== null && !n.isDeleted)
+    .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
 }
 
 export function createKnowledgeBase(

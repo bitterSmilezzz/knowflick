@@ -2868,6 +2868,22 @@ body.capsule-window { overflow: hidden; background: transparent; }
   padding: 2px 0;
 }
 .nv-trash-toggle[aria-pressed="true"] { color: var(--ink); }
+/* 回收站与「已归档」是同一排的两个视图开关：互相排斥，样式一致。 */
+.nv-view-toggles { display: flex; gap: 12px; align-self: flex-start; }
+.nv-archive-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.nv-archive-toggle[aria-pressed="true"] { color: var(--ink); }
+.nv-entry-archived { cursor: default; }
+.nv-unarchive { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
+.nv-pin-badge { font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 6px; color: var(--muted); }
+/* 已处于开启状态的图标按钮：颜色要能看出来，不能只靠 aria-pressed。 */
+.nv-is-active { color: var(--accent-text); }
 .nv-error { color: var(--danger); font-size: 12px; margin: 0; white-space: pre-wrap; }
 /* 笔记列表要占满左栏剩余高度并自己滚动。
    之前它没有 flex: 1，于是作为 .nv-list 的 flex 子项被压到 30px；

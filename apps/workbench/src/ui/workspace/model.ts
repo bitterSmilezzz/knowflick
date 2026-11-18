@@ -65,9 +65,10 @@ export function entriesFor(
 ): Entry[] {
   const materialEntries: Entry[] = materials.filter(m => collection === "inbox" ? m.inboxStatus === "inbox" : collection === "archive" ? m.inboxStatus !== "inbox" : true).map(m => ({ id: m.id, kind: "material", title: m.title, text: m.rawText, searchText: materialSearchText(m), category: m.sourceType === "email" ? "邮件" : m.sourceType === "email-digest" ? "邮件归纳" : m.sourceType === "web" ? "网页剪藏" : m.sourceType === "document" ? "导入文档" : m.sourceType === "image" ? "图片" : m.sourceType === "audio" ? "语音笔记" : m.sourceType === "ink" ? "手写笔记" : "闪念", tags: [], date: m.updatedAt, url: m.sourceUrl || "", original: m }));
   const cardEntries: Entry[] = cards.filter(c => collection !== "favorites" || c.isFavorite).map(c => ({ id: c.id, kind: "card", title: c.headline, text: c.details, searchText: cardSearchText(c), category: c.category || "未分类", tags: c.tags || [], date: c.editedAt || c.createdAt, url: c.links[0]?.url || "", original: c }));
-  // 笔记条目：回收站里的不进检索（契约「删除后搜不到」）；笔记本作为分类。
+  // 笔记条目：回收站与已归档的都不进检索（契约「删除后搜不到」「归档收起但不删」）；
+  // 笔记本作为分类。
   const noteEntries: Entry[] = notes
-    .filter(n => !n.isDeleted)
+    .filter(n => !n.isDeleted && n.archivedAt === null)
     .map(n => ({
       id: n.id,
       kind: "note" as const,

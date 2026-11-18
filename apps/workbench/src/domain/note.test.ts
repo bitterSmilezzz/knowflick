@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   addNoteToKb,
+  archivedNotes,
   createKnowledgeBase,
   createNoteDraft,
   deleteNote,
   emptyNotesState,
+  listNotes,
   NoteConflictError,
   noteFromJson,
   restoreNote,
@@ -175,5 +177,54 @@ describe("笔记领域语义（与 Rust notes.rs 对齐）", () => {
     // 同修订号不同内容 → 保留本地等人工处置
     const divergent = { ...seed, bodyMd: "分歧内容", currentRevision: 3 };
     expect(restoreNoteRaw(up.state, divergent, 600).action).toBe("skippedDivergent");
+  });
+  it("归档与回收站是两个维度：归档不进主列表、能单独列出、移出后回来", () => {
+    let state = emptyNotesState();
+    const a = createNoteDraft(1000); a.id = "a"; a.title = "甲";
+    const b = createNoteDraft(2000); b.id = "b"; b.title = "乙";
+    state = upsertNote(state, { ...a, bodyMd: "甲正文" }, 0, 1000).state;
+    state = upsertNote(state, { ...b, bodyMd: "乙正文" }, 0, 2000).state;
+
+    // 归档之前：两篇都在主列表。
+    expect(listNotes(state).map((n) => n.id).sort()).toEqual(["a", "b"]);
+
+    // 归档甲：主列表只剩乙，归档视图单独列出甲。
+    const archivedAt = 5000;
+    state = upsertNote(state, { ...state.notes.find((n) => n.id === "a")!, archivedAt }, 1, archivedAt).state;
+    expect(listNotes(state).map((n) => n.id)).toEqual(["b"]);
+    expect(archivedNotes(state).map((n) => n.id)).toEqual(["a"]);
+    // 归档是元数据：不追加修订。
+    expect(state.notes.find((n) => n.id === "a")!.currentRevision).toBe(1);
+
+    // 全文检索也不该把归档内容当活跃结果。
+    expect(searchNotes(state, "甲正文")).toHaveLength(0);
+
+    // 归档 + 回收站同时成立时，回收站视图仍要看得到它（两个维度独立）。
+    state = deleteNote(state, "a", 6000);
+    expect(listNotes(state, { includeDeleted: true, includeArchived: true }).map((n) => n.id).sort()).toEqual(["a", "b"]);
+    expect(archivedNotes(state)).toHaveLength(0);
+
+    // 恢复回收站后再移出归档：回到主列表。
+    state = restoreNote(state, "a");
+    state = upsertNote(state, { ...state.notes.find((n) => n.id === "a")!, archivedAt: null }, 1, 7000).state;
+    expect(listNotes(state).map((n) => n.id).sort()).toEqual(["a", "b"]);
+    expect(archivedNotes(state)).toHaveLength(0);
+  });
+
+  it("置顶排在列表最前，且不影响归档过滤", () => {
+    let state = emptyNotesState();
+    const old = createNoteDraft(1000); old.id = "old"; old.title = "旧";
+    const fresh = createNoteDraft(2000); fresh.id = "fresh"; fresh.title = "新";
+    state = upsertNote(state, { ...old, bodyMd: "旧正文" }, 0, 1000).state;
+    state = upsertNote(state, { ...fresh, bodyMd: "新正文" }, 0, 2000).state;
+    // 默认按更新时间倒序。
+    expect(listNotes(state).map((n) => n.id)).toEqual(["fresh", "old"]);
+    // 置顶旧的那篇：它排到最前，且不追加修订。
+    state = upsertNote(state, { ...state.notes.find((n) => n.id === "old")!, isPinned: true }, 1, 3000).state;
+    expect(listNotes(state).map((n) => n.id)).toEqual(["old", "fresh"]);
+    expect(state.notes.find((n) => n.id === "old")!.currentRevision).toBe(1);
+    // 置顶的笔记归档后也不再出现在主列表。
+    state = upsertNote(state, { ...state.notes.find((n) => n.id === "old")!, archivedAt: 4000 }, 1, 4000).state;
+    expect(listNotes(state).map((n) => n.id)).toEqual(["fresh"]);
   });
 });

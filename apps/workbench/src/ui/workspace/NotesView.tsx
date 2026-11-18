@@ -10,6 +10,7 @@ import {
   saveNote,
 } from "./repository";
 import {
+  archivedNotes,
   createNoteDraft,
   listNotes,
   noteKbIds,
@@ -103,6 +104,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [listQuery, setListQuery] = useState("");
   const [notebookFilter, setNotebookFilter] = useState("");
   const [showTrash, setShowTrash] = useState(false);
+  // 归档是「收起来但不删」，与回收站并列但语义不同（B03）。
+  const [showArchived, setShowArchived] = useState(false);
   const [kbFormOpen, setKbFormOpen] = useState(false);
   // T13/G01：应用引用——从别的笔记选一段，插进当前笔记（可回原件）。
   const [refPickerOpen, setRefPickerOpen] = useState(false);
@@ -123,13 +126,21 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
 
   const activeNotes = useMemo(() => listNotes(state), [state]);
   const trashedNotes = useMemo(
-    () => listNotes(state, { includeDeleted: true }).filter((n) => n.isDeleted),
+    // 归档过的笔记删掉也要能进回收站恢复：两个维度是独立的。
+    () => listNotes(state, { includeDeleted: true, includeArchived: true }).filter((n) => n.isDeleted),
     [state]
   );
+  const archivedList = useMemo(() => archivedNotes(state), [state]);
   const visible = useMemo(() => {
-    const base = listQuery.trim() ? searchNotes(state, listQuery) : showTrash ? trashedNotes : activeNotes;
+    const base = listQuery.trim()
+      ? searchNotes(state, listQuery)
+      : showTrash
+        ? trashedNotes
+        : showArchived
+          ? archivedList
+          : activeNotes;
     return notebookFilter ? base.filter((n) => n.notebook === notebookFilter) : base;
-  }, [state, listQuery, showTrash, activeNotes, trashedNotes, notebookFilter]);
+  }, [state, listQuery, showTrash, showArchived, activeNotes, trashedNotes, archivedList, notebookFilter]);
   const selected = state.notes.find((n) => n.id === selectedId) ?? null;
 
   const refresh = useCallback(async () => {
@@ -336,6 +347,27 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     }
   };
 
+  /**
+   * 置顶 / 归档都是**元数据**：契约上不追加修订（docs/NOTES_MODEL.md）。
+   *
+   * 这篇笔记正开着就用会话补丁（保存队列与状态条一起走）；没开着（列表行上的动作）
+   * 就直接按当前修订保存一次——两条路都经由同一个 upsert 语义，不额外发明入口。
+   */
+  const patchNoteMeta = async (id: string, patch: { isPinned?: boolean; archivedAt?: number | null }) => {
+    const session = sessionsRef.current.get(id);
+    if (session) {
+      session.patchMeta(patch);
+      return;
+    }
+    const note = state.notes.find((n) => n.id === id);
+    if (!note) return;
+    try {
+      await saveNote({ ...note, ...patch }, note.currentRevision, dirRef.current);
+      await refresh();
+    } catch (e) {
+      setViewError(`更新笔记属性失败：${String(e)}`);
+    }
+  };
   const toggleFavorite = () => {
     const s = currentSession();
     if (!s) return;
@@ -564,42 +596,70 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             <option key={nb} value={nb ?? ""}>{nb}</option>
           ))}
         </select>
-        <button
-          type="button"
-          className="nv-trash-toggle"
-          aria-pressed={showTrash}
-          onClick={() => { setShowTrash(!showTrash); setListQuery(""); }}
-        >
-          {showTrash ? `回收站（${trashedNotes.length}）· 点回笔记` : `回收站（${trashedNotes.length}）`}
-        </button>
+        <div className="nv-view-toggles" role="group" aria-label="笔记视图">
+          <button
+            type="button"
+            className="nv-trash-toggle"
+            aria-pressed={showTrash}
+            onClick={() => { setShowTrash(!showTrash); setShowArchived(false); setListQuery(""); }}
+          >
+            {showTrash ? `回收站（${trashedNotes.length}）· 点回笔记` : `回收站（${trashedNotes.length}）`}
+          </button>
+          <button
+            type="button"
+            className="nv-archive-toggle"
+            aria-pressed={showArchived}
+            onClick={() => { setShowArchived(!showArchived); setShowTrash(false); setListQuery(""); }}
+          >
+            {showArchived ? `已归档（${archivedList.length}）· 点回笔记` : `已归档（${archivedList.length}）`}
+          </button>
+        </div>
         {viewError ? <p className="nv-error" role="alert">{viewError}</p> : null}
         <div className="nv-entries" role="listbox" aria-label="笔记条目">
           {!loaded ? (
             <p className="ws-hint">正在读取笔记…</p>
           ) : visible.length === 0 ? (
             <div className="ws-list-empty">
-              <h2>{showTrash ? "回收站是空的" : listQuery ? "没有匹配的笔记" : "还没有笔记"}</h2>
-              <p>{listQuery ? "换个关键词试试。" : "点上面的「新建笔记」开始写。保存后即可全文搜索。"}</p>
+              <h2>{showTrash ? "回收站是空的" : showArchived ? "没有已归档的笔记" : listQuery ? "没有匹配的笔记" : "还没有笔记"}</h2>
+              <p>{
+                listQuery
+                  ? "换个关键词试试。"
+                  : showArchived
+                    ? "归档只是把手头的笔记收起来：不删除、不丢修订，随时能移回列表。"
+                    : "点上面的「新建笔记」开始写。保存后即可全文搜索。"
+              }</p>
             </div>
           ) : (
-            visible.map((n) =>
-              showTrash ? (
-                // 回收站行不是可点开的笔记，是一个带「恢复」按钮的普通行——
-                // 按钮嵌按钮是无效 HTML（嵌套交互元素），读屏与键盘都会出问题。
-                <div key={n.id} className="nv-entry nv-entry-trash" role="option" aria-selected={n.id === selectedId}>
-                  <span className="nv-entry-title">
-                    {n.notebook ? <span className="nv-notebook-badge">{n.notebook}</span> : null}
-                    {n.title || "(无标题)"}
-                  </span>
-                  <span className="nv-entry-preview">
-                    {n.tags.length ? <span className="nv-tags-line">{n.tags.map((tg) => `#${tg}`).join(" ")}</span> : null}
-                    {n.bodyMd.slice(0, 60) || "空笔记"}
-                  </span>
-                  <span className="nv-entry-meta">
-                    <button type="button" className="nv-restore" onClick={() => void doRestore(n.id)}>恢复</button>
-                  </span>
-                </div>
-              ) : (
+            visible.map((n) => {
+              // 回收站与「已归档」的行都不是可点开的笔记，而是一个带动作按钮的普通行——
+              // 按钮嵌按钮是无效 HTML（嵌套交互元素），读屏与键盘都会出问题。
+              if (showTrash || showArchived) {
+                return (
+                  <div
+                    key={n.id}
+                    className={showTrash ? "nv-entry nv-entry-trash" : "nv-entry nv-entry-archived"}
+                    role="option"
+                    aria-selected={n.id === selectedId}
+                  >
+                    <span className="nv-entry-title">
+                      {n.notebook ? <span className="nv-notebook-badge">{n.notebook}</span> : null}
+                      {n.title || "(无标题)"}
+                    </span>
+                    <span className="nv-entry-preview">
+                      {n.tags.length ? <span className="nv-tags-line">{n.tags.map((tg) => `#${tg}`).join(" ")}</span> : null}
+                      {n.bodyMd.slice(0, 60) || "空笔记"}
+                    </span>
+                    <span className="nv-entry-meta">
+                      {showTrash ? (
+                        <button type="button" className="nv-restore" onClick={() => void doRestore(n.id)}>恢复</button>
+                      ) : (
+                        <button type="button" className="nv-unarchive" onClick={() => void patchNoteMeta(n.id, { archivedAt: null })}>移出归档</button>
+                      )}
+                    </span>
+                  </div>
+                );
+              }
+              return (
                 <button
                   key={n.id}
                   className="nv-entry"
@@ -608,6 +668,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                   onClick={() => openNote(n)}
                 >
                   <span className="nv-entry-title">
+                    {n.isPinned ? <span className="nv-pin-badge">置顶</span> : null}
                     {n.notebook ? <span className="nv-notebook-badge">{n.notebook}</span> : null}
                     {n.title || "(无标题)"}
                   </span>
@@ -619,8 +680,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                     {new Date(n.updatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </button>
-              )
-            )
+              );
+            })
           )}
         </div>
       </section>
@@ -649,12 +710,33 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                   <>
                     <button
                       type="button"
-                      className="ws-icon-button"
+                      className={`ws-icon-button${selected.isPinned ? " nv-is-active" : ""}`}
+                      aria-label={selected.isPinned ? "取消置顶" : "置顶笔记"}
+                      aria-pressed={selected.isPinned}
+                      title={selected.isPinned ? "取消置顶" : "置顶笔记（始终排在列表最前）"}
+                      onClick={() => void patchNoteMeta(selected.id, { isPinned: !selected.isPinned })}
+                    >
+                      <Icon name="pin" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`ws-icon-button${selected.isFavorite ? " nv-is-active" : ""}`}
                       aria-label={selected.isFavorite ? "取消收藏" : "收藏笔记"}
+                      aria-pressed={selected.isFavorite}
                       title={selected.isFavorite ? "取消收藏" : "收藏笔记"}
                       onClick={toggleFavorite}
                     >
                       <Icon name="star" />
+                    </button>
+                    <button
+                      type="button"
+                      className="ws-bordered"
+                      aria-label={selected.archivedAt !== null ? "移出归档" : "归档这篇笔记"}
+                      aria-pressed={selected.archivedAt !== null}
+                      title="归档只是收起来：不删除、不丢修订，随时能在「已归档」里移回"
+                      onClick={() => void patchNoteMeta(selected.id, { archivedAt: selected.archivedAt !== null ? null : Date.now() })}
+                    >
+                      {selected.archivedAt !== null ? "移出归档" : "归档"}
                     </button>
                     <button
                       type="button"
