@@ -77,6 +77,16 @@ export function readTextFile(path: string): Promise<string> {
 }
 
 /** 把文本写到用户选定的位置（单篇笔记导出用；与 readTextFile 对称）。 */
+/** 一篇笔记的历史修订（元信息）。桌面端才读得到——浏览器体验没有修订表。 */
+export function noteHistoryList(dir: string, id: string): Promise<import("../domain/note").NoteRevisionSummary[]> {
+  return invoke("note_history_list", { dir, id });
+}
+
+/** 读某一版完整内容；不存在时返回 null。 */
+export function noteHistoryRead(dir: string, id: string, revision: number): Promise<import("../domain/note").NoteRevision | null> {
+  return invoke("note_history_read", { dir, id, revision });
+}
+
 export function writeTextFile(path: string, contents: string): Promise<void> {
   return invoke("write_text_file", { path, contents });
 }

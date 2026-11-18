@@ -34,6 +34,8 @@
     "allow-note-list",
     "allow-note-delete",
     "allow-note-restore",
+    "allow-note-history-list",
+    "allow-note-history-read",
     "allow-note-restore-upsert",
     "allow-note-search",
     "allow-note-search-chunks",

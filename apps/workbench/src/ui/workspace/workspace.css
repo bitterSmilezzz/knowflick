@@ -2887,6 +2887,29 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-error { color: var(--danger); font-size: 12px; margin: 0; white-space: pre-wrap; }
 /* 成功回执：与错误区分开（复制/导出做成的事不该显示成红色告警）。 */
 .nv-notice { color: var(--muted); font-size: 12px; margin: 0; white-space: pre-wrap; }
+/* 修订历史：折叠面板，展开才读——不给每次进笔记都加一次 IPC。 */
+.nv-history { font-size: 12px; color: var(--muted); }
+.nv-history summary { cursor: pointer; }
+.nv-history-list { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nv-history-list li { display: flex; align-items: center; gap: 8px; }
+.nv-history-open { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
+.nv-history-open[aria-pressed="true"] { color: var(--accent-text); }
+.nv-history-meta { color: var(--muted); }
+.nv-history-preview { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.nv-history-body {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  margin: 0;
+  width: 100%;
+  font-size: 12px;
+  color: var(--ink);
+}
 /* 笔记列表要占满左栏剩余高度并自己滚动。
    之前它没有 flex: 1，于是作为 .nv-list 的 flex 子项被压到 30px；
    条目里的标题/摘要带 overflow: hidden（自动最小尺寸归零）跟着塌成 0 高——

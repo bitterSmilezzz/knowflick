@@ -32,6 +32,14 @@ export interface NoteRevision {
   savedAt: number;
 }
 
+/** 历史列表用的元信息：不带正文（正文可能几十万字，列表只要「第几版、什么时候」）。 */
+export interface NoteRevisionSummary {
+  revision: number;
+  title: string;
+  savedAt: number;
+  chars: number;
+}
+
 export interface KnowledgeBase {
   id: string;
   name: string;

@@ -25,6 +25,8 @@ import {
   noteListScope,
   noteRestore,
   noteRestoreUpsert,
+  noteHistoryList,
+  noteHistoryRead,
   noteUpsert,
   pickMarkdownSavePath,
   writeTextFile,
@@ -52,6 +54,8 @@ import {
   type KnowledgeBase,
   type Note,
   type NoteRestoreAction,
+  type NoteRevision,
+  type NoteRevisionSummary,
   type NoteSaveOutcome,
   type NotesState,
 } from "../../domain/note";
@@ -403,6 +407,23 @@ export async function duplicateNoteById(id: string, dir: string): Promise<Note> 
   const { state: next } = domainUpsert(state, draft, 0);
   browserNotesWrite(next);
   return next.notes.find((n) => n.id === draft.id) ?? draft;
+}
+
+/**
+ * 一篇笔记的修订历史。
+ *
+ * 浏览器体验没有修订表（localStorage 只存当前态），返回 `null` 表示「这里读不到」，
+ * 与「读了但是空的」区分开——界面据此说真话，而不是显示「暂无历史」骗人。
+ */
+export async function readNoteHistory(dir: string, id: string): Promise<NoteRevisionSummary[] | null> {
+  if (!inShell()) return null;
+  return await noteHistoryList(dir, id);
+}
+
+/** 读某一版完整内容；浏览器体验返回 null。 */
+export async function readNoteRevision(dir: string, id: string, revision: number): Promise<NoteRevision | null> {
+  if (!inShell()) return null;
+  return await noteHistoryRead(dir, id, revision);
 }
 
 /** 导出文件名：去掉路径分隔与控制字符，空标题给个可读的兜底。 */

@@ -749,6 +749,23 @@ fn note_list(dir: Option<String>, scope: Option<String>, limit: Option<i64>, off
         .map_err(|e| crate::error_text::explain_text("读取笔记列表失败", &e.to_string()))
 }
 
+/// 一篇笔记的历史修订列表（元信息，不含正文）。
+///
+/// 只读：历史是 append-only 的，界面只负责「看」与「把某一版内容另存为新修订」。
+#[tauri::command]
+fn note_history_list(dir: Option<String>, id: String) -> Result<Vec<notes::NoteRevisionSummary>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::note_history(&conn, &id).map_err(|e| crate::error_text::explain_text("读取修订历史失败", &e.to_string()))
+}
+
+#[tauri::command]
+fn note_history_read(dir: Option<String>, id: String, revision: i64) -> Result<Option<notes::NoteRevision>, String> {
+    let path = library_dir(dir);
+    let conn = db::open_db(&path.join("knowflick.db")).map_err(|e| e.to_string())?;
+    notes::note_revision(&conn, &id, revision).map_err(|e| crate::error_text::explain_text("读取修订内容失败", &e.to_string()))
+}
+
 #[tauri::command]
 fn note_restore_upsert(dir: Option<String>, note: notes::NoteDto) -> Result<notes::NoteRestoreOutcome, String> {
     let path = library_dir(dir);
@@ -1887,6 +1904,8 @@ pub fn run() {
             note_list,
             note_delete,
             note_restore,
+            note_history_list,
+            note_history_read,
             note_restore_upsert,
             note_search,
             note_search_chunks,

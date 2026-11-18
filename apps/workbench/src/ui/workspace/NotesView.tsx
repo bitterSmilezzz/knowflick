@@ -6,6 +6,8 @@ import {
   deleteNoteById,
   duplicateNoteById,
   exportNoteMarkdown,
+  readNoteHistory,
+  readNoteRevision,
   readNotes,
   removeNoteFromKnowledgeBase,
   restoreNoteById,
@@ -19,6 +21,8 @@ import {
   searchNotes,
   type KnowledgeBase,
   type Note,
+  type NoteRevision,
+  type NoteRevisionSummary,
   type NotesState,
 } from "../../domain/note";
 import { emptyNotesState } from "../../domain/note";
@@ -116,6 +120,15 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [viewError, setViewError] = useState("");
   // 成功回执（复制/导出）：与错误分开，别把做成的事显示成红色告警。
   const [viewNotice, setViewNotice] = useState("");
+  // 修订历史：null=还没读；[]=读了但是没有（或不支持）。两者不能混为一谈。
+  // `null` 只表示「还没读」；读不到（浏览器体验没有修订表）另用一个标记，
+  // 否则桌面端在读完之前会短暂显示「浏览器体验不保存修订历史」这句假话。
+  const [historyEntries, setHistoryEntries] = useState<NoteRevisionSummary[] | null>(null);
+  const [historyUnavailable, setHistoryUnavailable] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [previewRevision, setPreviewRevision] = useState<NoteRevision | null>(null);
+  // 两段式恢复：先点「恢复」，按钮变成「确认恢复」，再点才真的覆盖当前内容。
+  const [restoreArmed, setRestoreArmed] = useState<number | null>(null);
 
   const sessionsRef = useRef<Map<string, NoteSession>>(new Map());
   const dirRef = useRef(dir);
@@ -372,6 +385,56 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewError(`更新笔记属性失败：${String(e)}`);
     }
   };
+/** 展开历史时再读：不给每次进笔记都加一次 IPC。 */
+  const loadHistory = async () => {
+    if (!selected) return;
+    setHistoryBusy(true);
+    try {
+      const entries = await readNoteHistory(dirRef.current, selected.id);
+      setHistoryUnavailable(entries === null);
+      setHistoryEntries(entries ?? []);
+      setPreviewRevision(null);
+      setRestoreArmed(null);
+    } catch (e) {
+      setViewError(`读取修订历史失败：${String(e)}`);
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
+
+  const openRevision = async (revision: number) => {
+    if (!selected) return;
+    try {
+      const full = await readNoteRevision(dirRef.current, selected.id, revision);
+      setPreviewRevision(full);
+      setRestoreArmed(null);
+      if (!full) setViewError(`第 ${revision} 版的内容读不到了`);
+    } catch (e) {
+      setViewError(`读取修订内容失败：${String(e)}`);
+    }
+  };
+
+  /**
+   * 恢复到某一版。
+   *
+   * 不是「把历史改回去」，而是**把那一版的内容再存一次**：修订号继续往前走，
+   * 被覆盖的当前内容仍然是历史里的一版，随时能再回来——所以这条路不需要危险操作确认，
+   * 只需要两步点击让人看清「现在这版会被覆盖」。
+   */
+  const restoreRevision = async (revision: number) => {
+    if (!selected || !previewRevision) return;
+    if (restoreArmed !== revision) { setRestoreArmed(revision); return; }
+    const session = sessionsRef.current.get(selected.id);
+    if (!session) { setViewError("这篇笔记没有打开的编辑会话，请先点开它再恢复历史版本"); return; }
+    session.edit(previewRevision.title, previewRevision.bodyMd);
+    await session.flush();
+    setRestoreArmed(null);
+    setPreviewRevision(null);
+    setViewNotice(`已恢复到第 ${revision} 版（当前内容仍保留在历史里）`);
+    await refresh();
+    await loadHistory();
+  };
+
   /** 复制当前笔记：落库走正常 upsert（新 id、修订 1），随后打开副本继续写。 */
   const duplicateCurrent = async () => {
     if (!selected) return;
@@ -956,6 +1019,63 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 </label>
               </div>
             ) : null}
+            {selected ? (
+              <details
+                className="nv-history"
+                aria-label="修订历史"
+                onToggle={(e) => {
+                  if (e.currentTarget.open && historyEntries === null && !historyBusy) void loadHistory();
+                }}
+              >
+                <summary>
+                  修订历史
+                  {historyEntries && historyEntries.length > 0 ? `（${historyEntries.length} 版）` : ""}
+                </summary>
+                {historyBusy ? <p className="ws-hint">正在读修订历史…</p> : null}
+                {historyUnavailable ? (
+                  <p className="ws-hint">浏览器体验不保存修订历史；桌面客户端能看到这篇笔记的每一版。</p>
+                ) : null}
+                {!historyUnavailable && historyEntries && historyEntries.length === 0 ? (
+                  <p className="ws-hint">这篇笔记还没有历史版本（保存过一次之后才会有）。</p>
+                ) : null}
+                {historyEntries && historyEntries.length > 0 ? (
+                  <ul className="nv-history-list">
+                    {historyEntries.map((entry: NoteRevisionSummary) => (
+                      <li key={entry.revision}>
+                        <button
+                          type="button"
+                          className="nv-history-open"
+                          aria-pressed={previewRevision?.revision === entry.revision}
+                          onClick={() => void openRevision(entry.revision)}
+                        >
+                          {`第 ${entry.revision} 版`}
+                        </button>
+                        <span className="nv-history-meta">
+                          {new Date(entry.savedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          {` · ${entry.chars} 字 · ${entry.title || "(无标题)"}`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {previewRevision ? (
+                  <div className="nv-history-preview">
+                    <p className="ws-hint">{`第 ${previewRevision.revision} 版的内容（只读）：`}</p>
+                    <pre className="nv-history-body">{previewRevision.bodyMd || "(这一版是空的)"}</pre>
+                    <button
+                      type="button"
+                      className={restoreArmed === previewRevision.revision ? "ws-primary" : "ws-bordered"}
+                      onClick={() => void restoreRevision(previewRevision.revision)}
+                    >
+                      {restoreArmed === previewRevision.revision
+                        ? "确认恢复：当前内容会存为一版新的历史"
+                        : `恢复到第 ${previewRevision.revision} 版`}
+                    </button>
+                  </div>
+                ) : null}
+              </details>
+            ) : null}
+
             {selected ? (
               <div className="nv-kbs" aria-label="所属知识库">
                 <span className="nv-kbs-label">知识库：</span>

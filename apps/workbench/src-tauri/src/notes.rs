@@ -422,6 +422,53 @@ pub struct NoteRevision {
     pub saved_at: i64,
 }
 
+/// 一篇笔记的历史修订**元信息**（不含正文）。
+///
+/// 为什么分开：正文可能几十万字，列表只需要「第几版、什么时候、什么标题」。
+/// 正文一律走 `note_revision` 单条读——和图片列表不预加载原图是同一个道理。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteRevisionSummary {
+    pub revision: i64,
+    pub title: String,
+    pub saved_at: i64,
+    /// 该版正文的字符数：判断「这一版是不是我要找的那次改动」通常够用。
+    pub chars: i64,
+}
+
+/// 按修订号倒序给出这篇笔记的全部历史（新版在前）。
+pub fn note_history(conn: &Connection, note_id: &str) -> Result<Vec<NoteRevisionSummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT revision, title, saved_at, length(body_md) FROM note_revisions WHERE note_id = ?1 ORDER BY revision DESC",
+    )?;
+    let rows = stmt.query_map([note_id], |row| {
+        Ok(NoteRevisionSummary {
+            revision: row.get(0)?,
+            title: row.get(1)?,
+            saved_at: row.get(2)?,
+            chars: row.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// 读某一版的完整内容；不存在返回 `None`（不是错误——历史可能被旧版本清过）。
+pub fn note_revision(conn: &Connection, note_id: &str, revision: i64) -> Result<Option<NoteRevision>> {
+    let mut stmt = conn.prepare(
+        "SELECT note_id, revision, title, body_md, saved_at FROM note_revisions WHERE note_id = ?1 AND revision = ?2",
+    )?;
+    let mut rows = stmt.query_map(params![note_id, revision], |row| {
+        Ok(NoteRevision {
+            note_id: row.get(0)?,
+            revision: row.get(1)?,
+            title: row.get(2)?,
+            body_md: row.get(3)?,
+            saved_at: row.get(4)?,
+        })
+    })?;
+    rows.next().transpose()
+}
+
 pub(crate) fn revisions_for_backup(conn: &Connection) -> Result<Vec<NoteRevision>> {
     let mut stmt = conn.prepare("SELECT note_id, revision, title, body_md, saved_at FROM note_revisions ORDER BY note_id, revision")?;
     let rows = stmt.query_map([], |row| Ok(NoteRevision {
@@ -954,6 +1001,53 @@ mod tests {
         let out3 = note_upsert(&conn, &metadata_edit, 2, 3000).unwrap();
         assert_eq!(out3.revision, 2, "元数据变化不产生修订");
         assert!(!note_get(&conn, "n1").unwrap().unwrap().exclude_from_profile);
+    }
+
+    /// 修订历史可读：列表按修订号倒序、只给元信息；单条读回原文。
+    ///
+    /// 这两件事此前**没有读的入口**——`note_revisions` 一直只有备份在用，
+    /// 用户在界面上看不到「上一版长什么样」。
+    #[test]
+    fn revision_history_is_readable_and_summarised() {
+        let conn = temp_db("history");
+        note_upsert(&conn, &draft("n1", "标题一", "短正文"), 0, 1000).unwrap();
+        note_upsert(&conn, &draft("n1", "标题二", "这一版的正文要长一些"), 1, 2000).unwrap();
+        note_upsert(&conn, &draft("n2", "别的笔记", "不相干"), 0, 1500).unwrap();
+
+        let history = note_history(&conn, "n1").unwrap();
+        assert_eq!(history.len(), 2, "只有这篇笔记的修订");
+        assert_eq!(history[0].revision, 2, "新版在前");
+        assert_eq!(history[0].title, "标题二");
+        assert_eq!(history[0].saved_at, 2000);
+        assert_eq!(history[0].chars, "这一版的正文要长一些".chars().count() as i64);
+        assert_eq!(history[1].revision, 1);
+        assert_eq!(history[1].chars, "短正文".chars().count() as i64);
+
+        let old = note_revision(&conn, "n1", 1).unwrap().expect("第 1 版应该在");
+        assert_eq!((old.title.as_str(), old.body_md.as_str(), old.saved_at), ("标题一", "短正文", 1000));
+        // 不存在的修订不是错误，是「没有」。
+        assert!(note_revision(&conn, "n1", 99).unwrap().is_none());
+        // 别的笔记的历史不会串进来。
+        assert_eq!(note_history(&conn, "n2").unwrap().len(), 1);
+    }
+
+    /// 历史是 append-only：把旧版内容「恢复」成当前态，走的是普通保存——
+    /// 结果是**新增一版**，而不是把历史改写回去。
+    #[test]
+    fn restoring_an_old_revision_appends_a_new_one() {
+        let conn = temp_db("restore-history");
+        note_upsert(&conn, &draft("n1", "标题", "第一版正文"), 0, 1000).unwrap();
+        note_upsert(&conn, &draft("n1", "标题", "第二版正文"), 1, 2000).unwrap();
+
+        let old = note_revision(&conn, "n1", 1).unwrap().unwrap();
+        let out = note_upsert(&conn, &draft("n1", &old.title, &old.body_md), 2, 3000).unwrap();
+        assert_eq!(out.revision, 3, "恢复旧版=再存一次内容，追加新修订");
+        assert_eq!(note_get(&conn, "n1").unwrap().unwrap().body_md, "第一版正文");
+        // 历史里三版都在：第 1 版没被覆盖。
+        let history = note_history(&conn, "n1").unwrap();
+        assert_eq!(history.iter().map(|h| h.revision).collect::<Vec<_>>(), vec![3, 2, 1]);
+        assert_eq!(note_revision(&conn, "n1", 1).unwrap().unwrap().body_md, "第一版正文");
+        assert_eq!(note_revision(&conn, "n1", 2).unwrap().unwrap().body_md, "第二版正文");
     }
 
     #[test]

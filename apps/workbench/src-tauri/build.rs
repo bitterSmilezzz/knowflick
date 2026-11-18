@@ -45,6 +45,8 @@ fn main() {
             "note_list",
             "note_delete",
             "note_restore",
+            "note_history_list",
+            "note_history_read",
             "note_restore_upsert",
             "note_search",
             "note_search_chunks",

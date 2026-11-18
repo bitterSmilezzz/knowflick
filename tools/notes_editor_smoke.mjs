@@ -172,6 +172,11 @@ try {
   await check("(()=>{document.querySelector('[aria-label=\"导出为 Markdown\"]').click();return true})()", "点了导出按钮");
   await check("document.body.innerText.includes('已导出 Markdown')", "导出有成功回执并说明落到哪里");
 
+  // 8d. 修订历史（B02）：折叠面板，浏览器如实说明读不到，不假装「暂无历史」。
+  await b("eval", "(()=>{const d=document.querySelector('details.nv-history');if(!d)return false;d.open=true;d.dispatchEvent(new Event('toggle',{bubbles:true}));return true})()");
+  await check("document.querySelector('details.nv-history')?.open === true", "修订历史面板能展开");
+  await check("document.querySelector('.nv-history').textContent.includes('浏览器体验不保存修订历史')", "浏览器里如实说明读不到修订历史（不是「暂无历史」）");
+
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(
