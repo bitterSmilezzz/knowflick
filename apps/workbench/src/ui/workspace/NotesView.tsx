@@ -46,6 +46,7 @@ import {
 import { MARKDOWN_ACTIONS, applyMarkdownAction, type MarkdownAction } from "../../domain/markdownEdit";
 import { findBacklinks } from "../../domain/noteBacklink";
 import { auditReferences, removeReferenceFromBody, type ReferenceIssue } from "../../domain/referenceAudit";
+import { NOTE_SORT_LABELS, sortNotes, type NoteSortMode } from "../../domain/noteSort";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import {
@@ -158,6 +159,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   // 首屏只渲染一页：几千篇笔记时把每一行都挂到 DOM 上，光是建节点就够卡住界面了。
   // 与「全部知识」列表同一口径（那里是 60），改口径时两处一起改。
   const [visibleCount, setVisibleCount] = useState(NOTES_PAGE);
+  // 排序只影响列表顺序，不动库里的内容；默认保持原来的「置顶 + 最近编辑」。
+  const [sortMode, setSortMode] = useState<NoteSortMode>("recent");
 
   // 正文 textarea 的引用：查找定位要在这里设置选区。
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -202,8 +205,10 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
         : showArchived
           ? archivedList
           : activeNotes;
-    return notebookFilter ? base.filter((n) => n.notebook === notebookFilter) : base;
-  }, [state, listQuery, showTrash, showArchived, activeNotes, trashedNotes, archivedList, notebookFilter]);
+    const filtered = notebookFilter ? base.filter((n) => n.notebook === notebookFilter) : base;
+    // 排序在过滤之后：切换排序不会改变「有哪些笔记」，只改顺序。
+    return sortMode === "recent" ? filtered : sortNotes(filtered, sortMode);
+  }, [state, listQuery, showTrash, showArchived, activeNotes, trashedNotes, archivedList, notebookFilter, sortMode]);
   const selected = state.notes.find((n) => n.id === selectedId) ?? null;
 
   const refresh = useCallback(async () => {
@@ -872,6 +877,18 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             value={listQuery}
             onChange={(e) => setListQuery(e.target.value)}
           />
+        </label>
+        <label className="nv-sort">
+          <span className="ws-hint">排序</span>
+          <select
+            aria-label="排序方式"
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as NoteSortMode)}
+          >
+            {(Object.keys(NOTE_SORT_LABELS) as NoteSortMode[]).map((mode) => (
+              <option key={mode} value={mode}>{NOTE_SORT_LABELS[mode]}</option>
+            ))}
+          </select>
         </label>
         <select
           className="nv-notebook-filter"

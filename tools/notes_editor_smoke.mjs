@@ -225,6 +225,17 @@ try {
   await b("eval", "(()=>{document.querySelector('[aria-label=\"插入待办\"]').click();return true})()");
   await check(`document.querySelector('.nv-body').value === ${JSON.stringify(bodyBeforeFmt)}`, "再点一次把标记去掉（恢复到原来）");
 
+  // 8j. 排序（B03）：切成按标题排——非置顶条目按标题序，置顶的仍在最前。
+  await b("eval", "(()=>{const sel=document.querySelector('[aria-label=\"排序方式\"]');sel.value='title';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 300));
+  const sortRows = await ev("[...document.querySelectorAll('.nv-entry')].map(e=>({t:e.querySelector('.nv-entry-title').textContent,p:!!e.querySelector('.nv-pin-badge')}))");
+  const pinnedFlags = sortRows.map((r) => r.p);
+  const unpinnedTitles = sortRows.filter((r) => !r.p).map((r) => r.t);
+  const sortedTitles = [...unpinnedTitles].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  await check(`${JSON.stringify(pinnedFlags)}.join(',') === ${JSON.stringify([...pinnedFlags].sort((a, b) => Number(b) - Number(a)))}.join(',')`, "置顶的笔记始终排在列表最前");
+  await check(`${JSON.stringify(unpinnedTitles)}.join('|') === ${JSON.stringify(sortedTitles)}.join('|')`, "按标题排序后非置顶条目是标题序");
+  await b("eval", "(()=>{const sel=document.querySelector('[aria-label=\"排序方式\"]');sel.value='recent';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+
   // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
   await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
   await check(

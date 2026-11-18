@@ -2919,6 +2919,9 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-audit-target { color: var(--muted); }
 .nv-audit-remove { font-size: 12px; padding: 0 4px; border: none; background: none; color: var(--muted); cursor: pointer; text-decoration: underline; }
 .nv-audit-remove:hover { color: var(--danger); }
+/* 排序选择：与筛选并排，字号小一号。 */
+.nv-sort { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0 2px; }
+.nv-sort select { font-size: 12px; }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }
