@@ -43,6 +43,7 @@ import {
   referenceStatus,
   type ReferenceSource,
 } from "../../domain/noteReference";
+import { findBacklinks } from "../../domain/noteBacklink";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import {
@@ -54,6 +55,7 @@ import {
 import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { NoteBacklinks } from "./NoteBacklinks";
 
 /**
  * 笔记工作面（R1 首个纵向切片）——契约见 docs/NOTES_MODEL.md「界面契约」：
@@ -651,6 +653,12 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   }, [body, activeNotes, materials]);
 
   /** 可引用的来源：其它笔记 + 素材（R2「多来源引用」）。 */
+  // 反向链接（B04）：谁引用了当前这篇。
+  const backlinks = useMemo(
+    () => (selectedId ? findBacklinks(state.notes, selectedId) : []),
+    [state.notes, selectedId]
+  );
+
   const referenceCandidates = useMemo(() => {
     const q = refQuery.trim().toLowerCase();
     const fromNotes: ReferenceSource[] = state.notes
@@ -1153,6 +1161,13 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 </span>
               ) : null}
             </div>
+            <NoteBacklinks
+              links={backlinks}
+              onOpen={(noteId) => {
+                const target = state.notes.find((n) => n.id === noteId);
+                if (target) openNote(target);
+              }}
+            />
             {attachableMedia.length > 0 ? (
               <div className="nv-insert-row" aria-label="插入附件引用">
                 <span className="nv-kbs-label">插入附件引用：</span>
