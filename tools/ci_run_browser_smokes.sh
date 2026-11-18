@@ -65,6 +65,23 @@ if [ "$up" -ne 1 ]; then
 fi
 echo "前端已就绪：$URL"
 
+# 先用一个临时会话把首屏与 React 依赖图预热一遍。
+#
+# 为什么：Vite 是按需转译的。第一套冒烟打开页面时，Vite 才现编 React、样式与
+# 工作台首屏那一大票模块；本机 SSD 上几百毫秒，CI 的共享 runner 上能压到几秒，
+# 而那段一次性代价算在第一套套件的等待预算里，看起来就像「界面没渲染出来」。
+# 预热用真实浏览器打开一次页面并等到工作台出现，等价于把这段代价挪出套件预算；
+# 它不改任何断言——预热失败也不影响后续判断，各套自己还会再等。
+agent-browser --session kf-ci-warmup open "$URL" >/dev/null 2>&1 || true
+for _ in $(seq 1 60); do
+  if [ "$(agent-browser --session kf-ci-warmup eval 'JSON.stringify(!!document.querySelector(".ws"))' 2>/dev/null | tail -1)" = "true" ]; then
+    echo "首屏预热完成"
+    break
+  fi
+  sleep 2
+done
+agent-browser --session kf-ci-warmup close >/dev/null 2>&1 || true
+
 # 逐套跑，不用 run_all_smokes.sh：那个脚本在缺 agent-browser 时 exit 0，
 # 在 CI 上会变成「什么都没跑也算成功」。这里自己遍历，缺任何一套都算失败。
 SUITES=(
@@ -91,12 +108,20 @@ SUITES=(
 failed=""
 for suite in "${SUITES[@]}"; do
   echo "=============== $suite"
-  if node "tools/$suite.mjs"; then
+  # 把每套的输出留在文件里：失败时只写「失败」两个字的注解，等于把定位工作
+  # 全推给「本机复现一下」——而 CI 与本机的差异（更慢的机器、更小的视口）
+  # 恰恰是这些套件失败的原因。这里把尾部输出打进注解，一眼能看出卡在哪条断言。
+  suite_log="$(mktemp -t "knowflick-$suite.XXXXXX.log")"
+  if node "tools/$suite.mjs" 2>&1 | tee "$suite_log"; then
     echo "OK $suite"
   else
     echo "::error::$suite 失败" >&2
+    tail -25 "$suite_log" | while IFS= read -r line; do
+      echo "::error::$suite 现场：$line" >&2
+    done
     failed="$failed $suite"
   fi
+  rm -f "$suite_log"
   # 浏览器会话异步关闭，给下一套留出与本机门禁相同的清理时间。
   sleep 1
 done
