@@ -310,6 +310,7 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 | --- | --- | --- |
 | 删除标签 | PASS（浏览器本机） | 领域 `note.ts` 新增 `deleteTag`，`noteBatchTags.test.ts` 18 → 22 项（摘掉全部带它的笔记正文不动、只摘完全相等的那一个、多篇一起变、库里没有就不写、空标签不合法）。组件 `TagAdmin` 5 → 7 项（不传回调不出现删除按钮、说明文字区分「删标签」与「删笔记」）。冒烟 162 → 166 项（选中标签后出现删除按钮 → 回执 → 两篇都不再带它 → **笔记数仍是 2**，删标签没删笔记）。全量门禁 exit 0。 |
 | 守卫拦下了我的判断 | 记录 | 我最初按「笔记没被删，不算破坏性操作」写成单击直接删，`check_destructive_confirm.py` 当场拦下并指名 `TagAdmin.tsx:51`。**这个判断是错的**：它是全库范围的批量写入，几十篇的标签一次没了，手动补回的成本远高于多点一下。改为项目统一的两步确认（`useDeleteConfirm` + `deleteConfirmLabels`，4 秒自动收回），冒烟补了两条断言：第一下只进确认态、确认之前标签还在。 |
+| 远端 CI（`97e9aab`） | **2 项失败，均为已知基础设施问题** | ① `build`（Android 单测）：与第 40 轮同一签名——`Failed to fetch maven artifact org.robolectric:android-all-instrumented:15-...`，依赖下载失败；本轮 diff 同样**一个 Android 文件都没动**。② `Windows (msi)`：`The CMAKE_ASM_COMPILER:` / `ggml/CMakeLists.txt:2 (project)`，与第 37、40 轮完全相同的 Windows runner cmake/ASM 抖动。其余 10 项（含三端打包中的 Linux 与 macOS、Workbench、Desktop、Android 装配）全绿。**没有据此改任何代码。** |
 | 未覆盖 | SKIP | 标签重命名/删除的跨设备同步；标签级别的「并入另一个标签」选择界面（现由重命名 + 合并隐式实现）。 |
 ## 2026-11-19 傍晚：标签重命名（B03）
 
