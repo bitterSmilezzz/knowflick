@@ -396,6 +396,16 @@ try {
   await check(`${JSON.stringify(storedBodies)}.every((b)=>!b.includes('批量词甲'))`, "全库都不再有被替换的词");
   await check(`${JSON.stringify(storedBodies)}.some((b)=>b.includes('批量词乙'))`, "全库出现了替换后的词");
 
+  // 20. 撤销上一次批量替换（B01）：替换后出现「撤销替换」，点它把全库写回旧词。
+  const undoBtnShown = await ev("document.querySelector('[aria-label=\"撤销上一次批量替换\"]') !== null");
+  await check(`${undoBtnShown}`, "替换成功后出现「撤销替换」入口");
+  await b("eval", "(()=>{const btn=document.querySelector('[aria-label=\"撤销上一次批量替换\"]');if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 1500));
+  const afterUndo = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.map(n=>n.bodyMd)");
+  await check(`${JSON.stringify(afterUndo)}.some((b)=>b.includes('批量词甲'))`, "撤销后旧词回到正文");
+  await check(`${JSON.stringify(afterUndo)}.every((b)=>!b.includes('批量词乙'))`, "撤销后新词消失");
+  await check("document.querySelector('[aria-label=\"撤销上一次批量替换\"]') === null", "撤销后入口收起（不能重复撤销）");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});

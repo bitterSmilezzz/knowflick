@@ -8,6 +8,7 @@ import {
   exportNoteMarkdown,
   exportNotesBundle,
   bulkReplaceInNotes,
+  bulkUndoInNotes,
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
@@ -54,6 +55,7 @@ import { noteFromMarkdown } from "../../domain/noteImport";
 import { collectNoteTags, filterByTag } from "../../domain/noteTags";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { bulkReplaceTotals, planBulkReplace, type BulkReplaceHit } from "../../domain/noteBulkReplace";
+import { bulkUndoTotals, planBulkUndo } from "../../domain/noteBulkUndo";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
 import { collectDueTodos } from "../../domain/dueInbox";
@@ -178,6 +180,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [linkUrl, setLinkUrl] = useState("");
   // 批量替换的预览清单：非空时覆盖在编辑区上方，确认后才写库。
   const [bulkPreview, setBulkPreview] = useState<{ hits: BulkReplaceHit[]; query: string } | null>(null);
+  // 上一次批量替换的撤销凭据（替换前的正文）：有它才显示「撤销替换」。
+  const [bulkUndo, setBulkUndo] = useState<{ id: string; previousBody: string }[] | null>(null);
   // 标签筛选：与笔记本筛选并列，两个维度可以叠加。
   const [tagFilter, setTagFilter] = useState("");
   const tagOptions = useMemo(() => collectNoteTags(listNotes(state)), [state]);
@@ -645,12 +649,17 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     setBulkPreview({ hits, query: q });
   };
 
-  /** 用户在清单里点了「确认替换」才真正写库。 */
+  /** 用户在清单里点了「确认替换」才真正写库；成功后留一份撤销凭据。 */
   const applyBulkReplace = async () => {
     const pending = bulkPreview;
     if (!pending) return;
     setBulkPreview(null);
     const totals = bulkReplaceTotals(pending.hits);
+    // 撤销凭据要在写库**之前**取：写完之后正文已经是新内容了。
+    const undoEntries = pending.hits.map((hit) => {
+      const before = state.notes.find((n) => n.id === hit.id);
+      return { id: hit.id, previousBody: before?.bodyMd ?? "" };
+    });
     try {
       const result = await bulkReplaceInNotes(pending.hits, state.notes, dirRef.current);
       // 打开的这篇可能也被改了：重读库并让会话以新基线重开，避免编辑器里还是旧正文。
@@ -660,9 +669,37 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setSelectedId(null);
       await refresh();
       const tail = result.failed > 0 ? `，${result.failed} 篇失败` : "";
-      setViewNotice(`已在 ${result.saved} 篇笔记里替换 ${totals.matches} 处${tail}`);
+      setViewNotice(`已在 ${result.saved} 篇笔记里替换 ${totals.matches} 处${tail}。可以点「撤销替换」恢复`);
+      if (result.saved > 0) setBulkUndo(undoEntries);
     } catch (e) {
       setViewError(`批量替换失败：${String(e)}`);
+    }
+  };
+
+  /** 撤销上一次批量替换：把每篇写回替换前的正文（又形成一条修订，可再撤销）。 */
+  const undoBulkReplace = async () => {
+    const entries = bulkUndo;
+    if (!entries) return;
+    const plans = planBulkUndo(state.notes, entries);
+    const totals = bulkUndoTotals(entries, plans);
+    if (plans.length === 0) {
+      setBulkUndo(null);
+      setViewNotice(`这 ${totals.skipped} 篇已经不在原状（改过或删了），没有可撤销的内容。`);
+      return;
+    }
+    try {
+      const result = await bulkUndoInNotes(plans, state.notes, dirRef.current);
+      sessionsRef.current.forEach((s) => s.disposeTimer());
+      sessionsRef.current.clear();
+      selectedIdRef.current = null;
+      setSelectedId(null);
+      await refresh();
+      setBulkUndo(null);
+      const tail = result.failed > 0 ? `，${result.failed} 篇失败` : "";
+      const skipped = totals.skipped > 0 ? `，${totals.skipped} 篇已不在原状` : "";
+      setViewNotice(`已撤销 ${result.saved} 篇${tail}${skipped}`);
+    } catch (e) {
+      setViewError(`撤销替换失败：${String(e)}`);
     }
   };
 
@@ -1094,7 +1131,24 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
           </button>
         </div>
         {viewError ? <p className="nv-error" role="alert">{viewError}</p> : null}
-        {viewNotice ? <p className="nv-notice" role="status">{viewNotice}</p> : null}
+        {viewNotice || bulkUndo ? (
+          <p className="nv-notice" role="status">
+            {viewNotice}
+            {/* 撤销入口放在**常驻的通知行**里，不放在查找条里：
+                批量替换后编辑器会被关掉（会话重开），查找条随之消失——
+                撤销按钮跟着一起没，用户就再也点不到了。 */}
+            {bulkUndo ? (
+              <button
+                type="button"
+                className="nv-undo-replace"
+                aria-label="撤销上一次批量替换"
+                onClick={() => void undoBulkReplace()}
+              >
+                撤销替换
+              </button>
+            ) : null}
+          </p>
+        ) : null}
         {batchIds.size > 0 ? (
           <div className="nv-batch-bar" role="group" aria-label="批量操作">
             <span className="nv-batch-count">{`已选 ${batchIds.size} 篇`}</span>
@@ -1354,6 +1408,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 >
                   全部笔记
                 </button>
+
                 <button type="button" className="ws-icon-button" aria-label="关闭查找" onClick={() => setFindOpen(false)}>
                   <Icon name="close" size={12} />
                 </button>

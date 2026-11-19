@@ -487,6 +487,32 @@ export function noteExportFileName(note: Note): string {
  *
  * 单篇失败不打断其余：结果里分 `saved` 与 `failed`，界面才能如实说「改了 N 篇，M 篇失败」。
  */
+/**
+ * 批量替换的一键撤销（B01）：把每篇写回替换前的正文。
+ *
+ * 与批量替换对称：每篇一次修订，历史只增不改——撤销本身也能再被撤销。
+ * 单篇失败不打断其余，结果分 saved / failed。
+ */
+export async function bulkUndoInNotes(
+  plans: readonly { id: string; body: string }[],
+  notes: readonly Note[],
+  dir: string,
+): Promise<{ saved: number; failed: number }> {
+  let saved = 0;
+  let failed = 0;
+  for (const plan of plans) {
+    const note = notes.find((n) => n.id === plan.id);
+    if (!note) { failed += 1; continue; }
+    try {
+      await saveNote({ ...note, bodyMd: plan.body }, note.currentRevision, dir);
+      saved += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { saved, failed };
+}
+
 export async function bulkReplaceInNotes(
   hits: readonly { id: string; body: string }[],
   notes: readonly Note[],
