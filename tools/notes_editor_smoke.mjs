@@ -491,6 +491,28 @@ try {
   // 收尾：把这批引用清掉，后面的断言不受影响。
   await setNative('.nv-body', auditRefBody);
 
+  // 23. 待验证清单（C05）：行末 ❓ 的断言进全库清单，标「已核实」只去掉那一行的标记。
+  await setNative('.nv-body', '结论一：A 导致 B ❓\n结论二：已核实过\n结论三：C 与 D 相关 ❓');
+  await check("document.querySelector('.nv-verify > summary')?.textContent.includes('2 条断言')", '两条带标记的断言进清单');
+  await check("document.querySelector('.nv-verify > summary')?.textContent.includes('1 篇笔记')", '清单说明涉及几篇笔记');
+  const verifyText = await ev("document.querySelector('.nv-verify-list')?.textContent ?? ''");
+  await check(`${JSON.stringify(verifyText)}.includes('A 导致 B')`, '清单里显示断言原文');
+  await check(`${JSON.stringify(verifyText)}.includes('已核实过') === false`, '没标记的行不进清单');
+  await b('eval', "(()=>{document.querySelector('.nv-verify').open=true;return true})()");
+  await b('scrollintoview', '.nv-verify-done');
+  await b('click', '.nv-verify-done');
+  await new Promise((res) => setTimeout(res, 1200));
+  const afterVerify = await ev("document.querySelector('.nv-body')?.value ?? ''");
+  // 断言「那一行不再有 ❓」：按行拆开比对，避免在 JS 字符串里塞换行转义（会把字面量写坏）。
+  await check(
+    `JSON.stringify(${JSON.stringify(afterVerify)}.split('\\n')[0]) === JSON.stringify('结论一：A 导致 B')`,
+    '已核实那一行的 ❓ 被去掉',
+  );
+  await check(`${JSON.stringify(afterVerify)}.includes('结论三：C 与 D 相关 ❓')`, '别的待验证行不动');
+  await check("document.querySelector('.nv-verify > summary')?.textContent.includes('1 条断言')", '核实一条后清单剩一条');
+  await setNative('.nv-body', '清理掉待验证标记。');
+  await check("document.querySelector('.nv-verify') === null", '全部核实后清单消失');
+
   console.log('Notes editor smoke: ' + count + ' checks passed.');
 } finally {
   await b("close").catch(() => {});

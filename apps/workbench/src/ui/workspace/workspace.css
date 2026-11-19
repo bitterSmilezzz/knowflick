@@ -2935,6 +2935,15 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-audit-page { font-size: 12px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); cursor: pointer; }
 .nv-audit-page:disabled { color: var(--muted); cursor: default; }
 .nv-audit-pageinfo { color: var(--muted); }
+/* 待验证清单：与引用体检并列的一条提醒，样式同族但不抢眼。 */
+.nv-verify { font-size: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.nv-verify summary { cursor: pointer; color: var(--ink); }
+.nv-verify-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nv-verify-list li { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.nv-verify-open { font-size: 12px; padding: 0 4px; border: none; background: none; color: var(--accent-text); cursor: pointer; }
+.nv-verify-text { color: var(--muted); }
+.nv-verify-done { font-size: 12px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.nv-verify-rest { margin: 6px 0 0; color: var(--muted); }
 .nv-format:hover { color: var(--accent-text); }
 /* 引用体检：折叠面板，标题一行说明有几处待复核，展开逐条看。 */
 .nv-audit { font-size: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }

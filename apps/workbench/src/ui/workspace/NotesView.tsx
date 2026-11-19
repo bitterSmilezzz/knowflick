@@ -75,6 +75,9 @@ import { ReferenceAuditControls } from "./ReferenceAuditControls";
 import { DueInbox } from "./DueInbox";
 import { NoteSearchPreview } from "./NoteSearchPreview";
 import { BulkReplacePreview } from "./BulkReplacePreview";
+import { VerifyInbox } from "./VerifyInbox";
+import { collectVerifyItems, type VerifyInboxItem } from "../../domain/verifyInbox";
+import { markLineVerified } from "../../domain/noteVerify";
 
 /**
  * 笔记工作面（R1 首个纵向切片）——契约见 docs/NOTES_MODEL.md「界面契约」：
@@ -714,6 +717,42 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
    * 两条写入路径各用其所：这篇正开着就走编辑会话（会话里有未保存的输入，直接写盘会被覆盖），
    * 没开着就走批量写正文——与批量替换同一条路，一篇一次修订。
    */
+  /**
+   * 把某条断言标为「已核实」（C05）：只去掉那一行的 `❓`，正文其余一个字符不动。
+   *
+   * 写入路径与待办处理同一条：这篇正开着走 onEdit（同时更新会话与编辑器），
+   * 后台开着只写会话，没开着走 writeNoteBodies——一篇一次修订。
+   */
+  const markVerified = async (item: VerifyInboxItem) => {
+    const note = state.notes.find((n) => n.id === item.noteId);
+    if (!note) {
+      setViewError("这篇笔记已经不在列表里了。");
+      return;
+    }
+    const out = markLineVerified(note.bodyMd, item.line);
+    if (!out.changed) {
+      setViewError("这一行的待验证标记已经没了，刷新后再试。");
+      return;
+    }
+    setViewError("");
+    try {
+      const session = sessionsRef.current.get(note.id);
+      if (session && selectedIdRef.current === note.id) {
+        onEdit(title, out.body);
+        await session.flush();
+      } else if (session) {
+        session.edit(note.title, out.body);
+        await session.flush();
+      } else {
+        await writeNoteBodies([{ id: note.id, body: out.body }], state.notes, dirRef.current);
+      }
+      await refresh();
+      setViewNotice(`已核实：${item.text.slice(0, 40)}${item.text.length > 40 ? "…" : ""}`);
+    } catch (e) {
+      setViewError(`标记已核实失败：${String(e)}`);
+    }
+  };
+
   const applyDueAction = async (item: DueTodoItem, action: "done" | "snooze") => {
     const note = state.notes.find((n) => n.id === item.noteId);
     if (!note) {
@@ -929,6 +968,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   // 到期待办（B10）：全库汇总「逾期 / 今天到期」，打开工作台就能看见。
   const dueInbox = useMemo(() => collectDueTodos(state.notes), [state.notes]);
 
+  // 待验证清单（C05）：全库标了 `❓` 的断言。标记是正文的一部分，跟着保存与备份走。
+  const verifyInbox = useMemo(() => collectVerifyItems(state.notes), [state.notes]);
+
   // 引用体检（C05）：全库扫一遍失效/过期的引用，不只是打开着的那篇。
   const allAuditIssues = useMemo(() => auditReferences(state.notes, materials), [state.notes, materials]);
 
@@ -1102,6 +1144,14 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             ))}
           </select>
         </label>
+        <VerifyInbox
+          items={verifyInbox}
+          onOpen={(item) => {
+            const target = state.notes.find((n) => n.id === item.noteId);
+            if (target) openNote(target);
+          }}
+          onVerified={(item) => void markVerified(item)}
+        />
         <DueInbox
           items={dueInbox}
           onOpen={(noteId) => {
