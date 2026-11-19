@@ -62,6 +62,7 @@ import {
 } from "../../domain/note";
 import { cardFromJson, type KnowledgeCard } from "../../domain/card";
 import { combineNotesForExport, exportBundleFileName } from "../../domain/noteExport";
+import { IGNORED_REF_LIMIT } from "../../domain/referenceIgnore";
 import type { Goal } from "../../shell/store";
 import { encodeSettings, parseSettings, type SettingsFile } from "../../domain/settings";
 
@@ -268,6 +269,39 @@ export async function storePreferences(file: SettingsFile, key: string, dir: str
 
 const notesKey = "knowflick.notes.v1";
 const notesCorruptedKey = "knowflick.notes.corrupted";
+
+/**
+ * 引用体检里「已忽略」的那些（C05）。
+ *
+ * 存 localStorage 而不是笔记库：忽略是**本机的界面决定**，不改正文、不进修订、
+ * 也不该跟着备份跑到另一台机器上去（那边可能正想处理这几条）。
+ */
+function ignoredRefsKey(scope: string): string {
+  return `knowflick.audit.ignored.v1:${encodeURIComponent(scope)}`;
+}
+
+/** 读忽略表。存储不可用或内容坏了都当空表——忽略表丢了顶多清单长一点，不该挡住页面。 */
+export function readIgnoredRefs(scope: string): string[] {
+  try {
+    const raw = localStorage.getItem(ignoredRefsKey(scope));
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.filter((k): k is string => typeof k === "string"))].slice(-IGNORED_REF_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+/** 写忽略表。写失败只影响「这次忽略没记住」，界面照常工作。 */
+export function writeIgnoredRefs(keys: readonly string[], scope: string): boolean {
+  try {
+    localStorage.setItem(ignoredRefsKey(scope), JSON.stringify(keys.slice(-IGNORED_REF_LIMIT)));
+    return true;
+  } catch {
+    return false; // 调用方保留会话状态，并说明这次未能记住偏好。
+  }
+}
 
 /**
  * 浏览器笔记存储损坏异常（T07，收口审计 KF-010）。

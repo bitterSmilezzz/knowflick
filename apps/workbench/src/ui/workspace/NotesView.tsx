@@ -71,7 +71,7 @@ import { Icon } from "./Icon";
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { NoteBacklinks } from "./NoteBacklinks";
-import { ReferenceAuditPanel } from "./ReferenceAuditPanel";
+import { ReferenceAuditControls } from "./ReferenceAuditControls";
 import { DueInbox } from "./DueInbox";
 import { NoteSearchPreview } from "./NoteSearchPreview";
 import { BulkReplacePreview } from "./BulkReplacePreview";
@@ -130,6 +130,7 @@ interface Props {
 export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, materials = [], onOpenMaterial }: Props) {
   const [state, setState] = useState<NotesState>(emptyNotesState);
   const [loaded, setLoaded] = useState(false);
+  const [notesReadFor, setNotesReadFor] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // 多选（Cmd/Ctrl/Shift + 点击）与「全部知识」列表同一套手势；批量移动是 B03 的最后一块。
   const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -243,8 +244,10 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
 
   const refresh = useCallback(async () => {
     try {
-      const next = await readNotes(dirRef.current);
+      const snapshotDir = dirRef.current;
+      const next = await readNotes(snapshotDir);
       setState(next);
+      setNotesReadFor(snapshotDir);
       onStateChange?.(next);
     } catch (e) {
       setViewError(`读取笔记失败：${String(e)}`);
@@ -488,7 +491,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const removeAuditIssue = async (issue: ReferenceIssue) => {
     const note = state.notes.find((n) => n.id === issue.noteId);
     if (!note) return;
-    const { body: nextBody, removed } = removeReferenceFromBody(note.bodyMd, issue.targetId);
+    const { body: nextBody, removed } = removeReferenceFromBody(note.bodyMd, issue.targetId, issue.referenceKey);
     if (removed === 0) {
       setViewError("没有找到这条引用——可能已经被删掉了。");
       return;
@@ -927,7 +930,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const dueInbox = useMemo(() => collectDueTodos(state.notes), [state.notes]);
 
   // 引用体检（C05）：全库扫一遍失效/过期的引用，不只是打开着的那篇。
-  const auditIssues = useMemo(() => auditReferences(state.notes, materials), [state.notes, materials]);
+  const allAuditIssues = useMemo(() => auditReferences(state.notes, materials), [state.notes, materials]);
 
   // 反向链接（B04）：谁引用了当前这篇。
   const backlinks = useMemo(
@@ -1108,13 +1111,17 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
           onDone={(item) => void applyDueAction(item, "done")}
           onSnooze={(item) => void applyDueAction(item, "snooze")}
         />
-        <ReferenceAuditPanel
-          issues={auditIssues}
+        <ReferenceAuditControls
+          key={dir}
+          scope={dir}
+          ready={notesReadFor === dir}
+          issues={allAuditIssues}
           onOpen={(noteId) => {
             const target = state.notes.find((n) => n.id === noteId);
             if (target) openNote(target);
           }}
           onRemove={(issue) => void removeAuditIssue(issue)}
+          onNotice={setViewNotice}
         />
         <label className="ws-search">
           <Icon name="search" />

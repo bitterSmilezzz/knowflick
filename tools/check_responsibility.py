@@ -37,6 +37,8 @@ from windows_console import emit  # noqa: E402
 PURE_RULE_MODULES = [
     "note.ts",
     "noteReference.ts",
+    "referenceAudit.ts",
+    "referenceIgnore.ts",
     "restoreRules.ts",
     "reviewFacts.ts",
     "nearDuplicate.ts",

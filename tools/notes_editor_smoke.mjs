@@ -417,7 +417,47 @@ try {
   await check(`${JSON.stringify(afterUndo)}.every((b)=>!b.includes('批量词乙'))`, "撤销后新词消失");
   await check("document.querySelector('[aria-label=\"撤销上一次批量替换\"]') === null", "撤销后入口收起（不能重复撤销）");
 
-  console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);
+  // 21. 引用体检（C05）：忽略、刷新保留、撤销、修复后清理，再次出现要重新提醒。
+  // 批量操作会关闭编辑器，独立新建测试笔记，避免依赖上一段的选中状态。
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('新建笔记')).click();return true})()");
+  await check("document.querySelector('.nv-body') !== null", "体检测试的新笔记可编辑");
+  await setNative('.nv-title', '体检冒烟笔记');
+  const auditRefBody = '> 《不存在的原件》：一段引用\n> [回原件](knowflick://note/gone-note-id)';
+  await setNative('.nv-body', auditRefBody);
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('1 处待复核')", "失效引用进入体检清单");
+  const auditNotesBefore = await ev("localStorage.getItem('knowflick.notes.v1')");
+  await b('click', '.nv-audit > summary');
+  await b('focus', '[aria-label="忽略指向 不存在的原件 的这条问题"]');
+  await b('press', 'Enter');
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('全部 1 处已忽略')", "键盘忽略后面板仍保留撤销入口");
+  await check("document.querySelector('.nv-audit > .nv-audit-list') === null", "已忽略的问题退出待复核列表");
+  await check("JSON.stringify(Object.entries(localStorage).filter(([k]) => k.startsWith('knowflick.audit.ignored.v1:'))).includes('gone-note-id')", "忽略记在本机偏好中");
+  assert.equal(await ev("localStorage.getItem('knowflick.notes.v1')"), auditNotesBefore, '忽略不改正文及修订');
+  count++; console.log('PASS 忽略不改正文及修订');
+
+  await b('open', url);
+  await b('click', '.ws-nav-group[aria-label=笔记] .ws-nav-row');
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('全部 1 处已忽略')", "刷新并重新加载笔记后仍记得忽略");
+  await b('click', '.nv-audit > summary');
+  await b('click', '.nv-audit-ignored > summary');
+  await b('focus', '[aria-label="恢复指向 不存在的原件 的这条问题"]');
+  await b('press', 'Enter');
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('1 处待复核')", "键盘撤销忽略后回到待复核清单");
+  await check("document.querySelector('.nv-audit-ignored') === null", "撤销后已忽略区收起");
+  assert.equal(await ev("localStorage.getItem('knowflick.notes.v1')"), auditNotesBefore, '撤销忽略不改正文及修订');
+  count++; console.log('PASS 撤销忽略不改正文及修订');
+
+  await b('click', '[aria-label="忽略指向 不存在的原件 的这条问题"]');
+  await check("document.querySelector('.nv-audit-ignored') !== null", "重新忽略以验证修复后清理");
+  await b('eval', "(()=>{[...document.querySelectorAll('.nv-entry')].find(e=>e.textContent.includes('体检冒烟笔记')).click();return true})()");
+  await check("document.querySelector('.nv-title')?.value === '体检冒烟笔记'", "重新打开引用者笔记");
+  await setNative('.nv-body', '引用已经修复。');
+  await check("document.querySelector('.nv-audit') === null", "修复最后一个问题后面板消失");
+  await check("Object.entries(localStorage).filter(([k])=>k.startsWith('knowflick.audit.ignored.v1:')).every(([,v])=>!v.includes('gone-note-id'))", "修复问题后清掉持久化的旧忽略");
+  await setNative('.nv-body', auditRefBody);
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('1 处待复核')", "同样的问题再次出现时重新提醒");
+
+  console.log('Notes editor smoke: ' + count + ' checks passed.');
 } finally {
   await b("close").catch(() => {});
 }

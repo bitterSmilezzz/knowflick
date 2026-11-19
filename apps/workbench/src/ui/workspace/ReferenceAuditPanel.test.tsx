@@ -41,6 +41,51 @@ describe("ReferenceAuditPanel", () => {
     expect(onRemove).toHaveBeenCalledWith(issue);
   });
 
+  it("忽略与撤销忽略：忽略的不占待复核数，但仍在折叠区里能撤销", () => {
+    const onIgnore = vi.fn();
+    const onUnignore = vi.fn();
+    const live = { noteId: "n-1", noteTitle: "甲", targetId: "x", targetTitle: "被删的", status: "missing" as const };
+    const skipped = { noteId: "n-2", noteTitle: "乙", targetId: "y", targetTitle: "草稿", status: "missing" as const };
+    const html = renderToStaticMarkup(
+      <ReferenceAuditPanel
+        issues={[live]}
+        ignored={[skipped]}
+        onOpen={() => {}}
+        onIgnore={onIgnore}
+        onUnignore={onUnignore}
+      />
+    );
+    expect(html).toContain("1 处待复核");
+    expect(html).toContain("另有 1 处已忽略");
+    expect(html).toContain("已忽略 1 处");
+    expect(html).toContain("撤销忽略");
+    const tree = ReferenceAuditPanel({
+      issues: [live],
+      ignored: [skipped],
+      onOpen: () => {},
+      onIgnore,
+      onUnignore,
+    }) as React.ReactElement;
+    const buttons = findAllClickable(tree);
+    const ignoreBtn = buttons.find((el) => (el.props as { children?: React.ReactNode }).children === "忽略");
+    const undoBtn = buttons.find((el) => (el.props as { children?: React.ReactNode }).children === "撤销忽略");
+    expect(ignoreBtn).toBeDefined();
+    expect(undoBtn).toBeDefined();
+    ignoreBtn!.props.onClick();
+    undoBtn!.props.onClick();
+    expect(onIgnore).toHaveBeenCalledWith(live);
+    expect(onUnignore).toHaveBeenCalledWith(skipped);
+  });
+
+  it("全部被忽略时面板仍在（否则用户再也找不到撤销入口）", () => {
+    const skipped = { noteId: "n-2", noteTitle: "乙", targetId: "y", targetTitle: "草稿", status: "missing" as const };
+    const html = renderToStaticMarkup(
+      <ReferenceAuditPanel issues={[]} ignored={[skipped]} onOpen={() => {}} onUnignore={() => {}} />
+    );
+    expect(html).toContain("全部 1 处已忽略");
+    expect(html).toContain("撤销忽略");
+  });
+
   it("点条目把引用者笔记 id 交给调用方", () => {
     const onOpen = vi.fn();
     const tree = ReferenceAuditPanel({
