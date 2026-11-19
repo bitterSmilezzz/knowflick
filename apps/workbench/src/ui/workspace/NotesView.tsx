@@ -47,6 +47,7 @@ import { MARKDOWN_ACTIONS, applyMarkdownAction, type MarkdownAction } from "../.
 import { findBacklinks } from "../../domain/noteBacklink";
 import { auditReferences, removeReferenceFromBody, type ReferenceIssue } from "../../domain/referenceAudit";
 import { NOTE_SORT_LABELS, sortNotes, type NoteSortMode } from "../../domain/noteSort";
+import { noteFromMarkdown } from "../../domain/noteImport";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import {
@@ -161,6 +162,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [visibleCount, setVisibleCount] = useState(NOTES_PAGE);
   // 排序只影响列表顺序，不动库里的内容；默认保持原来的「置顶 + 最近编辑」。
   const [sortMode, setSortMode] = useState<NoteSortMode>("recent");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   // 正文 textarea 的引用：查找定位要在这里设置选区。
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -368,7 +370,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
    * 模板只在用户点选那一刻起作用：**没有定时任务、不会自动堆积空笔记**。
    * 模板内容通过 `session.edit` 走正常编辑路径，因此照常自动保存、推进修订。
    */
-  const createNote = useCallback((templateId: NoteTemplateId = "blank") => {
+  const createNote = useCallback((templateId: NoteTemplateId = "blank", preset?: { title: string; body: string }) => {
     const prev = currentSession();
     if (prev && prev.isDirty && prev.snapshot().phase !== "conflict") void prev.flush();
     const draft = createNoteDraft();
@@ -380,8 +382,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     setMetaValues({ notebook: null, tags: [], excludeFromProfile: false });
     setStatusNote("");
     setViewError("");
-    const tpl = instantiateTemplate(templateId);
-    if (templateId === "blank") {
+    const tpl = preset ?? instantiateTemplate(templateId);
+    if (templateId === "blank" && !preset) {
       setTitle("");
       setBody("");
       setStatus("dirty");
@@ -391,10 +393,22 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setTitle(tpl.title);
       setBody(tpl.body);
       setStatus("dirty");
-      setViewNotice(`已按「${findNoteTemplate(templateId).label}」模板新建`);
+      setViewNotice(preset ? "已导入文件" : `已按「${findNoteTemplate(templateId).label}」模板新建`);
     }
     // 空笔记先不落库：等第一段内容进来再保存，避免堆积空笔记。
   }, [attachSession, currentSession]);
+
+  /** 导入 Markdown：读文件 → 变成「标题 + 正文」→ 走新建笔记的同一条路径（自动保存）。 */
+  const importMarkdown = useCallback(async (file: File) => {
+    try {
+      const text = await file.text();
+      const { title: importedTitle, body: importedBody } = noteFromMarkdown(text, file.name);
+      createNote("blank", { title: importedTitle, body: importedBody });
+      setViewNotice(`已导入「${file.name}」`);
+    } catch (e) {
+      setViewError(`导入失败：${String(e)}`);
+    }
+  }, [createNote]);
 
   const onEdit = (nextTitle: string, nextBody: string) => {
     const s = currentSession();
@@ -845,6 +859,28 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
           <h1>笔记</h1>
           <button className="ws-primary" type="button" onClick={() => createNote()} disabled={!loaded}>
             <Icon name="plus" size={14} /> 新建笔记
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            className="nv-import-input"
+            aria-label="导入 Markdown 文件"
+            accept=".md,.markdown,.txt,text/markdown,text/plain"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // 先取文件再清空 input：同一个文件连导两次也要能触发 change。
+              if (file) void importMarkdown(file);
+              e.target.value = "";
+            }}
+          />
+          <button
+            className="ws-bordered"
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            disabled={!loaded}
+            title="把 .md / .txt 文件当作笔记导入"
+          >
+            导入 Markdown
           </button>
         </div>
         <label className="nv-template">

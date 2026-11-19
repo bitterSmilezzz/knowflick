@@ -2922,6 +2922,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 /* 排序选择：与筛选并排，字号小一号。 */
 .nv-sort { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0 2px; }
 .nv-sort select { font-size: 12px; }
+/* 导入按钮用的文件选择器：藏在按钮后面，不占版面。 */
+.nv-import-input { display: none; }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }

@@ -262,6 +262,22 @@ try {
   await check("document.querySelector('.nv-body').value.includes('## 今天做了什么')", "模板把正文骨架摆好了");
   await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.length === ${notesBeforeTpl + 1}})()`, "模板新建的笔记会落库（不是只停在编辑器里）");
 
+  // 12. 导入 Markdown：合成一个文件塞进隐藏的 file input，应当新建一篇带标题的笔记。
+  await b("eval", `(() => {
+    const input = document.querySelector('[aria-label="导入 Markdown 文件"]');
+    if (!input) return false;
+    const file = new File(['# 导入的标题\\n\\n## 小节\\n正文一行'], 'imported-note.md', { type: 'text/markdown' });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((res) => setTimeout(res, 1200));
+  await check("document.querySelector('[aria-label=\"笔记标题\"]')?.value === '导入的标题'", "导入后标题取自文件里的一级标题");
+  await check("document.querySelector('.nv-body').value.includes('## 小节')", "导入后正文保留原有结构");
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.some(n=>n.title==='导入的标题')", "导入的笔记会落库");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});
