@@ -12,6 +12,7 @@ import {
   writeNoteBodies,
   addTagsToNotesById,
   removeTagsFromNotesById,
+  renameTagInNotes,
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
@@ -56,6 +57,7 @@ import { NOTE_SORT_LABELS, sortNotes, type NoteSortMode } from "../../domain/not
 import { insertLink, insertTable, type TextSelection } from "../../domain/markdownBlocks";
 import { noteFromMarkdown } from "../../domain/noteImport";
 import { collectNoteTags, filterByTag } from "../../domain/noteTags";
+import { TagAdmin } from "./TagAdmin";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { bulkReplaceTotals, planBulkReplace, type BulkReplaceHit } from "../../domain/noteBulkReplace";
 import { bulkUndoTotals, planBulkUndo } from "../../domain/noteBulkUndo";
@@ -865,6 +867,33 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     }
   };
 
+  /**
+   * 重命名一个标签（B03）：库里所有带这个标签的笔记一起改。
+   *
+   * 改写后筛选里的旧名字要跟着换成新的，否则用户还停在旧值上、列表看起来是空的。
+   */
+  const renameTagNow = async (from: string, to: string) => {
+    setViewError("");
+    try {
+      const result = await renameTagInNotes(from, to, dirRef.current);
+      if (result.reason === "invalid") {
+        setViewError("新名字不能是空的。");
+        return;
+      }
+      if (result.changed === 0) {
+        setViewNotice(`库里没有「${from}」这个标签，没有改动。`);
+        return;
+      }
+      const nextTag = to.trim().replace(/^#/, "").trim();
+      if (tagFilter === from) setTagFilter(nextTag);
+      await refresh();
+      const merged = result.merged > 0 ? `，其中 ${result.merged} 篇与原标签合并` : "";
+      setViewNotice(`已把「${from}」改成「${nextTag}」：${result.changed} 篇${merged}`);
+    } catch (e) {
+      setViewError(`重命名标签失败：${String(e)}`);
+    }
+  };
+
   const tagSelected = async () => {
     if (batchIds.size === 0) return;
     // 先取总数：下面 `setBatchIds` 之后这个闭包里的 size 仍是旧值，读它容易写错。
@@ -1293,6 +1322,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             onChange={(e) => setListQuery(e.target.value)}
           />
         </label>
+        {tagOptions.length > 0 ? (
+          <TagAdmin tags={tagOptions} onRename={(from, to) => void renameTagNow(from, to)} />
+        ) : null}
         {tagOptions.length > 0 ? (
           <select
             className="nv-tag-filter"

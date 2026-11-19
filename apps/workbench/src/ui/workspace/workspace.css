@@ -2977,6 +2977,11 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .ws-md-table th, .ws-md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 .ws-md-table th { background: var(--sunken); font-weight: 600; }
 
+/* 整理标签：折叠在列表头，跟标签筛选并排，不抢版面。 */
+.nv-tag-admin { font-size: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; }
+.nv-tag-admin summary { cursor: pointer; color: var(--ink); }
+.nv-tag-admin-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 2px; }
+.nv-tag-admin-row select, .nv-tag-admin-row input { font-size: 12px; }
 /* 到期待办里的日期输入：紧凑一点，跟按钮同一行。 */
 .nv-due-date { font-size: 12px; margin-left: 6px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); }
 /* 正文里的附件（B06）：三种附件分别呈现，别都当图片。 */

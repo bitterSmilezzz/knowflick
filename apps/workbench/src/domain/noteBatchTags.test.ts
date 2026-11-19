@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addTagsToNotes, createNoteDraft, emptyNotesState, parseTagInput, removeTagsFromNotes, upsertNote } from "./note";
+import { addTagsToNotes, createNoteDraft, emptyNotesState, parseTagInput, removeTagsFromNotes, renameTag, upsertNote } from "./note";
 
 const NOW = new Date(2026, 10, 19, 9, 0, 0).getTime();
 
@@ -12,6 +12,53 @@ function seed() {
   state = upsertNote(state, b, 0, NOW + 1).state;
   return state;
 }
+
+describe("重命名标签（B03）", () => {
+  it("改的是标签数组，正文不动", () => {
+    const state = seed();
+    const out = renameTag(state, "工作", "工作流", NOW + 10);
+    const a = out.state.notes.find((n) => n.id === "n1")!;
+    expect(a.tags).toEqual(["工作流"]);
+    expect(a.bodyMd).toBe(state.notes.find((n) => n.id === "n1")!.bodyMd);
+    expect(out.changed.slice().sort()).toEqual(["n1"]);
+  });
+
+  it("新名字在同篇已有 → 合并，不留两个同名标签", () => {
+    const state = seed();
+    const withBoth = addTagsToNotes(state, ["n1"], "工作流", NOW + 5).state;
+    // 甲现在是 [工作, 工作流]：把「工作」改名成「工作流」应该合并成只剩一个。
+    const out = renameTag(withBoth, "工作", "工作流", NOW + 10);
+    expect(out.state.notes.find((n) => n.id === "n1")!.tags).toEqual(["工作流"]);
+    expect(out.merged).toBe(1);
+  });
+
+  it("新旧同名算没改", () => {
+    const state = seed();
+    const out = renameTag(state, "工作", "工作", NOW + 10);
+    expect(out.changed).toEqual([]);
+    expect(out.reason).toBe("unchanged");
+    expect(out.state).toEqual(state);
+  });
+
+  it("空名字不合法：不能把标签改成空字符串", () => {
+    const state = seed();
+    expect(renameTag(state, "工作", "   ", NOW + 10).reason).toBe("invalid");
+    expect(renameTag(state, "", "工作", NOW + 10).reason).toBe("invalid");
+  });
+
+  it("库里没有这个标签时什么都不改", () => {
+    const state = seed();
+    const out = renameTag(state, "不存在的标签", "别的", NOW + 10);
+    expect(out.changed).toEqual([]);
+    expect(out.state).toEqual(state);
+  });
+
+  it("新名字开头的井号会被去掉", () => {
+    const state = seed();
+    const out = renameTag(state, "工作", "#复盘", NOW + 10);
+    expect(out.state.notes.find((n) => n.id === "n1")!.tags).toEqual(["复盘"]);
+  });
+});
 
 describe("批量去标签（B03）", () => {
   it("完全相等才删：「工作」不该带走「工作流」", () => {

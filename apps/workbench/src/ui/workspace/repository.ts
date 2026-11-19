@@ -41,6 +41,7 @@ import {
   NoteConflictError,
   addTagsToNotes,
   removeTagsFromNotes,
+  renameTag,
   addNoteToKb as domainAddToKb,
   createKnowledgeBase as domainCreateKb,
   deleteNote as domainDeleteNote,
@@ -463,6 +464,31 @@ export async function duplicateNoteById(id: string, dir: string): Promise<Note> 
 /**
  * 批量去掉标签（B03）。与加标签完全对称：元数据变化、不追加修订、没有真变化就不写。
  */
+/**
+ * 重命名一个标签（B03）。改的是库里的所有笔记，与批量标签同一口径：元数据、不追加修订。
+ */
+export async function renameTagInNotes(
+  from: string,
+  to: string,
+  dir: string
+): Promise<{ changed: number; merged: number; reason?: "invalid" | "unchanged" }> {
+  const now = Date.now();
+  if (inShell()) {
+    const state = await readNotes(dir);
+    const plan = renameTag(state, from, to, now);
+    for (const id of plan.changed) {
+      const note = plan.state.notes.find((n) => n.id === id);
+      if (!note) continue;
+      await noteUpsert(notePayload(note), note.currentRevision, dir);
+    }
+    return { changed: plan.changed.length, merged: plan.merged, reason: plan.reason };
+  }
+  const state = browserNotes();
+  const plan = renameTag(state, from, to, now);
+  if (plan.changed.length > 0) browserNotesWrite(plan.state);
+  return { changed: plan.changed.length, merged: plan.merged, reason: plan.reason };
+}
+
 export async function removeTagsFromNotesById(
   ids: readonly string[],
   rawTags: string,

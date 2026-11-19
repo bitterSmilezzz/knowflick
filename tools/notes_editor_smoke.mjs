@@ -38,12 +38,22 @@ async function check(expression, label) {
 }
 
 // React 受控输入要用原生 setter，直接赋 value 不会触发 onChange。
+/**
+ * 用原生 setter 改控件的值，再派发事件——React 会拦下直接赋 value，收不到 onChange。
+ *
+ * 三类控件各有各的原型：`<select>` 用 HTMLSelectElement 的 setter（用 input 的会报
+ * Illegal invocation）；`<textarea>` 与 `<input>` 各自一个。`change` 与 `input` 都派发，
+ * 因为 select 走的是 change。
+ */
 const setNative = (selector, value) => b("eval", `(() => {
   const el = document.querySelector(${JSON.stringify(selector)});
-  const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+  const proto = el.tagName === 'SELECT'
+    ? window.HTMLSelectElement.prototype
+    : el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
   el.focus(); setter.call(el, ${JSON.stringify(value)});
   el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
   return true;
 })()`);
 
@@ -232,6 +242,18 @@ try {
   await setNative('[aria-label="批量加标签"]', "工作");
   await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='去标签').click();return true})()");
   await check("document.body.innerText.includes('没有可去掉的标签')", '没有可去的标签时如实说没有改动');
+
+  // 8i. 重命名标签（B03）：把打错的标签一次改对，正文一个字都不动。
+  // 折叠区要先展开：<details> 收起时内容点不到。
+  await check("document.querySelector('.nv-tag-admin') !== null", '列表头有整理标签入口');
+  await b("eval", "(()=>{const d=document.querySelector('.nv-tag-admin');d.open=true;return true})()");
+  await setNative('[aria-label="选择要改名的标签"]', "复盘");
+  await setNative('[aria-label="标签的新名字"]', "每周复盘");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"重命名这个标签\"]').click();return true})()");
+  await check("document.body.innerText.includes('已把「复盘」改成「每周复盘」')", '重命名有回执并说明改了哪一对');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.includes('复盘'))})()", '旧标签没有了');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.tags.includes('每周复盘')).length===2})()", '两篇都换成了新标签');
+
 
 
 
@@ -523,6 +545,9 @@ try {
   await b('click', '[aria-label="下一页"]');
   await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 2 / 2 页')", '能翻到第二页');
   await check("document.querySelectorAll('.nv-audit > .nv-audit-list > li').length === 5", '第二页是剩下的 5 条');
+  // 分类页签同样要先进视口：列表头多了几个控件之后，页签被推到 y > 760 的位置，
+  // 真实点击会落在视口外（`.click()` 能生效但用户点不到，两者不是一回事）。
+  await b('scrollintoview', '[aria-label="只看失效的 10 处"]');
   await b('click', '[aria-label="只看失效的 10 处"]');
   await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 1 / 2 页')", '切到失效分类后回到第 1 页');
   await check("document.querySelector('.nv-audit-tab-on')?.textContent === '失效 10'", '失效分类被选中');

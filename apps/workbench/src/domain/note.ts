@@ -364,6 +364,45 @@ export function removeTagsFromNotes(
   return { state: { ...state, notes }, changed, missing, removed: tags };
 }
 
+/**
+ * 重命名一个标签（B03 的收尾）。
+ *
+ * 为什么值得单独做：标签是手打的，错一个字就得逐篇打开改；攒到几十篇之后
+ * 「把 `工作` 都改成 `工作流`」成了不可能完成的手工活。
+ *
+ * 三条规则：
+ * - 只改标签数组，正文与修订号一个字符都不动（元数据变化不追加修订）；
+ * - **新名字在那一篇里已经存在时合并**，而不是留下两个同名标签（同一篇出现两遍，
+ *   计数与筛选都会偏）；
+ * - 没有任何一篇真的变了就不写。
+ */
+export function renameTag(
+  state: NotesState,
+  from: string,
+  to: string,
+  now = Date.now()
+): { state: NotesState; changed: string[]; merged: number; reason?: "invalid" | "unchanged" } {
+  const oldTag = from.trim().replace(/^#/, "").trim();
+  const newTag = parseTagInput(to)[0] ?? "";
+  if (!oldTag || !newTag) return { state, changed: [], merged: 0, reason: "invalid" };
+  if (oldTag === newTag) return { state, changed: [], merged: 0, reason: "unchanged" };
+  const changed: string[] = [];
+  let merged = 0;
+  const notes = state.notes.map((n) => {
+    if (!n.tags.includes(oldTag)) return n;
+    const hadNew = n.tags.includes(newTag);
+    // 合并算一次改动：原来有的那个新名字不会再追加一遍。
+    if (hadNew) merged += 1;
+    const next = hadNew
+      ? n.tags.filter((tag) => tag !== oldTag)
+      : n.tags.map((tag) => (tag === oldTag ? newTag : tag));
+    changed.push(n.id);
+    return { ...n, tags: next, updatedAt: now };
+  });
+  if (changed.length === 0) return { state, changed, merged, reason: "unchanged" };
+  return { state: { ...state, notes }, changed, merged };
+}
+
 export function createKnowledgeBase(
   state: NotesState,
   kb: Omit<KnowledgeBase, "createdAt" | "updatedAt">,
