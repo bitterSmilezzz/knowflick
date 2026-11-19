@@ -71,7 +71,7 @@ import { rescheduleTodoInBody, snoozeTodoInBody } from "../../domain/noteDueActi
 import { addIgnoredDue, pruneIgnoredDue, removeIgnoredDue, splitIgnoredDue } from "../../domain/dueIgnore";
 import { attachmentKindOf } from "../../domain/attachmentKind";
 import { insertAttachmentRef } from "../../domain/noteAttachmentInsert";
-import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow } from "../../domain/tableOps";
+import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow, setTableCell, tableCellAt } from "../../domain/tableOps";
 import { parseInk, type InkDocument } from "../../domain/ink";
 import {
   NOTE_TEMPLATES,
@@ -151,6 +151,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
   const [batchNotebook, setBatchNotebook] = useState("");
   const [batchTags, setBatchTags] = useState("");
+  const [tableCellValue, setTableCellValue] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   // 待办清单从正文现算：正文是唯一真相，待办状态跟着保存、跟着备份、跟着导出。
@@ -564,6 +565,23 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       target.focus();
       target.setSelectionRange(next.start, next.end);
     });
+  };
+
+  /**
+   * 改光标所在单元格的文字（B01）。
+   *
+   * 输入框的值来自 `tableCellAt`（预填当前内容），改完写回那一格；
+   * 分隔行不能改——如实说明原因，而不是静默不动。
+   */
+  const editTableCell = () => {
+    const selection = currentSelection();
+    const cell = tableCellAt(selection);
+    if (!cell) {
+      setViewError("光标不在表格的某个格子里（分隔行不能编辑）。");
+      return;
+    }
+    setViewError("");
+    applyBlock(setTableCell(selection, tableCellValue));
   };
 
   /**
@@ -1900,6 +1918,40 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               <button type="button" className="nv-format" aria-label="在左边插一列" title="在光标所在列左边插一列" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("colLeft")}>+列←</button>
               <button type="button" className="nv-format" aria-label="在右边插一列" title="在光标所在列右边插一列" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("colRight")}>+列→</button>
               <button type="button" className="nv-format" aria-label="删除这一列" title="删除光标所在列（至少保留一列）" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("colDelete")}>-列</button>
+              {/* 单元格编辑：预填当前内容，改完写回那一格；分隔行不能改。 */}
+              <input
+                className="nv-block-input"
+                aria-label="单元格内容"
+                placeholder="单元格内容"
+                value={tableCellValue}
+                onChange={(e) => setTableCellValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") editTableCell(); }}
+              />
+              <button
+                type="button"
+                className="nv-format"
+                aria-label="把光标所在格子改成这个内容"
+                title="改光标所在格子（分隔行不能改）"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editTableCell()}
+              >
+                改格子
+              </button>
+              <button
+                type="button"
+                className="nv-format"
+                aria-label="读入光标所在格子的内容"
+                title="把光标所在格子的当前内容填进输入框"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  const cell = tableCellAt(currentSelection());
+                  if (!cell) { setViewError("光标不在表格的某个格子里（分隔行不能编辑）。"); return; }
+                  setViewError("");
+                  setTableCellValue(cell.value);
+                }}
+              >
+                读格子
+              </button>
               <input
                 className="nv-block-input"
                 aria-label="链接网址"

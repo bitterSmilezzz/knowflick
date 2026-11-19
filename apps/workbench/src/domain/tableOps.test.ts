@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow } from "./tableOps";
+import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow, setTableCell, tableCellAt } from "./tableOps";
 
 const TABLE = ["前文", "", "| 甲 | 乙 | 丙 |", "| --- | --- | --- |", "| 1 | 2 | 3 |", "| 4 | 5 | 6 |", "", "后文"].join("\n");
 
@@ -96,3 +96,49 @@ describe("表格行列增删（B01）", () => {
     expect(lines[2].split("|").length).toBe(5);
   });
 });
+
+describe("改单元格文字（B01）", () => {
+  it("只改那一个格子，同行其它格子不动", () => {
+    const out = setTableCell(caret(4, 1), "已发布");
+    const lines = out.text.split("\n");
+    expect(lines[4]).toBe("| 1 | 已发布 | 3 |");
+    expect(lines[2]).toBe("| 甲 | 乙 | 丙 |");
+  });
+
+  it("表头可以改：列名写错了要能修", () => {
+    const out = setTableCell(caret(2, 0), "项目名");
+    expect(out.text.split("\n")[2]).toBe("| 项目名 | 乙 | 丙 |");
+  });
+
+  it("分隔行不能改：那一行的横线是表格的骨架", () => {
+    const at = caret(3, 0);
+    expect(setTableCell(at, "乱写").text).toBe(at.text);
+    expect(tableCellAt(at)).toBeNull();
+  });
+
+  it("内容里的竖线会被转义，否则整行错位", () => {
+    const out = setTableCell(caret(4, 0), "甲|乙");
+    const line = out.text.split("\n")[4];
+    // 仍然是三列：竖线被转义成 \|，没有变成新的列分隔符。
+    expect(line).toBe("| 甲\\|乙 | 2 | 3 |");
+    expect(cellsOfLine(line).length).toBe(3);
+  });
+
+  it("换行被压成空格：单元格里不能有换行", () => {
+    const out = setTableCell(caret(4, 0), "第一行\n第二行");
+    expect(out.text.split("\n")[4]).toBe("| 第一行 第二行 | 2 | 3 |");
+  });
+
+  it("读出当前格子的文字，并说明是不是表头", () => {
+    expect(tableCellAt(caret(4, 1))).toEqual({ value: "2", header: false });
+    expect(tableCellAt(caret(2, 0))).toEqual({ value: "甲", header: true });
+    // 不在表格里
+    expect(tableCellAt({ text: "普通段落", start: 0, end: 0 })).toBeNull();
+  });
+});
+
+/** 按行拆单元格，用来验证转义之后列数没变。 */
+function cellsOfLine(line: string): string[] {
+  // 先把转义的竖线换成占位符，再按竖线拆——与实现同一个思路。
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").replace(/\\\|/g, "\u0000").split("|").map((c) => c.replace(/\u0000/g, "|").trim());
+}

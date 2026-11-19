@@ -448,6 +448,23 @@ try {
   await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(0,0);return true})()");
   await b("eval", "(()=>{document.querySelector('[aria-label=\"在下面插一行\"]').click();return true})()");
   await check("document.body.innerText.includes('光标不在表格里')", '光标不在表格里时如实说没找到表格');
+  // 17c. 改单元格（B01）：预填当前内容 → 改成新文字 → 只有那一格变。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| 状态 |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"读入光标所在格子的内容\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 300));
+  const cellPrefill = await ev("document.querySelector('[aria-label=\"单元格内容\"]')?.value ?? ''");
+  await check(`${JSON.stringify(cellPrefill)} === '状态'`, '读格子把当前内容填进输入框');
+  await setNative('[aria-label="单元格内容"]', "进展");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"把光标所在格子改成这个内容\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  const afterCell = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterCell)}.includes('| 进展 |')`, '表头那一格改成了新文字');
+  await check(`${JSON.stringify(afterCell)}.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===3)`, '改格子后列数没变');
+  // 分隔行不能改：如实说明原因，而不是静默不动。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| --- |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"把光标所在格子改成这个内容\"]').click();return true})()");
+  await check("document.body.innerText.includes('分隔行不能编辑')", '分隔行不能编辑时如实说明');
+
 
   await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '\\n官网在这里');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
   await new Promise((res) => setTimeout(res, 700));

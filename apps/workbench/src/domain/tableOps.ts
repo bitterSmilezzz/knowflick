@@ -196,3 +196,46 @@ export function deleteTableColumn(state: TextSelection): TextSelection {
   const nextColumn = Math.min(removeAt, table.columns - 2);
   return caretAt(text, table.cursorLine, Math.max(0, nextColumn));
 }
+
+/**
+ * 改某个单元格的文字（B01）。
+ *
+ * 为什么需要它：现在能整行整列增删，却不能改一个格子里的字——用户只能删掉整行重打。
+ *
+ * 三条口径：
+ * - **表头可以改**（列名写错了要能修），但**分隔行不能改**：那一行的横线是表格的骨架；
+ * - 改的只是那一个格子，同行其它格子一个字符都不动；
+ * - 内容里的 `|` 必须转义成 `\|`：不转义的话它会变成新的列分隔符，整行立刻错位。
+ */
+export function setTableCell(
+  state: TextSelection,
+  value: string,
+): TextSelection {
+  const table = findTableAt(state.text, state.start);
+  if (!table) return state;
+  if (isDividerLine(state.text.split(/\r?\n/)[table.cursorLine] ?? "")) return state;
+  const lines = state.text.split(/\r?\n/);
+  const cells = cellsOf(lines[table.cursorLine]);
+  // 竖线进单元格会变成新的列分隔符——转义掉，否则整行错位。
+  const safe = value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
+  while (cells.length < table.columns) cells.push("");
+  cells[table.cursorColumn] = safe;
+  lines[table.cursorLine] = lineOf(cells.slice(0, table.columns));
+  const text = lines.join("\n");
+  return caretAt(text, table.cursorLine, table.cursorColumn);
+}
+
+/**
+ * 读出光标所在单元格的当前文字（给输入框预填）。
+ *
+ * 不在表格里、或在分隔行上，都返回 null——调用方据此如实说「这里不能编辑」。
+ */
+export function tableCellAt(state: TextSelection): { value: string; header: boolean } | null {
+  const table = findTableAt(state.text, state.start);
+  if (!table) return null;
+  const line = state.text.split(/\r?\n/)[table.cursorLine] ?? "";
+  if (isDividerLine(line)) return null;
+  const cells = cellsOf(line);
+  const value = (cells[table.cursorColumn] ?? "").replace(/\\\|/g, "|");
+  return { value, header: table.cursorLine === table.startLine };
+}
