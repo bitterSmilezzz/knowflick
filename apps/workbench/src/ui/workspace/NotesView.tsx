@@ -71,6 +71,7 @@ import { rescheduleTodoInBody, snoozeTodoInBody } from "../../domain/noteDueActi
 import { addIgnoredDue, pruneIgnoredDue, removeIgnoredDue, splitIgnoredDue } from "../../domain/dueIgnore";
 import { attachmentKindOf } from "../../domain/attachmentKind";
 import { insertAttachmentRef } from "../../domain/noteAttachmentInsert";
+import { canRedo, canUndo, emptyHistory, recordEdit, redoEdit, undoEdit, type EditHistory } from "../../domain/editHistory";
 import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow, setTableCell, setTableColumnAlign, tableCellAt } from "../../domain/tableOps";
 import { parseInk, type InkDocument } from "../../domain/ink";
 import {
@@ -460,12 +461,50 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     }
   }, [createNote]);
 
-  const onEdit = (nextTitle: string, nextBody: string) => {
+  /**
+   * 正文的撤销/重做栈（B01）。
+   *
+   * 为什么要自己做：**浏览器原生撤销在受控 textarea 上不可靠**——React 每次把 value 写回，
+   * 原生 undo 栈会与它打架，用户按 Ctrl+Z 有时撤销了、有时什么都没发生。
+   * 自己维护一份历史：行为稳定，也能断言。
+   */
+  const [editHistory, setEditHistory] = useState<EditHistory>(emptyHistory());
+  const historyRef = useRef<EditHistory>(emptyHistory());
+  /**
+   * 正文改动的**唯一入口**。
+   *
+   * 所有编辑动作（打字、加粗、插表格、改待办…）都走这里，所以历史只需要在这一处记。
+   * `skipHistory` 给撤销/重做自己用——它们不该再往历史里记一笔。
+   */
+  const onEdit = (nextTitle: string, nextBody: string, options?: { skipHistory?: boolean }) => {
     const s = currentSession();
     if (!s) return;
+    if (!options?.skipHistory && (nextTitle !== title || nextBody !== body)) {
+      const next = recordEdit(historyRef.current, { body, title });
+      historyRef.current = next;
+      setEditHistory(next);
+    }
     setTitle(nextTitle);
     setBody(nextBody);
     s.edit(nextTitle, nextBody);
+  };
+
+  /** 撤销一步：把历史里的上一版写回（不记历史）。 */
+  const undoEditStep = () => {
+    const out = undoEdit(historyRef.current, { body, title });
+    if (!out) return;
+    historyRef.current = out.history;
+    setEditHistory(out.history);
+    onEdit(out.snapshot.title, out.snapshot.body, { skipHistory: true });
+  };
+
+  /** 重做一步：与撤销对称。 */
+  const redoEditStep = () => {
+    const out = redoEdit(historyRef.current, { body, title });
+    if (!out) return;
+    historyRef.current = out.history;
+    setEditHistory(out.history);
+    onEdit(out.snapshot.title, out.snapshot.body, { skipHistory: true });
   };
 
   const del = useDeleteConfirm(async (target: string) => {
@@ -2003,6 +2042,19 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               onChange={(e) => onEdit(title, e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") e.currentTarget.blur();
+                // Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 或 Ctrl+Y 重做。
+                // 自己接管而不是交给浏览器：受控 textarea 上的原生 undo 与 React 写回会打架。
+                if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+                  e.preventDefault();
+                  if (e.shiftKey) redoEditStep();
+                  else undoEditStep();
+                  return;
+                }
+                if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
+                  e.preventDefault();
+                  redoEditStep();
+                  return;
+                }
                 // Ctrl/Cmd+F：打开正文查找（不用再去浏览器搜索里绕一圈）。
                 if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
                   e.preventDefault();
@@ -2016,6 +2068,31 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               return (
                 <p className="nv-count" aria-label="正文字数">
                   {`字数 ${c.chars} · 段落 ${c.paragraphs}`}
+                  {/* 撤销/重做入口：键盘可用，但看得见才有人知道能用。 */}
+                  {canUndo(editHistory) ? (
+                    <button
+                      type="button"
+                      className="nv-undo-replace"
+                      aria-label="撤销正文改动"
+                      title="撤销（Ctrl/Cmd+Z）"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => undoEditStep()}
+                    >
+                      撤销
+                    </button>
+                  ) : null}
+                  {canRedo(editHistory) ? (
+                    <button
+                      type="button"
+                      className="nv-undo-replace"
+                      aria-label="重做正文改动"
+                      title="重做（Ctrl/Cmd+Shift+Z）"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => redoEditStep()}
+                    >
+                      重做
+                    </button>
+                  ) : null}
                 </p>
               );
             })()}

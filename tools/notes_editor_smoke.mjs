@@ -723,6 +723,23 @@ try {
 
   await setNative('.nv-body', '恢复正文。');
 
+  // 28. 正文撤销/重做（B01）：受控 textarea 上原生 undo 会与 React 打架，所以自己做。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(ta.value.length, ta.value.length);return true})()");
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '撤销测试甲');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 900));
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '撤销测试乙');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 900));
+  await check("document.querySelector('[aria-label=\"撤销正文改动\"]') !== null", '改动之后出现撤销入口');
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 900));
+  const afterUndoBody = await ev("document.querySelector('.nv-body').value");
+  await check(`!${JSON.stringify(afterUndoBody)}.includes('撤销测试乙')`, 'Ctrl+Z 撤销掉最后一次改动');
+  await check("document.querySelector('[aria-label=\"重做正文改动\"]') !== null", '撤销之后出现重做入口');
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"重做正文改动\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 900));
+  const afterRedoBody = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterRedoBody)}.includes('撤销测试乙')`, '重做把那次改动找回来');
+
   console.log('Notes editor smoke: ' + count + ' checks passed.');
 } finally {
   await b("close").catch(() => {});
