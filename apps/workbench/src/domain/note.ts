@@ -334,6 +334,36 @@ export function addTagsToNotes(
   return { state: { ...state, notes }, tagged, missing, added: tags };
 }
 
+/**
+ * 批量去掉笔记上的标签（B03 的收尾）。
+ *
+ * 与加标签对称：仍然只动元数据、不追加修订；仍然「没有任何一篇真的变了就不写」。
+ * 匹配用**完全相等**而不是包含关系：去掉「工作」不该把「工作流」一起删掉。
+ */
+export function removeTagsFromNotes(
+  state: NotesState,
+  ids: readonly string[],
+  rawTags: string,
+  now = Date.now()
+): { state: NotesState; changed: string[]; missing: string[]; removed: string[] } {
+  const tags = parseTagInput(rawTags);
+  const wanted = new Set(ids);
+  const changed: string[] = [];
+  const missing: string[] = [];
+  for (const id of wanted) {
+    if (!state.notes.some((n) => n.id === id)) missing.push(id);
+  }
+  if (tags.length === 0) return { state, changed, missing, removed: [] };
+  const notes = state.notes.map((n) => {
+    if (!wanted.has(n.id)) return n;
+    const kept = n.tags.filter((tag) => !tags.includes(tag));
+    if (kept.length === n.tags.length) return n;
+    changed.push(n.id);
+    return { ...n, tags: kept, updatedAt: now };
+  });
+  return { state: { ...state, notes }, changed, missing, removed: tags };
+}
+
 export function createKnowledgeBase(
   state: NotesState,
   kb: Omit<KnowledgeBase, "createdAt" | "updatedAt">,

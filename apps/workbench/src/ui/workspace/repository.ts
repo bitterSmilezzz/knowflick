@@ -40,6 +40,7 @@ import { parseImportReport, serializeImportReport, type ImportReport } from "../
 import {
   NoteConflictError,
   addTagsToNotes,
+  removeTagsFromNotes,
   addNoteToKb as domainAddToKb,
   createKnowledgeBase as domainCreateKb,
   deleteNote as domainDeleteNote,
@@ -459,6 +460,31 @@ export async function duplicateNoteById(id: string, dir: string): Promise<Note> 
  * 与批量移动对称：元数据变化、不追加修订；桌面端逐篇 upsert（base = 当前修订），
  * 浏览器端一次写回。返回值带上「真的打了几篇」与「几篇没找到」，界面才能如实说。
  */
+/**
+ * 批量去掉标签（B03）。与加标签完全对称：元数据变化、不追加修订、没有真变化就不写。
+ */
+export async function removeTagsFromNotesById(
+  ids: readonly string[],
+  rawTags: string,
+  dir: string
+): Promise<{ changed: number; missing: number; removed: string[] }> {
+  const now = Date.now();
+  if (inShell()) {
+    const state = await readNotes(dir);
+    const plan = removeTagsFromNotes(state, ids, rawTags, now);
+    for (const id of plan.changed) {
+      const note = plan.state.notes.find((n) => n.id === id);
+      if (!note) continue;
+      await noteUpsert(notePayload(note), note.currentRevision, dir);
+    }
+    return { changed: plan.changed.length, missing: plan.missing.length, removed: plan.removed };
+  }
+  const state = browserNotes();
+  const plan = removeTagsFromNotes(state, ids, rawTags, now);
+  if (plan.changed.length > 0) browserNotesWrite(plan.state);
+  return { changed: plan.changed.length, missing: plan.missing.length, removed: plan.removed };
+}
+
 export async function addTagsToNotesById(
   ids: readonly string[],
   rawTags: string,

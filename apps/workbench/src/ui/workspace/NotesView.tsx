@@ -11,6 +11,7 @@ import {
   bulkUndoInNotes,
   writeNoteBodies,
   addTagsToNotesById,
+  removeTagsFromNotesById,
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
@@ -840,6 +841,30 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
    * 一篇都没有新增标签时如实说「没有变化」，而不是笼统的「已完成」——
    * 用户打的标签本来就都在，他该知道这一点。
    */
+  /**
+   * 批量去掉标签（B03）。与加标签对称：只动元数据，一篇都没变就如实说没有改动。
+   */
+  const untagSelected = async () => {
+    if (batchIds.size === 0) return;
+    const count = batchIds.size;
+    setViewError("");
+    try {
+      const result = await removeTagsFromNotesById([...batchIds], batchTags, dirRef.current);
+      await refresh();
+      setBatchIds(new Set());
+      setBatchTags("");
+      if (result.changed === 0) {
+        setViewNotice(`这 ${count} 篇里没有可去掉的标签，没有改动。`);
+        return;
+      }
+      const list = result.removed.length ? `（${result.removed.join("、")}）` : "";
+      const tail = result.missing ? `，另有 ${result.missing} 篇没找到` : "";
+      setViewNotice(`已从 ${result.changed} 篇去掉标签${list}${tail}`);
+    } catch (e) {
+      setViewError(`批量去标签失败：${String(e)}`);
+    }
+  };
+
   const tagSelected = async () => {
     if (batchIds.size === 0) return;
     // 先取总数：下面 `setBatchIds` 之后这个闭包里的 size 仍是旧值，读它容易写错。
@@ -1356,12 +1381,20 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             <input
               className="nv-batch-notebook"
               aria-label="批量加标签"
+              list="nv-batch-tags"
               placeholder="加标签，逗号分隔"
               value={batchTags}
               onChange={(e) => setBatchTags(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void tagSelected(); }}
             />
             <button type="button" className="ws-bordered" aria-label="给选中的笔记加标签" onClick={() => void tagSelected()}>加标签</button>
+            <button type="button" className="ws-bordered" aria-label="去掉选中的笔记上的标签" onClick={() => void untagSelected()}>去标签</button>
+            {/* 已有的标签做成候选：用户不必记住拼写，「工作」和「工作流」也就不会写错。 */}
+            <datalist id="nv-batch-tags">
+              {tagOptions.map((t) => (
+                <option key={t.tag} value={t.tag} />
+              ))}
+            </datalist>
             <button type="button" className="ws-bordered" aria-label="导出选中为合集" onClick={() => void exportSelected()}>导出合集</button>
             <button type="button" className="ws-bordered" onClick={() => setBatchIds(new Set())}>取消</button>
           </div>

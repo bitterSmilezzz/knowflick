@@ -212,6 +212,28 @@ try {
   await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='加标签').click();return true})()");
   await check("document.body.innerText.includes('没有需要新增的标签')", '全是已有标签时如实说没有变化');
 
+  // 8h. 批量去标签（B03）：与加标签对称，只动元数据。
+  // 候选列表跟着批量栏一起出现，所以先选中两篇再看它。
+  // 注意：表达式里不能出现字面量 `#`（会打断 shell），所以用属性选择器而不是 `#id`。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await check("document.querySelector('[id=\"nv-batch-tags\"]') !== null", '标签输入带已有标签候选');
+  await check("(()=>{const d=document.querySelector('[id=\"nv-batch-tags\"]');return [...d.options].some(o=>o.value==='复盘')})()", '候选里包含刚打上的标签');
+  await setNative('[aria-label="批量加标签"]', "工作");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='去标签').click();return true})()");
+  await check("document.body.innerText.includes('已从 2 篇去掉标签')", '批量去标签有回执并说明几篇');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.includes('工作'))})()", '两篇都不再有「工作」');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.tags.includes('复盘')).length===2})()", '「复盘」没被一起删掉');
+  // 再来一次：已经没有「工作」→ 如实说没有改动。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await setNative('[aria-label="批量加标签"]', "工作");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='去标签').click();return true})()");
+  await check("document.body.innerText.includes('没有可去掉的标签')", '没有可去的标签时如实说没有改动');
+
+
 
   // 8f. 查找替换与字数（B01）：找得到、跳得到、改得掉。
   await check("document.querySelector('[aria-label=\"正文字数\"]')?.textContent.includes('字数')", "正文下方显示字数");
