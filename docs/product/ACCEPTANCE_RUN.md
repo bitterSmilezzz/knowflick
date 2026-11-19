@@ -334,7 +334,8 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 | `c82338e` 上的 Windows 腿 | **失败（同一处）** | 注解：`failed to run custom build command for whisper-rs-sys v0.15.0` → `CMake Error at ggml/CMakeLists.txt:2 (project):` → `-- Configuring incomplete, errors occurred!` → `cmake-0.1.58` 的 `fail()` panic。与本轮改动（TS/CSS/冒烟）无关。 |
 | 上一轮的注解改进生效了 | 已证实 | 此前只能看到 panic 尾巴与空行；这次直接读到 `CMake Error at ggml/CMakeLists.txt:2 (project)`。**改进的正是「知道挂了但不知道为什么挂」这一点**。 |
 | 本轮再改进一次 | 已落地 | 仍缺「具体原因」（`project()` 那行下面才是 `No CMAKE_C_COMPILER could be found.` 之类）。关键行改为**每条带后两行上下文**，条数从 6 降到 3 以免挤掉尾部。本地用假日志验证：现在会连 `No CMAKE_C_COMPILER could be found.` 一起出现在注解里。 |
-| 仍未做 | 待办 | 没有对 Windows 腿做任何「修」的改动（上一轮加 `actions-setup-cmake` 是错的，已回退）。下次失败时会直接读到根因行，再决定怎么修。 |
+| 仍未做 | 待办 | 没有对 Windows 腿做任何「修」的改动（上一轮加 `actions-setup-cmake` 是错的，已回退）。 |
+| 结论（同轮修正） | **抖动，非缺陷** | 注解改进提交 `91cfd1a` 触发的复跑：**12 项全绿、无失败**——同一份 Rust 代码，Windows 腿通过。与 `f6c1546` 那次一致：这条腿会在 Windows runner 上偶发 cmake 配置失败。**根因仍未查明**；现在失败时注解会直接给出具体原因行，下次可据此定位。 |
 
 ## 2026-11-19 中午：Windows 打包腿的 cmake 失败（未决）
 
