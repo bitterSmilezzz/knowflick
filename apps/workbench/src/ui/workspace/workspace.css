@@ -2926,6 +2926,12 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-import-input { display: none; }
 /* 标签筛选：与笔记本筛选同一行样式。 */
 .nv-tag-filter { font-size: 12px; margin: 4px 0 2px; }
+/* 到期提醒：逾期用危险色，今天用普通强调色；只在真有事时出现。 */
+.nv-due { font-size: 12px; margin: 2px 0 6px; }
+.nv-due-count { color: var(--ink); font-weight: 600; }
+.nv-due-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.nv-due-overdue { color: var(--danger); }
+.nv-due-today { color: var(--accent-text); }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }

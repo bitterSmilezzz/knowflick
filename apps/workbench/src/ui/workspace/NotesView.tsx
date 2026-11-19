@@ -51,6 +51,7 @@ import { noteFromMarkdown } from "../../domain/noteImport";
 import { collectNoteTags, filterByTag } from "../../domain/noteTags";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
+import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
 import {
   NOTE_TEMPLATES,
   findNoteTemplate,
@@ -190,6 +191,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const activeNotes = useMemo(() => listNotes(state), [state]);
   // 待办（B10）从正文现算：正文是唯一真相，不另存一份勾选状态。
   const todos = useMemo(() => parseNoteTodos(body), [body]);
+  // 到期概览（B10）：日期写在正文里，这里只算「逾期/今天」并列出最近几件。
+  const due = useMemo(() => dueSummary(body), [body]);
+  const dueItems = useMemo(() => todosWithDue(todos).slice(0, 5), [todos]);
   const todoCount = useMemo(() => countNoteTodos(todos), [todos]);
   // 勾选一条待办：只改那一行，其余正文不动。
   const toggleTodo = (line: number) => {
@@ -1273,6 +1277,27 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               <p className="nv-count" aria-label="待办进度">
                 {`待办 ${todoCount.done} / ${todoCount.total} 已完成`}
               </p>
+            ) : null}
+            {due.overdue > 0 || due.today > 0 ? (
+                <div className="nv-due" aria-label="到期提醒">
+                  <span className="nv-due-count">
+                    {[
+                      due.overdue > 0 ? `逾期 ${due.overdue} 件` : "",
+                      due.today > 0 ? `今天到期 ${due.today} 件` : "",
+                    ].filter(Boolean).join(" · ")}
+                  </span>
+                  <ul className="nv-due-list">
+                    {dueItems.map((item) => {
+                      const state = dueStateOf(item.due);
+                      if (state === "upcoming") return null;
+                      return (
+                        <li key={`${item.todo.line}-${item.due}`} className={`nv-due-item nv-due-${state}`}>
+                          {`${state === "overdue" ? "逾期" : "今天"} · ${todoTextWithoutDue(item.todo.text)} · ${item.due}`}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
             ) : null}
             <div className="nv-insert-row" aria-label="引用其它笔记">
               <span className="nv-kbs-label">引用：</span>

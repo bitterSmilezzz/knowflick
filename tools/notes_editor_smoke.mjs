@@ -295,6 +295,19 @@ try {
   await check(`${JSON.stringify(filteredTitles)}.length >= 1`, "按标签筛选后仍能看到打了该标签的笔记");
   await b("eval", "(()=>{const sel=document.querySelector('.nv-tag-filter');sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
 
+  // 14. 截止日期（B10）：正文里写 `📅 2020-01-01` 就是逾期，界面要报出来。
+  await b("eval", `(() => {
+    const ta = document.querySelector('.nv-body');
+    const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    set.call(ta, ta.value + '\\n\\n- [ ] 逾期那件事 📅 2020-01-01');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((res) => setTimeout(res, 1200));
+  await check("document.querySelector('.nv-due') !== null", "有逾期待办时出现到期提醒");
+  await check("document.querySelector('.nv-due-count').textContent.includes('逾期 1 件')", "到期提醒里写明逾期件数");
+  await check("document.querySelector('.nv-due-list').textContent.includes('逾期那件事')", "到期提醒里列出是哪一件");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});
