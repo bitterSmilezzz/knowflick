@@ -61,6 +61,7 @@ import {
   type NotesState,
 } from "../../domain/note";
 import { cardFromJson, type KnowledgeCard } from "../../domain/card";
+import { combineNotesForExport, exportBundleFileName } from "../../domain/noteExport";
 import type { Goal } from "../../shell/store";
 import { encodeSettings, parseSettings, type SettingsFile } from "../../domain/settings";
 
@@ -472,6 +473,36 @@ export function noteExportFileName(note: Note): string {
  * 桌面端走原生保存对话框 + `write_text_file`；浏览器体验用下载（同样落成 .md 文件）。
  * 返回实际写到的位置或文件名，取消则返回 null——界面据此决定是否说「已导出」。
  */
+/**
+ * 批量导出为一份 Markdown 合集（B02）。
+ *
+ * 与单篇导出同一套落盘方式：桌面端走原生保存对话框，浏览器体验用下载。
+ * 返回实际写到的位置或文件名，取消则返回 null。
+ */
+export async function exportNotesBundle(
+  notes: readonly Note[],
+  title = "笔记合集",
+): Promise<string | null> {
+  const markdown = combineNotesForExport(notes, title);
+  const fileName = exportBundleFileName(title);
+  if (inShell()) {
+    const dest = await pickMarkdownSavePath(fileName);
+    if (!dest) return null;
+    await writeTextFile(dest, markdown);
+    return dest;
+  }
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return fileName;
+}
+
 export async function exportNoteMarkdown(note: Note): Promise<string | null> {
   const markdown = noteToMarkdown(note);
   const fileName = noteExportFileName(note);

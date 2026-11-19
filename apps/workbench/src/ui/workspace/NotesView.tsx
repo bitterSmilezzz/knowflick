@@ -6,6 +6,7 @@ import {
   deleteNoteById,
   duplicateNoteById,
   exportNoteMarkdown,
+  exportNotesBundle,
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
@@ -607,6 +608,18 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   };
 
 /** 批量移动：只改笔记本，不追加修订；结果如实说清移动了几篇、几篇没找到。 */
+  /** 批量导出为一份 Markdown 合集（B02）：顺序就是列表当前顺序。 */
+  const exportSelected = async () => {
+    const picked = visible.filter((n) => batchIds.has(n.id));
+    if (picked.length === 0) return;
+    try {
+      const where = await exportNotesBundle(picked);
+      if (where) setViewNotice(`已导出一份合集（${picked.length} 篇）`);
+    } catch (e) {
+      setViewError(`导出合集失败：${String(e)}`);
+    }
+  };
+
   const moveSelected = async () => {
     if (batchIds.size === 0) return;
     setViewError("");
@@ -1048,6 +1061,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               onKeyDown={(e) => { if (e.key === "Enter") void moveSelected(); }}
             />
             <button type="button" className="ws-primary" onClick={() => void moveSelected()}>移动</button>
+            <button type="button" className="ws-bordered" aria-label="导出选中为合集" onClick={() => void exportSelected()}>导出合集</button>
             <button type="button" className="ws-bordered" onClick={() => setBatchIds(new Set())}>取消</button>
           </div>
         ) : null}

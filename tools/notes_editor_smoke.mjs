@@ -348,7 +348,26 @@ try {
   await new Promise((res) => setTimeout(res, 700));
   await check("document.querySelector('.nv-body').value.includes('[官网在这里](https://example.com)')", "选中的文字变成了链接");
 
-  console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);
+  // 18. 批量导出合集（B02）：选中两篇 → 导出 → 截获下载的 Markdown，确认是合集而不是单篇。
+  await setNative('[aria-label="搜索笔记"]', "");
+  await new Promise((res) => setTimeout(res, 300));
+  // 截获下载内容：浏览器里导出走 Blob 下载，这里把 createObjectURL 包一层读文本。
+  await b("eval", "(()=>{window.__kfBundle=null;const orig=URL.createObjectURL.bind(URL);URL.createObjectURL=(blob)=>{blob.text().then((t)=>{window.__kfBundle=t});return orig(blob)};return true})()");
+  // 两篇都用 Ctrl+点击选上：普通点击会先清空选择（并打开那篇），拿不到「已选 2 篇」。
+  await b("eval", "(()=>{const rows=[...document.querySelectorAll('.nv-entry')];if(rows.length<2)return false;rows[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 250));
+  await b("eval", "(()=>{const rows=[...document.querySelectorAll('.nv-entry')];if(rows.length<2)return false;rows[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 400));
+  const batchCount = await ev("document.querySelector('.nv-batch-bar')?.textContent ?? ''");
+  await check(`${JSON.stringify(batchCount)}.includes('已选 2 篇')`, "按住 Ctrl 点第二篇后选中两篇");
+  const clicked = await ev("(()=>{const btn=[...document.querySelectorAll('.nv-batch-bar button')].find((b)=>b.getAttribute('aria-label')==='导出选中为合集');if(!btn)return false;btn.click();return true})()");
+  await check(`${clicked} === true`, "批量栏里有「导出合集」按钮");
+  await new Promise((res) => setTimeout(res, 800));
+  const bundle = await ev("window.__kfBundle");
+  await check(`${JSON.stringify(bundle)}.includes('# 笔记合集')`, "导出的是一份合集（有总标题）");
+  await check(`${JSON.stringify(bundle)}.split('## ').length >= 3`, "合集里至少两篇笔记各一个二级标题");
+
+  console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});
 }
