@@ -68,6 +68,10 @@ if [ "$SCOPE" != rust ]; then
     env -u NO_PROXY -u no_proxy \
     HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 \
       cargo test --locked --lib http::tests
+  # 跨端回环判定对照：Rust 桌面壳与 TypeScript 前端必须给出同一答案。
+  # 回环判定散落三处、各写一套字符串比较，迟早漂；ADR-0002 §3 要求同一份
+  # settings.json 在两端行为相同。安卓那侧由它的镜像用例保证。
+  node tools/check_loopback_parity.mjs
   fi
 
   if [ "$SCOPE" != rust ]; then
@@ -109,10 +113,6 @@ if [ "$SCOPE" != rust ]; then
   # 此前每类来源各有一套冒烟，但没有一套覆盖全部来源——这条线是拼起来的，不是验过的。
   node tools/source_matrix_smoke.mjs
 
-  # 跨端回环判定对照：Rust 桌面壳与 TypeScript 前端必须给出同一答案。
-  # 回环判定散落三处、各写一套字符串比较，迟早漂；ADR-0002 §3 要求同一份
-  # settings.json 在两端行为相同。安卓那侧由它的镜像用例保证。
-  node tools/check_loopback_parity.mjs
 
   # 文档一致性：描述「当前状态」的文档里的数字与命令要和实际相符。
   # （Rust 那项只提示不报错——三端测试数量因 #[cfg(target_os)] 平台门而不同。）
