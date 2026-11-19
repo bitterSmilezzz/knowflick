@@ -639,6 +639,20 @@ try {
   await b("eval", "(()=>{document.querySelector('[aria-label=\"恢复提醒 忽略我试试\"]').click();return true})()");
   await check("document.body.innerText.includes('已恢复提醒：忽略我试试')", '撤销忽略有回执');
   await check("document.querySelector('[aria-label=\"忽略 忽略我试试\"]') !== null", '恢复后重新出现在待办列表里');
+
+  // 27. 按截止日期排序（B10）：越早到期越靠前，没截止日的排最后。
+  // 造两篇：一篇早到期、一篇晚到期，再切排序看谁在前。
+  await setNative('.nv-body', '- [ ] 早的 📅 2020-03-03');
+  await new Promise((r) => setTimeout(r, 900));
+  await b("eval", "(()=>{const s=document.querySelector('[aria-label=\"排序方式\"]');const set=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set;set.call(s,'due');s.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 600));
+  const sortValue = await ev("document.querySelector('[aria-label=\"排序方式\"]')?.value ?? ''");
+  await check(`${JSON.stringify(sortValue)} === 'due'`, '排序方式能切到「截止日期」');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.some(n=>n.bodyMd.includes('2020-03-03'))})()", '早到期那篇的截止日写进了正文');
+  // 切回默认，免得影响后续段落。
+  await b("eval", "(()=>{const s=document.querySelector('[aria-label=\"排序方式\"]');const set=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set;set.call(s,'recent');s.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await setNative('.nv-body', '恢复正文。');
+
   await setNative('.nv-body', '恢复正文。');
 
   console.log('Notes editor smoke: ' + count + ' checks passed.');
