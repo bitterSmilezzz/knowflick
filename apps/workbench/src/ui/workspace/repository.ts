@@ -498,6 +498,20 @@ export async function bulkUndoInNotes(
   notes: readonly Note[],
   dir: string,
 ): Promise<{ saved: number; failed: number }> {
+  return writeNoteBodies(plans, notes, dir);
+}
+
+/**
+ * 按 id 批量写正文：批量替换、撤销替换、到期待办的就地处理都走这一条。
+ *
+ * 为什么合并成一个：这三处要的语义完全一样——「拿当前修订号写回某几篇的正文，
+ * 单篇失败不打断其余」。各写一份只会让「修订号怎么传」「失败怎么算」逐渐分叉。
+ */
+export async function writeNoteBodies(
+  plans: readonly { id: string; body: string }[],
+  notes: readonly Note[],
+  dir: string,
+): Promise<{ saved: number; failed: number }> {
   let saved = 0;
   let failed = 0;
   for (const plan of plans) {
@@ -513,24 +527,13 @@ export async function bulkUndoInNotes(
   return { saved, failed };
 }
 
+/** 跨笔记批量替换（B01）：每篇走正常保存路径，一篇一次修订。 */
 export async function bulkReplaceInNotes(
   hits: readonly { id: string; body: string }[],
   notes: readonly Note[],
   dir: string,
 ): Promise<{ saved: number; failed: number }> {
-  let saved = 0;
-  let failed = 0;
-  for (const hit of hits) {
-    const note = notes.find((n) => n.id === hit.id);
-    if (!note) { failed += 1; continue; }
-    try {
-      await saveNote({ ...note, bodyMd: hit.body }, note.currentRevision, dir);
-      saved += 1;
-    } catch {
-      failed += 1;
-    }
-  }
-  return { saved, failed };
+  return writeNoteBodies(hits, notes, dir);
 }
 
 export async function exportNotesBundle(

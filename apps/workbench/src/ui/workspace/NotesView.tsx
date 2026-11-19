@@ -9,6 +9,7 @@ import {
   exportNotesBundle,
   bulkReplaceInNotes,
   bulkUndoInNotes,
+  writeNoteBodies,
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
@@ -58,7 +59,8 @@ import { bulkReplaceTotals, planBulkReplace, type BulkReplaceHit } from "../../d
 import { bulkUndoTotals, planBulkUndo } from "../../domain/noteBulkUndo";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
-import { collectDueTodos } from "../../domain/dueInbox";
+import { collectDueTodos, type DueTodoItem } from "../../domain/dueInbox";
+import { snoozeTodoInBody } from "../../domain/noteDueAction";
 import {
   NOTE_TEMPLATES,
   findNoteTemplate,
@@ -703,6 +705,51 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     }
   };
 
+  /**
+   * 到期待办的就地处理（B10）：完成、推迟三天，都**写回正文那一行**。
+   *
+   * 两条写入路径各用其所：这篇正开着就走编辑会话（会话里有未保存的输入，直接写盘会被覆盖），
+   * 没开着就走批量写正文——与批量替换同一条路，一篇一次修订。
+   */
+  const applyDueAction = async (item: DueTodoItem, action: "done" | "snooze") => {
+    const note = state.notes.find((n) => n.id === item.noteId);
+    if (!note) {
+      setViewError("这篇笔记已经不在列表里了。");
+      return;
+    }
+    const out = action === "done"
+      ? toggleNoteTodo(note.bodyMd, item.line)
+      : snoozeTodoInBody(note.bodyMd, item.line, 3);
+    if (!out.changed) {
+      setViewError("这一行已经变了，刷新后再试。");
+      return;
+    }
+    setViewError("");
+    try {
+      const session = sessionsRef.current.get(note.id);
+      if (session && selectedIdRef.current === note.id) {
+        // 这篇正开着：走 onEdit——它同时更新会话与编辑器里的正文。
+        // 只调 session.edit 不动 React 状态的话，库已经改了、屏幕上还是旧日期，
+        // 用户会以为没生效（冒烟当场抓到过）。
+        onEdit(title, out.body);
+        await session.flush();
+      } else if (session) {
+        // 在后台开着（不是当前这篇）：只写会话，不碰编辑器状态。
+        session.edit(note.title, out.body);
+        await session.flush();
+      } else {
+        await writeNoteBodies([{ id: note.id, body: out.body }], state.notes, dirRef.current);
+      }
+      await refresh();
+      const where = action === "done"
+        ? `已完成：${item.text}`
+        : `已推迟到 ${"due" in out && out.due ? out.due : "三天后"}：${item.text}`;
+      setViewNotice(where);
+    } catch (e) {
+      setViewError(`处理待办失败：${String(e)}`);
+    }
+  };
+
   const moveSelected = async () => {
     if (batchIds.size === 0) return;
     setViewError("");
@@ -1058,6 +1105,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             const target = state.notes.find((n) => n.id === noteId);
             if (target) openNote(target);
           }}
+          onDone={(item) => void applyDueAction(item, "done")}
+          onSnooze={(item) => void applyDueAction(item, "snooze")}
         />
         <ReferenceAuditPanel
           issues={auditIssues}

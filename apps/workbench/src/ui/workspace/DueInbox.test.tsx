@@ -22,6 +22,28 @@ describe("DueInbox", () => {
     expect(html).not.toContain("下个月");
   });
 
+  it("给了 onDone / onSnooze 才出现就地动作，点了把整条交出去", () => {
+    const onDone = vi.fn();
+    const onSnooze = vi.fn();
+    const withActions = renderToStaticMarkup(
+      <DueInbox items={[overdue]} onOpen={() => {}} onDone={onDone} onSnooze={onSnooze} />
+    );
+    expect(withActions).toContain("完成");
+    expect(withActions).toContain("推迟三天");
+    const withoutActions = renderToStaticMarkup(<DueInbox items={[overdue]} onOpen={() => {}} />);
+    expect(withoutActions).not.toContain("推迟三天");
+    const tree = DueInbox({ items: [overdue], onOpen: () => {}, onDone, onSnooze }) as React.ReactElement;
+    const buttons = findAllClickable(tree);
+    const doneBtn = buttons.find((b) => (b.props as { children?: React.ReactNode }).children === "完成");
+    const snoozeBtn = buttons.find((b) => (b.props as { children?: React.ReactNode }).children === "推迟三天");
+    expect(doneBtn).toBeDefined();
+    expect(snoozeBtn).toBeDefined();
+    doneBtn!.props.onClick();
+    snoozeBtn!.props.onClick();
+    expect(onDone).toHaveBeenCalledWith(overdue);
+    expect(onSnooze).toHaveBeenCalledWith(overdue);
+  });
+
   it("点一条把笔记 id 交给调用方", () => {
     const onOpen = vi.fn();
     const tree = DueInbox({ items: [overdue], onOpen }) as React.ReactElement;
@@ -41,4 +63,14 @@ function findClickable(node: React.ReactElement | null): React.ReactElement<{ on
     if (hit) return hit;
   }
   return null;
+}
+
+function findAllClickable(node: React.ReactElement | null): React.ReactElement<{ onClick: () => void }>[] {
+  if (!node || typeof node !== "object") return [];
+  const props = node.props as { onClick?: () => void; children?: React.ReactNode };
+  const self = typeof props?.onClick === "function" ? [node as React.ReactElement<{ onClick: () => void }>] : [];
+  const kids = React.Children.toArray(props?.children).flatMap((child) =>
+    findAllClickable(child as React.ReactElement)
+  );
+  return [...self, ...kids];
 }

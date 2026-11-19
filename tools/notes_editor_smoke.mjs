@@ -315,6 +315,17 @@ try {
   const inboxOpened = await ev("(()=>{const b=document.querySelector('.nv-due-open');if(!b)return false;b.click();return true})()");
   await check(`${inboxOpened}`, "汇总里的事项可以点开");
 
+  // 15b. 就地处理（B10）：汇总里直接「推迟三天」，正文那一行的日期要往后走。
+  const dueBefore = await ev("document.querySelector('.nv-body')?.value.includes('📅 2020-01-01') ?? false");
+  await check(`${dueBefore}`, "处理前正文里还是原来的截止日期");
+  const snoozed = await ev("(()=>{const b=document.querySelector('[aria-label=\"推迟 逾期那件事\"]');if(!b)return false;b.click();return true})()");
+  await check(`${snoozed}`, "汇总里能直接推迟这条待办");
+  await new Promise((res) => setTimeout(res, 1200));
+  const dueAfter = await ev("document.querySelector('.nv-body')?.value ?? ''");
+  await check(`${JSON.stringify(dueAfter)}.includes('逾期那件事') && !${JSON.stringify(dueAfter)}.includes('📅 2020-01-01')`, "推迟后那一行的旧日期被换掉（正文是唯一真相）");
+  const newDue = await ev("(()=>{const m=(document.querySelector('.nv-body')?.value ?? '').match(/逾期那件事 📅 (\\d{4}-\\d{2}-\\d{2})/);return m?m[1]:''})()");
+  await check(`${JSON.stringify(newDue)}.length === 10`, "推迟后写回一个合法的日期");
+
   // 16. 搜索命中片段（R1）：搜一个只出现在正文中段的词，预览要高亮它。
   await b("eval", `(() => {
     const ta = document.querySelector('.nv-body');

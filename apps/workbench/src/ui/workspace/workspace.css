@@ -2920,6 +2920,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-bulk-replace-actions { display: flex; gap: 6px; }
 /* 撤销替换：跟在通知文字后面，同一行里是个小链接按钮。 */
 .nv-undo-replace { font-size: 12px; margin-left: 8px; padding: 0 4px; border: none; background: none; color: var(--accent-text); cursor: pointer; text-decoration: underline; }
+/* 到期待办的就地动作：完成 / 推迟，跟在事项后面，小而不抢眼。 */
+.nv-due-action { font-size: 12px; margin-left: 6px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); cursor: pointer; }
 .nv-format:hover { color: var(--accent-text); }
 /* 引用体检：折叠面板，标题一行说明有几处待复核，展开逐条看。 */
 .nv-audit { font-size: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
