@@ -2977,6 +2977,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .ws-md-table th, .ws-md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 .ws-md-table th { background: var(--sunken); font-weight: 600; }
 
+/* 到期待办里的日期输入：紧凑一点，跟按钮同一行。 */
+.nv-due-date { font-size: 12px; margin-left: 6px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); }
 /* 正文里的附件（B06）：三种附件分别呈现，别都当图片。 */
 /* 图片：限宽并保持比例——原图再大也不该把正文挤变形。 */
 .ws-md-image { max-width: 100%; height: auto; border-radius: 4px; }

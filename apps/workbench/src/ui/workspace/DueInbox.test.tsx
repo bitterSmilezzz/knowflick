@@ -44,6 +44,31 @@ describe("DueInbox", () => {
     expect(onSnooze).toHaveBeenCalledWith(overdue);
   });
 
+  it("给了 onReschedule 才出现日期输入，改了把日期交出去", () => {
+    const onReschedule = vi.fn();
+    const withInput = renderToStaticMarkup(
+      <DueInbox items={[overdue]} onOpen={() => {}} onReschedule={onReschedule} />
+    );
+    expect(withInput).toContain('type="date"');
+    // 预填当前截止日期：用户不用先猜原来写的是哪天
+    expect(withInput).toContain('value="2026-11-18"');
+    const without = renderToStaticMarkup(<DueInbox items={[overdue]} onOpen={() => {}} />);
+    expect(without).not.toContain('type="date"');
+    const tree = DueInbox({ items: [overdue], onOpen: () => {}, onReschedule }) as React.ReactElement;
+    const input = findInput(tree, '改 交周报 的截止日期');
+    expect(input).not.toBeNull();
+    input!.props.onChange({ target: { value: "2026-12-01" } });
+    expect(onReschedule).toHaveBeenCalledWith(overdue, "2026-12-01");
+  });
+
+  it("清空日期不触发改动：应用内不做「去掉截止日期」这件事", () => {
+    const onReschedule = vi.fn();
+    const tree = DueInbox({ items: [overdue], onOpen: () => {}, onReschedule }) as React.ReactElement;
+    const input = findInput(tree, '改 交周报 的截止日期');
+    input!.props.onChange({ target: { value: "" } });
+    expect(onReschedule).not.toHaveBeenCalled();
+  });
+
   it("点一条把笔记 id 交给调用方", () => {
     const onOpen = vi.fn();
     const tree = DueInbox({ items: [overdue], onOpen }) as React.ReactElement;
@@ -73,4 +98,18 @@ function findAllClickable(node: React.ReactElement | null): React.ReactElement<{
     findAllClickable(child as React.ReactElement)
   );
   return [...self, ...kids];
+}
+
+/** 按 aria-label 找 input 元素（日期输入不走 onClick，要单独收集）。 */
+function findInput(node: React.ReactElement | null, label: string): React.ReactElement<{ onChange: (e: { target: { value: string } }) => void }> | null {
+  if (!node || typeof node !== "object") return null;
+  const props = node.props as { "aria-label"?: string; onChange?: (e: { target: { value: string } }) => void; children?: React.ReactNode };
+  if (props?.["aria-label"] === label && typeof props.onChange === "function") {
+    return node as React.ReactElement<{ onChange: (e: { target: { value: string } }) => void }>;
+  }
+  for (const child of React.Children.toArray(props?.children)) {
+    const hit = findInput(child as React.ReactElement, label);
+    if (hit) return hit;
+  }
+  return null;
 }

@@ -526,6 +526,19 @@ try {
   await check(`${imgInPreview} === false`, '预览里没有把读不到的附件塞进 img 标签');
   await setNative('.nv-body', '恢复正文。');
 
+  // 25. 改到指定日期（B10）：汇总里的日期输入直接改正文那一行的 📅。
+  await setNative('.nv-body', '- [ ] 逾期那件事 📅 2020-01-01');
+  await check("document.querySelector('.nv-due-date') !== null", '到期汇总里有日期输入');
+  const dateShown = await ev("document.querySelector('.nv-due-date')?.value ?? ''");
+  await check(`${JSON.stringify(dateShown)} === '2020-01-01'`, '日期输入预填当前截止日');
+  // 原生 date input 同样要走原生 setter，否则 React 收不到 onChange。
+  await b('eval', "(()=>{const el=document.querySelector('.nv-due-date');const set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;set.call(el,'2026-12-01');el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 1200));
+  const rescheduled = await ev("document.querySelector('.nv-body')?.value ?? ''");
+  await check(`${JSON.stringify(rescheduled)}.includes('📅 2026-12-01')`, '正文那一行的截止日被改成指定日期');
+  await check(`${JSON.stringify(rescheduled)}.includes('逾期那件事')`, '只改日期，事项文字没丢');
+  await setNative('.nv-body', '恢复正文。');
+
   console.log('Notes editor smoke: ' + count + ' checks passed.');
 } finally {
   await b("close").catch(() => {});

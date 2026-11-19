@@ -6,16 +6,18 @@ import { dueTotals } from "../../domain/dueInbox";
  *
  * 这是**应用内**提醒，不是系统通知：打开工作台就能看见，不需要后台常驻与权限。
  *
- * 每条给了两个就地动作：完成、推迟三天。看到「逾期 5 件」时用户的第一念头通常就是这两个，
- * 让他点开那篇、翻到那一行、手动改——那才是真正的摩擦。
+ * 每条给了三个就地动作：完成、推迟三天、改到指定日期。看到「逾期 5 件」时用户的第一念头
+ * 通常就是这几个；让他点开那篇、翻到那一行、手动改——那才是真正的摩擦。
  */
-export function DueInbox({ items, onOpen, onDone, onSnooze }: {
+export function DueInbox({ items, onOpen, onDone, onSnooze, onReschedule }: {
   items: readonly DueTodoItem[];
   onOpen: (noteId: string) => void;
   /** 完成这一条；不传就只有查看。 */
   onDone?: (item: DueTodoItem) => void;
   /** 推迟三天；不传就只有查看。 */
   onSnooze?: (item: DueTodoItem) => void;
+  /** 改到指定日期（ISO `YYYY-MM-DD`）；不传就没有日期输入。 */
+  onReschedule?: (item: DueTodoItem, date: string) => void;
 }): React.ReactElement | null {
   const totals = dueTotals(items);
   // 将来的不占版面：那是计划，不是今天要处理的事。
@@ -60,6 +62,18 @@ export function DueInbox({ items, onOpen, onDone, onSnooze }: {
               >
                 推迟三天
               </button>
+            ) : null}
+            {onReschedule ? (
+              // 日期输入用原生 type="date"：系统日历、键盘输入、无障碍都现成，
+              // 自己造一个三段输入框只会做出更难用的东西。
+              <input
+                type="date"
+                className="nv-due-date"
+                aria-label={`改 ${item.text} 的截止日期`}
+                title="改到指定日期（直接写进正文那一行）"
+                value={item.due}
+                onChange={(e) => { if (e.target.value) onReschedule(item, e.target.value); }}
+              />
             ) : null}
           </li>
         ))}

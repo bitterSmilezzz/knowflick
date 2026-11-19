@@ -60,7 +60,7 @@ import { bulkUndoTotals, planBulkUndo } from "../../domain/noteBulkUndo";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
 import { collectDueTodos, type DueTodoItem } from "../../domain/dueInbox";
-import { snoozeTodoInBody } from "../../domain/noteDueAction";
+import { rescheduleTodoInBody, snoozeTodoInBody } from "../../domain/noteDueAction";
 import { attachmentKindOf } from "../../domain/attachmentKind";
 import { parseInk, type InkDocument } from "../../domain/ink";
 import {
@@ -755,6 +755,43 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     }
   };
 
+  /**
+   * 把某条待办改到指定日期（B10）：只改那一行的 `📅` 标记，其余不动。
+   *
+   * 写入路径与「完成 / 推迟」一致：正开着的走 onEdit，后台开着只写会话，
+   * 没开着走 writeNoteBodies——一篇一次修订。
+   */
+  const rescheduleDue = async (item: DueTodoItem, date: string) => {
+    const note = state.notes.find((n) => n.id === item.noteId);
+    if (!note) {
+      setViewError("这篇笔记已经不在列表里了。");
+      return;
+    }
+    const out = rescheduleTodoInBody(note.bodyMd, item.line, date);
+    if (!out.changed) {
+      // 静默失败最糟：用户以为改好了，清单里那条却不再出现。
+      setViewError(out.reason === "invalid" ? `${date} 不是有效日期，没改。` : "日期没变，没有改动。");
+      return;
+    }
+    setViewError("");
+    try {
+      const session = sessionsRef.current.get(note.id);
+      if (session && selectedIdRef.current === note.id) {
+        onEdit(title, out.body);
+        await session.flush();
+      } else if (session) {
+        session.edit(note.title, out.body);
+        await session.flush();
+      } else {
+        await writeNoteBodies([{ id: note.id, body: out.body }], state.notes, dirRef.current);
+      }
+      await refresh();
+      setViewNotice(`已改到 ${out.due}：${item.text}`);
+    } catch (e) {
+      setViewError(`改截止日期失败：${String(e)}`);
+    }
+  };
+
   const applyDueAction = async (item: DueTodoItem, action: "done" | "snooze") => {
     const note = state.notes.find((n) => n.id === item.noteId);
     if (!note) {
@@ -1177,6 +1214,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
           }}
           onDone={(item) => void applyDueAction(item, "done")}
           onSnooze={(item) => void applyDueAction(item, "snooze")}
+          onReschedule={(item, date) => void rescheduleDue(item, date)}
         />
         <ReferenceAuditControls
           key={dir}
