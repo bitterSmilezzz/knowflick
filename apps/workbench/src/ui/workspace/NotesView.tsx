@@ -48,6 +48,7 @@ import { findBacklinks } from "../../domain/noteBacklink";
 import { auditReferences, removeReferenceFromBody, type ReferenceIssue } from "../../domain/referenceAudit";
 import { NOTE_SORT_LABELS, sortNotes, type NoteSortMode } from "../../domain/noteSort";
 import { noteFromMarkdown } from "../../domain/noteImport";
+import { collectNoteTags, filterByTag } from "../../domain/noteTags";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import {
@@ -163,6 +164,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   // 排序只影响列表顺序，不动库里的内容；默认保持原来的「置顶 + 最近编辑」。
   const [sortMode, setSortMode] = useState<NoteSortMode>("recent");
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  // 标签筛选：与笔记本筛选并列，两个维度可以叠加。
+  const [tagFilter, setTagFilter] = useState("");
+  const tagOptions = useMemo(() => collectNoteTags(listNotes(state)), [state]);
 
   // 正文 textarea 的引用：查找定位要在这里设置选区。
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -207,10 +211,11 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
         : showArchived
           ? archivedList
           : activeNotes;
-    const filtered = notebookFilter ? base.filter((n) => n.notebook === notebookFilter) : base;
+    const byNotebook = notebookFilter ? base.filter((n) => n.notebook === notebookFilter) : base;
+    const filtered = tagFilter ? filterByTag(byNotebook, tagFilter) : byNotebook;
     // 排序在过滤之后：切换排序不会改变「有哪些笔记」，只改顺序。
     return sortMode === "recent" ? filtered : sortNotes(filtered, sortMode);
-  }, [state, listQuery, showTrash, showArchived, activeNotes, trashedNotes, archivedList, notebookFilter, sortMode]);
+  }, [state, listQuery, showTrash, showArchived, activeNotes, trashedNotes, archivedList, notebookFilter, sortMode, tagFilter]);
   const selected = state.notes.find((n) => n.id === selectedId) ?? null;
 
   const refresh = useCallback(async () => {
@@ -914,6 +919,19 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             onChange={(e) => setListQuery(e.target.value)}
           />
         </label>
+        {tagOptions.length > 0 ? (
+          <select
+            className="nv-tag-filter"
+            aria-label="按标签筛选"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+          >
+            <option value="">全部标签</option>
+            {tagOptions.map((t) => (
+              <option key={t.tag} value={t.tag}>{`#${t.tag}（${t.count}）`}</option>
+            ))}
+          </select>
+        ) : null}
         <label className="nv-sort">
           <span className="ws-hint">排序</span>
           <select

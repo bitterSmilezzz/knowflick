@@ -278,6 +278,23 @@ try {
   await check("document.querySelector('.nv-body').value.includes('## 小节')", "导入后正文保留原有结构");
   await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.some(n=>n.title==='导入的标题')", "导入的笔记会落库");
 
+  // 13. 标签筛选：给当前笔记打标签 → 标签筛选里出现它 → 选中后列表仍然有内容。
+  // 前面的段落可能把搜索框留在某个关键词上，先清空——否则筛选断言测的是搜索。
+  await setNative('[aria-label="搜索笔记"]', "");
+  await new Promise((res) => setTimeout(res, 300));
+  const tagSel = '[aria-label="笔记标签，逗号分隔"]';
+  const hasTagInput = await ev(`document.querySelector('${tagSel}') !== null`);
+  await check(`${hasTagInput}`, "编辑器里有标签输入框（标签筛选的前提）");
+  await setNative(tagSel, "冒烟标签");
+  await new Promise((res) => setTimeout(res, 900));
+  const tagOptionTexts = await ev("[...document.querySelectorAll('.nv-tag-filter option')].map(o=>o.textContent)");
+  await check(`${JSON.stringify(tagOptionTexts)}.some(t => t.includes('冒烟标签'))`, "新标签出现在标签筛选里");
+  await b("eval", "(()=>{const sel=document.querySelector('.nv-tag-filter');sel.value='冒烟标签';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 400));
+  const filteredTitles = await ev("[...document.querySelectorAll('.nv-entry-title')].map(e=>e.textContent)");
+  await check(`${JSON.stringify(filteredTitles)}.length >= 1`, "按标签筛选后仍能看到打了该标签的笔记");
+  await b("eval", "(()=>{const sel=document.querySelector('.nv-tag-filter');sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});

@@ -2924,6 +2924,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-sort select { font-size: 12px; }
 /* 导入按钮用的文件选择器：藏在按钮后面，不占版面。 */
 .nv-import-input { display: none; }
+/* 标签筛选：与笔记本筛选同一行样式。 */
+.nv-tag-filter { font-size: 12px; margin: 4px 0 2px; }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }
