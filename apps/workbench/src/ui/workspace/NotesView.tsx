@@ -70,6 +70,7 @@ import { collectDueTodos, type DueTodoItem } from "../../domain/dueInbox";
 import { rescheduleTodoInBody, snoozeTodoInBody } from "../../domain/noteDueAction";
 import { addIgnoredDue, pruneIgnoredDue, removeIgnoredDue, splitIgnoredDue } from "../../domain/dueIgnore";
 import { attachmentKindOf } from "../../domain/attachmentKind";
+import { insertAttachmentRef } from "../../domain/noteAttachmentInsert";
 import { parseInk, type InkDocument } from "../../domain/ink";
 import {
   NOTE_TEMPLATES,
@@ -1185,12 +1186,16 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     return [...fromNotes, ...fromMaterials].slice(0, 12);
   }, [state.notes, materials, refQuery, selectedId]);
 
+  /**
+   * 在光标处插入一条附件引用（B06）。
+   *
+   * 此前一律追加到正文末尾，且说明文字固定写「附件」——用户把光标放在某段后面想插图，
+   * 图却跑到最下面；读者与屏幕阅读器也只看到一堆「附件」。现在插在选区处、用素材标题当说明。
+   */
   const insertAttachment = (path: string) => {
     if (!currentSession()) return;
-    const anchor = body;
-    const insertAt = anchor.length; // 正文末尾追加（textarea 无 selection 暴露时最不惊讶）
-    const nextBody = `${anchor.slice(0, insertAt)}${anchor && !anchor.endsWith("\n") ? "\n\n" : ""}![附件](${path})\n`;
-    onEdit(title, nextBody);
+    const label = attachableMedia.find((m) => m.path === path)?.label ?? "附件";
+    applyBlock(insertAttachmentRef(currentSelection(), path, label));
   };
 
   /** 重新从仓储拉权威状态（外部更新 / 冲突处置后）。 */

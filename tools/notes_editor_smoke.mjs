@@ -648,6 +648,11 @@ try {
   await new Promise((r) => setTimeout(r, 600));
   const sortValue = await ev("document.querySelector('[aria-label=\"排序方式\"]')?.value ?? ''");
   await check(`${JSON.stringify(sortValue)} === 'due'`, '排序方式能切到「截止日期」');
+  // 浏览器体验没有可写的库目录，也就没有可插入的附件——入口应当整块不出现，
+  // 而不是留一个空下拉框让用户对着它猜。插在光标处与说明文字取标题这两件事
+  // 由领域测试守住（noteAttachmentInsert.test.ts）：浏览器里造不出真实附件。
+  await check("document.querySelector('[aria-label=\"插入附件引用\"]') === null", '没有附件时不显示插入入口');
+
   await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.some(n=>n.bodyMd.includes('2020-03-03'))})()", '早到期那篇的截止日写进了正文');
   // 切回默认，免得影响后续段落。
   await b("eval", "(()=>{const s=document.querySelector('[aria-label=\"排序方式\"]');const set=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set;set.call(s,'recent');s.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
