@@ -175,6 +175,15 @@ jobs:
       - name: 配置 Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # 不缓存的话，每次都要把整棵 tauri 依赖树从零编一遍（ubuntu 上实测十几分钟），
+      # 而 concurrency 的 cancel-in-progress 又常在它跑完前把这一轮取消——
+      # 结果就是这条门禁**长期看不到结论**：其余八项绿，它一直在跑，再来一次推送又被取消。
+      # 与 workbench-release.yml 同一份写法（同一个 action、同一个 workspaces）。
+      - name: 缓存 Rust 构建
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/workbench/src-tauri -> target
+
       - name: npm ci
         run: npm ci
 
