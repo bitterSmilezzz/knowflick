@@ -18,6 +18,14 @@ describe("跨笔记批量替换（B01）", () => {
     expect(bulkReplaceTotals(hits)).toEqual({ notes: 2, matches: 3 });
   });
 
+  it("每条命中带第一处的上下文，用户能核对搜的是不是这个词", () => {
+    const hits = planBulkReplace([{ id: "a", title: "甲", bodyMd: "前缀 知识库 后缀" }], "知识库", "库");
+    expect(hits[0].snippet).not.toBeNull();
+    expect(hits[0].snippet!.match).toBe("知识库");
+    expect(hits[0].snippet!.before).toContain("前缀");
+    expect(hits[0].snippet!.after).toContain("后缀");
+  });
+
   it("回收站里的笔记不参与替换", () => {
     const hits = planBulkReplace(notes, "知识库", "库");
     expect(hits.some((h) => h.id === "d")).toBe(false);

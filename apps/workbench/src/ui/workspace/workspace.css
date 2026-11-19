@@ -2910,6 +2910,14 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-format-row { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 4px; }
 .nv-format { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
 .nv-block-input { font-size: 12px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); min-width: 120px; }
+/* 批量替换预览：写库前先让用户过目，逐篇给出处数与第一处上下文。 */
+.nv-bulk-replace { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 6px 0; font-size: 12px; background: var(--surface); }
+.nv-bulk-replace-head { margin: 0 0 6px; color: var(--ink); }
+.nv-bulk-replace-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.nv-bulk-replace-title { color: var(--ink); font-weight: 600; margin-right: 6px; }
+.nv-bulk-replace-count { color: var(--muted); margin-right: 6px; }
+.nv-bulk-replace-snippet { color: var(--muted); }
+.nv-bulk-replace-actions { display: flex; gap: 6px; }
 .nv-format:hover { color: var(--accent-text); }
 /* 引用体检：折叠面板，标题一行说明有几处待复核，展开逐条看。 */
 .nv-audit { font-size: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }

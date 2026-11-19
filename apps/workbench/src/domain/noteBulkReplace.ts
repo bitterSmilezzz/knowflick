@@ -1,13 +1,14 @@
 /**
- * 跨笔记批量替换（B01 收尾）。
+ * 跨笔记批量替换（B01）。
  *
  * 单篇的查找替换早就有；改一个术语（「知识库」→「库」）要挨篇点开 20 次，是真实的痛点。
  *
- * 这里只做**规则**：哪些笔记要改、改成什么、改了几处。真正落库由调用方走正常的
- * 保存路径（每篇都是一次修订，可回退）——批量替换不该绕过修订历史。
+ * 这里只做**规则**：哪些笔记要改、改成什么、改了几处、第一处长什么样。
+ * 真正落库由调用方走正常保存路径（每篇一次修订，可回退）——批量替换不该绕过修订历史。
  */
 
 import { replaceAllMatches } from "./noteFind";
+import { snippetFor, type SearchSnippet } from "./noteSearchSnippet";
 
 export interface BulkReplaceNote {
   id: string;
@@ -22,6 +23,13 @@ export interface BulkReplaceHit {
   count: number;
   /** 改后的正文（调用方直接拿去保存）。 */
   body: string;
+  /**
+   * 第一处命中的上下文（改之前）。
+   *
+   * 为什么带它：只在确认框里说「改 12 篇 37 处」，用户没法判断是不是改对了——
+   * 看到「…知识库要建好…」才知道自己搜的确实是这个词。
+   */
+  snippet: SearchSnippet | null;
 }
 
 /**
@@ -42,7 +50,13 @@ export function planBulkReplace(
     if (note.isDeleted) continue;
     const out = replaceAllMatches(note.bodyMd, q, replacement);
     if (out.count === 0) continue;
-    hits.push({ id: note.id, title: note.title || "无标题笔记", count: out.count, body: out.text });
+    hits.push({
+      id: note.id,
+      title: note.title || "无标题笔记",
+      count: out.count,
+      body: out.text,
+      snippet: snippetFor(note.bodyMd, q),
+    });
   }
   return hits;
 }

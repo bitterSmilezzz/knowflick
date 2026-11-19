@@ -53,7 +53,7 @@ import { insertLink, insertTable, type TextSelection } from "../../domain/markdo
 import { noteFromMarkdown } from "../../domain/noteImport";
 import { collectNoteTags, filterByTag } from "../../domain/noteTags";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
-import { bulkReplaceTotals, planBulkReplace } from "../../domain/noteBulkReplace";
+import { bulkReplaceTotals, planBulkReplace, type BulkReplaceHit } from "../../domain/noteBulkReplace";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
 import { collectDueTodos } from "../../domain/dueInbox";
@@ -70,6 +70,7 @@ import { NoteBacklinks } from "./NoteBacklinks";
 import { ReferenceAuditPanel } from "./ReferenceAuditPanel";
 import { DueInbox } from "./DueInbox";
 import { NoteSearchPreview } from "./NoteSearchPreview";
+import { BulkReplacePreview } from "./BulkReplacePreview";
 
 /**
  * 笔记工作面（R1 首个纵向切片）——契约见 docs/NOTES_MODEL.md「界面契约」：
@@ -175,6 +176,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   // 表格列名与链接网址：插到正文里的两处输入。
   const [tableColumns, setTableColumns] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  // 批量替换的预览清单：非空时覆盖在编辑区上方，确认后才写库。
+  const [bulkPreview, setBulkPreview] = useState<{ hits: BulkReplaceHit[]; query: string } | null>(null);
   // 标签筛选：与笔记本筛选并列，两个维度可以叠加。
   const [tagFilter, setTagFilter] = useState("");
   const tagOptions = useMemo(() => collectNoteTags(listNotes(state)), [state]);
@@ -623,12 +626,12 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   };
 
   /**
-   * 跨笔记批量替换（B01）：把当前「查找 / 替换为」应用到全库。
+   * 跨笔记批量替换（B01）：先算，再把命中摊成清单让用户过目，确认后才写库。
    *
-   * 这是**不可撤销的批量写**，所以先算再确认：命中 0 篇就明说没改动，不弹确认；
-   * 有命中时用 `confirm` 说清「改 N 篇、共 M 处」，用户点掉就什么都不写。
+   * 为什么不直接用 `confirm`：确认框只有「改 12 篇 37 处」这一个数字，用户没法判断搜的是不是
+   * 自己想的那个词，也没机会在写库前逐篇看一眼。清单里每篇带第一处上下文与高亮。
    */
-  const replaceAcrossNotes = async () => {
+  const replaceAcrossNotes = () => {
     const q = findQuery.trim();
     if (!q) {
       setViewError("先在查找框里填要替换的词。");
@@ -639,10 +642,17 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewNotice(`没有笔记包含「${q}」，什么都没改。`);
       return;
     }
-    const totals = bulkReplaceTotals(hits);
-    if (!window.confirm(`将在 ${totals.notes} 篇笔记里替换 ${totals.matches} 处「${q}」。每篇都会生成一次修订，可以逐篇回退。继续？`)) return;
+    setBulkPreview({ hits, query: q });
+  };
+
+  /** 用户在清单里点了「确认替换」才真正写库。 */
+  const applyBulkReplace = async () => {
+    const pending = bulkPreview;
+    if (!pending) return;
+    setBulkPreview(null);
+    const totals = bulkReplaceTotals(pending.hits);
     try {
-      const result = await bulkReplaceInNotes(hits, state.notes, dirRef.current);
+      const result = await bulkReplaceInNotes(pending.hits, state.notes, dirRef.current);
       // 打开的这篇可能也被改了：重读库并让会话以新基线重开，避免编辑器里还是旧正文。
       sessionsRef.current.forEach((s) => s.disposeTimer());
       sessionsRef.current.clear();
@@ -1340,7 +1350,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                   className="ws-bordered"
                   aria-label="跨笔记全部替换"
                   title="把「查找 / 替换为」应用到所有笔记（每篇生成一次修订）"
-                  onClick={() => void replaceAcrossNotes()}
+                  onClick={() => replaceAcrossNotes()}
                 >
                   全部笔记
                 </button>
@@ -1349,6 +1359,12 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 </button>
               </div>
             ) : null}
+            <BulkReplacePreview
+              hits={bulkPreview?.hits ?? []}
+              query={bulkPreview?.query ?? ""}
+              onConfirm={() => void applyBulkReplace()}
+              onCancel={() => setBulkPreview(null)}
+            />
             <div className="nv-format-row" role="group" aria-label="正文格式">
               {MARKDOWN_ACTIONS.map((action) => (
                 <button
