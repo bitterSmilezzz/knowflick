@@ -479,6 +479,34 @@ export function noteExportFileName(note: Note): string {
  * 与单篇导出同一套落盘方式：桌面端走原生保存对话框，浏览器体验用下载。
  * 返回实际写到的位置或文件名，取消则返回 null。
  */
+/**
+ * 跨笔记批量替换（B01 收尾）。
+ *
+ * 每篇都走**正常保存路径**（`saveNote` 带当前修订号）：批量替换不是「一把梭写盘」，
+ * 而是一篇一次修订——用户能在修订历史里逐篇回退。
+ *
+ * 单篇失败不打断其余：结果里分 `saved` 与 `failed`，界面才能如实说「改了 N 篇，M 篇失败」。
+ */
+export async function bulkReplaceInNotes(
+  hits: readonly { id: string; body: string }[],
+  notes: readonly Note[],
+  dir: string,
+): Promise<{ saved: number; failed: number }> {
+  let saved = 0;
+  let failed = 0;
+  for (const hit of hits) {
+    const note = notes.find((n) => n.id === hit.id);
+    if (!note) { failed += 1; continue; }
+    try {
+      await saveNote({ ...note, bodyMd: hit.body }, note.currentRevision, dir);
+      saved += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { saved, failed };
+}
+
 export async function exportNotesBundle(
   notes: readonly Note[],
   title = "笔记合集",

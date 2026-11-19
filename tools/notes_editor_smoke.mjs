@@ -367,6 +367,32 @@ try {
   await check(`${JSON.stringify(bundle)}.includes('# 笔记合集')`, "导出的是一份合集（有总标题）");
   await check(`${JSON.stringify(bundle)}.split('## ').length >= 3`, "合集里至少两篇笔记各一个二级标题");
 
+  // 19. 跨笔记批量替换（B01）：先给两篇都放一个独特词，再在全库把它替换掉。
+  // 浏览器里 window.confirm 会阻塞，先换成恒真，确认后再验结果。
+  await b("eval", "(()=>{window.__kfConfirms=[];window.confirm=(m)=>{window.__kfConfirms.push(m);return true};return true})()");
+  await setNative('[aria-label="搜索笔记"]', "");
+  await new Promise((res) => setTimeout(res, 300));
+  // 当前这篇写入独特词
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '\\n批量词甲');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 900));
+  // 另建一篇也写入同一个词
+  await b("eval", "(()=>{const btn=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('新建笔记'));if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 500));
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, '第二篇也有批量词甲');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 900));
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 300));
+  await setNative('[aria-label="查找正文"]', "批量词甲");
+  await setNative('[aria-label="替换为"]', "批量词乙");
+  await new Promise((res) => setTimeout(res, 200));
+  await b("eval", "(()=>{const btn=document.querySelector('[aria-label=\"跨笔记全部替换\"]');if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 1500));
+  const confirmMsg = await ev("window.__kfConfirms[0] ?? ''");
+  await check(`${JSON.stringify(confirmMsg)}.includes('篇笔记里替换')`, "批量替换前先确认，并说明改几篇几处");
+  const storedBodies = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.map(n=>n.bodyMd)");
+  await check(`${JSON.stringify(storedBodies)}.every((b)=>!b.includes('批量词甲'))`, "全库都不再有被替换的词");
+  await check(`${JSON.stringify(storedBodies)}.some((b)=>b.includes('批量词乙'))`, "全库出现了替换后的词");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});

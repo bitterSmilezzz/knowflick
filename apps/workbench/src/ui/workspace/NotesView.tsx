@@ -7,6 +7,7 @@ import {
   duplicateNoteById,
   exportNoteMarkdown,
   exportNotesBundle,
+  bulkReplaceInNotes,
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
@@ -52,6 +53,7 @@ import { insertLink, insertTable, type TextSelection } from "../../domain/markdo
 import { noteFromMarkdown } from "../../domain/noteImport";
 import { collectNoteTags, filterByTag } from "../../domain/noteTags";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
+import { bulkReplaceTotals, planBulkReplace } from "../../domain/noteBulkReplace";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
 import { collectDueTodos } from "../../domain/dueInbox";
@@ -617,6 +619,40 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       if (where) setViewNotice(`已导出一份合集（${picked.length} 篇）`);
     } catch (e) {
       setViewError(`导出合集失败：${String(e)}`);
+    }
+  };
+
+  /**
+   * 跨笔记批量替换（B01）：把当前「查找 / 替换为」应用到全库。
+   *
+   * 这是**不可撤销的批量写**，所以先算再确认：命中 0 篇就明说没改动，不弹确认；
+   * 有命中时用 `confirm` 说清「改 N 篇、共 M 处」，用户点掉就什么都不写。
+   */
+  const replaceAcrossNotes = async () => {
+    const q = findQuery.trim();
+    if (!q) {
+      setViewError("先在查找框里填要替换的词。");
+      return;
+    }
+    const hits = planBulkReplace(state.notes, q, replaceText);
+    if (hits.length === 0) {
+      setViewNotice(`没有笔记包含「${q}」，什么都没改。`);
+      return;
+    }
+    const totals = bulkReplaceTotals(hits);
+    if (!window.confirm(`将在 ${totals.notes} 篇笔记里替换 ${totals.matches} 处「${q}」。每篇都会生成一次修订，可以逐篇回退。继续？`)) return;
+    try {
+      const result = await bulkReplaceInNotes(hits, state.notes, dirRef.current);
+      // 打开的这篇可能也被改了：重读库并让会话以新基线重开，避免编辑器里还是旧正文。
+      sessionsRef.current.forEach((s) => s.disposeTimer());
+      sessionsRef.current.clear();
+      selectedIdRef.current = null;
+      setSelectedId(null);
+      await refresh();
+      const tail = result.failed > 0 ? `，${result.failed} 篇失败` : "";
+      setViewNotice(`已在 ${result.saved} 篇笔记里替换 ${totals.matches} 处${tail}`);
+    } catch (e) {
+      setViewError(`批量替换失败：${String(e)}`);
     }
   };
 
@@ -1299,6 +1335,15 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 />
                 <button type="button" className="ws-bordered" aria-label="替换当前" onClick={() => replaceOne()}>替换</button>
                 <button type="button" className="ws-bordered" aria-label="全部替换" onClick={() => replaceEvery()}>全部替换</button>
+                <button
+                  type="button"
+                  className="ws-bordered"
+                  aria-label="跨笔记全部替换"
+                  title="把「查找 / 替换为」应用到所有笔记（每篇生成一次修订）"
+                  onClick={() => void replaceAcrossNotes()}
+                >
+                  全部笔记
+                </button>
                 <button type="button" className="ws-icon-button" aria-label="关闭查找" onClick={() => setFindOpen(false)}>
                   <Icon name="close" size={12} />
                 </button>
