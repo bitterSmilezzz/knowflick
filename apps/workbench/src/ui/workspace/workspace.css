@@ -2937,6 +2937,8 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-due-inbox summary { cursor: pointer; color: var(--ink); }
 .nv-due-inbox-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .nv-due-open { font-size: 12px; padding: 0 4px; border: none; background: none; cursor: pointer; color: inherit; font-weight: 600; text-decoration: underline; }
+/* 搜索命中片段：命中词用强调底色，一眼看出为什么这篇被搜到。 */
+.nv-snippet-hit { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--ink); border-radius: 4px; padding: 0 2px; }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }

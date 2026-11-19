@@ -315,6 +315,22 @@ try {
   const inboxOpened = await ev("(()=>{const b=document.querySelector('.nv-due-open');if(!b)return false;b.click();return true})()");
   await check(`${inboxOpened}`, "汇总里的事项可以点开");
 
+  // 16. 搜索命中片段（R1）：搜一个只出现在正文中段的词，预览要高亮它。
+  await b("eval", `(() => {
+    const ta = document.querySelector('.nv-body');
+    const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    set.call(ta, ta.value + '\\n\\n中段里有个独特词：鲸落现象。');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((res) => setTimeout(res, 1200));
+  await setNative('[aria-label="搜索笔记"]', "鲸落");
+  await new Promise((res) => setTimeout(res, 500));
+  await check("document.querySelector('.nv-snippet-hit') !== null", "搜索命中时预览里出现高亮片段");
+  await check("document.querySelector('.nv-snippet-hit').textContent.includes('鲸落')", "高亮的就是搜的那个词");
+  await setNative('[aria-label="搜索笔记"]', "");
+  await new Promise((res) => setTimeout(res, 300));
+
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});

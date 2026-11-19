@@ -65,6 +65,7 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 import { NoteBacklinks } from "./NoteBacklinks";
 import { ReferenceAuditPanel } from "./ReferenceAuditPanel";
 import { DueInbox } from "./DueInbox";
+import { NoteSearchPreview } from "./NoteSearchPreview";
 
 /**
  * 笔记工作面（R1 首个纵向切片）——契约见 docs/NOTES_MODEL.md「界面契约」：
@@ -1038,7 +1039,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                     </span>
                     <span className="nv-entry-preview">
                       {n.tags.length ? <span className="nv-tags-line">{n.tags.map((tg) => `#${tg}`).join(" ")}</span> : null}
-                      {n.bodyMd.slice(0, 60) || "空笔记"}
+                      <NoteSearchPreview body={n.bodyMd} query={listQuery} />
                     </span>
                     <span className="nv-entry-meta">
                       {showTrash ? (
@@ -1076,7 +1077,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                   </span>
                   <span className="nv-entry-preview">
                     {n.tags.length ? <span className="nv-tags-line">{n.tags.map((tg) => `#${tg}`).join(" ")}</span> : null}
-                    {n.bodyMd.slice(0, 60) || "空笔记"}
+                    <NoteSearchPreview body={n.bodyMd} query={listQuery} />
                   </span>
                   <span className="nv-entry-meta">
                     {new Date(n.updatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
