@@ -331,7 +331,24 @@ try {
   await setNative('[aria-label="搜索笔记"]', "");
   await new Promise((res) => setTimeout(res, 300));
 
-  console.log(`Notes editor smoke: ${count} checks passed.`);
+  // 17. 表格与链接（B01）：插表格 → 正文里出现规范表格；插链接 → 选中文字变链接。
+  // 受控输入要用原生 setter 写值（直接 inp.value= 不会触发 React 的 onChange）。
+  await setNative('[aria-label="表格列名"]', "项目, 状态");
+  await new Promise((res) => setTimeout(res, 200));
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"插入表格\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  await check("document.querySelector('.nv-body').value.includes('| 项目 | 状态 |')", "表格骨架进了正文（表头与分隔行齐全）");
+  await check("document.querySelector('.nv-body').value.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===4)", "表格每行列数一致");
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '\\n官网在这里');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 700));
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();const at=ta.value.indexOf('官网在这里');ta.setSelectionRange(at, at+5);return true})()");
+  await setNative('[aria-label="链接网址"]', "https://example.com");
+  await new Promise((res) => setTimeout(res, 200));
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"插入链接\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  await check("document.querySelector('.nv-body').value.includes('[官网在这里](https://example.com)')", "选中的文字变成了链接");
+
+  console.log(`Notes editor smoke: ${count} checks passed.`);  console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});
 }

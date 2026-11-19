@@ -2909,6 +2909,7 @@ body.capsule-window { overflow: hidden; background: transparent; }
 /* 编辑动作条：贴着正文上方，点一下给选区加/去 Markdown 标记。 */
 .nv-format-row { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 4px; }
 .nv-format { font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; color: var(--ink); }
+.nv-block-input { font-size: 12px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); min-width: 120px; }
 .nv-format:hover { color: var(--accent-text); }
 /* 引用体检：折叠面板，标题一行说明有几处待复核，展开逐条看。 */
 .nv-audit { font-size: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
@@ -2937,6 +2938,11 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-due-inbox summary { cursor: pointer; color: var(--ink); }
 .nv-due-inbox-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .nv-due-open { font-size: 12px; padding: 0 4px; border: none; background: none; cursor: pointer; color: inherit; font-weight: 600; text-decoration: underline; }
+/* 正文里的表格：细边框、紧凑一点，别抢正文的读。 */
+.ws-md-table { border-collapse: collapse; margin: 6px 0; font-size: 13px; }
+.ws-md-table th, .ws-md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+.ws-md-table th { background: var(--sunken); font-weight: 600; }
+
 /* 搜索命中片段：命中词用强调底色，一眼看出为什么这篇被搜到。 */
 .nv-snippet-hit { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--ink); border-radius: 4px; padding: 0 2px; }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */

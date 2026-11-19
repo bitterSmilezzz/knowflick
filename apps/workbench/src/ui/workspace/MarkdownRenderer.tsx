@@ -202,7 +202,45 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenReference, onT
       continue;
     }
 
-    // 6. 普通段落
+    // 6. 表格：表头行 + 分隔行（`| --- |`）。列数不齐时按表头补齐——
+    // 少一列的单元格在渲染时会被丢掉，用户看不出自己漏填了。
+    if (/^\|.*\|\s*$/.test(trimmed) && i + 1 < lines.length && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1].trim())) {
+      const splitRow = (row: string) =>
+        row.trim().replace(/^\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+      const header = splitRow(trimmed);
+      const columns = header.length;
+      i += 2;
+      const bodyRows: string[][] = [];
+      while (i < lines.length && /^\|.*\|\s*$/.test(lines[i].trim())) {
+        const cells = splitRow(lines[i].trim());
+        while (cells.length < columns) cells.push("");
+        bodyRows.push(cells.slice(0, columns));
+        i++;
+      }
+      elements.push(
+        <table key={`table-${i}`} className="ws-md-table">
+          <thead>
+            <tr>
+              {header.map((cell, idx) => (
+                <th key={idx}>{renderInline(cell, resolveAttachment, onOpenReference)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bodyRows.map((row, ridx) => (
+              <tr key={ridx}>
+                {row.map((cell, cidx) => (
+                  <td key={cidx}>{renderInline(cell, resolveAttachment, onOpenReference)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+      continue;
+    }
+
+    // 7. 普通段落
     const paraLines: string[] = [];
     while (
       i < lines.length &&

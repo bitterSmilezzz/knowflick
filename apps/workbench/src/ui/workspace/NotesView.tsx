@@ -47,6 +47,7 @@ import { MARKDOWN_ACTIONS, applyMarkdownAction, type MarkdownAction } from "../.
 import { findBacklinks } from "../../domain/noteBacklink";
 import { auditReferences, removeReferenceFromBody, type ReferenceIssue } from "../../domain/referenceAudit";
 import { NOTE_SORT_LABELS, sortNotes, type NoteSortMode } from "../../domain/noteSort";
+import { insertLink, insertTable, type TextSelection } from "../../domain/markdownBlocks";
 import { noteFromMarkdown } from "../../domain/noteImport";
 import { collectNoteTags, filterByTag } from "../../domain/noteTags";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
@@ -168,6 +169,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   // 排序只影响列表顺序，不动库里的内容；默认保持原来的「置顶 + 最近编辑」。
   const [sortMode, setSortMode] = useState<NoteSortMode>("recent");
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  // 表格列名与链接网址：插到正文里的两处输入。
+  const [tableColumns, setTableColumns] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
   // 标签筛选：与笔记本筛选并列，两个维度可以叠加。
   const [tagFilter, setTagFilter] = useState("");
   const tagOptions = useMemo(() => collectNoteTags(listNotes(state)), [state]);
@@ -509,6 +513,46 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewError(`更新笔记属性失败：${String(e)}`);
     }
   };
+  /** 当前选区（textarea 没有就按光标在末尾）。 */
+  const currentSelection = (): TextSelection => {
+    const el = bodyRef.current;
+    const start = el?.selectionStart ?? body.length;
+    const end = el?.selectionEnd ?? start;
+    return { text: body, start, end };
+  };
+
+  /** 插入一段块内容（表格 / 链接）：改完照常自动保存，选区落在新内容上。 */
+  const applyBlock = (next: TextSelection) => {
+    if (next.text === body) return;
+    onEdit(title, next.text);
+    window.requestAnimationFrame(() => {
+      const target = bodyRef.current;
+      if (!target) return;
+      target.focus();
+      target.setSelectionRange(next.start, next.end);
+    });
+  };
+
+  /** 插入表格：列名用逗号分隔，至少两列。 */
+  const insertTableBlock = (columnsRaw: string) => {
+    const columns = columnsRaw.split(/[,，]/).map((c) => c.trim()).filter(Boolean);
+    if (columns.length < 2) {
+      setViewError("表格至少要两列——用逗号把列名分开。");
+      return;
+    }
+    applyBlock(insertTable(currentSelection(), columns));
+  };
+
+  /** 插入链接：URL 必填；文字用选区里的内容（没选中就用 URL）。 */
+  const insertLinkBlock = (url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      setViewError("链接要填网址。");
+      return;
+    }
+    applyBlock(insertLink(currentSelection(), trimmed));
+  };
+
   /** 编辑动作：按当前选区加/去 Markdown 标记，走同一条 onEdit 保存路径。 */
   const applyMarkdownButton = (action: MarkdownAction) => {
     const el = bodyRef.current;
@@ -1260,6 +1304,42 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                   {action.label}
                 </button>
               ))}
+            </div>
+            <div className="nv-format-row" role="group" aria-label="插入块">
+              <input
+                className="nv-block-input"
+                aria-label="表格列名"
+                placeholder="表格列名（逗号分隔）"
+                value={tableColumns}
+                onChange={(e) => setTableColumns(e.target.value)}
+              />
+              <button
+                type="button"
+                className="nv-format"
+                aria-label="插入表格"
+                title="插入表格骨架（列名用逗号分隔）"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => insertTableBlock(tableColumns)}
+              >
+                表格
+              </button>
+              <input
+                className="nv-block-input"
+                aria-label="链接网址"
+                placeholder="链接网址"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+              />
+              <button
+                type="button"
+                className="nv-format"
+                aria-label="插入链接"
+                title="把选中的文字变成链接（没选中就用网址当文字）"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => insertLinkBlock(linkUrl)}
+              >
+                链接
+              </button>
             </div>
             <textarea
               ref={bodyRef}
