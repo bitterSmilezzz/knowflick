@@ -206,6 +206,13 @@ jobs:
         with:
           workspaces: apps/workbench/src-tauri -> target
 
+      # 回环判定对照（tools/check_loopback_parity.mjs）要同时跑 Rust 与 TypeScript 两半：
+      # Rust 那半用 cargo，TypeScript 那半用**已安装的** vitest（node_modules/vitest/vitest.mjs）。
+      # 少这一步它会报「找不到 vitest 入口」——不是代码坏了，是依赖没装。
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
       - name: Rust 门禁
         run: ./tools/verify_workbench.sh rust
         working-directory: .
