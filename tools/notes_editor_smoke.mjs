@@ -457,6 +457,40 @@ try {
   await setNative('.nv-body', auditRefBody);
   await check("document.querySelector('.nv-audit > summary')?.textContent.includes('1 处待复核')", "同样的问题再次出现时重新提醒");
 
+  // 22. 引用体检的分类筛选与翻页（C05）：造 10 条失效 + 3 条过期，验筛选计数与翻页。
+  // 「过期」需要目标**存在**但指纹不符：用本篇自己的 id 配一个假指纹，才会判成 changed。
+  // （第一版把 13 条都指向不存在的笔记，结果全判成失效——筛选断言自然找不到「过期」标签。）
+  const selfId = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.find(n=>n.title==='体检冒烟笔记')?.id");
+  const manyRefs = [];
+  for (let i = 0; i < 10; i++) manyRefs.push(`> 《缺失原件${i}》：片段${i}\n> [回原件](knowflick://note/missing-${i})`);
+  for (let i = 0; i < 3; i++) manyRefs.push(`> 《改过原件${i}》：片段${i}\n> [回原件](knowflick://note/${selfId}?fp=stale${i})`);
+  await setNative('.nv-body', manyRefs.join('\n\n'));
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('13 处待复核')", '十三条问题都进清单');
+  await check("document.querySelector('.nv-audit-tabs')?.textContent.includes('全部 13')", '筛选按钮显示总条数');
+  await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 1 / 2 页')", '超过一页时显示翻页');
+  await check("document.querySelectorAll('.nv-audit > .nv-audit-list > li').length === 8", '第一页只渲染 8 条');
+  // 面板是折叠的 <details>：textContent 读得到隐藏内容，但**真实点击打不到**里面的按钮。
+  // 直接置 open 而不是点 summary——点 summary 是**切换**，之前已展开时再点会关掉，
+  // 那样断言又变成「点了没反应」。冒烟先后红过两次才定位到这里。
+  await b('eval', "(()=>{document.querySelector('.nv-audit').open=true;return true})()");
+  // 面板在列表上方，翻页按钮常在视口之外（实测 y≈964 > 760）：真实点击要先滚进来。
+  // 只置 open 还不够——`textContent` 能读到、`.click()` 也能生效，但**用户点不到**。
+  await b('scrollintoview', '[aria-label="下一页"]');
+  await b('click', '[aria-label="下一页"]');
+  await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 2 / 2 页')", '能翻到第二页');
+  await check("document.querySelectorAll('.nv-audit > .nv-audit-list > li').length === 5", '第二页是剩下的 5 条');
+  await b('click', '[aria-label="只看失效的 10 处"]');
+  await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 1 / 2 页')", '切到失效分类后回到第 1 页');
+  await check("document.querySelector('.nv-audit-tab-on')?.textContent === '失效 10'", '失效分类被选中');
+  const listed = await ev("[...document.querySelectorAll('.nv-audit > .nv-audit-list > li')].map(li=>li.textContent).join('|')");
+  await check(`${JSON.stringify(listed)}.includes('缺失原件') && !${JSON.stringify(listed)}.includes('改过原件')`, '失效分类里不混入过期条目');
+  await b('click', '[aria-label="只看过期的 3 处"]');
+  await check("document.querySelector('.nv-audit-pager') === null", '过期只有 3 条时不显示翻页');
+  await b('click', '[aria-label="只看全部的 13 处"]');
+  await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 1 / 2 页')", '切回全部仍从第 1 页开始');
+  // 收尾：把这批引用清掉，后面的断言不受影响。
+  await setNative('.nv-body', auditRefBody);
+
   console.log('Notes editor smoke: ' + count + ' checks passed.');
 } finally {
   await b("close").catch(() => {});

@@ -1,5 +1,6 @@
 import type { ReferenceIssue } from "../../domain/referenceAudit";
 import { issueKey } from "../../domain/referenceIgnore";
+import { auditCounts, auditPage, type AuditFilter } from "../../domain/referenceQueue";
 
 /**
  * 引用体检面板（C05）：把库里所有失效/过期引用摊在一处。
@@ -10,12 +11,32 @@ import { issueKey } from "../../domain/referenceIgnore";
  * 「忽略这条」与「删除这条引用」是**两件不同的事**，别混：
  * - 忽略 = 我知道，但我不打算动（本机界面决定，不改正文）；
  * - 删除 = 把正文里那两行真的删掉（走修订，可回退）。
+ *
+ * 筛选与分页由调用方持有（`filter` / `page`）：换筛选要回到第 1 页，这个决定属于持有者，
+ * 组件只按给定条件渲染——不然「点了筛选却停在空白页」这类问题会藏在组件内部。
  */
-export function ReferenceAuditPanel({ issues, ignored = [], onOpen, onRemove, onIgnore, onUnignore }: {
+export function ReferenceAuditPanel({
+  issues,
+  ignored = [],
+  filter = "all",
+  page = 1,
+  onFilter,
+  onPage,
+  onOpen,
+  onRemove,
+  onIgnore,
+  onUnignore,
+}: {
   /** 要处理的问题（已剔除忽略的）。 */
   issues: readonly ReferenceIssue[];
   /** 被忽略的问题：收在折叠区里，随时能撤销。 */
   ignored?: readonly ReferenceIssue[];
+  /** 当前分类筛选。 */
+  filter?: AuditFilter;
+  /** 当前页码（从 1 开始）。 */
+  page?: number;
+  onFilter?: (filter: AuditFilter) => void;
+  onPage?: (page: number) => void;
   onOpen: (noteId: string) => void;
   /** 就地删掉这条引用；不传就只有查看。 */
   onRemove?: (issue: ReferenceIssue) => void;
@@ -25,18 +46,41 @@ export function ReferenceAuditPanel({ issues, ignored = [], onOpen, onRemove, on
   onUnignore?: (issue: ReferenceIssue) => void;
 }): React.ReactElement | null {
   if (issues.length === 0 && ignored.length === 0) return null;
-  const missing = issues.filter((i) => i.status === "missing").length;
-  const changed = issues.length - missing;
-  const head = issues.length === 0
-    ? `引用体检：全部 ${ignored.length} 处已忽略`
-    : `引用体检：${issues.length} 处待复核（失效 ${missing} / 过期 ${changed}）`
-      + (ignored.length > 0 ? `，另有 ${ignored.length} 处已忽略` : "");
+  const counts = auditCounts(issues);
+  const view = auditPage(issues, filter, page);
+  const ignoredNote = ignored.length > 0 ? `，另有 ${ignored.length} 处已忽略` : "";
+  const head =
+    counts.all === 0
+      ? `引用体检：全部 ${ignored.length} 处已忽略`
+      : `引用体检：${counts.all} 处待复核（失效 ${counts.missing} / 过期 ${counts.changed}）${ignoredNote}`;
+  const tabs: { id: AuditFilter; label: string; count: number }[] = [
+    { id: "all", label: "全部", count: counts.all },
+    { id: "missing", label: "失效", count: counts.missing },
+    { id: "changed", label: "过期", count: counts.changed },
+  ];
   return (
     <details className="nv-audit" aria-label="引用体检">
       <summary>{head}</summary>
-      {issues.length > 0 ? (
+      {counts.all > 0 ? (
+        <div className="nv-audit-tabs" role="group" aria-label="按类别筛选">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={filter === tab.id ? "nv-audit-tab nv-audit-tab-on" : "nv-audit-tab"}
+              aria-pressed={filter === tab.id}
+              aria-label={`只看${tab.label}的 ${tab.count} 处`}
+              disabled={tab.count === 0 || !onFilter}
+              onClick={() => onFilter?.(tab.id)}
+            >
+              {`${tab.label} ${tab.count}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {view.items.length > 0 ? (
         <ul className="nv-audit-list">
-          {issues.map((issue) => (
+          {view.items.map((issue) => (
             <li key={issueKey(issue)}>
               <button
                 type="button"
@@ -76,6 +120,29 @@ export function ReferenceAuditPanel({ issues, ignored = [], onOpen, onRemove, on
             </li>
           ))}
         </ul>
+      ) : null}
+      {view.pageCount > 1 ? (
+        <div className="nv-audit-pager" role="group" aria-label="清单翻页">
+          <button
+            type="button"
+            className="nv-audit-page"
+            aria-label="上一页"
+            disabled={!view.hasPrev}
+            onClick={() => onPage?.(view.page - 1)}
+          >
+            上一页
+          </button>
+          <span className="nv-audit-pageinfo" aria-live="polite">{`第 ${view.page} / ${view.pageCount} 页 · 共 ${view.total} 处`}</span>
+          <button
+            type="button"
+            className="nv-audit-page"
+            aria-label="下一页"
+            disabled={!view.hasNext}
+            onClick={() => onPage?.(view.page + 1)}
+          >
+            下一页
+          </button>
+        </div>
       ) : null}
       {ignored.length > 0 ? (
         <details className="nv-audit-ignored" aria-label="已忽略的引用问题">

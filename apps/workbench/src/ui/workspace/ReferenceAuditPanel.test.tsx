@@ -92,25 +92,76 @@ describe("ReferenceAuditPanel", () => {
       issues: [{ noteId: "n-1", noteTitle: "甲", targetId: "x", targetTitle: "被删的", status: "missing" }],
       onOpen,
     }) as React.ReactElement;
-    const clickable = findClickable(tree);
-    expect(clickable).not.toBeNull();
-    clickable!.props.onClick();
+    // 按 aria-label 精确取「打开」——加筛选按钮之后，「第一个可点元素」已经不是它了，
+    // 用「第一个」会让这条测试在加任何按钮时无声地测到别的东西。
+    const open = findAllClickable(tree).find(
+      (el) => (el.props as { "aria-label"?: string })["aria-label"] === "打开 甲"
+    );
+    expect(open).toBeDefined();
+    open!.props.onClick();
     expect(onOpen).toHaveBeenCalledWith("n-1");
+  });
+
+  it("按类别筛选：按钮显示各类条数，点了把分类交给调用方", () => {
+    const onFilter = vi.fn();
+    const issues = [
+      { noteId: "a", noteTitle: "甲", targetId: "x", targetTitle: "没了", status: "missing" as const },
+      { noteId: "b", noteTitle: "乙", targetId: "y", targetTitle: "改过", status: "changed" as const },
+      { noteId: "c", noteTitle: "丙", targetId: "z", targetTitle: "又改过", status: "changed" as const },
+    ];
+    const html = renderToStaticMarkup(<ReferenceAuditPanel issues={issues} onOpen={() => {}} onFilter={onFilter} />);
+    expect(html).toContain("全部 3");
+    expect(html).toContain("失效 1");
+    expect(html).toContain("过期 2");
+    const tree = ReferenceAuditPanel({ issues, onOpen: () => {}, onFilter }) as React.ReactElement;
+    const changedTab = findAllClickable(tree).find(
+      (el) => (el.props as { "aria-label"?: string })["aria-label"] === "只看过期的 2 处"
+    );
+    expect(changedTab).toBeDefined();
+    changedTab!.props.onClick();
+    expect(onFilter).toHaveBeenCalledWith("changed");
+  });
+
+  it("筛选后只列该类的条目", () => {
+    const issues = [
+      { noteId: "a", noteTitle: "甲", targetId: "x", targetTitle: "没了", status: "missing" as const },
+      { noteId: "b", noteTitle: "乙", targetId: "y", targetTitle: "改过", status: "changed" as const },
+    ];
+    const html = renderToStaticMarkup(
+      <ReferenceAuditPanel issues={issues} filter="changed" onOpen={() => {}} onFilter={() => {}} />
+    );
+    expect(html).toContain("《乙》");
+    expect(html).not.toContain("《甲》");
+  });
+
+  it("超过一页时出现翻页，并说明第几页、共几处", () => {
+    const onPage = vi.fn();
+    const issues = Array.from({ length: 10 }, (_, i) => ({
+      noteId: `n${i}`,
+      noteTitle: `笔记${i}`,
+      targetId: `t${i}`,
+      targetTitle: `原件${i}`,
+      status: "missing" as const,
+    }));
+    const html = renderToStaticMarkup(<ReferenceAuditPanel issues={issues} onOpen={() => {}} onPage={onPage} />);
+    expect(html).toContain("第 1 / 2 页 · 共 10 处");
+    const tree = ReferenceAuditPanel({ issues, onOpen: () => {}, onPage }) as React.ReactElement;
+    const next = findAllClickable(tree).find(
+      (el) => (el.props as { "aria-label"?: string })["aria-label"] === "下一页"
+    );
+    expect(next).toBeDefined();
+    next!.props.onClick();
+    expect(onPage).toHaveBeenCalledWith(2);
+  });
+
+  it("只有一页时不显示翻页（没有可翻的东西就不占版面）", () => {
+    const issues = [{ noteId: "a", noteTitle: "甲", targetId: "x", targetTitle: "没了", status: "missing" as const }];
+    const html = renderToStaticMarkup(<ReferenceAuditPanel issues={issues} onOpen={() => {}} onPage={() => {}} />);
+    expect(html).not.toContain("下一页");
   });
 });
 
-function findClickable(node: React.ReactElement | null): React.ReactElement<{ onClick: () => void }> | null {
-  if (!node || typeof node !== "object") return null;
-  const props = node.props as { onClick?: () => void; children?: React.ReactNode };
-  if (typeof props?.onClick === "function") return node as React.ReactElement<{ onClick: () => void }>;
-  for (const child of React.Children.toArray(props?.children)) {
-    const hit = findClickable(child as React.ReactElement);
-    if (hit) return hit;
-  }
-  return null;
-}
-
-/** 收集所有带 onClick 的节点（用于区分「打开」与「删除」两个按钮）。 */
+/** 收集所有带 onClick 的节点：按 aria-label 精确定位，避免「第一个可点元素」随新增按钮漂移。 */
 function findAllClickable(node: React.ReactElement | null): React.ReactElement<{ onClick: () => void }>[] {
   if (!node || typeof node !== "object") return [];
   const props = node.props as { onClick?: () => void; children?: React.ReactNode };

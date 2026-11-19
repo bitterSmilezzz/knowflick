@@ -2925,6 +2925,16 @@ body.capsule-window { overflow: hidden; background: transparent; }
 /* 引用体检的「忽略」：与「删除这条引用」并排但更轻——它不改正文，只是收起。 */
 .nv-audit-ignore { font-size: 12px; margin-left: 6px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--muted); cursor: pointer; }
 .nv-audit-ignored { margin-top: 6px; }
+/* 分类筛选：三个小标签，当前分类反色。数字在标签里，用户不用先点才知道有几条。 */
+.nv-audit-tabs { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.nv-audit-tab { font-size: 12px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.nv-audit-tab-on { background: var(--ink); color: var(--surface); }
+.nv-audit-tab:disabled { color: var(--muted); cursor: default; }
+/* 翻页：只在超过一页时出现，中间那行说明当前第几页、共几处。 */
+.nv-audit-pager { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.nv-audit-page { font-size: 12px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.nv-audit-page:disabled { color: var(--muted); cursor: default; }
+.nv-audit-pageinfo { color: var(--muted); }
 .nv-format:hover { color: var(--accent-text); }
 /* 引用体检：折叠面板，标题一行说明有几处待复核，展开逐条看。 */
 .nv-audit { font-size: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }

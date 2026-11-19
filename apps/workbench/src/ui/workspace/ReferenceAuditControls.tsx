@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReferenceIssue } from "../../domain/referenceAudit";
 import { addIgnored, issueKey, pruneIgnored, removeIgnored, splitIgnored } from "../../domain/referenceIgnore";
+import type { AuditFilter } from "../../domain/referenceQueue";
 import { readIgnoredRefs, writeIgnoredRefs } from "./repository";
 import { ReferenceAuditPanel } from "./ReferenceAuditPanel";
 
@@ -15,6 +16,8 @@ export function ReferenceAuditControls({ issues, scope, ready, onOpen, onRemove,
   onNotice: (message: string) => void;
 }) {
   const [ignoredRefs, setIgnoredRefs] = useState(() => readIgnoredRefs(scope));
+  const [filter, setFilter] = useState<AuditFilter>("all");
+  const [page, setPage] = useState(1);
   const split = useMemo(() => splitIgnored(issues, ignoredRefs), [issues, ignoredRefs]);
 
   useEffect(() => {
@@ -34,6 +37,14 @@ export function ReferenceAuditControls({ issues, scope, ready, onOpen, onRemove,
     <ReferenceAuditPanel
       issues={split.active}
       ignored={split.ignored}
+      filter={filter}
+      page={page}
+      onFilter={(next) => {
+        // 换分类必须回到第 1 页：停在第 3 页再切到只有 5 条的分类会看到一片空白。
+        setFilter(next);
+        setPage(1);
+      }}
+      onPage={setPage}
       onOpen={onOpen}
       onRemove={onRemove}
       onIgnore={(issue) => {
