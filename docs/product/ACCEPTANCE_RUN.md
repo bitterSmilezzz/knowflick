@@ -338,6 +338,16 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 
 
+## 2026-11-19 下午（续）：Windows 腿的失败原因终于读到了
+
+| 项 | 状况 | 证据与判断 |
+| --- | --- | --- |
+| `2aa54c0` 的 Workbench Release / Windows 腿 | **失败** | 注解现在给出具体组件：`CMake Error at ggml/CMakeLists.txt:2 (project):` 后面紧跟 **`The CMAKE_ASM_COMPILER:`** —— CMake 找不到汇编编译器。`ggml` 的 `project("ggml" C CXX ASM)` 声明了 ASM 语言，Windows runner 上没配上。 |
+| 这条腿是偶发的 | 有对照 | 同一份 Rust 代码：`751ef49` success、`91cfd1a` success、`2aa54c0` failure、`a74d53e` failure、`0240b47` success。**成功与失败交替出现，代码没变**。所以不是本轮 TS/CSS 改动引起，也不是稳定的环境缺陷。 |
+| 注解改进的价值 | 已证实 | 三次迭代：① 只放 `tail -10` → 只知道挂了；② 放关键行 → 读到 `CMake Error at ... (project)`；③ 关键行带后两行 → **读到 `The CMAKE_ASM_COMPILER:`**。每一步都让「为什么挂」更具体一格。 |
+| 本轮没有做的 | 记录 | **没有改 Windows 腿的构建配置**。能想到的修法（钉 `CMAKE_GENERATOR=Visual Studio 17 2022` 让 MSVC 原生处理 ASM）在本机无法验证——我没有 Windows 环境，改了只能靠 CI 试错，而这条腿本来就在随机通过。留待有 Windows 机器时再动。 |
+| 未覆盖 | SKIP | Windows/Linux 安装与首启仍未实测；这条腿的偶发失败没有被消除，只是**从「不知道为什么」变成「知道缺什么」**。 |
+
 ## 2026-11-19 下午：Windows 打包腿的 cmake 失败（再次复现，已能定位到具体原因行）
 
 | 项 | 状况 | 证据与判断 |
