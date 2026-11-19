@@ -37,7 +37,17 @@ run_step() {
     return 0
   fi
   echo "::error::步骤失败：${label}" >&2
-  tail -10 "$log" | while IFS= read -r line; do
+  # 注解配额一步只有 10 条：先放**最像原因**的行，再用尾部收口。
+  # 为什么改：Windows 的 cmake 失败那次只放 tail -10，真正的「CMake Error」被挤出去了，
+  # 留下来的是 panic 的尾巴与几行空行——知道挂了，不知道为什么挂。
+  local hits
+  hits="$(grep -niE 'error|panick|cannot find|not found|failed|could not' "$log" | head -6 || true)"
+  if [ -n "$hits" ]; then
+    printf '%s\n' "$hits" | while IFS= read -r line; do
+      echo "::error::${label} 关键行：${line}" >&2
+    done
+  fi
+  tail -4 "$log" | while IFS= read -r line; do
     echo "::error::${label} 现场：${line}" >&2
   done
   rm -f "$log"

@@ -253,7 +253,9 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 | `Windows (msi)`（发布工作流） | **失败，未修好** | 注解显示失败发生在 `Rust 单测`：`whisper-rs-sys` 的 build script panic，栈指向 `cmake-0.1.58/src/lib.rs:1132`（`fail()`）与 `target/debug/build/whisper-rs-sys/.../out/whisper.cpp/CMakeLists.txt`。即 **cmake 配置 whisper.cpp 失败**，与本轮改动（纯 TS/CSS/冒烟）无关。 |
 | 为什么不能断言「与我无关就没问题」 | 记录 | 同一个工作流在 `0b248ab`、`11953ab` 上是 success，在 `f6c1546` 上失败——中间没有 Rust 侧改动。最像的机制是 **rust-cache 还原的 `target/` 里带着上一台 runner 的 CMakeCache**，换机器后 cmake 认为配置无效而失败。这只是假设，**没有验证**。 |
 | 本轮做过的尝试 | 回滚 | 曾加过一个 `jwlawson/actions-setup-cmake` 步骤，随后**自行回退**：注解里的 panic 发生在 cmake 已经跑起来之后（`fail()` 由配置失败触发），装 cmake 治不了这个；留着只会给「装个工具就好了」的错觉。 |
-| 下一步（下一轮） | 待办 | ①先确认是不是缓存导致：给 `rust-checks`/发布腿临时关掉 `cache-targets` 跑一次对照；②若确认，把 whisper 的构建目录排除出缓存（`swatinem/rust-cache` 的 `cache-directories`/`prefix-key` 组合），而不是整体关缓存；③若与缓存无关，需要拿 Windows 的完整日志（当前注解只保留 tail -10，需要临时把 `run_step` 的 tail 行数调大）。 |
+| **结论（同轮修正）** | 复跑通过 | 文档提交 `ed65193`（代码与 `f6c1546` 相同，只多一份文档）触发的复跑：**12 项全绿、无失败**——同一条 Windows 腿在同样的 Rust 代码上成功。因此前一次失败判定为**环境/缓存抖动**，不是代码缺陷；没有对工作流做任何「修 Windows」的改动。 |
+| 为此做的改进 | 已落地 | `run_step` 的失败注解改成「先 6 条关键行（含 error/panicked/not found 等），再 4 条尾部」。此前只放 `tail -10`，cmake 真正的错误被挤出去，只剩 panic 尾巴——**知道挂了但不知道为什么挂**。本地用假日志验证：`CMake Error at CMakeLists.txt:12` 现在会作为第一条注解出现。 |
+| 仍未覆盖 | 记录 | 抖动的根因没查清（缓存假设未验证）。若再次出现，新注解会直接给出真正的 cmake 错误行，届时再定位；在那之前不再对 Windows 腿做猜测性改动。 |
 
 
 
