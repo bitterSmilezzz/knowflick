@@ -63,7 +63,7 @@ import { collectNoteTags, filterByTag } from "../../domain/noteTags";
 import { TagAdmin } from "./TagAdmin";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { bulkReplaceTotals, planBulkReplace, type BulkReplaceHit } from "../../domain/noteBulkReplace";
-import { bulkUndoTotals, planBulkUndo } from "../../domain/noteBulkUndo";
+import { bulkRedoTotals, bulkUndoTotals, planBulkRedo, planBulkUndo } from "../../domain/noteBulkUndo";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
 import { collectDueTodos, type DueTodoItem } from "../../domain/dueInbox";
@@ -200,6 +200,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const [bulkPreview, setBulkPreview] = useState<{ hits: BulkReplaceHit[]; query: string } | null>(null);
   // 上一次批量替换的撤销凭据（替换前的正文）：有它才显示「撤销替换」。
   const [bulkUndo, setBulkUndo] = useState<{ id: string; previousBody: string }[] | null>(null);
+  // 撤销之后才有的重做凭据：`undoBody` 是替换后的正文，`restoredBody` 是撤销写回的正文。
+  const [bulkRedo, setBulkRedo] = useState<{ id: string; undoBody: string; restoredBody: string }[] | null>(null);
   // 标签筛选：与笔记本筛选并列，两个维度可以叠加。
   const [tagFilter, setTagFilter] = useState("");
   const tagOptions = useMemo(() => collectNoteTags(listNotes(state)), [state]);
@@ -707,6 +709,11 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewNotice(`这 ${totals.skipped} 篇已经不在原状（改过或删了），没有可撤销的内容。`);
       return;
     }
+    // 重做凭据要在写库**之前**取：撤销之后就只剩「撤销结果」了，替换后的正文没处拿。
+    const redoEntries = plans.map((plan) => {
+      const before = state.notes.find((n) => n.id === plan.id);
+      return { id: plan.id, undoBody: before?.bodyMd ?? "", restoredBody: plan.body };
+    });
     try {
       const result = await bulkUndoInNotes(plans, state.notes, dirRef.current);
       sessionsRef.current.forEach((s) => s.disposeTimer());
@@ -715,11 +722,50 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setSelectedId(null);
       await refresh();
       setBulkUndo(null);
+      setBulkRedo(redoEntries);
       const tail = result.failed > 0 ? `，${result.failed} 篇失败` : "";
       const skipped = totals.skipped > 0 ? `，${totals.skipped} 篇已不在原状` : "";
-      setViewNotice(`已撤销 ${result.saved} 篇${tail}${skipped}`);
+      setViewNotice(`已撤销 ${result.saved} 篇${tail}${skipped}。可以点「重做替换」恢复`);
     } catch (e) {
       setViewError(`撤销替换失败：${String(e)}`);
+    }
+  };
+
+  /**
+   * 重做上一次批量替换（B01）：把撤销写回的那一版再换回替换后的正文。
+   *
+   * 只对**还停在撤销结果上**的笔记生效。撤销之后用户又改过这篇，再写回替换后的正文
+   * 会把他刚写的东西冲掉——那比不能重做更糟。
+   */
+  const redoBulkReplace = async () => {
+    const entries = bulkRedo;
+    if (!entries) return;
+    const plans = planBulkRedo(state.notes, entries);
+    const totals = bulkRedoTotals(entries, plans);
+    if (plans.length === 0) {
+      setBulkRedo(null);
+      setViewNotice(`这 ${totals.skipped} 篇已经不在撤销结果上（改过或删了），没有可重做的内容。`);
+      return;
+    }
+    // 重做也要能再撤销：凭据同样在写库之前取。
+    const undoEntries = plans.map((plan) => {
+      const before = state.notes.find((n) => n.id === plan.id);
+      return { id: plan.id, previousBody: before?.bodyMd ?? "" };
+    });
+    try {
+      const result = await bulkUndoInNotes(plans, state.notes, dirRef.current);
+      sessionsRef.current.forEach((s) => s.disposeTimer());
+      sessionsRef.current.clear();
+      selectedIdRef.current = null;
+      setSelectedId(null);
+      await refresh();
+      setBulkRedo(null);
+      setBulkUndo(undoEntries);
+      const tail = result.failed > 0 ? `，${result.failed} 篇失败` : "";
+      const skipped = totals.skipped > 0 ? `，${totals.skipped} 篇已不在撤销结果上` : "";
+      setViewNotice(`已重做 ${result.saved} 篇${tail}${skipped}`);
+    } catch (e) {
+      setViewError(`重做替换失败：${String(e)}`);
     }
   };
 
@@ -1461,7 +1507,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
           </button>
         </div>
         {viewError ? <p className="nv-error" role="alert">{viewError}</p> : null}
-        {viewNotice || bulkUndo ? (
+        {viewNotice || bulkUndo || bulkRedo ? (
           <p className="nv-notice" role="status">
             {viewNotice}
             {/* 撤销入口放在**常驻的通知行**里，不放在查找条里：
@@ -1475,6 +1521,17 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 onClick={() => void undoBulkReplace()}
               >
                 撤销替换
+              </button>
+            ) : null}
+            {/* 重做与撤销并列：撤销点错了也能回来，不用把替换手动再做一遍（往往跨几十篇）。 */}
+            {bulkRedo ? (
+              <button
+                type="button"
+                className="nv-undo-replace"
+                aria-label="重做上一次批量替换"
+                onClick={() => void redoBulkReplace()}
+              >
+                重做替换
               </button>
             ) : null}
           </p>

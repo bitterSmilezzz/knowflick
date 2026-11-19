@@ -498,6 +498,23 @@ try {
   await check(`${JSON.stringify(afterUndo)}.every((b)=>!b.includes('批量词乙'))`, "撤销后新词消失");
   await check("document.querySelector('[aria-label=\"撤销上一次批量替换\"]') === null", "撤销后入口收起（不能重复撤销）");
 
+  // 20b. 重做上一次批量替换（B01）：撤销点错了也能回来，不用把替换手动再做一遍。
+  const redoBtnShown = await ev("document.querySelector('[aria-label=\"重做上一次批量替换\"]') !== null");
+  await check(`${redoBtnShown}`, '撤销后出现「重做替换」入口');
+  await b("eval", "(()=>{const btn=document.querySelector('[aria-label=\"重做上一次批量替换\"]');if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 1500));
+  const afterRedo = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.map(n=>n.bodyMd)");
+  await check(`${JSON.stringify(afterRedo)}.some((b)=>b.includes('批量词乙'))`, '重做后新词回到正文');
+  await check(`${JSON.stringify(afterRedo)}.every((b)=>!b.includes('批量词甲'))`, '重做后旧词消失');
+  await check("document.querySelector('[aria-label=\"重做上一次批量替换\"]') === null", '重做后重做入口收起（不能重复重做）');
+  // 重做之后又能撤销一次：历史只增不改，两个方向都可来回。
+  await check("document.querySelector('[aria-label=\"撤销上一次批量替换\"]') !== null", '重做后又出现「撤销替换」入口');
+  await b("eval", "(()=>{const btn=document.querySelector('[aria-label=\"撤销上一次批量替换\"]');if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 1500));
+  const afterUndo2 = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.map(n=>n.bodyMd)");
+  await check(`${JSON.stringify(afterUndo2)}.some((b)=>b.includes('批量词甲'))`, '再撤销一次仍能回到旧词');
+
+
   // 21. 引用体检（C05）：忽略、刷新保留、撤销、修复后清理，再次出现要重新提醒。
   // 批量操作会关闭编辑器，独立新建测试笔记，避免依赖上一段的选中状态。
   await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('新建笔记')).click();return true})()");
