@@ -1,10 +1,9 @@
 import React from "react";
 import { parseReferenceUri, type ReferenceSourceKind } from "../../domain/noteReference";
+import { attachmentKindOf } from "../../domain/attachmentKind";
+import { AttachmentView, type AttachmentPayload } from "./AttachmentView";
 
 type OpenReference = (id: string, kind: ReferenceSourceKind) => void;
-
-/** 库内附件相对路径（media/<kind>/<uuid>.<ext>）——正文里引用附件只认这一种来源。 */
-const MEDIA_PATH_RE = /^media\/(audio|image|ink)\/[A-Za-z0-9._-]+$/;
 
 /**
  * 格式化行内元素（加粗、行内代码、超链接、库内附件图片）
@@ -15,7 +14,7 @@ const MEDIA_PATH_RE = /^media\/(audio|image|ink)\/[A-Za-z0-9._-]+$/;
  */
 function renderInline(
   text: string,
-  resolveAttachment?: (path: string) => string | null,
+  resolveAttachment?: (path: string) => AttachmentPayload | null,
   onOpenReference?: OpenReference
 ): React.ReactNode {
   // 正则匹配: **bold**, `code`, [label](url), ![alt](media/...)
@@ -27,10 +26,11 @@ function renderInline(
     if (image) {
       const [, alt, target] = image;
       const mediaPath = target.trim();
-      if (!resolveAttachment || !MEDIA_PATH_RE.test(mediaPath)) return <span key={idx}>{alt || mediaPath}</span>;
-      const url = resolveAttachment(mediaPath);
-      if (!url) return <span key={idx}>{`附件缺失：${mediaPath}`}</span>;
-      return <img key={idx} src={url} alt={alt || mediaPath} className="ws-md-image" />;
+      // 只有库内相对路径才算附件：外链与路径穿越一律当普通文本（否则能用正文探测文件系统）。
+      if (!resolveAttachment || !attachmentKindOf(mediaPath)) return <span key={idx}>{alt || mediaPath}</span>;
+      const payload = resolveAttachment(mediaPath);
+      if (!payload) return <span key={idx}>{`附件缺失：${mediaPath}`}</span>;
+      return <AttachmentView key={idx} payload={payload} alt={alt || mediaPath} />;
     }
     if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
       return <strong key={idx}>{part.slice(2, -2)}</strong>;
@@ -74,8 +74,9 @@ function renderInline(
  */
 export function MarkdownRenderer({ text, resolveAttachment, onOpenReference, onToggleTodo }: {
   text: string;
-  /** 给了才把正文里的 `![](media/…)` 渲染成 <img>（见 renderInline 的安全口径）。 */
-  resolveAttachment?: (path: string) => string | null;
+  /** 给了才把正文里的 `![](media/…)` 渲染成附件（见 renderInline 的安全口径）。 */
+  /** 返回按种类的载荷：图片/录音给 URL，笔迹给解析后的文档。 */
+  resolveAttachment?: (path: string) => AttachmentPayload | null;
   /** 允许在正文中打开库内笔记或素材。 */
   onOpenReference?: OpenReference;
   /**

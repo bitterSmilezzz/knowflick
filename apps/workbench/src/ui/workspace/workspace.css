@@ -2977,6 +2977,19 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .ws-md-table th, .ws-md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 .ws-md-table th { background: var(--sunken); font-weight: 600; }
 
+/* 正文里的附件（B06）：三种附件分别呈现，别都当图片。 */
+/* 图片：限宽并保持比例——原图再大也不该把正文挤变形。 */
+.ws-md-image { max-width: 100%; height: auto; border-radius: 4px; }
+/* 录音：原生播放器，紧凑一点，不抢正文的读。 */
+.ws-md-audio { display: block; max-width: 100%; margin: 6px 0; }
+/* 手写笔迹：SVG，坐标已归一化，宽度跟着容器走。 */
+.ws-md-ink { display: block; width: 100%; max-height: 320px; margin: 6px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+.ws-md-ink-stroke { stroke-linecap: round; stroke-linejoin: round; }
+.ws-md-ink-ink { stroke: var(--ink); }
+.ws-md-ink-accent { stroke: var(--accent); }
+.ws-md-ink-muted { stroke: var(--muted); }
+.ws-md-ink-empty { color: var(--muted); font-size: 12px; }
+
 /* 搜索命中片段：命中词用强调底色，一眼看出为什么这篇被搜到。 */
 .nv-snippet-hit { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--ink); border-radius: 4px; padding: 0 2px; }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */

@@ -18,22 +18,52 @@ describe("MarkdownRenderer", () => {
     expect(html).toContain('href="https://example.com"');
   });
   it("renders in-library media attachments only with a resolver; falls back to text otherwise", () => {
-    const md = "![手写](media/ink/a.json) ![外链](https://x/y.png) ![穿越](../../../etc/passwd)";
+    const md = "![图](media/image/a.png) ![外链](https://x/y.png) ![穿越](../../../etc/passwd)";
     // 无 resolver（详情区老用法）：全部回退为文本，不出现 <img>
     const plain = renderToStaticMarkup(<MarkdownRenderer text={md} />);
     expect(plain).not.toContain("<img");
     // 有 resolver：只解析库内相对路径；外链与路径穿越都不给 <img>
     const withResolver = renderToStaticMarkup(
-      <MarkdownRenderer text={md} resolveAttachment={(p) => (p.startsWith("media/") ? "blob:x" : null)} />
+      <MarkdownRenderer text={md} resolveAttachment={(p) => (p.startsWith("media/") ? { kind: "image" as const, url: "blob:x" } : null)} />
     );
     expect(withResolver).toContain('<img src="blob:x"');
     expect((withResolver.match(/<img/g) || []).length).toBe(1);
     // resolver 返回 null（附件真缺失）→ 渲染明确的「缺失」文案而不是空 <img>
     const missing = renderToStaticMarkup(
-      <MarkdownRenderer text="![手写](media/ink/missing.json)" resolveAttachment={() => null} />
+      <MarkdownRenderer text="![图](media/image/missing.png)" resolveAttachment={() => null} />
     );
-    expect(missing).toContain("附件缺失：media/ink/missing.json");
+    expect(missing).toContain("附件缺失：media/image/missing.png");
     expect(missing).not.toContain("<img");
+  });
+
+  it("按附件种类分别渲染：录音是播放器、笔迹是 SVG，都不是图片", () => {
+    const inkDoc = {
+      version: 1 as const,
+      width: 1000,
+      height: 600,
+      strokes: [{ points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], width: 0.004, color: "ink" as const }],
+    };
+    const audio = renderToStaticMarkup(
+      <MarkdownRenderer text="![录音](media/audio/a.webm)" resolveAttachment={() => ({ kind: "audio" as const, url: "blob:a" })} />
+    );
+    expect(audio).toContain("<audio");
+    expect(audio).toContain('src="blob:a"');
+    expect(audio).not.toContain("<img");
+    const ink = renderToStaticMarkup(
+      <MarkdownRenderer text="![笔迹](media/ink/a.json)" resolveAttachment={() => ({ kind: "ink" as const, doc: inkDoc })} />
+    );
+    expect(ink).toContain("<svg");
+    expect(ink).toContain('viewBox="0 0 1 1"');
+    expect(ink).toContain("M0.0000 0.0000 L1.0000 1.0000");
+    expect(ink).not.toContain("<img");
+  });
+
+  it("笔迹内容坏了就当附件缺失，不画空 SVG", () => {
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer text="![笔迹](media/ink/a.json)" resolveAttachment={() => ({ kind: "ink" as const, doc: { version: 1, width: 10, height: 10, strokes: [] } })} />
+    );
+    expect(html).toContain("空笔迹");
+    expect(html).not.toContain("<svg");
   });
 
   it("renders empty div for empty text", () => {

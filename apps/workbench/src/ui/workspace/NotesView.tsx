@@ -61,6 +61,8 @@ import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/not
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
 import { collectDueTodos, type DueTodoItem } from "../../domain/dueInbox";
 import { snoozeTodoInBody } from "../../domain/noteDueAction";
+import { attachmentKindOf } from "../../domain/attachmentKind";
+import { parseInk, type InkDocument } from "../../domain/ink";
 import {
   NOTE_TEMPLATES,
   findNoteTemplate,
@@ -1062,6 +1064,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   // 正文里引用的库内附件 → objectURL。按内容路径缓存，卸载统一释放；
   // resolver 只认这份缓存：拿不到说明附件缺失，渲染「附件缺失」文案。
   const [objectUrls, setObjectUrls] = useState<Map<string, string | null>>(new Map());
+  // 手写笔迹是 JSON：渲染成 SVG 前要先解析出笔画。附件缺失或结构坏了都当没有。
+  const [inkDocs, setInkDocs] = useState<Map<string, InkDocument>>(new Map());
+  const inkDocsRef = useRef<Map<string, InkDocument>>(new Map());
   const mediaRefs = useMemo(
     () => [...new Set([...body.matchAll(/!\[[^\]]*\]\((media\/(?:audio|image|ink)\/[A-Za-z0-9._-]+)\)/g)].map((m) => m[1]))],
     [body]
@@ -1077,6 +1082,17 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
           try {
             const bytes = await readNoteMedia(ref, dirRef.current);
             if (!bytes) next.set(ref, null);
+            else if (ref.startsWith("media/ink/")) {
+              // 笔迹是 JSON：按 JSON 解析，解析失败或没有笔画当缺失（一张坏涂鸦不该让整条笔记打不开）。
+              let doc: InkDocument | null = null;
+              try {
+                doc = parseInk(JSON.parse(new TextDecoder().decode(bytes as Uint8Array<ArrayBuffer>)));
+              } catch {
+                doc = null;
+              }
+              if (doc && doc.strokes.length > 0) inkDocsRef.current.set(ref, doc);
+              else next.set(ref, null);
+            }
             else {
               const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: ref.endsWith(".json") ? "image/svg+xml" : "application/octet-stream" }));
               created.push(url);
@@ -1090,6 +1106,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       if (disposed) { for (const u of created) URL.revokeObjectURL(u); return; }
       for (const [old, url] of objectUrls) if (!next.has(old) && url) URL.revokeObjectURL(url);
       setObjectUrls(next);
+      setInkDocs(new Map(inkDocsRef.current));
     })();
     return () => { disposed = true; };
     // objectUrls 只作为缓存读取（避免重复加载），不作为触发器
@@ -1693,7 +1710,16 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               <MarkdownRenderer
                 text={body}
                 onToggleTodo={(line) => toggleTodo(line)}
-                resolveAttachment={(p) => objectUrls.get(p) ?? null}
+                resolveAttachment={(p) => {
+                  const kind = attachmentKindOf(p);
+                  if (!kind) return null;
+                  if (kind === "ink") {
+                    const doc = inkDocs.get(p);
+                    return doc ? { kind: "ink" as const, doc } : null;
+                  }
+                  const url = objectUrls.get(p);
+                  return url ? { kind, url } : null;
+                }}
                 onOpenReference={(id, kind) => {
                   if (kind === "material") {
                     if (onOpenMaterial && materials.some((material) => material.id === id)) {

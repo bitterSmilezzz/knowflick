@@ -513,6 +513,19 @@ try {
   await setNative('.nv-body', '清理掉待验证标记。');
   await check("document.querySelector('.nv-verify') === null", '全部核实后清单消失');
 
+  // 24. 附件引用（B06）：浏览器体验没有可写的库目录，附件读不到——
+  // 正确表现是**明确说缺失**，而不是塞一个裂掉的图。
+  // 「按种类分别渲染」由组件级测试守住（AttachmentView.test.tsx）：
+  // 浏览器里造不出真实附件，硬造只会写出永远为真的断言。
+  await setNative('.nv-body', '![录音](media/audio/a.webm)\n\n![笔迹](media/ink/a.json)\n\n![图](media/image/a.png)');
+  await check("document.querySelector('.nv-preview') !== null", '预览区在');
+  await b('eval', "(()=>{const d=document.querySelector('.nv-preview');d.open=true;return true})()");
+  const missingText = await ev("document.querySelector('.nv-preview')?.textContent ?? ''");
+  await check(`${JSON.stringify(missingText)}.includes('附件缺失：media/audio/a.webm')`, '读不到的附件明确说缺失，不装成图片');
+  const imgInPreview = await ev("document.querySelector('.nv-preview img') !== null");
+  await check(`${imgInPreview} === false`, '预览里没有把读不到的附件塞进 img 标签');
+  await setNative('.nv-body', '恢复正文。');
+
   console.log('Notes editor smoke: ' + count + ' checks passed.');
 } finally {
   await b("close").catch(() => {});
