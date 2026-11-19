@@ -10,6 +10,7 @@ import {
   bulkReplaceInNotes,
   bulkUndoInNotes,
   writeNoteBodies,
+  addTagsToNotesById,
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
@@ -140,6 +141,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   // 多选（Cmd/Ctrl/Shift + 点击）与「全部知识」列表同一套手势；批量移动是 B03 的最后一块。
   const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(() => new Set());
   const [batchNotebook, setBatchNotebook] = useState("");
+  const [batchTags, setBatchTags] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   // 待办清单从正文现算：正文是唯一真相，待办状态跟着保存、跟着备份、跟着导出。
@@ -831,6 +833,35 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     }
   };
 
+  /**
+   * 批量给选中的笔记加标签（B03）。
+   *
+   * 与批量移动并列：同样只动元数据、不追加修订；清空选择后就收工。
+   * 一篇都没有新增标签时如实说「没有变化」，而不是笼统的「已完成」——
+   * 用户打的标签本来就都在，他该知道这一点。
+   */
+  const tagSelected = async () => {
+    if (batchIds.size === 0) return;
+    // 先取总数：下面 `setBatchIds` 之后这个闭包里的 size 仍是旧值，读它容易写错。
+    const count = batchIds.size;
+    setViewError("");
+    try {
+      const result = await addTagsToNotesById([...batchIds], batchTags, dirRef.current);
+      await refresh();
+      setBatchIds(new Set());
+      setBatchTags("");
+      if (result.tagged === 0) {
+        setViewNotice(`这 ${count} 篇里没有需要新增的标签，没有改动。`);
+        return;
+      }
+      const list = result.added.length ? `（${result.added.join("、")}）` : "";
+      const tail = result.missing ? `，另有 ${result.missing} 篇没找到` : "";
+      setViewNotice(`已给 ${result.tagged} 篇加上标签${list}${tail}`);
+    } catch (e) {
+      setViewError(`批量加标签失败：${String(e)}`);
+    }
+  };
+
   const moveSelected = async () => {
     if (batchIds.size === 0) return;
     setViewError("");
@@ -1322,6 +1353,15 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               onKeyDown={(e) => { if (e.key === "Enter") void moveSelected(); }}
             />
             <button type="button" className="ws-primary" onClick={() => void moveSelected()}>移动</button>
+            <input
+              className="nv-batch-notebook"
+              aria-label="批量加标签"
+              placeholder="加标签，逗号分隔"
+              value={batchTags}
+              onChange={(e) => setBatchTags(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void tagSelected(); }}
+            />
+            <button type="button" className="ws-bordered" aria-label="给选中的笔记加标签" onClick={() => void tagSelected()}>加标签</button>
             <button type="button" className="ws-bordered" aria-label="导出选中为合集" onClick={() => void exportSelected()}>导出合集</button>
             <button type="button" className="ws-bordered" onClick={() => setBatchIds(new Set())}>取消</button>
           </div>

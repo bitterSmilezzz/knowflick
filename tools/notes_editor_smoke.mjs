@@ -191,6 +191,28 @@ try {
   await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.notebook==='项目B').length===2})()", "两篇笔记的笔记本都已更新");
   await check("document.querySelector('.nv-batch-bar') === null", "移动后批量栏收起");
 
+  // 8g. 批量加标签（B03）：同样是元数据变化，不动正文、不追加修订。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await check("document.querySelector('[aria-label=\"批量加标签\"]') !== null", '批量栏里有加标签输入框');
+  await setNative('[aria-label="批量加标签"]', "复盘, #工作");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='加标签').click();return true})()");
+  await check("document.body.innerText.includes('已给 2 篇加上标签')", '批量加标签有回执并说明几篇');
+  // 输入里的「#工作」被规范化成「工作」：标签里不带井号，列表与筛选才对得上。
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const tagged=s.notes.filter(n=>n.tags.includes('复盘')&&n.tags.includes('工作'));return tagged.length===2})()", '两篇笔记都拿到了「复盘」与「工作」');
+  // 表达里不能出现字面量 `#`：agent-browser 把 eval 命令交给 shell，`#` 会被当注释截断整行。
+  // 改用字符码 35 判断，语义完全一样。
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.some(t=>t.charCodeAt(0)===35))})()", '标签里不留井号');
+  // 同一批再来一次：都已有这两个标签 → 如实说没有变化，不谎报「已加」。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await setNative('[aria-label="批量加标签"]', "复盘");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='加标签').click();return true})()");
+  await check("document.body.innerText.includes('没有需要新增的标签')", '全是已有标签时如实说没有变化');
+
+
   // 8f. 查找替换与字数（B01）：找得到、跳得到、改得掉。
   await check("document.querySelector('[aria-label=\"正文字数\"]')?.textContent.includes('字数')", "正文下方显示字数");
   await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));return true})()");

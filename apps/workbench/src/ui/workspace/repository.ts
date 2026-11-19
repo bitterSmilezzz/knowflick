@@ -39,6 +39,7 @@ import {
 import { parseImportReport, serializeImportReport, type ImportReport } from "../../domain/importReport";
 import {
   NoteConflictError,
+  addTagsToNotes,
   addNoteToKb as domainAddToKb,
   createKnowledgeBase as domainCreateKb,
   deleteNote as domainDeleteNote,
@@ -452,6 +453,35 @@ export async function duplicateNoteById(id: string, dir: string): Promise<Note> 
  * 返回实际移动的篇数与「找不到的 id」数——界面据此说「N 篇已移动、M 篇没找到」，
  * 而不是笼统的「操作完成」。
  */
+/**
+ * 批量给笔记加标签（B03）。
+ *
+ * 与批量移动对称：元数据变化、不追加修订；桌面端逐篇 upsert（base = 当前修订），
+ * 浏览器端一次写回。返回值带上「真的打了几篇」与「几篇没找到」，界面才能如实说。
+ */
+export async function addTagsToNotesById(
+  ids: readonly string[],
+  rawTags: string,
+  dir: string
+): Promise<{ tagged: number; missing: number; added: string[] }> {
+  const now = Date.now();
+  if (inShell()) {
+    const state = await readNotes(dir);
+    const plan = addTagsToNotes(state, ids, rawTags, now);
+    for (const id of plan.tagged) {
+      const note = plan.state.notes.find((n) => n.id === id);
+      if (!note) continue;
+      await noteUpsert(notePayload(note), note.currentRevision, dir);
+    }
+    return { tagged: plan.tagged.length, missing: plan.missing.length, added: plan.added };
+  }
+  const state = browserNotes();
+  const plan = addTagsToNotes(state, ids, rawTags, now);
+  // 一篇都没变就不写：白写一次等于无谓地动一遍存储。
+  if (plan.tagged.length > 0) browserNotesWrite(plan.state);
+  return { tagged: plan.tagged.length, missing: plan.missing.length, added: plan.added };
+}
+
 export async function moveNotesToNotebookById(
   ids: readonly string[],
   notebook: string,

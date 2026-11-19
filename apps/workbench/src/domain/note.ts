@@ -286,6 +286,54 @@ export function moveNotesToNotebook(
   return { state: { ...state, notes }, moved, missing, notebook: target };
 }
 
+/** 把用户输入的一串标签拆成规范形式：逗号（中英文）分隔、去掉开头 `#`、去空、去重。 */
+export function parseTagInput(raw: string): string[] {
+  const out: string[] = [];
+  for (const piece of raw.split(/[,，\s]+/)) {
+    const tag = piece.trim().replace(/^#/, "").trim();
+    if (!tag) continue;
+    // 输入里重复写同一个标签只算一次（用户手快写了两遍不该出现两次）。
+    if (!out.includes(tag)) out.push(tag);
+  }
+  return out;
+}
+
+/**
+ * 批量给笔记加标签（B03）。
+ *
+ * 与「批量移动」同一口径：这是**元数据**变化，不追加修订（见 docs/NOTES_MODEL.md），
+ * 所以做成纯函数，浏览器与桌面两条写入路径共用同一判定。
+ *
+ * 三条规则都是为了不白写：
+ * - 已经有这个标签的不重复加（否则同篇里出现两遍，计数与筛选都会偏）；
+ * - 没有任何新增的笔记**不进** `tagged`，也不改 `updatedAt`——没变化就不该多一次写入、
+ *   更不该把「最近编辑」的时间往后推；
+ * - 找不到的 id 收进 `missing`，界面才能说清「有几篇没动」。
+ */
+export function addTagsToNotes(
+  state: NotesState,
+  ids: readonly string[],
+  rawTags: string,
+  now = Date.now()
+): { state: NotesState; tagged: string[]; missing: string[]; added: string[] } {
+  const tags = parseTagInput(rawTags);
+  const wanted = new Set(ids);
+  const tagged: string[] = [];
+  const missing: string[] = [];
+  for (const id of wanted) {
+    if (!state.notes.some((n) => n.id === id)) missing.push(id);
+  }
+  if (tags.length === 0) return { state, tagged, missing, added: [] };
+  const notes = state.notes.map((n) => {
+    if (!wanted.has(n.id)) return n;
+    const fresh = tags.filter((tag) => !n.tags.includes(tag));
+    if (fresh.length === 0) return n;
+    tagged.push(n.id);
+    return { ...n, tags: [...n.tags, ...fresh], updatedAt: now };
+  });
+  return { state: { ...state, notes }, tagged, missing, added: tags };
+}
+
 export function createKnowledgeBase(
   state: NotesState,
   kb: Omit<KnowledgeBase, "createdAt" | "updatedAt">,
