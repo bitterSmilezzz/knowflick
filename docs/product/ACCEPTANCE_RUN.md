@@ -310,6 +310,9 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 | --- | --- | --- |
 | 批量去标签 | PASS（浏览器本机） | 领域 `note.ts` 新增 `removeTagsFromNotes`，`noteBatchTags.test.ts` 7 → 12 项（完全相等才删「工作」不带走「工作流」、删到空也算改动、没这个标签的不改 `updatedAt`、全没有则整批不动、`missing` 与空输入）。仓储 `removeTagsFromNotesById` 与加标签对称。冒烟 152 → 158 项（去标签回执、两篇都不再有「工作」、「复盘」没被一起删、再来一次如实说没有可去掉的标签、候选列表含刚打上的标签）。全量门禁 exit 0（125 文件 / 852 项、Rust 192 / 3 忽略、18 套冒烟）。 |
 | 远端 CI（`24ba9e4`） | **有 1 项失败，且与本轮改动无关** | `build`（Android `:app:testDebugUnitTest`）失败：22 条用例报 `Failed to fetch maven artifact org.robolectric:android-all-instrumented:15-robolectric-12650502-i7`，注解里还有 `java.io.FileNotFoundException at HttpURLConnection`——**依赖下载失败**，不是断言失败。旁证：① 同一提交的 Android 打包腿（Linux / macOS / Windows 三档）都 success，只有单测任务挂了；② 前四个提交（`b7353e6`/`4807de9`/`559b50a`/`893d0e3`）的同一 `build` 任务都 success；③ 本轮 diff 只有 `apps/workbench/**`、`tools/**`、`docs/**`、`CHANGELOG.md`，**一个 Android 文件都没动**。判定为 CI 侧依赖下载抖动，没有据此改任何 Android 代码。 |
+| `24ba9e4` 的 Windows 腿 | **同样失败，是已知抖动** | 注解给出与第 37 轮完全相同的签名：`The CMAKE_ASM_COMPILER:` / `CMake Error at ggml/CMakeLists.txt:2 (project)` / `failed to run custom build command for whisper-rs-sys v0.15.0`。 |
+| 复核结果 | **`9ab209c` 12 项全绿** | 这一提交的 workbench 代码与 `24ba9e4` 完全相同（只多一行文档）。同一份代码重跑就全绿，说明那两条失败都是**基础设施抖动**，不是代码问题。这也把两件不同来源的事分清了：`build` 是 Android 依赖下载失败，`Windows (msi)` 是 Windows runner 的 cmake/ASM 配置缺失。 |
+| 一次自我提醒 | 记录 | 我最初只看 `build` 一项就下了结论，随后 `Windows (msi)` 也红了、其余若干条显示 `cancelled`。`cancelled` 是我紧接着推送新提交把在跑的任务顶掉了，**不是失败**——这个区别必须写清楚，否则读的人会把取消当失败。 |
 | 标签候选 | 记录 | 批量栏的标签输入接了 `<datalist>`，候选来自 `collectNoteTags`（库里已有的标签）。用户不必记住拼写，「工作」与「工作流」也就不会写错。 |
 | 冒烟里踩到的第二类坑 | 记录 | 候选列表**跟着批量栏一起出现**——上一次操作成功后批量栏会收起，此时查 `datalist` 必然为空。断言顺序要跟着界面生命周期走，而不是想当然地把检查堆在最前面。 |
 | 未覆盖 | SKIP | 批量改笔记本之外的分组操作；万篇级批量写入耗时；标签删除后的历史修订（元数据变化本就不进修订）。 |
