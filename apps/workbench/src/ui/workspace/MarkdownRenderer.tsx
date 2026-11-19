@@ -1,6 +1,7 @@
 import React from "react";
 import { parseReferenceUri, type ReferenceSourceKind } from "../../domain/noteReference";
 import { attachmentKindOf } from "../../domain/attachmentKind";
+import { parseColumnAligns } from "../../domain/tableAlign";
 import { AttachmentView, type AttachmentPayload } from "./AttachmentView";
 
 type OpenReference = (id: string, kind: ReferenceSourceKind) => void;
@@ -210,6 +211,10 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenReference, onT
         row.trim().replace(/^\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
       const header = splitRow(trimmed);
       const columns = header.length;
+      // 分隔行里的冒号决定每列对齐（`:---` 左 / `:---:` 中 / `---:` 右）；
+      // 表头多出来的列没有对齐声明，按默认处理。
+      const aligns = parseColumnAligns(lines[i + 1].trim()).slice(0, columns);
+      while (aligns.length < columns) aligns.push(null);
       i += 2;
       const bodyRows: string[][] = [];
       while (i < lines.length && /^\|.*\|\s*$/.test(lines[i].trim())) {
@@ -223,7 +228,7 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenReference, onT
           <thead>
             <tr>
               {header.map((cell, idx) => (
-                <th key={idx}>{renderInline(cell, resolveAttachment, onOpenReference)}</th>
+                <th key={idx} align={aligns[idx] ?? undefined}>{renderInline(cell, resolveAttachment, onOpenReference)}</th>
               ))}
             </tr>
           </thead>
@@ -231,7 +236,7 @@ export function MarkdownRenderer({ text, resolveAttachment, onOpenReference, onT
             {bodyRows.map((row, ridx) => (
               <tr key={ridx}>
                 {row.map((cell, cidx) => (
-                  <td key={cidx}>{renderInline(cell, resolveAttachment, onOpenReference)}</td>
+                  <td key={cidx} align={aligns[cidx] ?? undefined}>{renderInline(cell, resolveAttachment, onOpenReference)}</td>
                 ))}
               </tr>
             ))}

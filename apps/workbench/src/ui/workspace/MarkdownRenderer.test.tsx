@@ -66,6 +66,22 @@ describe("MarkdownRenderer", () => {
     expect(html).not.toContain("<svg");
   });
 
+  it("分隔行里的冒号决定列对齐——写了 :---: 就该居中", () => {
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer text={"| 甲 | 乙 | 丙 |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |"} />
+    );
+    expect(html).toContain('align="left"');
+    expect(html).toContain('align="center"');
+    expect(html).toContain('align="right"');
+  });
+
+  it("没有冒号的列不给 align 属性，交给样式表", () => {
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer text={"| 甲 |\n| --- |\n| 1 |"} />
+    );
+    expect(html).not.toContain("align=");
+  });
+
   it("renders empty div for empty text", () => {
     const el = MarkdownRenderer({ text: "" });
     expect(React.isValidElement(el)).toBe(true);

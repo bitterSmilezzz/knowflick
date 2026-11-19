@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow, setTableCell, tableCellAt } from "./tableOps";
+import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow, setTableCell, setTableColumnAlign, tableCellAt } from "./tableOps";
 
 const TABLE = ["前文", "", "| 甲 | 乙 | 丙 |", "| --- | --- | --- |", "| 1 | 2 | 3 |", "| 4 | 5 | 6 |", "", "后文"].join("\n");
 
@@ -142,3 +142,24 @@ function cellsOfLine(line: string): string[] {
   // 先把转义的竖线换成占位符，再按竖线拆——与实现同一个思路。
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").replace(/\\\|/g, "\u0000").split("|").map((c) => c.replace(/\u0000/g, "|").trim());
 }
+
+describe("切列对齐（B01）", () => {
+  it("只改分隔行里那一格，数据行一个字都不动", () => {
+    const out = setTableColumnAlign(caret(4, 1), "center");
+    const lines = out.text.split("\n");
+    expect(lines[3]).toBe("| --- | :---: | --- |");
+    expect(lines[4]).toBe("| 1 | 2 | 3 |");
+    expect(lines[2]).toBe("| 甲 | 乙 | 丙 |");
+  });
+
+  it("三种对齐都能设，也能切回默认", () => {
+    expect(setTableColumnAlign(caret(4, 0), "left").text.split("\n")[3]).toBe("| :--- | --- | --- |");
+    expect(setTableColumnAlign(caret(4, 2), "right").text.split("\n")[3]).toBe("| --- | --- | ---: |");
+    expect(setTableColumnAlign(caret(4, 0), null).text.split("\n")[3]).toBe("| --- | --- | --- |");
+  });
+
+  it("不在表格里时什么都不做", () => {
+    const at = { text: "普通段落", start: 0, end: 0 };
+    expect(setTableColumnAlign(at, "center").text).toBe(at.text);
+  });
+});

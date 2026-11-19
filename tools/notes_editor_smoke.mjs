@@ -464,6 +464,17 @@ try {
   await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| --- |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
   await b("eval", "(()=>{document.querySelector('[aria-label=\"把光标所在格子改成这个内容\"]').click();return true})()");
   await check("document.body.innerText.includes('分隔行不能编辑')", '分隔行不能编辑时如实说明');
+  // 17d. 列对齐（B01）：只改分隔行里那一格，数据行一个字都不动。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| 进展 |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await setNative('[aria-label="这一列的对齐方式"]', "center");
+  await new Promise((res) => setTimeout(res, 700));
+  const afterAlign = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterAlign)}.includes('| :---: |')`, '分隔行里那一列变成了居中');
+  await check(`${JSON.stringify(afterAlign)}.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===3)`, '切对齐后列数没变');
+  // 预览里真的居中了（align 属性落到 th/td 上）。
+  await b("eval", "(()=>{const d=document.querySelector('.nv-preview');if(d)d.open=true;return true})()");
+  await check("document.querySelector('.nv-preview th[align=\"center\"]') !== null", '预览里的表头单元格带居中属性');
+
 
 
   await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '\\n官网在这里');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);

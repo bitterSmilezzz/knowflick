@@ -1,3 +1,5 @@
+import { withAlign, type ColumnAlign } from "./tableAlign";
+
 /**
  * 表格的行列增删（B01 收尾）。
  *
@@ -238,4 +240,26 @@ export function tableCellAt(state: TextSelection): { value: string; header: bool
   const cells = cellsOf(line);
   const value = (cells[table.cursorColumn] ?? "").replace(/\\\|/g, "|");
   return { value, header: table.cursorLine === table.startLine };
+}
+
+/**
+ * 把光标所在列改成某个对齐方式（B01）。
+ *
+ * 只改分隔行里那一格（`:---` / `:---:` / `---:` / `---`），数据行一个字都不动。
+ * 对齐是**声明**，不是数据——数据行没有理由跟着变。
+ */
+export function setTableColumnAlign(
+  state: TextSelection,
+  align: ColumnAlign,
+): TextSelection {
+  const table = findTableAt(state.text, state.start);
+  if (!table) return state;
+  const lines = state.text.split(/\r?\n/);
+  const dividerLine = table.startLine + 1;
+  const cells = cellsOf(lines[dividerLine]);
+  while (cells.length < table.columns) cells.push("---");
+  cells[table.cursorColumn] = withAlign(cells[table.cursorColumn] ?? "---", align);
+  lines[dividerLine] = lineOf(cells.slice(0, table.columns));
+  const text = lines.join("\n");
+  return caretAt(text, table.cursorLine, table.cursorColumn);
 }

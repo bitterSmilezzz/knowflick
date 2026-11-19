@@ -71,7 +71,7 @@ import { rescheduleTodoInBody, snoozeTodoInBody } from "../../domain/noteDueActi
 import { addIgnoredDue, pruneIgnoredDue, removeIgnoredDue, splitIgnoredDue } from "../../domain/dueIgnore";
 import { attachmentKindOf } from "../../domain/attachmentKind";
 import { insertAttachmentRef } from "../../domain/noteAttachmentInsert";
-import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow, setTableCell, tableCellAt } from "../../domain/tableOps";
+import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow, setTableCell, setTableColumnAlign, tableCellAt } from "../../domain/tableOps";
 import { parseInk, type InkDocument } from "../../domain/ink";
 import {
   NOTE_TEMPLATES,
@@ -1937,6 +1937,30 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               >
                 改格子
               </button>
+              {/* 列对齐：只改分隔行里那一格，数据行不动。 */}
+              <select
+                className="nv-block-input"
+                aria-label="这一列的对齐方式"
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  const selection = currentSelection();
+                  if (!findTableAt(selection.text, selection.start)) {
+                    setViewError("光标不在表格里。把光标放进表格的某一行再试。");
+                    return;
+                  }
+                  setViewError("");
+                  const value = e.target.value;
+                  const align = value === "default" ? null : (value as "left" | "center" | "right");
+                  applyBlock(setTableColumnAlign(selection, align));
+                }}
+              >
+                <option value="">列对齐…</option>
+                <option value="default">默认</option>
+                <option value="left">左对齐</option>
+                <option value="center">居中</option>
+                <option value="right">右对齐</option>
+              </select>
               <button
                 type="button"
                 className="nv-format"
