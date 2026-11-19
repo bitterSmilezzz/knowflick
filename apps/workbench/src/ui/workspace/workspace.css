@@ -2977,6 +2977,9 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .ws-md-table th, .ws-md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 .ws-md-table th { background: var(--sunken); font-weight: 600; }
 
+/* 已忽略的到期提醒：与到期汇总同一套折叠样式，缩进一级。 */
+.nv-due-ignored { margin: 6px 0 0 12px; font-size: 12px; }
+.nv-due-ignored summary { cursor: pointer; color: var(--muted); }
 /* 整理标签：折叠在列表头，跟标签筛选并排，不抢版面。 */
 .nv-tag-admin { font-size: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; }
 .nv-tag-admin summary { cursor: pointer; color: var(--ink); }

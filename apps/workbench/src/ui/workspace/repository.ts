@@ -37,6 +37,7 @@ import {
   type Artifact,
 } from "../../shell/store";
 import { parseImportReport, serializeImportReport, type ImportReport } from "../../domain/importReport";
+import { IGNORED_DUE_LIMIT } from "../../domain/dueIgnore";
 import {
   NoteConflictError,
   addTagsToNotes,
@@ -471,6 +472,38 @@ export async function duplicateNoteById(id: string, dir: string): Promise<Note> 
 /**
  * 删除一个标签（B03）：库里的所有笔记一起摘掉。与批量标签同一口径——元数据、不追加修订。
  */
+/** 忽略记录的作用域键：按库目录分开，两个库互不影响。 */
+export function ignoredDueKey(scope: string): string {
+  return `knowflick.due.ignored.v1:${encodeURIComponent(scope)}`;
+}
+
+/**
+ * 读忽略记录。任何异常都当空——一个坏掉的偏好不该让笔记页打不开。
+ * 去重后只保留最后 LIMIT 条（与写入时同一口径）。
+ */
+export function readIgnoredDue(scope: string): string[] {
+  try {
+    const raw = localStorage.getItem(ignoredDueKey(scope));
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const keys = parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
+    return [...new Set(keys)].slice(-IGNORED_DUE_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+/** 写忽略记录；存储不可用（隐私模式/配额满）时返回 false，界面据此如实说明。 */
+export function writeIgnoredDue(keys: readonly string[], scope: string): boolean {
+  try {
+    localStorage.setItem(ignoredDueKey(scope), JSON.stringify(keys.slice(-IGNORED_DUE_LIMIT)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteTagInNotes(
   tag: string,
   dir: string

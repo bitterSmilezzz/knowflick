@@ -623,6 +623,24 @@ try {
   await check(`${JSON.stringify(rescheduled)}.includes('逾期那件事')`, '只改日期，事项文字没丢');
   await setNative('.nv-body', '恢复正文。');
 
+  // 26. 忽略到期提醒（B10）：不改正文，只是不再在这里提醒；可撤销。
+  await setNative('.nv-body', '- [ ] 忽略我试试 📅 2020-02-02');
+  await new Promise((r) => setTimeout(r, 800));
+  await b("eval", "(()=>{const d=document.querySelector('.nv-due-inbox');d.open=true;return true})()");
+  await check("document.querySelector('[aria-label=\"忽略 忽略我试试\"]') !== null", '到期汇总里有忽略按钮');
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"忽略 忽略我试试\"]').click();return true})()");
+  await check("document.body.innerText.includes('已忽略：忽略我试试')", '忽略有回执');
+  // 关键区别：忽略不是改期，正文那一行的截止日期必须原样还在。
+  const bodyAfterIgnore = await ev("document.querySelector('.nv-body')?.value ?? ''");
+  await check(`${JSON.stringify(bodyAfterIgnore)}.includes('📅 2020-02-02')`, '忽略不改正文里的截止日期');
+  await check("document.querySelector('[aria-label=\"忽略 忽略我试试\"]') === null", '忽略后不再出现在待办列表里');
+  await b("eval", "(()=>{const d=document.querySelector('.nv-due-ignored');if(d)d.open=true;return true})()");
+  await check("document.querySelector('[aria-label=\"恢复提醒 忽略我试试\"]') !== null", '已忽略的条目可撤销');
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"恢复提醒 忽略我试试\"]').click();return true})()");
+  await check("document.body.innerText.includes('已恢复提醒：忽略我试试')", '撤销忽略有回执');
+  await check("document.querySelector('[aria-label=\"忽略 忽略我试试\"]') !== null", '恢复后重新出现在待办列表里');
+  await setNative('.nv-body', '恢复正文。');
+
   console.log('Notes editor smoke: ' + count + ' checks passed.');
 } finally {
   await b("close").catch(() => {});

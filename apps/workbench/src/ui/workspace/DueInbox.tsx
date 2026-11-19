@@ -9,7 +9,7 @@ import { dueTotals } from "../../domain/dueInbox";
  * 每条给了三个就地动作：完成、推迟三天、改到指定日期。看到「逾期 5 件」时用户的第一念头
  * 通常就是这几个；让他点开那篇、翻到那一行、手动改——那才是真正的摩擦。
  */
-export function DueInbox({ items, onOpen, onDone, onSnooze, onReschedule }: {
+export function DueInbox({ items, ignored = [], onOpen, onDone, onSnooze, onReschedule, onIgnore, onUnignore }: {
   items: readonly DueTodoItem[];
   onOpen: (noteId: string) => void;
   /** 完成这一条；不传就只有查看。 */
@@ -18,11 +18,18 @@ export function DueInbox({ items, onOpen, onDone, onSnooze, onReschedule }: {
   onSnooze?: (item: DueTodoItem) => void;
   /** 改到指定日期（ISO `YYYY-MM-DD`）；不传就没有日期输入。 */
   onReschedule?: (item: DueTodoItem, date: string) => void;
+  /** 已被忽略的那些（折叠区里列出来，可撤销）。 */
+  ignored?: readonly DueTodoItem[];
+  /** 忽略这一条：不改正文，只是不再在这里提醒。 */
+  onIgnore?: (item: DueTodoItem) => void;
+  /** 撤销忽略；不传就没有撤销入口。 */
+  onUnignore?: (item: DueTodoItem) => void;
 }): React.ReactElement | null {
   const totals = dueTotals(items);
   // 将来的不占版面：那是计划，不是今天要处理的事。
   const shown = items.filter((item) => item.state !== "upcoming").slice(0, 8);
-  if (shown.length === 0) return null;
+  // 全部被忽略时**不留空壳**：标题写着「逾期 3 件」却一条都列不出来，比不显示更糟。
+  if (shown.length === 0 && ignored.length === 0) return null;
   const parts = [
     totals.overdue > 0 ? `逾期 ${totals.overdue} 件` : "",
     totals.today > 0 ? `今天到期 ${totals.today} 件` : "",
@@ -52,6 +59,17 @@ export function DueInbox({ items, onOpen, onDone, onSnooze, onReschedule }: {
                 完成
               </button>
             ) : null}
+            {onIgnore ? (
+              <button
+                type="button"
+                className="nv-due-action"
+                aria-label={`忽略 ${item.text}`}
+                title="不再在这里提醒；截止日期不动，正文也不改"
+                onClick={() => onIgnore(item)}
+              >
+                忽略
+              </button>
+            ) : null}
             {onSnooze ? (
               <button
                 type="button"
@@ -78,6 +96,29 @@ export function DueInbox({ items, onOpen, onDone, onSnooze, onReschedule }: {
           </li>
         ))}
       </ul>
+      {ignored.length > 0 ? (
+        <details className="nv-due-ignored" aria-label="已忽略的到期提醒">
+          <summary>{`已忽略 ${ignored.length} 条`}</summary>
+          <ul className="nv-due-inbox-list">
+            {ignored.slice(0, 8).map((item) => (
+              <li key={`ignored-${item.noteId}-${item.due}-${item.text}`} className="nv-due-item">
+                {`${item.text} · 《${item.noteTitle}》 · ${item.due}`}
+                {onUnignore ? (
+                  <button
+                    type="button"
+                    className="nv-due-action"
+                    aria-label={`恢复提醒 ${item.text}`}
+                    onClick={() => onUnignore(item)}
+                  >
+                    恢复提醒
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <p className="ws-hint">忽略只影响这里的提醒，截止日期与正文都没改。</p>
+        </details>
+      ) : null}
     </details>
   );
 }

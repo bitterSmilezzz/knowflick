@@ -17,10 +17,12 @@ import {
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
+  readIgnoredDue,
   readNotes,
   removeNoteFromKnowledgeBase,
   restoreNoteById,
   saveNote,
+  writeIgnoredDue,
 } from "./repository";
 import {
   archivedNotes,
@@ -66,6 +68,7 @@ import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/not
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
 import { collectDueTodos, type DueTodoItem } from "../../domain/dueInbox";
 import { rescheduleTodoInBody, snoozeTodoInBody } from "../../domain/noteDueAction";
+import { addIgnoredDue, pruneIgnoredDue, removeIgnoredDue, splitIgnoredDue } from "../../domain/dueIgnore";
 import { attachmentKindOf } from "../../domain/attachmentKind";
 import { parseInk, type InkDocument } from "../../domain/ink";
 import {
@@ -767,6 +770,25 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
    * 写入路径与「完成 / 推迟」一致：正开着的走 onEdit，后台开着只写会话，
    * 没开着走 writeNoteBodies——一篇一次修订。
    */
+  /**
+   * 忽略 / 撤销忽略一条到期提醒（B10）。
+   *
+   * 只改本地偏好，**不动正文**：忽略是「看的人」的选择，不是这条待办的属性。
+   * 写进正文会把「我不想看」变成对内容的修改，备份与导出都会被污染。
+   */
+  const setDueIgnored = (item: DueTodoItem, ignored: boolean) => {
+    const next = ignored
+      ? addIgnoredDue(ignoredDueRef.current, item)
+      : removeIgnoredDue(ignoredDueRef.current, item);
+    ignoredDueRef.current = next;
+    setIgnoredDue(next);
+    if (!writeIgnoredDue(next, dirRef.current)) {
+      setViewError("忽略记录存不下（浏览器存储不可用或已满），这次只在本次会话有效。");
+      return;
+    }
+    setViewNotice(ignored ? `已忽略：${item.text}` : `已恢复提醒：${item.text}`);
+  };
+
   const rescheduleDue = async (item: DueTodoItem, date: string) => {
     const note = state.notes.find((n) => n.id === item.noteId);
     if (!note) {
@@ -1117,7 +1139,27 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
 
   /** 可引用的来源：其它笔记 + 素材（R2「多来源引用」）。 */
   // 到期待办（B10）：全库汇总「逾期 / 今天到期」，打开工作台就能看见。
-  const dueInbox = useMemo(() => collectDueTodos(state.notes), [state.notes]);
+  // 忽略记录按库目录分开存在本地：它是「看的人」的偏好，不写进正文。
+  const [ignoredDue, setIgnoredDue] = useState<string[]>([]);
+  const ignoredDueRef = useRef<string[]>([]);
+  useEffect(() => {
+    // 按库目录重新读；读到之后按**当前存在的待办**剪一遍，避免越积越多。
+    const keys = readIgnoredDue(dirRef.current);
+    ignoredDueRef.current = keys;
+    setIgnoredDue(keys);
+  }, [dir]);
+  const dueAll = useMemo(() => collectDueTodos(state.notes), [state.notes]);
+  const dueSplit = useMemo(() => splitIgnoredDue(dueAll, ignoredDue), [dueAll, ignoredDue]);
+  // 剪枝在数据变化后做一次：待办被完成/删掉之后，它的忽略记录就是垃圾。
+  useEffect(() => {
+    if (ignoredDueRef.current.length === 0) return;
+    const pruned = pruneIgnoredDue(ignoredDueRef.current, dueAll);
+    if (pruned.length === ignoredDueRef.current.length) return;
+    ignoredDueRef.current = pruned;
+    setIgnoredDue(pruned);
+    writeIgnoredDue(pruned, dirRef.current);
+  }, [dueAll]);
+  const dueInbox = dueSplit.active;
 
   // 待验证清单（C05）：全库标了 `❓` 的断言。标记是正文的一部分，跟着保存与备份走。
   const verifyInbox = useMemo(() => collectVerifyItems(state.notes), [state.notes]);
@@ -1320,6 +1362,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
         />
         <DueInbox
           items={dueInbox}
+          ignored={dueSplit.ignored}
+          onIgnore={(item) => setDueIgnored(item, true)}
+          onUnignore={(item) => setDueIgnored(item, false)}
           onOpen={(noteId) => {
             const target = state.notes.find((n) => n.id === noteId);
             if (target) openNote(target);

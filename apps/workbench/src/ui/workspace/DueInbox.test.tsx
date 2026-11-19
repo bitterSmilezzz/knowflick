@@ -69,6 +69,43 @@ describe("DueInbox", () => {
     expect(onReschedule).not.toHaveBeenCalled();
   });
 
+  it("给了 onIgnore 才出现忽略按钮，点了把整条交出去", () => {
+    const onIgnore = vi.fn();
+    const withIgnore = renderToStaticMarkup(
+      <DueInbox items={[overdue]} onOpen={() => {}} onIgnore={onIgnore} />
+    );
+    expect(withIgnore).toContain("忽略");
+    const without = renderToStaticMarkup(<DueInbox items={[overdue]} onOpen={() => {}} />);
+    expect(without).not.toContain("忽略");
+    const tree = DueInbox({ items: [overdue], onOpen: () => {}, onIgnore }) as React.ReactElement;
+    const btn = findAllClickable(tree).find(
+      (b) => (b.props as { children?: React.ReactNode }).children === "忽略"
+    );
+    expect(btn).toBeDefined();
+    btn!.props.onClick();
+    expect(onIgnore).toHaveBeenCalledWith(overdue);
+  });
+
+  it("已忽略的那些单独折叠列出，可撤销", () => {
+    const onUnignore = vi.fn();
+    const html = renderToStaticMarkup(
+      <DueInbox items={[overdue]} ignored={[today]} onOpen={() => {}} onUnignore={onUnignore} />
+    );
+    expect(html).toContain("已忽略 1 条");
+    expect(html).toContain("回邮件");
+    // 忽略不等于改期：截止日期必须原样显示，用户才知道自己忽略的是哪天的事。
+    expect(html).toContain("2026-11-19");
+    expect(html).toContain("截止日期与正文都没改");
+  });
+
+  it("全部被忽略时不留空壳标题——列不出东西就不写「逾期 N 件」", () => {
+    const html = renderToStaticMarkup(
+      <DueInbox items={[]} ignored={[overdue]} onOpen={() => {}} onUnignore={() => {}} />
+    );
+    expect(html).not.toContain("逾期");
+    expect(html).toContain("已忽略 1 条");
+  });
+
   it("点一条把笔记 id 交给调用方", () => {
     const onOpen = vi.fn();
     const tree = DueInbox({ items: [overdue], onOpen }) as React.ReactElement;
