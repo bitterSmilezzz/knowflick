@@ -130,12 +130,37 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    name: npm test + cargo test
+  web-checks:
+    name: 前端单测 + 类型检查 + 守卫
     runs-on: ubuntu-latest
-    # 25 分钟不够：实测 Ubuntu runner 的 `apt-get` 偶发卡死到 25 分钟被取消
-    # （2026-10-22 连续两次），而 verify 步骤本身只要 3 分钟。超时上限按
-    # 「最坏情况下的 apt 也要留出余量」来定，别让环境抖动废掉整条流水线。
+    # 前端这半以前和 cargo test 绑在一个 job 里：Rust 编整棵 tauri 依赖树，慢的时候
+    # 把「门禁过没过」的信号一起拖住（实测 2.5～20+ 分钟）。拆开后这半通常 2～4 分钟出结果。
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
+      - name: 前端门禁（单测 + 类型检查 + 守卫）
+        run: ./tools/verify_workbench.sh web
+
+      - name: 校验剪藏规则表跨端一致
+        # 前端这份 `clipEngine.ts` 与 Android 的 `WebClipEngine.kt` 服务同一篇文章，规则表必须同源。
+        run: python3 tools/check_clip_parity.py
+
+  rust-checks:
+    name: Rust 单测
+    runs-on: ubuntu-latest
+    # 与 web-checks 分开：cargo test 要编整棵 tauri 依赖树，慢了不该连累前端那半的信号。
     timeout-minutes: 45
     defaults:
       run:
@@ -143,13 +168,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # cargo test 会把整个 tauri 依赖树编译一遍，而它在 Linux 上要 WebKitGTK 的 pkg-config 文件；
-      # 不装这几包，CI 会在 `glib-sys` / `webkit2gtk-sys` 的 build script 上直接红，且报错离原因很远。
+      # cargo test 在 Linux 上要 WebKitGTK 的 pkg-config 文件；不装这几包，CI 会在
+      # `glib-sys` / `webkit2gtk-sys` 的 build script 上直接红，且报错离原因很远。
       # 与 workbench-release.yml 同一份清单。
       - name: 安装 Linux 系统依赖
         run: |
           # apt 的默认超时太长：源响应慢时它会一直挂着，把整个 job 拖到超时上限。
-          # 这里给每次 apt 调用加超时并重试——失败要快，恢复了就继续。
           for attempt in 1 2 3; do
             if sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
                  -o Acquire::Retries=2 update \
@@ -175,33 +199,16 @@ jobs:
       - name: 配置 Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # 不缓存的话，每次都要把整棵 tauri 依赖树从零编一遍（ubuntu 上实测十几分钟），
-      # 而 concurrency 的 cancel-in-progress 又常在它跑完前把这一轮取消——
-      # 结果就是这条门禁**长期看不到结论**：其余八项绿，它一直在跑，再来一次推送又被取消。
+      # 不缓存的话每次都要把整棵 tauri 依赖树从零编一遍（ubuntu 上实测十几分钟）。
       # 与 workbench-release.yml 同一份写法（同一个 action、同一个 workspaces）。
       - name: 缓存 Rust 构建
         uses: swatinem/rust-cache@v2
         with:
           workspaces: apps/workbench/src-tauri -> target
 
-      - name: npm ci
-        run: npm ci
-
-      - name: verify
-        run: ./tools/verify_workbench.sh
+      - name: Rust 门禁
+        run: ./tools/verify_workbench.sh rust
         working-directory: .
-
-      - name: 校验剪藏规则表跨端一致
-        # 前端这份 `clipEngine.ts` 与 Android 的 `WebClipEngine.kt` 服务同一篇文章，规则表必须同源。
-        run: python3 tools/check_clip_parity.py
-        working-directory: .
-
-  # 浏览器冒烟此前只在本机跑（CI 上缺 agent-browser，run_all_smokes.sh
-  # 打印 SKIP 并 exit 0）。于是验收清单里 19 条「已修缺陷 → 证据测试」的登记，
-  # 在 CI 上**一条断言都不产生**，却仍被算成「已覆盖」——证据被改弱时无人察觉。
-  #
-  # 单独一个 job：它要装浏览器二进制、要起 Vite，失败原因与编译/单测不同；
-  # 混进 verify 步骤会让日志难读，也会拖慢每个 PR 的主门禁。
   browser-smokes:
     name: 浏览器冒烟
     runs-on: ubuntu-latest
