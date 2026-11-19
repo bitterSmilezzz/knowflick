@@ -18,6 +18,28 @@
 
 3. **一个分支同一时刻只在一台机器签出**（铁律见 AGENTS.md）。开工前 `git fetch && git pull --ff-only`。
 
+4. **SSH 推送若卡在「Connection to … port 22 timed out」，换掉密钥交换算法。**
+
+   GitHub 现在默认协商后量子算法 `mlkem768x25519-sha256`（握手包明显更大）。在链路质量差、
+   MTU 受限或中间设备干扰时，表现为 **TCP 连得上、`ssh -T` 却在 `expecting SSH2_MSG_KEX_ECDH_REPLY` 处卡死到超时**：
+
+   ```sh
+   # 判定：指定经典算法后同一台机器立刻通 → 问题就在协商，不在网络或权限
+   ssh -o KexAlgorithms=curve25519-sha256 -T git@github.com
+
+   # 固定下来（写进 ~/.ssh/config，对本机所有 github 操作生效）
+   cat >> ~/.ssh/config <<'EOF'
+   Host github.com
+     KexAlgorithms curve25519-sha256
+   EOF
+   ```
+
+   实测 2026-11-19 本机（macOS）一次完整复现：默认算法下 `git push` 连续超时四次（每次约 100 秒），
+   `nc -z github.com 22` 与 `nc -z ssh.github.com 443` 都显示「连得上」，`ssh -vvv` 停在 `expecting SSH2_MSG_KEX_ECDH_REPLY`；
+   加 `-o KexAlgorithms=curve25519-sha256` 后立刻推送成功。
+   **别先怀疑权限或仓库地址**——`Hi <user>! You've successfully authenticated` 会把你引向错误方向。
+
+
 ## 二、按「这台机器要干什么」装环境
 
 | 任务 | 需要装 | 验证命令（Git Bash / WSL 下执行） |
