@@ -45,34 +45,36 @@ run_step() {
 }
 if [ "$SCOPE" != rust ]; then
   cd "$ROOT/apps/workbench"
-    run_step "前端单测" npm test
-    run_step "TypeScript 类型检查" npx tsc --noEmit
-  fi
+  run_step "前端单测" npm test
+  run_step "TypeScript 类型检查" npx tsc --noEmit
+fi
 
-  # Rust 那半单独成段：CI 上它编整棵 tauri 依赖树，慢得多。
-  if [ "$SCOPE" != web ]; then
-    cd "$ROOT/apps/workbench/src-tauri"
-    # --locked：默认行为在 Cargo.lock 过期时会静默改写它再继续，CI 上完全看不出来；
-    # 加上之后 lock 与 Cargo.toml 一漂移就红。
-    #
-    # 包进 run_step：cargo test 失败时尾部十行里有「failures:」与失败的用例名——
-    # Windows 那次只看得到「退出码 101」，连是哪条用例都不知道。
-    run_step "Rust 单测" cargo test --locked
+# Rust 那半单独成段：CI 上它编整棵 tauri 依赖树，慢得多。
+if [ "$SCOPE" != web ]; then
+  cd "$ROOT/apps/workbench/src-tauri"
+  # --locked：默认行为在 Cargo.lock 过期时会静默改写它再继续，CI 上完全看不出来；
+  # 加上之后 lock 与 Cargo.toml 一漂移就红。
+  #
+  # 包进 run_step：cargo test 失败时尾部十行里有「failures:」与失败的用例名——
+  # Windows 那次只看得到「退出码 101」，连是哪条用例都不知道。
+  run_step "Rust 单测" cargo test --locked
 
-    # 同一批 Rust 用例，**在代理环境变量下**再跑一遍。
-    #
-    # 为什么：用户系统里配了 HTTP_PROXY 时，本地模型的请求会被交给代理而不是
-    # 本机服务（这是真实缺陷，见 docs/SMOOTHNESS.md）。CI 环境干净，跑一次
-    # 常规 cargo test 抓不到它——所以这里显式造一个代理环境。
-    # 清空 NO_PROXY 是关键：它本来可能含回环地址，那样问题就被掩盖了。
-    env -u NO_PROXY -u no_proxy \
+  # 同一批 Rust 用例，**在代理环境变量下**再跑一遍。
+  #
+  # 为什么：用户系统里配了 HTTP_PROXY 时，本地模型的请求会被交给代理而不是
+  # 本机服务（这是真实缺陷，见 docs/SMOOTHNESS.md）。CI 环境干净，跑一次
+  # 常规 cargo test 抓不到它——所以这里显式造一个代理环境。
+  # 清空 NO_PROXY 是关键：它本来可能含回环地址，那样问题就被掩盖了。
+  env -u NO_PROXY -u no_proxy \
     HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 \
-      cargo test --locked --lib http::tests
+    cargo test --locked --lib http::tests
+
   # 跨端回环判定对照：Rust 桌面壳与 TypeScript 前端必须给出同一答案。
   # 回环判定散落三处、各写一套字符串比较，迟早漂；ADR-0002 §3 要求同一份
   # settings.json 在两端行为相同。安卓那侧由它的镜像用例保证。
-  node tools/check_loopback_parity.mjs
-  fi
+  # 这一步要 cargo 跑 Rust 那半，所以它属于 rust 分片，不在 web job 里跑。
+  node "$ROOT/tools/check_loopback_parity.mjs"
+fi
 
   if [ "$SCOPE" != rust ]; then
     # 守卫与冒烟与 Rust 无关：rust 分片不跑它们。
