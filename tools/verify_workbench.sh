@@ -40,11 +40,15 @@ run_step() {
   # 注解配额一步只有 10 条：先放**最像原因**的行，再用尾部收口。
   # 为什么改：Windows 的 cmake 失败那次只放 tail -10，真正的「CMake Error」被挤出去了，
   # 留下来的是 panic 的尾巴与几行空行——知道挂了，不知道为什么挂。
+  # 只给「命中行」还不够：CMake Error 的下一行才是具体原因（缺编译器/找不到库）。
+  # 所以每条关键行后面再带两行上下文——那两行通常就是真正能动手修的东西。
   local hits
-  hits="$(grep -niE 'error|panick|cannot find|not found|failed|could not' "$log" | head -6 || true)"
+  hits="$(grep -niE 'error|panick|cannot find|not found|failed|could not' "$log" | head -3 | cut -d: -f1 || true)"
   if [ -n "$hits" ]; then
     printf '%s\n' "$hits" | while IFS= read -r line; do
-      echo "::error::${label} 关键行：${line}" >&2
+      sed -n "${line},$((line + 2))p" "$log" | while IFS= read -r ctx; do
+        echo "::error::${label} 关键行：${ctx}" >&2
+      done
     done
   fi
   tail -4 "$log" | while IFS= read -r line; do
