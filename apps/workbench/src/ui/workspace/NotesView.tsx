@@ -71,6 +71,7 @@ import { rescheduleTodoInBody, snoozeTodoInBody } from "../../domain/noteDueActi
 import { addIgnoredDue, pruneIgnoredDue, removeIgnoredDue, splitIgnoredDue } from "../../domain/dueIgnore";
 import { attachmentKindOf } from "../../domain/attachmentKind";
 import { insertAttachmentRef } from "../../domain/noteAttachmentInsert";
+import { deleteTableColumn, deleteTableRow, findTableAt, insertTableColumn, insertTableRow } from "../../domain/tableOps";
 import { parseInk, type InkDocument } from "../../domain/ink";
 import {
   NOTE_TEMPLATES,
@@ -563,6 +564,41 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       target.focus();
       target.setSelectionRange(next.start, next.end);
     });
+  };
+
+  /**
+   * 表格行列增删（B01）：光标必须先在表格里，否则如实说没找到表格。
+   *
+   * 与插入表格走同一条 applyBlock 路径（自动保存 + 光标定位），
+   * 所以增删之后光标还在刚才那一带，可以连续操作。
+   */
+  const tableOp = (op: "rowAbove" | "rowBelow" | "rowDelete" | "colLeft" | "colRight" | "colDelete") => {
+    const selection = currentSelection();
+    const table = findTableAt(selection.text, selection.start);
+    if (!table) {
+      setViewError("光标不在表格里。把光标放进表格的某一行再试。");
+      return;
+    }
+    setViewError("");
+    if (op === "rowAbove") applyBlock(insertTableRow(selection, "above"));
+    else if (op === "rowBelow") applyBlock(insertTableRow(selection, "below"));
+    else if (op === "rowDelete") {
+      const next = deleteTableRow(selection);
+      if (next.text === selection.text) {
+        setViewError("表头与分隔行不能删——删了这张表就不成立了。");
+        return;
+      }
+      applyBlock(next);
+    } else if (op === "colLeft") applyBlock(insertTableColumn(selection, "left"));
+    else if (op === "colRight") applyBlock(insertTableColumn(selection, "right"));
+    else {
+      const next = deleteTableColumn(selection);
+      if (next.text === selection.text) {
+        setViewError("只剩一列了，不能再删。");
+        return;
+      }
+      applyBlock(next);
+    }
   };
 
   /** 插入表格：列名用逗号分隔，至少两列。 */
@@ -1857,6 +1893,13 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
               >
                 表格
               </button>
+              {/* 表格增删：光标先在表格里，否则按钮点了会如实说没找到表格。 */}
+              <button type="button" className="nv-format" aria-label="在上面插一行" title="在光标所在行上面插一行" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("rowAbove")}>+行↑</button>
+              <button type="button" className="nv-format" aria-label="在下面插一行" title="在光标所在行下面插一行" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("rowBelow")}>+行↓</button>
+              <button type="button" className="nv-format" aria-label="删除这一行" title="删除光标所在行（表头与分隔行不能删）" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("rowDelete")}>-行</button>
+              <button type="button" className="nv-format" aria-label="在左边插一列" title="在光标所在列左边插一列" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("colLeft")}>+列←</button>
+              <button type="button" className="nv-format" aria-label="在右边插一列" title="在光标所在列右边插一列" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("colRight")}>+列→</button>
+              <button type="button" className="nv-format" aria-label="删除这一列" title="删除光标所在列（至少保留一列）" onMouseDown={(e) => e.preventDefault()} onClick={() => tableOp("colDelete")}>-列</button>
               <input
                 className="nv-block-input"
                 aria-label="链接网址"

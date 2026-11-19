@@ -431,6 +431,24 @@ try {
   await new Promise((res) => setTimeout(res, 700));
   await check("document.querySelector('.nv-body').value.includes('| 项目 | 状态 |')", "表格骨架进了正文（表头与分隔行齐全）");
   await check("document.querySelector('.nv-body').value.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===4)", "表格每行列数一致");
+  // 17b. 表格行列增删（B01）：光标在表格里时加一行、删一列，列数始终一致。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| 项目 | 状态 |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"在下面插一行\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  const afterRow = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterRow)}.split('\\n').filter(l=>l.startsWith('|')).length === 5`, '插一行后表格变成五行');
+  await check(`${JSON.stringify(afterRow)}.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===4)`, '插行后每行列数仍一致');
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| 项目 | 状态 |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"删除这一列\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  const afterCol = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterCol)}.includes('| 状态 |') && !${JSON.stringify(afterCol)}.includes('| 项目 | 状态 |')`, '删一列后表头只剩一列');
+  await check(`${JSON.stringify(afterCol)}.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===3)`, '删列后每行列数仍一致');
+  // 光标不在表格里时如实报错，不静默失败。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(0,0);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"在下面插一行\"]').click();return true})()");
+  await check("document.body.innerText.includes('光标不在表格里')", '光标不在表格里时如实说没找到表格');
+
   await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '\\n官网在这里');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
   await new Promise((res) => setTimeout(res, 700));
   await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();const at=ta.value.indexOf('官网在这里');ta.setSelectionRange(at, at+5);return true})()");
