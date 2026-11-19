@@ -2932,6 +2932,11 @@ body.capsule-window { overflow: hidden; background: transparent; }
 .nv-due-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .nv-due-overdue { color: var(--danger); }
 .nv-due-today { color: var(--accent-text); }
+/* 到期待办汇总：与引用体检同一套折叠样式，位置在列表头。 */
+.nv-due-inbox { font-size: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.nv-due-inbox summary { cursor: pointer; color: var(--ink); }
+.nv-due-inbox-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nv-due-open { font-size: 12px; padding: 0 4px; border: none; background: none; cursor: pointer; color: inherit; font-weight: 600; text-decoration: underline; }
 /* 正文查找替换栏：贴着正文上方，不遮编辑器。 */
 .nv-find { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin: 4px 0; }
 .nv-find-input { font-size: 12px; min-width: 96px; }

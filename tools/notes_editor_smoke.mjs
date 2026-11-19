@@ -308,6 +308,13 @@ try {
   await check("document.querySelector('.nv-due-count').textContent.includes('逾期 1 件')", "到期提醒里写明逾期件数");
   await check("document.querySelector('.nv-due-list').textContent.includes('逾期那件事')", "到期提醒里列出是哪一件");
 
+  // 15. 到期待办汇总：上一段写的那条逾期，应当在列表头的汇总里出现。
+  const inboxText = await ev("document.querySelector('.nv-due-inbox')?.textContent ?? ''");
+  await check(`${JSON.stringify(inboxText)}.includes('逾期')`, "列表头汇总里报出逾期");
+  await check(`${JSON.stringify(inboxText)}.includes('逾期那件事')`, "汇总里列出具体事项");
+  const inboxOpened = await ev("(()=>{const b=document.querySelector('.nv-due-open');if(!b)return false;b.click();return true})()");
+  await check(`${inboxOpened}`, "汇总里的事项可以点开");
+
   console.log(`Notes editor smoke: ${count} checks passed.`);
 } finally {
   await b("close").catch(() => {});

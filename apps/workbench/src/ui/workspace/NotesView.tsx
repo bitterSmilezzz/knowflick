@@ -52,6 +52,7 @@ import { collectNoteTags, filterByTag } from "../../domain/noteTags";
 import { countNoteText, findMatches, replaceAllMatches } from "../../domain/noteFind";
 import { countNoteTodos, parseNoteTodos, toggleNoteTodo } from "../../domain/noteTodo";
 import { dueStateOf, dueSummary, todoTextWithoutDue, todosWithDue } from "../../domain/noteDue";
+import { collectDueTodos } from "../../domain/dueInbox";
 import {
   NOTE_TEMPLATES,
   findNoteTemplate,
@@ -63,6 +64,7 @@ import { useDeleteConfirm } from "./useDeleteConfirm";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { NoteBacklinks } from "./NoteBacklinks";
 import { ReferenceAuditPanel } from "./ReferenceAuditPanel";
+import { DueInbox } from "./DueInbox";
 
 /**
  * 笔记工作面（R1 首个纵向切片）——契约见 docs/NOTES_MODEL.md「界面契约」：
@@ -733,6 +735,9 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   }, [body, activeNotes, materials]);
 
   /** 可引用的来源：其它笔记 + 素材（R2「多来源引用」）。 */
+  // 到期待办（B10）：全库汇总「逾期 / 今天到期」，打开工作台就能看见。
+  const dueInbox = useMemo(() => collectDueTodos(state.notes), [state.notes]);
+
   // 引用体检（C05）：全库扫一遍失效/过期的引用，不只是打开着的那篇。
   const auditIssues = useMemo(() => auditReferences(state.notes, materials), [state.notes, materials]);
 
@@ -906,6 +911,13 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
             ))}
           </select>
         </label>
+        <DueInbox
+          items={dueInbox}
+          onOpen={(noteId) => {
+            const target = state.notes.find((n) => n.id === noteId);
+            if (target) openNote(target);
+          }}
+        />
         <ReferenceAuditPanel
           issues={auditIssues}
           onOpen={(noteId) => {
