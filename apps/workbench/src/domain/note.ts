@@ -403,6 +403,32 @@ export function renameTag(
   return { state: { ...state, notes }, changed, merged };
 }
 
+/**
+ * 删除一个标签（B03）：从库里所有笔记上摘掉它。
+ *
+ * 与「重命名」并列，是标签管理的最后一块：改名解决「写错了」，删除解决「不想要了」。
+ * 与批量去标签同一口径——只动标签数组、不追加修订；一篇都没变就不写。
+ *
+ * 注意：这是**批量修改**，不是删除笔记，所以不做二次确认——用户摘掉一个标签，
+ * 笔记本身一个字都没少，撤销成本也只是重新打一遍标签。
+ */
+export function deleteTag(
+  state: NotesState,
+  tag: string,
+  now = Date.now()
+): { state: NotesState; changed: string[]; reason?: "invalid" } {
+  const target = tag.trim().replace(/^#/, "").trim();
+  if (!target) return { state, changed: [], reason: "invalid" };
+  const changed: string[] = [];
+  const notes = state.notes.map((n) => {
+    if (!n.tags.includes(target)) return n;
+    changed.push(n.id);
+    return { ...n, tags: n.tags.filter((t) => t !== target), updatedAt: now };
+  });
+  if (changed.length === 0) return { state, changed };
+  return { state: { ...state, notes }, changed };
+}
+
 export function createKnowledgeBase(
   state: NotesState,
   kb: Omit<KnowledgeBase, "createdAt" | "updatedAt">,

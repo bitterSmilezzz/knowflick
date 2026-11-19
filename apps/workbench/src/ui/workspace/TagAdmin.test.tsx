@@ -31,6 +31,18 @@ describe("TagAdmin", () => {
     expect(html).not.toContain("重命名</button>");
   });
 
+  it("没传 onDelete 时不出现删除按钮", () => {
+    const html = renderToStaticMarkup(<TagAdmin tags={tags} onRename={() => {}} />);
+    expect(html).not.toContain("删除标签</button>");
+  });
+
+  it("说明文字区分「删标签」与「删笔记」，避免误读", () => {
+    const html = renderToStaticMarkup(<TagAdmin tags={tags} onDelete={() => {}} />);
+    expect(html).toContain("不是删笔记");
+    // 删除走两步确认（点一下变「确认删除」），所以未选中标签时按钮根本不存在。
+    expect(html).not.toContain("删除标签</button>");
+  });
+
   // 交互路径（选标签 → 填名字 → 点重命名）由浏览器冒烟守住：
   // 服务端渲染推进不了组件内部状态，硬在这里断言只会写出永远为真的句子。
   it("说明文字讲清楚合并规则，不让用户以为会留下两个同名标签", () => {

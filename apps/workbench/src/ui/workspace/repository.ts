@@ -42,6 +42,7 @@ import {
   addTagsToNotes,
   removeTagsFromNotes,
   renameTag,
+  deleteTag,
   addNoteToKb as domainAddToKb,
   createKnowledgeBase as domainCreateKb,
   deleteNote as domainDeleteNote,
@@ -467,6 +468,30 @@ export async function duplicateNoteById(id: string, dir: string): Promise<Note> 
 /**
  * 重命名一个标签（B03）。改的是库里的所有笔记，与批量标签同一口径：元数据、不追加修订。
  */
+/**
+ * 删除一个标签（B03）：库里的所有笔记一起摘掉。与批量标签同一口径——元数据、不追加修订。
+ */
+export async function deleteTagInNotes(
+  tag: string,
+  dir: string
+): Promise<{ changed: number; reason?: "invalid" }> {
+  const now = Date.now();
+  if (inShell()) {
+    const state = await readNotes(dir);
+    const plan = deleteTag(state, tag, now);
+    for (const id of plan.changed) {
+      const note = plan.state.notes.find((n) => n.id === id);
+      if (!note) continue;
+      await noteUpsert(notePayload(note), note.currentRevision, dir);
+    }
+    return { changed: plan.changed.length, reason: plan.reason };
+  }
+  const state = browserNotes();
+  const plan = deleteTag(state, tag, now);
+  if (plan.changed.length > 0) browserNotesWrite(plan.state);
+  return { changed: plan.changed.length, reason: plan.reason };
+}
+
 export async function renameTagInNotes(
   from: string,
   to: string,

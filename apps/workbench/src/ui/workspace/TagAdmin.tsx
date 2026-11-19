@@ -9,15 +9,22 @@
  */
 import { useState } from "react";
 import type { TagCount } from "../../domain/noteTags";
+import { deleteConfirmLabels } from "./deleteConfirm";
+import { useDeleteConfirm } from "./useDeleteConfirm";
 
-export function TagAdmin({ tags, onRename }: {
+export function TagAdmin({ tags, onRename, onDelete }: {
   tags: readonly TagCount[];
   /** 旧标签与新名字；不传就只列出来看。 */
   onRename?: (from: string, to: string) => void;
+  /** 从库里所有笔记摘掉这个标签；不传就没有删除按钮。 */
+  onDelete?: (tag: string) => void;
 }): React.ReactElement | null {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // 批量改库是全库范围的写入：走项目统一的「点一下变确认、再点一次才执行」两步确认。
+  const confirm = useDeleteConfirm((tag) => { onDelete?.(tag); });
   if (tags.length === 0) return null;
+  const delLabels = from ? deleteConfirmLabels(`标签 ${from}`, confirm.isArmed(from)) : null;
   const canRename = from !== "" && to.trim() !== "";
   return (
     <details className="nv-tag-admin" aria-label="整理标签">
@@ -40,6 +47,17 @@ export function TagAdmin({ tags, onRename }: {
           onChange={(e) => setTo(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && canRename && onRename) onRename(from, to); }}
         />
+        {onDelete && delLabels ? (
+          <button
+            type="button"
+            className={confirm.isArmed(from) ? "ws-danger" : "ws-bordered"}
+            aria-label={delLabels.ariaLabel}
+            title={delLabels.title}
+            onClick={() => confirm.request(from)}
+          >
+            {confirm.isArmed(from) ? "确认删除" : "删除标签"}
+          </button>
+        ) : null}
         {onRename ? (
           <button
             type="button"
@@ -52,7 +70,7 @@ export function TagAdmin({ tags, onRename }: {
           </button>
         ) : null}
       </div>
-      <p className="ws-hint">只改标签本身，正文一个字都不动；新名字在同一篇里已经存在时会合并，不会留下两个同名标签。</p>
+      <p className="ws-hint">只改标签本身，正文一个字都不动；新名字在同一篇里已经存在时会合并，不会留下两个同名标签。删除标签是把「这个标签」摘掉，不是删笔记。</p>
     </details>
   );
 }

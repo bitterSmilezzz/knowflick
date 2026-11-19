@@ -254,6 +254,21 @@ try {
   await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.includes('复盘'))})()", '旧标签没有了');
   await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.tags.includes('每周复盘')).length===2})()", '两篇都换成了新标签');
 
+  // 8j. 删除标签（B03）：把「这个标签」从所有笔记上摘掉，不是删笔记。
+  // 删除按钮只在选中某个标签后出现——必须先把「整理标签」折叠区展开。
+  await b("eval", "(()=>{const d=document.querySelector('.nv-tag-admin');d.open=true;return true})()");
+  await setNative('[aria-label="选择要改名的标签"]', "每周复盘");
+  await check("document.querySelector('[aria-label=\"删除标签 每周复盘\"]') !== null", '选中标签后出现删除按钮');
+  // 两步确认：第一下只是把按钮变成「确认删除」，第二下才真的执行。
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"删除标签 每周复盘\"]').click();return true})()");
+  await check("document.querySelector('[aria-label=\"确认删除标签 每周复盘\"]') !== null", '第一下只进入确认态，没有直接删除');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.tags.includes('每周复盘')).length===2})()", '确认之前标签还在');
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"确认删除标签 每周复盘\"]').click();return true})()");
+  await check("document.body.innerText.includes('已删除标签「每周复盘」')", '删除标签有回执');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.includes('每周复盘'))})()", '两篇都不再带这个标签');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.length===2})()", '删标签没有删掉任何一篇笔记');
+
+
 
 
 

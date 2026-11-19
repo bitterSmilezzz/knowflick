@@ -13,6 +13,7 @@ import {
   addTagsToNotesById,
   removeTagsFromNotesById,
   renameTagInNotes,
+  deleteTagInNotes,
   moveNotesToNotebookById,
   readNoteHistory,
   readNoteRevision,
@@ -894,6 +895,32 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
     }
   };
 
+  /**
+   * 删除一个标签（B03）：库里所有带它的笔记一起摘掉。
+   *
+   * 不弹二次确认：这是批量改标签，不是删笔记——笔记一个字都没少，撤销成本只是重新打一遍标签。
+   * 但如果筛选正停在这个标签上，要复位到「全部标签」，否则列表会变成空的。
+   */
+  const deleteTagNow = async (tag: string) => {
+    setViewError("");
+    try {
+      const result = await deleteTagInNotes(tag, dirRef.current);
+      if (result.reason === "invalid") {
+        setViewError("没有选中要删除的标签。");
+        return;
+      }
+      if (result.changed === 0) {
+        setViewNotice(`库里没有笔记带「${tag}」这个标签，没有改动。`);
+        return;
+      }
+      if (tagFilter === tag) setTagFilter("");
+      await refresh();
+      setViewNotice(`已删除标签「${tag}」：${result.changed} 篇摘掉了它`);
+    } catch (e) {
+      setViewError(`删除标签失败：${String(e)}`);
+    }
+  };
+
   const tagSelected = async () => {
     if (batchIds.size === 0) return;
     // 先取总数：下面 `setBatchIds` 之后这个闭包里的 size 仍是旧值，读它容易写错。
@@ -1323,7 +1350,11 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
           />
         </label>
         {tagOptions.length > 0 ? (
-          <TagAdmin tags={tagOptions} onRename={(from, to) => void renameTagNow(from, to)} />
+          <TagAdmin
+            tags={tagOptions}
+            onRename={(from, to) => void renameTagNow(from, to)}
+            onDelete={(tag) => void deleteTagNow(tag)}
+          />
         ) : null}
         {tagOptions.length > 0 ? (
           <select
