@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"time"
 
+	"knowflick.local/workbench-go/internal/cards"
 	"knowflick.local/workbench-go/internal/library"
 )
 
@@ -55,4 +57,14 @@ func (s *PreviewService) SearchNoteChunksVector(ctx context.Context, generation 
 		return nil, errors.New("请重新打开资料库")
 	}
 	return s.current.SearchNoteChunksVector(ctx, query, provider, model, limit)
+}
+
+// ReplaceCards 用传入列表替换活跃卡片全集（db_replace_cards）。
+func (s *PreviewService) ReplaceCards(ctx context.Context, generation int, list []cards.Card) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return errors.New("请重新打开资料库")
+	}
+	return s.current.ReplaceCards(ctx, list, time.Now().UnixMilli())
 }

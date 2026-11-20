@@ -148,7 +148,7 @@ func SaveContentTx(ctx context.Context, tx *sql.Tx, card EditableCard, now int64
 			if err := requireChanged(result, err); err != nil {
 				return err
 			}
-			if err := invalidateEmbedding(ctx, tx, card.ID); err != nil {
+			if err := InvalidateEmbedding(ctx, tx, card.ID); err != nil {
 				return err
 			}
 		}
@@ -171,7 +171,7 @@ func DeleteContent(ctx context.Context, db *sql.DB, id string, version, now int6
 	if err := removeIndex(ctx, tx, id); err != nil {
 		return err
 	}
-	if err := invalidateEmbedding(ctx, tx, id); err != nil {
+	if err := InvalidateEmbedding(ctx, tx, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -216,7 +216,8 @@ func removeIndex(ctx context.Context, tx *sql.Tx, id string) error {
 	return err
 }
 
-func invalidateEmbedding(ctx context.Context, tx *sql.Tx, id string) error {
+// InvalidateEmbedding 清掉一张卡片的向量：内容或身份变了就作废，等重算。
+func InvalidateEmbedding(ctx context.Context, tx *sql.Tx, id string) error {
 	_, err := tx.ExecContext(ctx, "DELETE FROM card_embeddings WHERE card_id = ?", id)
 	return err
 }

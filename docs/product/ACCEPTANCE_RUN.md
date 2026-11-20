@@ -1650,6 +1650,14 @@ R4 项目与画像的写入仍未迁移。
 | 邮箱历史同步 | PASS | SyncMailHistoryNow 对齐 mail_sync_history：走 mailsync.ModeHistory 往回补下一批更早邮件，与手动同步共用锁；不可达主机明确报错而不静默跳过。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。真实 IMAP 同步待桌面解锁后验证。 |
 
+## 阶段 2 第九十九轮 · 卡片全集替换与命令面收口
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 全集替换 | PASS | ReplaceCards 对齐 Rust replace_cards：传入列表即活跃全集，缺席卡片软删除并清 FTS；传入卡片全量 upsert（版本递增、向量作废、索引重建）；写 legacy_cards_migrated 标记。 |
+| 命令面收口 | 记录 | 136 条 Rust 命令已全部映射到 Go 服务方法并逐一核对存在；只剩前端接线与各端原生行为待后续轮次推进。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
+
 ## 阶段 2 第九十四轮 · 笔记、卡片、邮箱、复习历史与回收站恢复
 
 | 验收 | 结果 | 证据与范围 |
