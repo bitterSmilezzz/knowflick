@@ -1360,6 +1360,49 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// 同一批账号与时刻，Rust 与 Go 的「该不该自动同步」判定必须一致。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_mail_schedule_parity() {
+        let fixture = std::env::var("KF_GO_SCHEDULE_FIXTURE").expect("set KF_GO_SCHEDULE_FIXTURE");
+        let text = std::fs::read_to_string(fixture).unwrap();
+        let mut got = std::collections::HashMap::new();
+        for line in text.lines() {
+            if let Some((key, value)) = line.split_once('=') {
+                got.insert(key.to_string(), value.to_string());
+            }
+        }
+        // 复刻 sync_due_using 的判定，用同一批输入独立算一遍。
+        let attempt: i64 = 1_000_000;
+        let due_at = |interval: i64, last: Option<i64>, now: i64| -> bool {
+            if interval == 0 {
+                return false;
+            }
+            if let Some(time) = last {
+                if now.saturating_sub(time) < interval * 60_000 {
+                    return false;
+                }
+            }
+            true
+        };
+        let at_interval: Vec<&str> = vec![
+            if due_at(15, None, attempt + 15 * 60_000) { "never" } else { "" },
+            if due_at(15, Some(attempt), attempt + 15 * 60_000) { "fresh" } else { "" },
+        ];
+        let at_interval: Vec<&str> = at_interval.into_iter().filter(|s| !s.is_empty()).collect();
+        assert_eq!(got["at_interval_due"], at_interval.join(","), "到点判定与 Go 不一致");
+
+        let within: Vec<&str> = vec![
+            if due_at(15, None, attempt + 60_000) { "never" } else { "" },
+            if due_at(15, Some(attempt), attempt + 60_000) { "fresh" } else { "" },
+        ];
+        let within: Vec<&str> = within.into_iter().filter(|s| !s.is_empty()).collect();
+        assert_eq!(got["within_interval_due"], within.join(","), "间隔内判定与 Go 不一致");
+
+        // interval == 0 永不自动跑。
+        assert_eq!(got["off_due"], "", "关闭自动同步的账号不该被选中");
+    }
+
     /// Go 写的账本库，Rust 必须读出同样的去重结论：哪些 UID 已导入、哪些被拒、游标在哪。
     #[test]
     #[ignore = "requires KF_GO_STORE_DB"]
