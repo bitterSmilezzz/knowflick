@@ -23,9 +23,11 @@ func main() {
 		log.Fatal("请先运行 tools/build_workbench_go.sh")
 	}
 	service := &PreviewService{initialPath: *path}
+	// 邮箱服务单独一个：它要写库，只读预览时自己会拒绝。
+	mailService := &MailService{preview: service}
 	app := application.New(application.Options{
 		Name:     "KnowFlick Go Preview",
-		Services: []application.Service{application.NewService(service)},
+		Services: []application.Service{application.NewService(service), application.NewService(mailService)},
 		Assets:   application.AssetOptions{Handler: application.BundledAssetFileServer(frontend)},
 		Mac:      application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})

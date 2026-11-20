@@ -5,6 +5,10 @@ import { ChooseLibrary, DeleteNote, EnableEditing, ListDeletedNotes, ListNotes, 
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
+import { ListMailAccounts, MailAutoSyncStatus, StartMailAutoSync, StopMailAutoSync, SyncMailDueNow } from "./bindings/knowflick.local/workbench-go/mailservice";
+import type { Account } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
+import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
+import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import "../src/ui/workspace/tokens.css";
 import "./preview.css";
@@ -22,6 +26,11 @@ function Preview() {
   const [trash, setTrash] = useState(false);
   const [chunkMode, setChunkMode] = useState(false);
   const [hits, setHits] = useState<ChunkHit[]>([]);
+  const [mailOpen, setMailOpen] = useState(false);
+  const [mailAccounts, setMailAccounts] = useState<Account[]>([]);
+  const [mailStatus, setMailStatus] = useState<MailStatus | null>(null);
+  const [mailInterval, setMailInterval] = useState("15");
+  const [mailBusy, setMailBusy] = useState(false);
 
   const notes = lib?.page.notes ?? [];
   const selected = notes.find((n) => n.id === selectedId) ?? null;
@@ -150,6 +159,58 @@ function Preview() {
     } catch (fail) {} finally { setBusy(false); }
   }
 
+  async function refreshMail() {
+    setMailBusy(true);
+    try {
+      const [accounts, status] = await Promise.all([ListMailAccounts(), MailAutoSyncStatus()]);
+      setMailAccounts(accounts ?? []);
+      setMailStatus(status);
+    } catch (fail) {
+      setError(String(fail));
+    } finally { setMailBusy(false); }
+  }
+
+  async function toggleMail() {
+    const next = !mailOpen;
+    setMailOpen(next);
+    if (next) await refreshMail();
+  }
+
+  async function syncMailNow() {
+    setMailBusy(true);
+    try {
+      const outcomes = await SyncMailDueNow();
+      const list: Outcome[] = outcomes ?? [];
+      const imported = list.reduce((sum, item) => sum + item.imported, 0);
+      const rejected = list.reduce((sum, item) => sum + item.rejected, 0);
+      const failed = list.filter((item) => item.error);
+      setNotice(`邮箱同步：导入 ${imported} 封，拒收 ${rejected} 封` + (failed.length ? `，${failed.length} 个账号报错` : ""));
+      setError(failed.map((item) => `${item.accountId}: ${item.error}`).join("；"));
+      if (lib) await reload(lib.generation);
+      await refreshMail();
+    } catch (fail) {
+      setError(String(fail));
+    } finally { setMailBusy(false); }
+  }
+
+  async function startAuto() {
+    const minutes = Number(mailInterval);
+    if (!Number.isFinite(minutes) || minutes <= 0) { setError("自动同步间隔必须是大于 0 的分钟数"); return; }
+    setMailBusy(true);
+    try {
+      setMailStatus(await StartMailAutoSync(minutes));
+      setNotice(`已开启自动同步，每 ${minutes} 分钟检查一次`);
+    } catch (fail) { setError(String(fail)); } finally { setMailBusy(false); }
+  }
+
+  async function stopAuto() {
+    setMailBusy(true);
+    try {
+      setMailStatus(await StopMailAutoSync());
+      setNotice("已停止自动同步");
+    } catch (fail) { setError(String(fail)); } finally { setMailBusy(false); }
+  }
+
   return (
     <main className="preview-app" aria-busy={busy}>
       <header className="preview-header">
@@ -160,12 +221,37 @@ function Preview() {
         <div className="preview-actions">
           {lib && !lib.writable && <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button>}
           {lib && lib.writable && <button type="button" disabled={busy} onClick={() => void createNote()}>新建笔记</button>}
+          {lib && lib.writable && <button type="button" disabled={busy || mailBusy} aria-pressed={mailOpen} onClick={() => void toggleMail()}>{mailOpen ? "收起邮箱" : "邮箱"}</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void toggleTrash()}>{trash ? "返回笔记" : "回收站"}</button>}
           <button type="button" disabled={busy} onClick={() => void choose()}>打开资料库</button>
         </div>
       </header>
       {error && <p className="preview-error" role="alert">{error}</p>}
       {notice && <p className="preview-notice" role="status">{notice}</p>}
+
+      {mailOpen && lib?.writable && <section className="preview-mail" aria-label="邮箱同步">
+        <div className="preview-mail-head">
+          <strong>邮箱同步</strong>
+          <span>{mailAccounts.length} 个账号 · 自动同步{mailStatus?.running ? "运行中" : "已停止"}</span>
+        </div>
+        {mailAccounts.length === 0 ? <p className="preview-count">还没有配置邮箱账号</p> : (
+          <ul className="preview-mail-list">
+            {mailAccounts.map((account) => (
+              <li key={account.config.id}>
+                <span>{account.config.name || account.config.email}</span>
+                <small>{account.hasPassword ? "凭据已保存" : "需要重新输入密码"}{account.lastError ? ` · ${account.lastError}` : ""}</small>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="preview-mail-actions">
+          <button type="button" disabled={mailBusy} onClick={() => void syncMailNow()}>立即同步</button>
+          <input type="number" min="1" aria-label="自动同步间隔（分钟）" value={mailInterval} onChange={(event) => setMailInterval(event.target.value)} />
+          <button type="button" disabled={mailBusy || mailStatus?.running} onClick={() => void startAuto()}>开启自动</button>
+          <button type="button" disabled={mailBusy || !mailStatus?.running} onClick={() => void stopAuto()}>停止自动</button>
+        </div>
+        {mailStatus && mailStatus.lastError && <p className="preview-error" role="status">上次错误：{mailStatus.lastError}</p>}
+      </section>}
 
       {lib && <div className="preview-workspace">
         <section className="preview-list" aria-label="笔记列表">
