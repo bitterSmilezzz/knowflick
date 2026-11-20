@@ -1658,6 +1658,15 @@ R4 项目与画像的写入仍未迁移。
 | 命令面收口 | 记录 | 136 条 Rust 命令已全部映射到 Go 服务方法并逐一核对存在；只剩前端接线与各端原生行为待后续轮次推进。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百零二轮 · 旧归档导入导出接线
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 旧归档入口 | 构建通过 | 「更多」菜单新增导入旧归档（ReadImportArchiveFile + SaveCardsJSON 三代轮转）与查看旧 JSON 快照（LoadStore 摘要）。 |
+| 导出入口 | 构建通过 | 新增导出归档（ExportArchive）与导出卡片 JSON（ExportCardsJSONFile），按输入路径落盘并提示结果。 |
+| 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
+
 ## 阶段 2 第一百零一轮 · 快捷捕捉窗口接线
 
 | 验收 | 结果 | 证据与范围 |

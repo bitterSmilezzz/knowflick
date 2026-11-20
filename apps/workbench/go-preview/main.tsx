@@ -27,7 +27,7 @@ import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
-import { CaptureMaterial, GetShortcutStatus, HideCapsule } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { noteMediaPaths } from "../src/domain/mediaMime";
@@ -273,6 +273,54 @@ function Preview() {
     try {
       const path = await ExportSystemBackup(lib.generation);
       if (path) setNotice("已导出基础备份到 " + path + "。此备份不含项目、邮箱等新增数据。");
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function importLegacyArchive() {
+    if (!lib || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const payload = await ReadImportArchiveFile("cards.json");
+      if (!payload.cards.trim()) throw new Error("归档中没有可用的卡片数据");
+      await SaveCardsJSONIfNeeded(payload.cards);
+      setNotice("旧归档已导入 cards.json（三代轮转），可在卡片库搜索确认");
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function SaveCardsJSONIfNeeded(text: string) {
+    if (!lib) throw new Error("请先打开资料库");
+    const { SaveCardsJSON } = await import("./bindings/knowflick.local/workbench-go/previewservice");
+    await SaveCardsJSON(lib.generation, text);
+  }
+
+  async function exportLegacyArchive() {
+    if (!lib || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const snapshot = await LoadStore(lib.generation);
+      setNotice("旧 JSON 存储快照：cards " + (snapshot.cards ? "有" : "无") + "、备份 " + (snapshot.backup ? "一代" : "无") + "、设置 " + (snapshot.settings ? "有" : "无"));
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function exportArchiveToPath() {
+    if (!lib || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const dest = prompt("导出归档到哪个路径？", "knowflick-backup.kfstore");
+      if (!dest) return;
+      await ExportArchive(lib.generation, dest);
+      setNotice("归档已导出到 " + dest);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function exportCardsToPath() {
+    if (!lib || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const dest = prompt("导出卡片 JSON 到哪个路径？", "cards.json");
+      if (!dest) return;
+      await ExportCardsJSONFile(lib.generation, dest);
+      setNotice("卡片已导出到 " + dest);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
@@ -634,6 +682,10 @@ function Preview() {
               <div className="preview-more-group">
                 <strong>工作台</strong>
                 <button type="button" aria-pressed={view === "materials"} disabled={busy || cardEditing} onClick={() => { setView(view === "materials" ? "notes" : "materials"); setMoreOpen(false); }}>素材</button>
+                <button type="button" disabled={busy} onClick={() => void importLegacyArchive()}>导入旧归档</button>
+                <button type="button" disabled={busy} onClick={() => void exportLegacyArchive()}>查看旧 JSON 快照</button>
+                <button type="button" disabled={busy} onClick={() => void exportArchiveToPath()}>导出归档</button>
+                <button type="button" disabled={busy} onClick={() => void exportCardsToPath()}>导出卡片 JSON</button>
                 <button type="button" aria-pressed={view === "cards"} disabled={busy || cardEditing} onClick={() => { setView(view === "cards" ? "notes" : "cards"); setMoreOpen(false); }}>卡片库</button>
                 <button type="button" aria-pressed={view === "artifacts"} disabled={busy || cardEditing} onClick={() => { setView(view === "artifacts" ? "notes" : "artifacts"); setMoreOpen(false); }}>产物</button>
                 <button type="button" aria-pressed={view === "projects"} disabled={busy || cardEditing} onClick={() => { setView(view === "projects" ? "notes" : "projects"); setMoreOpen(false); }}>项目</button>
