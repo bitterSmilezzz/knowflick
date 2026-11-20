@@ -651,6 +651,21 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 `docs/adr/0017-go-embed-hash.md`。
 
+## 2026-11-20 中午（再续）：阶段 2 第九刀 —— 语音转写迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 模型目录与状态 | PASS | Catalog 与 Rust 的 tiny/base/small 三项逐条一致；文件非空才算装了；未知模型报错；期望字节数仅用于展示进度。 |
+| 下载 | PASS | httptest 本地服务：流式写入、进度回调被调用、.part 改名后不残留、字节一致；外部 http 地址被拒且不留 .part。 |
+| WAV 解析 | PASS | 16-bit PCM 解码 0/0.5/-1/0.25 四个采样点正确；非 WAV 与 24-bit 均被拒。 |
+| 端到端转写 | PASS（真实模型） | tiny 模型 + 系统 TTS 音频：transcript 为 Hello this is a test of speech recognition.，audioMs=3301，elapsedMs=4057。 |
+| 跨实现路线对拍 | PASS | Rust（whisper-rs 静态链接）与 Go（外部 whisper-cli 进程）对同一段音频、同一模型给出**相同文本**；cargo test go_asr_matches_rust_transcript -- --ignored 通过。 |
+| 非 WAV 转换 / 镜像回退 / 真实麦克风 / 大模型 / 插件开关 | SKIP | 见 ADR-0018 第四节。非 WAV 转换是 macOS 专有的 afconvert，跨平台需换方案，属新工作。 |
+
+**未验证**：非 WAV 输入、模型镜像回退、真实麦克风录音、base/small 模型耗时、Windows/Linux。
+
+取舍与证据见 docs/adr/0018-go-asr.md。
+
 
 
 

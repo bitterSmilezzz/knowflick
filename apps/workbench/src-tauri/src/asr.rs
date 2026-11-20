@@ -286,6 +286,20 @@ pub fn transcribe(model_path: &Path, wav_path: &Path) -> Result<TranscriptionRes
 
 #[cfg(test)]
 mod tests {
+    /// Go 用外部 whisper-cli 转写同一段音频，与 Rust 的 whisper-rs 结果对拍。
+    /// 两条路线（静态链接 vs 外部进程）必须给出同一段文字。
+    #[test]
+    #[ignore = "requires KF_ASR_MODEL and KF_ASR_WAV"]
+    fn go_asr_matches_rust_transcript() {
+        let model = std::env::var("KF_ASR_MODEL").expect("set KF_ASR_MODEL");
+        let wav = std::env::var("KF_ASR_WAV").expect("set KF_ASR_WAV");
+        let result = transcribe(std::path::Path::new(&model), std::path::Path::new(&wav)).unwrap();
+        let go_text = std::env::var("KF_GO_ASR_FIXTURE").expect("set KF_GO_ASR_FIXTURE");
+        let go_text = std::fs::read_to_string(go_text).unwrap();
+        let normalize = |s: &str| s.trim().to_lowercase();
+        assert_eq!(normalize(&result.text), normalize(&go_text), "Rust 与 Go 的转写结果不一致");
+    }
+
     use super::*;
 
     fn write_test_wav(path: &Path, samples: &[i16], rate: u32, bits: u16) {
