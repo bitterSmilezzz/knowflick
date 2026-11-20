@@ -31,6 +31,7 @@ type SystemSnapshotV4 struct {
 	Mail           json.RawMessage
 	ReviewHistory  json.RawMessage
 	SearchHistory  json.RawMessage
+	DeletedRecords json.RawMessage
 	Media          map[string][]byte
 }
 
@@ -81,6 +82,10 @@ const systemV9NoR4Limitation = "当前备份格式不含项目、目标、个人
 const systemV10Limitation = "当前备份格式不含外部连接授权、已删除的素材、卡片和产物；邮箱密码不随包迁移，历史覆盖起点之前的复习不补造，附件和设置与数据库不在同一事务"
 
 const systemV10NoR4Limitation = "当前备份格式不含项目、目标、个人画像、外部连接授权、已删除的素材、卡片和产物；邮箱密码不随包迁移，历史覆盖起点之前的复习不补造，附件和设置与数据库不在同一事务"
+
+const systemV11Limitation = "当前备份格式仍不含外部连接授权；邮箱密码不随包迁移，历史覆盖起点之前的复习不补造；搜索历史、附件和设置分别从数据库之外读取，不与 SQLite 快照处于同一事务"
+
+const systemV11NoR4Limitation = "当前备份格式仍不含项目、目标、个人画像、外部连接授权；邮箱密码不随包迁移，历史覆盖起点之前的复习不补造；搜索历史、附件和设置分别从数据库之外读取，不与 SQLite 快照处于同一事务"
 
 // WriteSystemBackupV4 写入现有 TypeScript 恢复器兼容的基础 .kfbackup。
 // 校验和根据实际写入的字节生成，附件按二进制条目保存。
@@ -228,6 +233,26 @@ func WriteSystemBackupV4(dst io.Writer, snapshot SystemSnapshotV4, exportedAt ti
 		}
 		manifest.Stats["searchHistory"] = len(payload)
 		entries = append(entries, systemEntry{"search_history.json", snapshot.SearchHistory})
+	}
+	if len(snapshot.DeletedRecords) > 0 {
+		var payload struct {
+			Materials []json.RawMessage `json:"materials"`
+			Cards     []json.RawMessage `json:"cards"`
+			Artifacts []json.RawMessage `json:"artifacts"`
+			Version   int               `json:"version"`
+		}
+		if json.Unmarshal(snapshot.DeletedRecords, &payload) != nil || payload.Version != 1 || payload.Materials == nil || payload.Cards == nil || payload.Artifacts == nil {
+			return fmt.Errorf("deleted_records.json 的结构无效")
+		}
+		manifest.SchemaVersion = 11
+		manifest.Limitations = []string{systemV11NoR4Limitation}
+		if len(snapshot.R4) > 0 {
+			manifest.Limitations = []string{systemV11Limitation}
+		}
+		manifest.Stats["deletedMaterials"] = len(payload.Materials)
+		manifest.Stats["deletedCards"] = len(payload.Cards)
+		manifest.Stats["deletedArtifacts"] = len(payload.Artifacts)
+		entries = append(entries, systemEntry{"deleted_records.json", snapshot.DeletedRecords})
 	}
 	paths := make([]string, 0, len(snapshot.Media))
 	for relative := range snapshot.Media {

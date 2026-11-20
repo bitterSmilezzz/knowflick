@@ -1110,6 +1110,18 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 两个版本复用同一只读事务，未额外打开连接。回收站（v11）与 Go 恢复写入仍未迁移。
 
+## 阶段 2 第四十三轮 · 回收站快照升级到 v11
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 回收站三类记录 | PASS | Go 读回收站素材（含删除时间）、回收站卡片（含删除时间）与回收站产物，导出前校验标识唯一、删除时间非负、附件路径合法、产物删除态为真。 |
+| 依赖约束 | PASS | 回收站卡片引用的素材必须出现在活动素材或本包回收站素材中，否则报错而不是留下悬空引用。回收站素材的附件也纳入备份。 |
+| 与 Rust 一致 | PASS | 同一测试库里的回收站素材、卡片与产物，Go 的 `deleted_records.json` 与 Rust `DeletedRecordsSnapshot` 逐字段一致。 |
+| 版本推进 | PASS | 含回收站的包升为 schemaVersion 11，清单写入三项计数，现有 TypeScript 恢复器接受。 |
+
+至此 v4 到 v11 的导出链路已全部由 Go 完成。Go 恢复写入、备份界面入口与云端往返仍未迁移。
+
+
 复现：用第三十六轮的 Rust fixture 命令生成新库（fixture 现在含三条笔记修订），设 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 与 `KF_GO_SQLITE_BACKUP_FIXTURE`，运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，再运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
 
 

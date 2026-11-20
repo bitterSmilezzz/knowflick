@@ -105,6 +105,7 @@ type backupDatabase struct {
 	subscriptions  backupSubscriptions
 	mail           backupMailSnapshot
 	reviewHistory  json.RawMessage
+	deletedRecords deletedRecordsSnapshot
 	r4             json.RawMessage
 	knowledgeBases backupKnowledgeBases
 }
@@ -133,6 +134,7 @@ func (l *Library) WriteSystemBackupV4(ctx context.Context, dst io.Writer, dir st
 		{database.subscriptions, &snapshot.Subscriptions},
 		{database.mail, &snapshot.Mail},
 		{database.reviewHistory, &snapshot.ReviewHistory},
+		{database.deletedRecords, &snapshot.DeletedRecords},
 	} {
 		*item.dest, err = json.Marshal(item.data)
 		if err != nil {
@@ -213,6 +215,10 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	if err != nil {
 		return backupDatabase{}, err
 	}
+	deletedRecords, err := captureDeletedRecords(ctx, tx, materials)
+	if err != nil {
+		return backupDatabase{}, err
+	}
 	reviewHistory, err := reviewhistory.CaptureTx(tx)
 	if err != nil {
 		return backupDatabase{}, fmt.Errorf("读取复习历史失败：%w", err)
@@ -242,6 +248,7 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 		subscriptions:  subscriptions,
 		mail:           mailSnapshot,
 		reviewHistory:  reviewJSON,
+		deletedRecords: deletedRecords,
 		r4:             r4,
 		knowledgeBases: backupKnowledgeBases{Items: bases, Membership: membership},
 	}, nil
@@ -560,6 +567,11 @@ func (snapshot backupDatabase) readBackupMedia(ctx context.Context, dir string) 
 	for _, revision := range snapshot.noteRevisions {
 		for _, match := range noteAttachment.FindAllStringSubmatch(revision.BodyMD, -1) {
 			wanted[match[1]] = struct{}{}
+		}
+	}
+	for _, record := range snapshot.deletedRecords.Materials {
+		if record.Material.MediaPath != nil && *record.Material.MediaPath != "" {
+			wanted[*record.Material.MediaPath] = struct{}{}
 		}
 	}
 	paths := make([]string, 0, len(wanted))
