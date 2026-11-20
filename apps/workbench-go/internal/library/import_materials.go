@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+
+	"knowflick.local/workbench-go/internal/media"
 )
 
 // ImportedMaterial 是订阅抓取要落库的一条素材；id 与哈希由调用方按前端同一规则生成，
@@ -100,4 +102,21 @@ func nullableText(value string) any {
 		return nil
 	}
 	return value
+}
+
+func commitMaterialAttachment(ctx context.Context, tx *sql.Tx, id, dir, kind, mime string, data []byte) error {
+	return media.SaveLinked(dir, kind, mime, data, func(relative string) error {
+		result, err := tx.ExecContext(ctx, "UPDATE materials SET media_path = ?, media_size_bytes = ? WHERE id = ?", relative, len(data), id)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected != 1 {
+			return errors.New("未能将附件关联到素材")
+		}
+		return tx.Commit()
+	})
 }

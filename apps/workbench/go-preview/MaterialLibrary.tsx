@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SaveInkMaterial, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
+import type { InkDocument } from "../src/domain/ink";
+import { InkPad } from "../src/ui/workspace/NotePads";
 import { useAttachments } from "./attachments";
 import { AttachmentView } from "../src/ui/workspace/AttachmentView";
 import { attachmentKindOf } from "../src/domain/attachmentKind";
@@ -23,6 +25,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
   const [selectedID, setSelectedID] = useState("");
   const [confirmConvert, setConfirmConvert] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [inkOpen, setInkOpen] = useState(false);
   const [capTitle, setCapTitle] = useState("");
   const [capText, setCapText] = useState("");
   const [capURL, setCapURL] = useState("");
@@ -112,6 +115,28 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
     });
   }
 
+  async function saveInk(doc: InkDocument) {
+    if (busy) throw new Error("请等当前操作完成后再保存笔迹");
+    onBusy(true);
+    try {
+      const id = await SaveInkMaterial(generation, JSON.stringify(doc));
+      setInkOpen(false);
+      setError("");
+      setQuery("");
+      setSelectedID(id);
+      setConfirmConvert(false);
+      setNotice("手写笔记已存入收件箱（" + doc.strokes.length + " 笔）");
+      onChanged();
+      try {
+        await refresh(inboxOnly, "");
+      } catch (cause) {
+        setError("刷新素材列表失败：" + String(cause));
+      }
+    } finally {
+      onBusy(false);
+    }
+  }
+
   async function saveCapture() {
     if (!writable || busy) return;
     await run(async () => {
@@ -173,6 +198,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
         {writable && <button type="button" disabled={busy || fetching} onClick={() => void importImages()}>导入图片</button>}
         {writable && <details className="preview-knowledge-bases" open={captureOpen} onToggle={(event) => setCaptureOpen(event.currentTarget.open)}>
           <summary>记录素材</summary>
+          <button type="button" disabled={busy || fetching || inkOpen} aria-expanded={inkOpen} onClick={() => { setError(""); setNotice(""); setInkOpen(true); }}>手写笔记</button>
           <form onSubmit={(event) => { event.preventDefault(); void saveCapture(); }}>
             <label>标题（可留空）<input value={capTitle} disabled={busy || fetching} onChange={(event) => setCapTitle(event.target.value)} /></label>
             <label>正文<textarea required value={capText} disabled={busy || fetching} onChange={(event) => setCapText(event.target.value)} /></label>
@@ -204,6 +230,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
       <section className="preview-note preview-editor" aria-label="素材正文">
         {error && <p className="preview-error preview-material-error" role="alert">{error}</p>}
         {notice && <p className="preview-notice" role="status">{notice}</p>}
+        {inkOpen && writable && <div className="preview-inkpad"><InkPad onCancel={() => setInkOpen(false)} onSave={saveInk} /></div>}
         {!selected && <p className="preview-meta">没有可显示的素材。</p>}
         {selected && <>
           <h2>{selected.title || "无标题素材"}</h2>

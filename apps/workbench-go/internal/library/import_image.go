@@ -64,20 +64,7 @@ func (l *Library) ImportImage(ctx context.Context, dir, path string, now int64) 
 	if duplicate {
 		return "", nil
 	}
-	err = media.SaveLinked(dir, "image", mime, data, func(relative string) error {
-		result, err := tx.ExecContext(ctx, "UPDATE materials SET media_path = ?, media_size_bytes = ? WHERE id = ?", relative, len(data), material.ID)
-		if err != nil {
-			return err
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if affected != 1 {
-			return errors.New("未能将原图关联到素材")
-		}
-		return tx.Commit()
-	})
+	err = commitMaterialAttachment(ctx, tx, material.ID, dir, "image", mime, data)
 	if err != nil {
 		return "", err
 	}
