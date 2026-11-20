@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"knowflick.local/workbench-go/internal/archive"
 	"knowflick.local/workbench-go/internal/cards"
@@ -15,11 +16,15 @@ import (
 
 // CoreRestoreCounts 是核心数据恢复结果。
 type CoreRestoreCounts struct {
-	Materials int `json:"materials"`
-	Cards     int `json:"cards"`
-	Artifacts int `json:"artifacts"`
-	Media     int `json:"media"`
-	Skipped   int `json:"skipped"`
+	Materials      int `json:"materials"`
+	Cards          int `json:"cards"`
+	Artifacts      int `json:"artifacts"`
+	Media          int `json:"media"`
+	Notes          int `json:"notes"`
+	Revisions      int `json:"revisions"`
+	KnowledgeBases int `json:"knowledgeBases"`
+	Membership     int `json:"membership"`
+	Skipped        int `json:"skipped"`
 }
 
 // RestoreCoreBackup 把校验过的备份写入目标库：素材、卡片、产物、附件与设置。
@@ -84,6 +89,83 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		}
 		if inserted {
 			counts.Artifacts++
+		} else {
+			counts.Skipped++
+		}
+	}
+	var notes []backupNote
+	if len(backup.Notes) > 0 {
+		if err := json.Unmarshal(backup.Notes, &notes); err != nil || notes == nil {
+			return counts, errors.New("notes.json 必须是有效的 JSON 数组")
+		}
+	}
+	for _, note := range notes {
+		noteTags, err := json.Marshal(note.Tags)
+		if err != nil {
+			return counts, err
+		}
+		inserted, err := insertIgnore(ctx, tx, "INSERT INTO notes (id,title,body_md,notebook,tags_json,is_pinned,is_favorite,archived_at,source_material_id,current_revision,created_at,updated_at,is_deleted,deleted_at,exclude_from_profile) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
+			note.ID, note.Title, note.BodyMD, note.Notebook, string(noteTags), favoriteValue(note.IsPinned), favoriteValue(note.IsFavorite), note.ArchivedAt, note.SourceMaterialID, note.CurrentRevision, note.CreatedAt, note.UpdatedAt, favoriteValue(note.IsDeleted), note.DeletedAt, favoriteValue(note.ExcludeFromProfile))
+		if err != nil {
+			return counts, fmt.Errorf("恢复笔记失败：%w", err)
+		}
+		if inserted {
+			counts.Notes++
+		} else {
+			counts.Skipped++
+		}
+	}
+	var revisionList []backupNoteRevision
+	if len(backup.NoteRevisions) > 0 {
+		if err := json.Unmarshal(backup.NoteRevisions, &revisionList); err != nil || revisionList == nil {
+			return counts, errors.New("note_revisions.json 必须是有效的 JSON 数组")
+		}
+	}
+	for _, revision := range revisionList {
+		inserted, err := insertIgnore(ctx, tx, "INSERT INTO note_revisions (note_id,revision,title,body_md,saved_at) VALUES (?,?,?,?,?) ON CONFLICT(note_id,revision) DO NOTHING",
+			revision.NoteID, revision.Revision, revision.Title, revision.BodyMD, revision.SavedAt)
+		if err != nil {
+			return counts, fmt.Errorf("恢复笔记历史失败：%w", err)
+		}
+		if inserted {
+			counts.Revisions++
+		} else {
+			counts.Skipped++
+		}
+	}
+	var knowledgeBases struct {
+		Items      []backupKnowledgeBase `json:"knowledgeBases"`
+		Membership map[string]int64      `json:"membership"`
+	}
+	if len(backup.KnowledgeBases) > 0 {
+		if err := json.Unmarshal(backup.KnowledgeBases, &knowledgeBases); err != nil || knowledgeBases.Items == nil {
+			return counts, errors.New("knowledge_bases.json 结构无效")
+		}
+	}
+	for _, base := range knowledgeBases.Items {
+		inserted, err := insertIgnore(ctx, tx, "INSERT INTO knowledge_bases (id,name,description,created_at,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
+			base.ID, base.Name, base.Description, base.CreatedAt, base.UpdatedAt)
+		if err != nil {
+			return counts, fmt.Errorf("恢复知识库失败：%w", err)
+		}
+		if inserted {
+			counts.KnowledgeBases++
+		} else {
+			counts.Skipped++
+		}
+	}
+	for key, addedAt := range knowledgeBases.Membership {
+		parts := strings.Split(key, "\n")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return counts, errors.New("知识库成员关系键无效")
+		}
+		inserted, err := insertIgnore(ctx, tx, "INSERT INTO kb_membership (kb_id,note_id,added_at) VALUES (?,?,?) ON CONFLICT(kb_id,note_id) DO NOTHING",
+			parts[0], parts[1], addedAt)
+		if err != nil {
+			return counts, fmt.Errorf("恢复知识库成员关系失败：%w", err)
+		}
+		if inserted {
+			counts.Membership++
 		} else {
 			counts.Skipped++
 		}

@@ -58,7 +58,8 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Materials != 0 || again.Cards != 0 || again.Artifacts != 0 || again.Skipped != 3 {
+	if again.Materials != 0 || again.Cards != 0 || again.Artifacts != 0 || again.Notes != 0 || again.Revisions != 0 ||
+		again.KnowledgeBases != 0 || again.Membership != 0 || again.Skipped != 11 {
 		t.Fatalf("second restore should skip existing rows: %+v", again)
 	}
 	var headline, tags string
@@ -72,8 +73,27 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notes").Scan(&noteCount); err != nil {
 		t.Fatal(err)
 	}
-	if noteCount != 0 {
-		t.Fatalf("notes must remain untouched in this slice: %d", noteCount)
+	if noteCount != 2 {
+		t.Fatalf("notes restored: %d", noteCount)
+	}
+	var deletedNotes, revisionCount, membershipCount int
+	if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notes WHERE is_deleted = 1").Scan(&deletedNotes); err != nil {
+		t.Fatal(err)
+	}
+	if deletedNotes != 1 {
+		t.Fatalf("deleted note lost its tombstone: %d", deletedNotes)
+	}
+	if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM note_revisions").Scan(&revisionCount); err != nil {
+		t.Fatal(err)
+	}
+	if revisionCount != 3 {
+		t.Fatalf("revisions: %d", revisionCount)
+	}
+	if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM kb_membership").Scan(&membershipCount); err != nil {
+		t.Fatal(err)
+	}
+	if membershipCount != 2 {
+		t.Fatalf("membership: %d", membershipCount)
 	}
 	settings, err := os.ReadFile(filepath.Join(restoreDir, "settings.json"))
 	if err != nil {
