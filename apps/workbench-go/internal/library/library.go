@@ -16,17 +16,29 @@ import (
 
 const PageSize = 60
 
-type Library struct{ db *sql.DB }
+// Library 是打开的资料库。writable 只影响写方法，读方法两种模式都能用。
+type Library struct {
+	db       *sql.DB
+	writable bool
+}
 
+// Note 是笔记的完整 DTO，字段与顺序对齐 Rust 的 NoteDto / NOTE_COLUMNS。
 type Note struct {
-	ID         string  `json:"id"`
-	Title      string  `json:"title"`
-	Body       string  `json:"body"`
-	Notebook   *string `json:"notebook"`
-	Pinned     bool    `json:"pinned"`
-	ArchivedAt *int64  `json:"archivedAt"`
-	Revision   int64   `json:"revision"`
-	UpdatedAt  int64   `json:"updatedAt"`
+	ID                 string  `json:"id"`
+	Title              string  `json:"title"`
+	Body               string  `json:"body"`
+	Notebook           *string `json:"notebook"`
+	TagsJSON           string  `json:"tagsJson"`
+	Pinned             bool    `json:"pinned"`
+	Favorite           bool    `json:"favorite"`
+	ArchivedAt         *int64  `json:"archivedAt"`
+	SourceMaterialID   *string `json:"sourceMaterialId"`
+	Revision           int64   `json:"revision"`
+	CreatedAt          int64   `json:"createdAt"`
+	UpdatedAt          int64   `json:"updatedAt"`
+	Deleted            bool    `json:"deleted"`
+	DeletedAt          *int64  `json:"deletedAt"`
+	ExcludeFromProfile bool    `json:"excludeFromProfile"`
 }
 
 type Page struct {
@@ -34,9 +46,15 @@ type Page struct {
 	HasMore bool   `json:"hasMore"`
 }
 
-const noteColumns = "n.id, n.title, n.body_md, n.notebook, n.is_pinned, n.archived_at, n.current_revision, n.updated_at"
+const noteColumns = "n.id, n.title, n.body_md, n.notebook, n.tags_json, n.is_pinned, n.is_favorite," +
+	" n.archived_at, n.source_material_id, n.current_revision, n.created_at, n.updated_at, n.is_deleted, n.deleted_at," +
+	" n.exclude_from_profile"
 
 func Open(ctx context.Context, path string) (*Library, error) {
+	return open(ctx, path, "mode=ro&_pragma=busy_timeout(5000)&_pragma=query_only(1)")
+}
+
+func open(ctx context.Context, path, query string) (*Library, error) {
 	uri, err := databaseURI(path)
 	if err != nil {
 		return nil, err
@@ -48,13 +66,13 @@ func Open(ctx context.Context, path string) (*Library, error) {
 	if !info.Mode().IsRegular() {
 		return nil, errors.New("需要选择 SQLite 资料库文件")
 	}
-	uri.RawQuery = "mode=ro&_pragma=busy_timeout(5000)&_pragma=query_only(1)"
+	uri.RawQuery = query
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil, err
 	}
 	for _, statement := range []string{
-		"SELECT " + noteColumns + ", n.is_deleted FROM notes n LIMIT 0",
+		"SELECT " + noteColumns + " FROM notes n LIMIT 0",
 		"SELECT note_id, title, body FROM fts_notes LIMIT 0",
 	} {
 		rows, err := db.QueryContext(ctx, statement)
@@ -115,7 +133,7 @@ func (l *Library) query(ctx context.Context, statement string, args ...any) (Pag
 	page := Page{Notes: make([]Note, 0)}
 	for rows.Next() {
 		var note Note
-		if err := rows.Scan(&note.ID, &note.Title, &note.Body, &note.Notebook, &note.Pinned, &note.ArchivedAt, &note.Revision, &note.UpdatedAt); err != nil {
+		if err := scanNote(rows, &note); err != nil {
 			return Page{}, err
 		}
 		page.Notes = append(page.Notes, note)

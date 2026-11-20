@@ -217,11 +217,27 @@ func execute(t *testing.T, db interface {
 }
 
 const schema = `
-CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', body_md TEXT NOT NULL DEFAULT '',
- notebook TEXT, is_pinned INTEGER NOT NULL DEFAULT 0, archived_at INTEGER,
- current_revision INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
- is_deleted INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE notes (
+ id TEXT PRIMARY KEY,
+ title TEXT NOT NULL DEFAULT '',
+ body_md TEXT NOT NULL DEFAULT '',
+ notebook TEXT,
+ tags_json TEXT NOT NULL DEFAULT '[]',
+ is_pinned INTEGER NOT NULL DEFAULT 0,
+ is_favorite INTEGER NOT NULL DEFAULT 0,
+ archived_at INTEGER,
+ source_material_id TEXT,
+ current_revision INTEGER NOT NULL DEFAULT 1,
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL,
+ is_deleted INTEGER NOT NULL DEFAULT 0,
+ deleted_at INTEGER,
+ exclude_from_profile INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE note_revisions (note_id TEXT NOT NULL REFERENCES notes(id), revision INTEGER NOT NULL,
  title TEXT NOT NULL, body_md TEXT NOT NULL, saved_at INTEGER NOT NULL, PRIMARY KEY (note_id, revision));
-CREATE VIRTUAL TABLE fts_notes USING fts5(note_id UNINDEXED,title,body,tokenize='unicode61 remove_diacritics 2');
+CREATE TABLE note_chunks (note_id TEXT NOT NULL REFERENCES notes(id), chunk_index INTEGER NOT NULL,
+ content TEXT NOT NULL, char_start INTEGER NOT NULL, char_end INTEGER NOT NULL, content_revision INTEGER NOT NULL,
+ PRIMARY KEY (note_id, chunk_index));
+CREATE VIRTUAL TABLE fts_notes USING fts5(note_id UNINDEXED,title,body,tokenize='porter unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE fts_note_chunks USING fts5(note_id UNINDEXED,chunk_index UNINDEXED,content,tokenize='porter unicode61 remove_diacritics 2');
 `

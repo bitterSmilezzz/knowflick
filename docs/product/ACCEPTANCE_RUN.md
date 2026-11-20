@@ -521,6 +521,24 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 取舍与踩坑记在 `docs/adr/0009-go-phase1-readonly-data-layer.md`（含 §6「这一阶段没做到的」）。
 
 
+## 2026-11-20 上午（续）：阶段 2 第一刀 —— Go 写入路径与跨运行时对拍
+
+环境 macOS arm64（Go 1.27.4），分支 `workbench/second-brain-validation`。新增 `OpenForWrite` / `Upsert` / `Delete` / `ChunkMarkdown`，只读仍是默认；界面仍只能浏览，**未接编辑入口**。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| Go 写入语义 8 项 | PASS | 新建后编辑追加修订（`created_at` 不变、`updated_at` 跟进）；只改置顶不追加修订；过期 `base_revision` 被拒且未覆盖正文；新建带非零 `base_revision` 被拒；只读库拒绝写；软删后搜不到且重复删除返回 false；分块与 `ChunkMarkdown` 逐条一致；内容变更后分块按新修订重建。`go test ./internal/library` 全绿。 |
+| Go 写 → Rust 读（跨运行时） | PASS | `TestExportWriteFixture` 由 Go 写出夹具（一篇写两次、一篇软删）；`cargo test go_preview_write_parity -- --ignored` 让 Rust 读同一文件：`current_revision`=2、时间戳 1000/2000、`is_favorite`、2 条修订内容依次为旧/新正文、分块 `content_revision`=2、搜新正文得 1、搜旧正文得 0、搜已删正文得 0。 |
+| 分块算法等价 | PASS | Rust 用**自己重算的** `chunk_markdown` 与 Go 写入的 `note_chunks` 逐块比对 index/content/char_start/char_end 全等——两套独立实现产出相同边界。 |
+| 只读边界未被破坏 | PASS | 阶段 1 的只读用例仍在跑（`Open` 下 `UPDATE notes` 被拒）；写只发生在 `OpenForWrite` 的副本上，本机真实库全程未写。 |
+| 门禁 | PASS（定向） | `cargo test --locked` 192 项通过 / 5 忽略（新增 2 条 ignored 对拍）；`go test ./...` 全绿。前端与浏览器冒烟本轮未重跑——前端代码零改动。 |
+| UI 编辑入口 | SKIP | 本轮刻意不接：先把写入语义对拍钉死，再动界面。 |
+| 恢复/覆盖/知识库/标签/附件写入、大库性能、Windows/Linux | SKIP | 后续轮次。 |
+
+**未验证**：界面编辑路径、恢复与强制覆盖、跨平台写入、大库写入性能。
+
+取舍与证据见 `docs/adr/0010-go-write-path-parity.md`。
+
 
 
 
