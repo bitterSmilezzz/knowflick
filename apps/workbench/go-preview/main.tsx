@@ -5,7 +5,7 @@ import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCard
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
+import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
 import type { Account, Config as MailConfig, ImportedMail, RejectedMail } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
 import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
@@ -127,6 +127,13 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  async function testMailConnection() {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const summary = await TestMailAccount(mailForm, mailSecret);
+      setNotice(`连接成功：${summary.folder}，共 ${summary.messageCount} 封邮件`);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
   async function removeMailAccount(id: string) {
     setBusy(true); setError(""); setNotice(""); setMailRemoveId("");
     try {
@@ -369,6 +376,7 @@ function Preview() {
           <label>每次同步封数 <input type="number" aria-label="每次同步封数" value={mailForm.syncLimit} onChange={(event) => setMailForm({ ...mailForm, syncLimit: Number(event.target.value) })} /></label>
           <label>自动同步间隔（0 关闭） <input type="number" aria-label="自动同步间隔" value={mailForm.syncIntervalMinutes} onChange={(event) => setMailForm({ ...mailForm, syncIntervalMinutes: Number(event.target.value) })} /></label>
           <label>应用密码 <input type="password" aria-label="邮箱应用密码" value={mailSecret} onChange={(event) => setMailSecret(event.target.value)} /></label>
+          <button type="button" disabled={busy} onClick={() => void testMailConnection()}>测试连接</button>
           <button type="submit" disabled={busy}>保存账号</button>
           <button type="button" disabled={busy} onClick={() => setMailFormOpen(false)}>取消</button>
         </form>}
