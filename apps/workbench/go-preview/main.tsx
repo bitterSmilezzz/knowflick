@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardsJSON, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -68,12 +68,12 @@ function Preview() {
     catch (fail) {} finally { setBusy(false); }
   }
 
-  async function exportCards() {
+  async function exportCards(format: "json" | "zip") {
     if (!lib || busy) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const path = await ExportCardsJSON(lib.generation);
-      if (path) setNotice("已导出卡片到 " + path);
+      const path = await (format === "zip" ? ExportCardArchive : ExportCardsJSON)(lib.generation);
+      if (path) setNotice((format === "zip" ? "已导出卡片与设置到 " : "已导出卡片到 ") + path);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
@@ -235,7 +235,8 @@ function Preview() {
           {lib && lib.writable && <button type="button" disabled={busy} onClick={() => void createNote()}>新建笔记</button>}
           {lib && lib.writable && <button type="button" disabled={busy || mailBusy} aria-pressed={mailOpen} onClick={() => void toggleMail()}>{mailOpen ? "收起邮箱" : "邮箱"}</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void toggleTrash()}>{trash ? "返回笔记" : "回收站"}</button>}
-          {lib && <button type="button" disabled={busy} onClick={() => void exportCards()}>导出卡片</button>}
+          {lib && <button type="button" disabled={busy} onClick={() => void exportCards("json")}>导出卡片</button>}
+          {lib && <button type="button" disabled={busy} onClick={() => void exportCards("zip")}>导出卡片与设置（ZIP）</button>}
           <button type="button" disabled={busy} onClick={() => void choose()}>打开资料库</button>
         </div>
       </header>

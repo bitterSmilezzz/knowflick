@@ -2,10 +2,11 @@ package archive
 
 import (
 	"errors"
-	"knowflick.local/workbench-go/internal/e2ee"
 	"os"
 	"strings"
 	"testing"
+
+	"knowflick.local/workbench-go/internal/e2ee"
 )
 
 const cardsJSON = `["card-1","card-2"]`
@@ -41,7 +42,7 @@ func TestReadRejectsOversizedArchive(t *testing.T) {
 
 func TestWriteThenReadRoundTrip(t *testing.T) {
 	settings := `{"theme":"dark","apiKey":"sk-secret"}`
-	data, err := Write(cardsJSON, StripSecretSettings(settings))
+	data, err := Write(cardsJSON, settings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,17 +115,14 @@ func TestStripSecretSettings(t *testing.T) {
 			}
 		}
 	}
-	// 坏 JSON 原样返回：导出不该因为设置文件坏了就失败。
-	if got := StripSecretSettings("{not json"); got != "{not json" {
-		t.Fatalf("bad json altered: %s", got)
-	}
-	// 非对象原样返回。
-	if got := StripSecretSettings("[1,2,3]"); got != "[1,2,3]" {
-		t.Fatalf("non-object altered: %s", got)
+	for _, input := range []string{`{"token":"fixture-value"`, `[{"password":"fixture-value"}]`, `{"theme":"dark"} false`, "null", ""} {
+		if got := StripSecretSettings(input); got != "{}" {
+			t.Fatal("invalid settings must export as an empty object")
+		}
 	}
 }
 
-func TestStripSecretSettingsKeepsBooleanAuthorField(t *testing.T) {
+func TestStripSecretSettingsUsesLegacyKeyFragments(t *testing.T) {
 	// authored 含 "auth" 子串，按 Rust 的规则**会被剔除**。
 	// 这里钉住实际行为而不是我的期望：如果哪天规则改成「整词匹配」，这条会失败。
 	got := StripSecretSettings(`{"authored":true,"author":"me"}`)
@@ -134,6 +132,14 @@ func TestStripSecretSettingsKeepsBooleanAuthorField(t *testing.T) {
 	// author 同样含 auth 子串，也会被剔除——子串匹配会过度命中。
 	if strings.Contains(got, "author") {
 		t.Fatalf("author should be dropped: %s", got)
+	}
+}
+
+func TestStripSecretSettingsRecursesAndPreservesNumbers(t *testing.T) {
+	input := `{"sync":{"url":"https://example.com","passWord":"fixture-value"},"providers":[{"api-key":"fixture-value","name":"demo"}],"updatedAt":9007199254740993}`
+	want := `{"providers":[{"name":"demo"}],"sync":{"url":"https://example.com"},"updatedAt":9007199254740993}`
+	if got := StripSecretSettings(input); got != want {
+		t.Fatal("nested credential filtering changed the exported settings")
 	}
 }
 
@@ -187,7 +193,7 @@ func TestReadRustArchiveFixture(t *testing.T) {
 
 func TestEncryptedArchiveRoundTrip(t *testing.T) {
 	cards := `["card-1","card-2"]`
-	settings := StripSecretSettings(`{"theme":"dark","apiKey":"sk-must-not-leak"}`)
+	settings := `{"theme":"dark","apiKey":"sk-must-not-leak"}`
 	blob, err := WriteEncrypted("correct horse", cards, settings)
 	if err != nil {
 		t.Fatal(err)

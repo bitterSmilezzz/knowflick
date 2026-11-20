@@ -5,14 +5,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"knowflick.local/workbench-go/internal/creds"
 	"knowflick.local/workbench-go/internal/library"
 	"knowflick.local/workbench-go/internal/media"
 )
@@ -93,55 +90,6 @@ func (s *PreviewService) open(ctx context.Context, path string, writable bool) (
 	s.writable = writable
 	s.generation++
 	return &LibraryView{Name: filepath.Base(filepath.Dir(path)) + " / " + filepath.Base(path), Writable: writable, Generation: s.generation, Page: page}, nil
-}
-
-// ExportCardsJSON 将当前库中的卡片保存到用户选择的 JSON 文件。
-func (s *PreviewService) ExportCardsJSON(ctx context.Context, generation int) (string, error) {
-	s.mu.RLock()
-	current := s.current != nil && s.generation == generation
-	s.mu.RUnlock()
-	if !current {
-		return "", errors.New("请重新打开资料库")
-	}
-	dest, err := s.app.Dialog.SaveFile().AttachToWindow(s.window).
-		SetFilename("cards.json").AddFilter("JSON 文件", "*.json").PromptForSingleSelection()
-	if err != nil || dest == "" {
-		return "", err
-	}
-	return s.exportCardsJSON(ctx, generation, dest)
-}
-
-func (s *PreviewService) exportCardsJSON(ctx context.Context, generation int, dest string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.current == nil || s.generation != generation {
-		return "", errors.New("请重新打开资料库")
-	}
-	if !strings.EqualFold(filepath.Ext(dest), ".json") {
-		return "", errors.New("请选择 .json 文件")
-	}
-	if info, err := os.Stat(dest); err == nil {
-		source, err := os.Stat(s.path)
-		if err != nil {
-			return "", err
-		}
-		if os.SameFile(info, source) {
-			return "", errors.New("导出文件不能覆盖当前资料库")
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", err
-	}
-	text, err := s.current.CardsJSON(ctx, filepath.Dir(s.path))
-	if err != nil {
-		return "", fmt.Errorf("读取卡片失败: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	if err := creds.AtomicWrite(dest, []byte(text)); err != nil {
-		return "", fmt.Errorf("导出卡片失败: %w", err)
-	}
-	return dest, nil
 }
 
 // ListNotes 分页列笔记；代号不符说明界面拿的是旧库，直接拒绝而不是串库。

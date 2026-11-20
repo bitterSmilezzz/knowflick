@@ -14,9 +14,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"knowflick.local/workbench-go/internal/e2ee"
 	"strings"
 	"unicode/utf8"
+
+	"knowflick.local/workbench-go/internal/e2ee"
 )
 
 // MaxArchiveBytes 是归档大小上限（与 Rust 一致）。
@@ -41,7 +42,7 @@ func IsZIP(data []byte) bool {
 // Read 读归档：ZIP 走容器解析，否则当作纯文本卡片正文。
 func Read(data []byte) (Payload, error) {
 	if len(data) > MaxArchiveBytes {
-		return Payload{}, fmt.Errorf("归档文件大小超过 %d MiB 限制", MaxArchiveBytes/1024/1024)
+		return Payload{}, archiveSizeError()
 	}
 	if IsZIP(data) {
 		return readZIP(data)
@@ -115,43 +116,52 @@ func utf8Valid(data []byte) bool {
 	return utf8.Valid(data)
 }
 
-// StripSecretSettings 剥掉设置里的密钥字段。
-//
-// 导出包是**用户会分享的文件**，界面写着「不含 API 密钥」。settings.json 里若留着
-// 密钥字段（用户手改过、或旧版本写过），原样打包就把它带出去了。
-//
-// 与 Rust 同口径：键名小写后含 apikey/api_key/token/secret/password/passwd/credential/auth
-// 任一即剔除；坏 JSON 原样返回（导出不该因为设置文件坏了就失败）。
+// StripSecretSettings 清理设置对象及其子对象里的凭据字段。
+// 无法解析为完整 JSON 对象的设置使用空对象，避免将原文写入可分享的归档。
 func StripSecretSettings(settings string) string {
-	var parsed any
-	if err := json.Unmarshal([]byte(settings), &parsed); err != nil {
-		return settings
+	decoder := json.NewDecoder(strings.NewReader(settings))
+	decoder.UseNumber()
+	var object map[string]any
+	if err := decoder.Decode(&object); err != nil || object == nil {
+		return "{}"
 	}
-	object, ok := parsed.(map[string]any)
-	if !ok {
-		return settings
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		return "{}"
 	}
-	needles := []string{"apikey", "api_key", "token", "secret", "password", "passwd", "credential", "auth"}
-	kept := make(map[string]any, len(object))
-	for key, value := range object {
-		lower := strings.ToLower(key)
-		secret := false
-		for _, needle := range needles {
-			if strings.Contains(lower, needle) {
-				secret = true
-				break
-			}
-		}
-		if secret {
-			continue
-		}
-		kept[key] = value
-	}
-	encoded, err := json.Marshal(kept)
+	stripSecretFields(object)
+	encoded, err := json.Marshal(object)
 	if err != nil {
-		return settings
+		return "{}"
 	}
 	return string(encoded)
+}
+
+func stripSecretFields(value any) {
+	switch value := value.(type) {
+	case map[string]any:
+		for key, child := range value {
+			if isSecretKey(key) {
+				delete(value, key)
+			} else {
+				stripSecretFields(child)
+			}
+		}
+	case []any:
+		for _, child := range value {
+			stripSecretFields(child)
+		}
+	}
+}
+
+func isSecretKey(key string) bool {
+	key = strings.ToLower(key)
+	for _, fragment := range []string{"apikey", "api_key", "api-key", "token", "secret", "password", "passwd", "credential", "auth"} {
+		if strings.Contains(key, fragment) {
+			return true
+		}
+	}
+	return false
 }
 
 // Write 打包成 ZIP（存储方式，与 Rust 的 zip_store 同为不压缩）。
@@ -161,6 +171,13 @@ func StripSecretSettings(settings string) string {
 func Write(cards, settings string) ([]byte, error) {
 	if strings.TrimSpace(cards) == "" {
 		return nil, ErrNoCards
+	}
+	if len(cards) > MaxArchiveBytes || len(settings) > MaxArchiveBytes {
+		return nil, archiveSizeError()
+	}
+	settings = StripSecretSettings(settings)
+	if len(cards)+len(settings) > MaxArchiveBytes {
+		return nil, archiveSizeError()
 	}
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
@@ -183,7 +200,14 @@ func Write(cards, settings string) ([]byte, error) {
 	if err := writer.Close(); err != nil {
 		return nil, err
 	}
+	if buffer.Len() > MaxArchiveBytes {
+		return nil, archiveSizeError()
+	}
 	return buffer.Bytes(), nil
+}
+
+func archiveSizeError() error {
+	return fmt.Errorf("归档文件大小超过 %d MiB 限制", MaxArchiveBytes/1024/1024)
 }
 
 // WriteEncrypted 打包后加密：容器在内、密文在外。
