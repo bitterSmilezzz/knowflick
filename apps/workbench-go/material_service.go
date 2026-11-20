@@ -73,3 +73,13 @@ func (s *PreviewService) FetchClipPage(ctx context.Context, generation int, url 
 	}
 	return httpx.FetchClip(ctx, url)
 }
+
+// EnsureNoteFromMaterial 把素材转成笔记（幂等）；返回笔记标识与是否新建。
+func (s *PreviewService) EnsureNoteFromMaterial(ctx context.Context, generation int, materialID string) (library.SaveOutcome, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return library.SaveOutcome{}, errors.New("请重新打开资料库")
+	}
+	return s.current.EnsureNoteFromMaterial(ctx, materialID, time.Now().UnixMilli())
+}

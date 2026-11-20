@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"knowflick.local/workbench-go/internal/backupname"
+	"knowflick.local/workbench-go/internal/library"
 	"knowflick.local/workbench-go/internal/projects"
 )
 
@@ -77,4 +78,14 @@ func (s *PreviewService) ExportProjectMarkdown(ctx context.Context, generation i
 	}
 	year, month, day := backupname.CivilFromDays(time.Now().UnixMilli() / 86400000)
 	return s.current.ExportProjectMarkdown(ctx, projectID, fmt.Sprintf("%04d-%02d-%02d", year, month, day))
+}
+
+// ExportProjectSnapshot 取项目与成员笔记全文的同一读事务快照（技能包用）。
+func (s *PreviewService) ExportProjectSnapshot(ctx context.Context, generation int, projectID string) (library.ProjectSnapshot, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return library.ProjectSnapshot{}, errors.New("请重新打开资料库")
+	}
+	return s.current.ProjectExportSnapshot(ctx, projectID)
 }

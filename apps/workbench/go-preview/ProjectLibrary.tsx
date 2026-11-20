@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AddProjectNote, ArchiveProject, CreateProject, ExportProjectMarkdown, ListNotes, ListProjectMembers, ListProjects, RemoveProjectNote } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { AddProjectNote, ArchiveProject, CreateProject, ExportProjectMarkdown, ExportProjectSnapshot, ListNotes, ListProjectMembers, ListProjects, RemoveProjectNote } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Project } from "./bindings/knowflick.local/workbench-go/internal/projects/models";
 import type { Member } from "./bindings/knowflick.local/workbench-go/internal/projects/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -22,6 +22,7 @@ export function ProjectLibrary({ generation, writable, busy, onBusy }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [markdown, setMarkdown] = useState("");
+  const [snapshot, setSnapshot] = useState("");
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -101,6 +102,15 @@ export function ProjectLibrary({ generation, writable, busy, onBusy }: Props) {
     if (!selected || busy) return;
     await run(async () => {
       setMarkdown(await ExportProjectMarkdown(generation, selected.id));
+    });
+  }
+
+  async function exportSnapshot() {
+    if (!selected || busy) return;
+    await run(async () => {
+      const data = await ExportProjectSnapshot(generation, selected.id);
+      setSnapshot(JSON.stringify(data, null, 2));
+      setNotice("已取项目快照（同一读事务：项目状态与成员笔记全文绑定）");
     });
   }
 
@@ -200,12 +210,14 @@ export function ProjectLibrary({ generation, writable, busy, onBusy }: Props) {
           </div>}
           <div className="preview-actions">
             {!selected.archivedAt && <button type="button" disabled={busy} onClick={() => void exportMarkdown()}>导出 Markdown</button>}
+            {!selected.archivedAt && <button type="button" disabled={busy} onClick={() => void exportSnapshot()}>导出快照（JSON）</button>}
             {!selected.archivedAt && (confirmArchive ? <>
               <button type="button" disabled={busy} onClick={() => void archive()}>确认封存</button>
               <button type="button" disabled={busy} onClick={() => setConfirmArchive(false)}>取消</button>
             </> : <button type="button" disabled={busy || !writable} onClick={() => setConfirmArchive(true)}>封存项目</button>)}
           </div>
           {markdown && <pre className="preview-material-body">{markdown}</pre>}
+          {snapshot && <pre className="preview-material-body">{snapshot}</pre>}
         </>}
       </section>
     </div>

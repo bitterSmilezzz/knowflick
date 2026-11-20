@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, ConvertMaterialToCard, FetchClipPage, ListMaterials, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ListMaterials, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
 import type { Material } from "./bindings/knowflick.local/workbench-go/internal/materials/models";
 
@@ -113,6 +113,14 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
     });
   }
 
+  async function toNote() {
+    if (!selected || !writable || busy) return;
+    await run(async () => {
+      const outcome = await EnsureNoteFromMaterial(generation, selected.id);
+      setNotice(outcome.created ? "已转为笔记，素材保留在库里" : "这条素材已有笔记，直接打开即可（幂等）");
+    });
+  }
+
   async function mark(status: "processed" | "dismissed") {
     if (!selected || !writable || busy) return;
     await run(async () => {
@@ -169,6 +177,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
           <p className="preview-meta">{statusLabels[selected.inboxStatus] ?? selected.inboxStatus} · {selected.sourceType}{selected.sourceUrl ? " · " + selected.sourceUrl : ""}</p>
           <pre className="preview-material-body">{selected.rawText || "（这条素材没有正文）"}</pre>
           {writable && <div className="preview-actions">
+            <button type="button" disabled={busy} onClick={() => void toNote()}>转为笔记</button>
             {selected.inboxStatus === "inbox" && <>
               <button type="button" disabled={busy} onClick={() => void mark("processed")}>标为已处理</button>
               <button type="button" disabled={busy} onClick={() => void mark("dismissed")}>忽略</button>
