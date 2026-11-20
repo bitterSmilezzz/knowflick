@@ -13,11 +13,13 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"knowflick.local/workbench-go/internal/mail"
 	"knowflick.local/workbench-go/internal/mailsync"
 
 	_ "modernc.org/sqlite"
@@ -267,5 +269,78 @@ func TestRunRejectsWithoutPassword(t *testing.T) {
 	db := openDB(t)
 	if _, err := Run(context.Background(), Config{DB: db, AccountID: "acct-1"}); err == nil || !strings.Contains(err.Error(), "密码") {
 		t.Fatalf("missing password accepted: %v", err)
+	}
+}
+
+func TestSyncDueRunsRunnerAndSkipsUntilInterval(t *testing.T) {
+	db := openDB(t)
+	dir := t.TempDir()
+	id := "6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e33"
+	if err := mail.WritePassword(dir, id, "p"); err != nil {
+		t.Fatal(err)
+	}
+	bodies := map[uint32]string{
+		3: mailBody("第一封", "<m1@x>", "正文一"),
+		4: mailBody("第二封", "<m2@x>", "正文二"),
+	}
+	server := startFakeImap(t, 7, []uint32{3, 4}, bodies)
+	config := fmt.Sprintf(
+		`{"id":"%s","name":"工作","email":"me@example.com","host":"127.0.0.1","port":%d,"username":"u","folder":"INBOX","syncLimit":10,"syncIntervalMinutes":15}`,
+		id, server.port())
+	if _, err := db.Exec("INSERT INTO mail_accounts(id,config_json,created_at) VALUES(?1,?2,2)", id, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO mail_sync_state(account_id) VALUES(?1)", id); err != nil {
+		t.Fatal(err)
+	}
+	// 没有密码的账号也到期：必须记成这一轮的错误，但不能挡住前面那个账号。
+	missing := "6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e44"
+	missingConfig := `{"id":"6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e44","name":"缺密码","email":"x@example.com","host":"127.0.0.1","port":993,"username":"x","folder":"INBOX","syncLimit":10,"syncIntervalMinutes":15}`
+	if _, err := db.Exec("INSERT INTO mail_accounts(id,config_json,created_at) VALUES(?1,?2,3)", missing, missingConfig); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO mail_sync_state(account_id) VALUES(?1)", missing); err != nil {
+		t.Fatal(err)
+	}
+	clock := func() int64 { return 1_000_000 }
+	outcomes, err := SyncDue(context.Background(), db, dir, clock, server.roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("outcomes: %+v", outcomes)
+	}
+	if outcomes[0].AccountID != id || outcomes[0].Imported != 2 || outcomes[0].Error != "" {
+		t.Fatalf("first: %+v", outcomes[0])
+	}
+	if outcomes[1].AccountID != missing || outcomes[1].Error == "" {
+		t.Fatalf("missing password should be an outcome error: %+v", outcomes[1])
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM materials").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("materials: %d", count)
+	}
+	// 同一时刻再跑一轮：两次尝试都已记下，间隔未到，一个都不该再连。
+	again, err := SyncDue(context.Background(), db, dir, clock, server.roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 0 {
+		t.Fatalf("second round should wait: %+v", again)
+	}
+	// 导出真实结果供 Rust 对拍：不靠猜「应该导入几封」。
+	if target := os.Getenv("KF_GO_DUE_FIXTURE"); target != "" {
+		lines := make([]string, 0, len(outcomes))
+		for _, outcome := range outcomes {
+			lines = append(lines, outcome.AccountID+" imported="+fmt.Sprint(outcome.Imported)+
+				" rejected="+fmt.Sprint(outcome.Rejected)+
+				" hasError="+fmt.Sprint(outcome.Error != ""))
+		}
+		if err := os.WriteFile(target, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

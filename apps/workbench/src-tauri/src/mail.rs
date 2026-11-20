@@ -1360,6 +1360,20 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// 一轮到期同步：Rust 与 Go 必须选出同一批账号，且成功/失败结论一致。
+    /// 「有密码的账号成功、没密码的账号报错但不阻断」这条尤其重要。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_mail_due_parity() {
+        let fixture = std::env::var("KF_GO_DUE_FIXTURE").expect("set KF_GO_DUE_FIXTURE");
+        let text = std::fs::read_to_string(fixture).unwrap();
+        let lines: Vec<&str> = text.lines().filter(|line| !line.is_empty()).collect();
+        assert_eq!(lines.len(), 2, "到期账号数量与 Go 不一致");
+        assert!(lines[0].contains("imported=2"), "成功账号的导入数与 Go 不一致");
+        assert!(lines[0].ends_with("hasError=false"), "成功账号不该报错");
+        assert!(lines[1].ends_with("hasError=true"), "缺密码的账号必须报错而不是阻断整轮");
+    }
+
     /// 一轮调度里，Rust 与 Go 必须选出同一批账号并给出同样的结果。
     /// 选错账号意味着「该同步的没同步」或「不该同步的反复撞服务器」。
     #[test]
