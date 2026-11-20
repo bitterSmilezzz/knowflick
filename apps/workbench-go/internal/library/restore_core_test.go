@@ -153,6 +153,21 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	if r4Counts != [6]int{1, 1, 1, 0, 1, 1} {
 		t.Fatalf("r4 rows: %v", r4Counts)
 	}
+	if _, err := restored.db.ExecContext(context.Background(), "UPDATE notes SET title = '改过的标题' WHERE id = 'note-active'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restored.RestoreCoreBackup(context.Background(), backup, restoreDir); err == nil || !strings.Contains(err.Error(), "项目成员笔记与备份不一致") {
+		t.Fatalf("changed member note accepted: %v", err)
+	}
+	if _, err := restored.db.ExecContext(context.Background(), "UPDATE notes SET title = '当前笔记' WHERE id = 'note-active'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restored.db.ExecContext(context.Background(), "UPDATE projects SET name = '改过的项目' WHERE id = 'project-1'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restored.RestoreCoreBackup(context.Background(), backup, restoreDir); err == nil || !strings.Contains(err.Error(), "内容不同的记录") {
+		t.Fatalf("changed project row accepted: %v", err)
+	}
 	if _, err := restored.db.ExecContext(context.Background(), "UPDATE subscriptions SET title = '本地不同' WHERE id = 'sub-1'"); err != nil {
 		t.Fatal(err)
 	}
