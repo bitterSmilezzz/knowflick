@@ -74,7 +74,7 @@ export class NoteSession {
   /** 每次编辑/补丁自增：保存回执只清掉提交时就绪的 dirty，在途新输入留给下一轮。 */
   private editSeq = 0;
   private pumpPromise: Promise<void> | null = null;
-  private timer: number | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   phase: NoteSessionPhase = "clean";
   conflictRevision: number | null = null;
   errorMessage: string | null = null;

@@ -1018,6 +1018,18 @@ Go 在写入卡片 ZIP 时递归移除凭据字段。设置缺失、损坏或根
 
 本次验证覆盖卡片和设置 ZIP。带清单、附件及其他资料库数据的完整备份与恢复，以及 Windows 和 Linux 保存对话框，仍待迁移或验证。
 
+## 阶段 2 第三十五轮 · 生成基础 `.kfbackup`
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| Go 写入 v4 | PASS | `TestWriteSystemBackupV4` 验证清单、卡片、素材、产物、笔记、知识库与成员关系、设置及二进制附件的条目。ZIP 使用 STORE，并在本地文件头写入 CRC 与长度。 |
+| 现有恢复器读取 | PASS | `goSystemBackup.test.ts` 用现有 `restoreKfBackup` 读取 Go 测试生成的文件，核对六类计数、库成员关系、净化后的设置和附件字节。替换附件内容并重新打包后，恢复器报 SHA-256 校验和不匹配。 |
+| 不完整的输入 | PASS | 缺失主数据、无效知识库成员映射或非法附件路径时，Go 在写入 ZIP 前返回错误。设置复用卡片 ZIP 的凭据清理规则。 |
+
+复现时将 `KF_GO_SYSTEM_BACKUP_FIXTURE` 设为 `.scratch/` 下的绝对文件路径，先在 Go 模块运行 `go test -count=1 -run ^TestWriteSystemBackupV4$ ./internal/archive` 生成文件，再在工作台运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
+
+本次验证使用合成快照。Go 尚未从 SQLite 收集整库快照，桌面 v5–v11 的附加数据、Go 恢复写入和应用导出入口仍待迁移。
+
 
 
 
