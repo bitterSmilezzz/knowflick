@@ -1134,6 +1134,18 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 **这一步只是校验与解包，尚未写库。**恢复写入、备份界面入口与云端往返仍未迁移。
 
+## 阶段 2 第四十五轮 · 核心数据恢复写入
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 恢复到空库 | PASS | 用第 43 轮的真实 v11 包经 `ReadSystemBackup` 校验后写入 Rust 建好的空 schema 库：1 素材、1 卡片、1 产物、2 附件全部落库，卡片标题与标签读回一致。 |
+| 合并语义 | PASS | 同一包再恢复一次：计数为三项跳过、无新增，附件重复写入保持幂等。 |
+| 设置 | PASS | 备份中的设置写回目标目录，密码字段在导出时已被移除，恢复后只剩主题与同步用户名。 |
+| 边界 | 记录 | 本轮只恢复素材、卡片、产物、附件与设置。笔记、知识库、历史、订阅、邮箱、回收站与 R4 的写入仍未迁移，测试确认笔记表保持为空。 |
+
+首版用 `INSERT OR IGNORE` 掩盖了卡片插入失败（`updated_at` 非空但没有值）；改成 `ON CONFLICT DO NOTHING` 后错误立刻暴露，并补上 `updated_at = created_at` 这一派生值。
+
+
 
 
 复现：用第三十六轮的 Rust fixture 命令生成新库（fixture 现在含三条笔记修订），设 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 与 `KF_GO_SQLITE_BACKUP_FIXTURE`，运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，再运行 `npx vitest run src/domain/goSystemBackup.test.ts`。

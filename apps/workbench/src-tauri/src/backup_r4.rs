@@ -516,6 +516,17 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "writes an empty schema database for Go restore verification"]
+    fn export_go_restore_target_fixture() {
+        let dir = std::env::var_os("KF_GO_RESTORE_TARGET_DIR").expect("restore target directory");
+        let path = std::path::PathBuf::from(dir).join("knowflick.db");
+        assert!(!path.exists(), "restore target must be new");
+        let mut conn = crate::db::open_db(&path).unwrap();
+        crate::mail::ensure_backup_schema(&mut conn).unwrap();
+        conn.execute_batch("INSERT INTO meta (key,value) VALUES ('review_history_started_at','1700000000000') ON CONFLICT(key) DO UPDATE SET value=excluded.value;").unwrap();
+    }
+
+    #[test]
     #[ignore = "writes a SQLite fixture for Go backup verification"]
     fn export_go_system_backup_database_fixture() {
         let dir = std::env::var_os("KF_SYSTEM_BACKUP_DB_FIXTURE_DIR").expect("fixture directory");
