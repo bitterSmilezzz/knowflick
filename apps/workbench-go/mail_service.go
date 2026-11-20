@@ -156,3 +156,28 @@ func (m *MailService) connection(dir string) (*sql.DB, error) {
 	m.dir = dir
 	return db, nil
 }
+
+// SyncMailAccountNow 手动同步一个账号，**不受自动同步间隔限制**。
+//
+// 与「到期同步」分开是有原因的：间隔为 0 表示关闭自动同步，不是禁止手动同步。
+// 早期版本把「立即同步」接到到期判定上，结果是关闭自动同步的账号永远同步不了——
+// 真实窗口里点「立即同步」只得到「导入 0 封」，这是本轮实测抓到的。
+func (m *MailService) SyncMailAccountNow(ctx context.Context, accountID string) (mailschedule.Outcome, error) {
+	dir, err := m.requireWritable()
+	if err != nil {
+		return mailschedule.Outcome{}, err
+	}
+	db, err := m.connection(dir)
+	if err != nil {
+		return mailschedule.Outcome{}, err
+	}
+	unlock := mailschedule.Lock()
+	defer unlock()
+	syncer := mailrunner.NewAccountSyncer(db, dir, nil, nil)
+	imported, rejected, syncErr := syncer.Sync(ctx, accountID)
+	outcome := mailschedule.Outcome{AccountID: accountID, Imported: imported, Rejected: rejected}
+	if syncErr != nil {
+		outcome.Error = syncErr.Error()
+	}
+	return outcome, nil
+}

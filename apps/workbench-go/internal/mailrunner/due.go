@@ -106,3 +106,13 @@ func SyncDueLoop(ctx context.Context, interval time.Duration, db *sql.DB, librar
 		return err
 	}, nil)
 }
+
+// NewAccountSyncer 返回一个「直接同步这个账号」的能力，不受自动同步间隔限制。
+//
+// 手动同步必须走这条路：间隔为 0 表示关闭自动同步，不是禁止手动同步。
+func NewAccountSyncer(db *sql.DB, libraryDir string, now func() int64, roots *x509.CertPool) mailschedule.Syncer {
+	if now == nil {
+		now = timeNowMillis
+	}
+	return dueSyncer{db: db, dir: libraryDir, now: now, roots: roots, mode: mailsync.ModeNew}
+}

@@ -5,7 +5,7 @@ import { ChooseLibrary, DeleteNote, EnableEditing, ListDeletedNotes, ListNotes, 
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import { ListMailAccounts, MailAutoSyncStatus, StartMailAutoSync, StopMailAutoSync, SyncMailDueNow } from "./bindings/knowflick.local/workbench-go/mailservice";
+import { ListMailAccounts, MailAutoSyncStatus, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
 import type { Account } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
 import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
@@ -179,8 +179,11 @@ function Preview() {
   async function syncMailNow() {
     setMailBusy(true);
     try {
-      const outcomes = await SyncMailDueNow();
-      const list: Outcome[] = outcomes ?? [];
+      // 手动同步逐个账号跑，**不看自动同步间隔**：间隔为 0 只是关掉自动，
+      // 不该让「立即同步」也失效（早期版本就踩过这个，点完只得到「导入 0 封」）。
+      const accounts: Account[] = await ListMailAccounts() ?? [];
+      const results = await Promise.all(accounts.map((account) => SyncMailAccountNow(account.config.id)));
+      const list: Outcome[] = results ?? [];
       const imported = list.reduce((sum, item) => sum + item.imported, 0);
       const rejected = list.reduce((sum, item) => sum + item.rejected, 0);
       const failed = list.filter((item) => item.error);

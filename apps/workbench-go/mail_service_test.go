@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"knowflick.local/workbench-go/internal/mail"
 	"path/filepath"
 	"testing"
 	"time"
@@ -80,4 +81,34 @@ func TestMailServiceRunsFirstRoundImmediately(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("first round did not run: %+v", service.MailAutoSyncStatus())
+}
+
+// TestSyncMailAccountNowIgnoresInterval 守住本轮实测抓到的 bug：
+// 「立即同步」曾被接到到期判定上，间隔为 0（关闭自动同步）的账号因此永远同步不了，
+// 点完只得到「导入 0 封」，界面上看不出任何问题。手动同步必须绕过间隔判定。
+func TestSyncMailAccountNowIgnoresInterval(t *testing.T) {
+	service := newMailService(t)
+	id := "6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e33"
+	// 资料库目录 = 数据库文件的父目录（mail.Open 会把不存在的目录当库目录）。
+	dir := filepath.Dir(service.preview.path)
+	if _, err := mail.SaveAccount(dir, mail.Config{
+		ID: id, Name: "手动同步", Email: "ui@example.com", Host: "127.0.0.1",
+		Port: 1, Username: "ui@example.com", Folder: "INBOX", SyncLimit: 50,
+		// 0 = 关闭自动同步。手动同步必须照样跑。
+		SyncIntervalMinutes: 0,
+	}, "p"); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := service.SyncMailAccountNow(context.Background(), id)
+	if err != nil {
+		t.Fatalf("manual sync should reach the account, got %v", err)
+	}
+	if outcome.AccountID != id {
+		t.Fatalf("outcome: %+v", outcome)
+	}
+	// 连不上 imap.example.com 是预期内的失败，但**必须尝试、必须报错**，
+	// 而不是因为间隔为 0 被静默跳过。
+	if outcome.Error == "" {
+		t.Fatal("a manual sync of an unreachable host must report an error, not silently skip")
+	}
 }
