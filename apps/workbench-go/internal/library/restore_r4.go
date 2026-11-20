@@ -319,3 +319,14 @@ func validateR4Destination(ctx context.Context, tx *sql.Tx, snapshot r4Snapshot)
 	}
 	return nil
 }
+
+// validateR4DestinationDB 是 validateR4Destination 的整库版本：恢复前单独校验时
+// 手上还没有事务，把查询代理给共享的 fingerprint 逻辑。
+func validateR4DestinationDB(ctx context.Context, db *sql.DB, snapshot r4Snapshot) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return validateR4Destination(ctx, tx, snapshot)
+}
