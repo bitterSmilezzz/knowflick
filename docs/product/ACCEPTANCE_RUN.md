@@ -607,6 +607,20 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 `docs/adr/0014-go-media-storage.md`。
 
+## 2026-11-20 上午（第七续）：阶段 2 第六刀 —— 备份附件恢复迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| Go 恢复语义 | PASS | 恢复保持相对路径 `media/image/fixed-restore.png` 且可原路径读回；同内容重复恢复幂等成功；同路径不同内容被拒且原文件未变；7 条穿越/类型不匹配路径被拒。 |
+| Go 恢复 → Rust 读 | PASS | Rust 用 `read_media` 按原路径读回 `go-restored-payload`；Rust 用不同内容调 `restore_media` 被拒，文件未改。 |
+| 服务方法 | PASS（编译级） | 新增 `RestoreAttachment`（13 个 Wails 绑定）；只读模式拒写；UI 入口未接。 |
+| 构建与测试 | PASS（定向） | `go test ./...` 全绿；`cargo test go_media_round_trip -- --ignored` 带两个 fixture 通过。前端零改动，浏览器冒烟未重跑。 |
+| 完整备份包 / UI / 真实回放 / 跨平台 | SKIP | 见 ADR-0015 第三节。 |
+
+**未验证**：`.kfbackup` 整包往返、界面附件入口、真实备份包回放、Windows/Linux。
+
+取舍与证据见 `docs/adr/0015-go-media-restore.md`。
+
 
 
 

@@ -93,3 +93,60 @@ func TestReadRustWrittenMedia(t *testing.T) {
 		t.Fatalf("payload mismatch: %q", got)
 	}
 }
+
+func TestRestoreKeepsRelativePathAndIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	rel := "media/image/backup-fixed.png"
+	payload := []byte("backup bytes with fixed name")
+	got, err := Restore(dir, rel, payload)
+	if err != nil || got != rel {
+		t.Fatalf("restore: %q %v", got, err)
+	}
+	read, err := Read(dir, rel)
+	if err != nil || !bytes.Equal(read, payload) {
+		t.Fatalf("read back: %q %v", read, err)
+	}
+	// 同内容重复恢复：幂等成功，不覆盖。
+	if again, err := Restore(dir, rel, payload); err != nil || again != rel {
+		t.Fatalf("idempotent restore: %q %v", again, err)
+	}
+	// 同路径不同内容：明确拒绝，绝不覆盖（备份重放的保守口径）。
+	if _, err := Restore(dir, rel, []byte("different")); err == nil {
+		t.Fatal("overwrote an existing attachment with different content")
+	}
+	read, _ = Read(dir, rel)
+	if !bytes.Equal(read, payload) {
+		t.Fatalf("existing attachment was modified: %q", read)
+	}
+}
+
+func TestRestoreRejectsUnsafePaths(t *testing.T) {
+	dir := t.TempDir()
+	for _, rel := range []string{
+		"media/image/../escape.png",
+		"media/image/sub/x.png",
+		"media/image/x.exe",
+		"media/audio/x.json",
+		"/media/image/x.png",
+		"media\\image\\x.png",
+	} {
+		if _, err := Restore(dir, rel, []byte("x")); err == nil {
+			t.Fatalf("accepted unsafe backup path %q", rel)
+		}
+	}
+}
+
+// TestExportRestoreFixture 生成由 Go 恢复（保持原路径）的附件夹具。
+func TestExportRestoreFixture(t *testing.T) {
+	target := os.Getenv("KF_GO_RESTORE_FIXTURE")
+	if target == "" {
+		t.Skip("set KF_GO_RESTORE_FIXTURE to export the restore fixture")
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("fixture dir must not exist: %v", err)
+	}
+	rel := "media/image/fixed-restore.png"
+	if got, err := Restore(target, rel, []byte("go-restored-payload")); err != nil || got != rel {
+		t.Fatalf("restore export: %q %v", got, err)
+	}
+}

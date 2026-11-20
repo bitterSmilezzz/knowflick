@@ -211,6 +211,17 @@ fn safe_media_path(dir: &Path, relative: &str) -> Result<PathBuf, String> {
         assert_eq!(bytes, expected, "Go 写入的附件读回不一致");
         assert!(read_media(&dir, "../relative.txt").is_err(), "路径穿越未被拒绝");
 
+
+        // 恢复保持原路径：Go 恢复的附件必须能由 Rust 按同一相对路径读回。
+        if let Some(restore_dir) = env::var_os("KF_GO_RESTORE_FIXTURE") {
+	let restore_dir = std::path::PathBuf::from(restore_dir);
+	let rel = "media/image/fixed-restore.png";
+	let bytes = read_media(&restore_dir, rel).unwrap();
+	assert_eq!(bytes, b"go-restored-payload");
+	// 同路径不同内容：Rust 也必须拒绝覆盖。
+	assert!(restore_media(&restore_dir, rel, b"different").is_err());
+	assert_eq!(read_media(&restore_dir, rel).unwrap(), b"go-restored-payload");
+        }
         // 反向：Rust 写一份，给 Go 读回。
         save_media(&dir, "image", "image/png", b"rust-cross-runtime-media").unwrap();
     }

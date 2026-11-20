@@ -225,3 +225,20 @@ func (s *PreviewService) ReadAttachment(ctx context.Context, generation int, rel
 	}
 	return base64.StdEncoding.EncodeToString(bytes), nil
 }
+
+// RestoreAttachment 按备份里的原相对路径恢复附件；同路径已有不同内容时拒绝覆盖。
+func (s *PreviewService) RestoreAttachment(ctx context.Context, generation int, relative, dataB64 string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	if !s.writable {
+		return "", errors.New("当前是只读模式，请先点「启用编辑」")
+	}
+	bytes, err := base64.StdEncoding.DecodeString(dataB64)
+	if err != nil {
+		return "", errors.New("附件数据无效，无法解码")
+	}
+	return media.Restore(filepath.Dir(s.path), relative, bytes)
+}
