@@ -1042,6 +1042,16 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 复现时将 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 设为 `.scratch/` 下新建目录的绝对路径。先在 Rust 模块运行 `cargo test --locked --lib backup_r4::tests::export_go_system_backup_database_fixture -- --ignored --exact`。将 `KF_GO_SQLITE_BACKUP_FIXTURE` 设为该目录下的目标文件路径，再在 Go 模块运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，最后在工作台运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
 
+## 阶段 2 第三十七轮 · 基础备份导出入口
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| macOS 原生保存 | PASS | 只读预览点击「导出基础备份」，系统保存对话框默认 `knowflick.kfbackup`。AX 树读到包含目标路径的回执，明确提示备份不含项目、邮箱等新增数据。 |
+| 导出内容 | PASS | 本地生成的 ZIP 通过 CRC 校验，9 个条目全部有 SHA-256 校验和。清单计数为 1 卡、1 素材、1 产物、2 笔记、1 知识库、2 附件；设置中的密码字段已移除。 |
+| 覆盖与状态防护 | PASS | 拒绝不是 `.kfbackup` 的目标路径、指向当前资料库的导出和失效的库代号；测试确认临时文件不残留。 |
+
+导出不依赖界面缓存，使用 `WriteSystemBackupV4` 在只读事务中读取权威数据。v5–v11 的附加数据与恢复写入仍待迁移。
+
 
 
 
