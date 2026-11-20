@@ -1617,6 +1617,14 @@ R4 项目与画像的写入仍未迁移。
 | R4 校验 | PASS | ValidateR4Destination 复用系统备份的项目与画像绑定校验；RestoreR4Snapshot 原子追加，冲突行跳过。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。恢复流程的前端界面待后续轮次接入。 |
 
+## 阶段 2 第九十五轮 · 备份落盘到用户目录
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 版本化文件名 | PASS | CopyBackupToDirectory 按 knowflick-backup-YYYYMMDD-NN.kfbackup 命名，同一天多次备份序号递增，99 次后明确拒绝。 |
+| SHA-256 sidecar | PASS | 写入 sha256 校验文件（摘要 + 文件名），跨设备校验用；返回 fileName、sha256、bytes、sidecar。目标目录不存在被拒绝。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。原生目录选择对话框待桌面解锁后验证。 |
+
 ## 阶段 2 第九十四轮 · 笔记、卡片、邮箱、复习历史与回收站恢复
 
 | 验收 | 结果 | 证据与范围 |
