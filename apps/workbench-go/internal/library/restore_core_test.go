@@ -74,6 +74,10 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	if headline != "活动卡片" || tags != "[\"标签\"]" {
 		t.Fatalf("restored card differs: %q %q", headline, tags)
 	}
+	page, err := restored.BrowseCards(context.Background(), "标签", 0)
+	if err != nil || len(page.Cards) != 1 || page.Cards[0].ID != "card-active" {
+		t.Fatalf("restored card tag index: %+v, %v", page, err)
+	}
 	var noteCount int
 	if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notes").Scan(&noteCount); err != nil {
 		t.Fatal(err)
