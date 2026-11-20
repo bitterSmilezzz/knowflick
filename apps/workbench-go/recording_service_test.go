@@ -4,11 +4,55 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"knowflick.local/workbench-go/internal/library"
 )
+
+func TestAudioImportServiceOnRustLibrary(t *testing.T) {
+	source, err := os.ReadFile("../../.scratch/go-migration/phase82/speech.webm")
+	if errors.Is(err, os.ErrNotExist) {
+		t.Skip("audio fixture missing outside the migration workspace")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := openFixtureCopy(t)
+	ctx := t.Context()
+	fixture := filepath.Join(t.TempDir(), "speech.webm")
+	if err := os.WriteFile(fixture, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.current.SaveAudioFile(ctx, filepath.Dir(s.path), fixture, time.Now()); !errors.Is(err, library.ErrReadOnly) {
+		t.Fatalf("read-only import: %v", err)
+	}
+	writable, err := s.EnableEditing(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.current.SaveAudioFile(ctx, filepath.Dir(s.path), fixture, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	items, err := s.ListMaterials(ctx, writable.Generation, true, 10, 0)
+	if err != nil || len(items) == 0 || items[0].SourceType != "audio" || items[0].MediaPath == nil || !strings.HasSuffix(*items[0].MediaPath, ".webm") {
+		t.Fatalf("imported audio: %+v, %v", items, err)
+	}
+	stats, err := s.GetStats(ctx, writable.Generation)
+	if err != nil || stats.TotalMaterials != 2 || stats.InboxMaterials != 2 {
+		t.Fatalf("stats after import: %+v, %v", stats, err)
+	}
+	reopened, err := s.OpenInitialLibrary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadAttachment(ctx, reopened.Generation, *items[0].MediaPath); err != nil {
+		t.Fatalf("audio after reopening: %v", err)
+	}
+}
 
 func TestRecordingMaterialRoundTripOnRustLibrary(t *testing.T) {
 	s, _ := openFixtureCopy(t)

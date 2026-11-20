@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SaveInkMaterial, SaveRecordingMaterial, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportAudioMaterial, ImportImages, ListMaterials, SaveInkMaterial, SaveRecordingMaterial, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
 import { formatDuration, parseInk, type InkDocument } from "../src/domain/ink";
 import { bytesToBase64 } from "../src/shell/base64";
@@ -116,6 +116,21 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
     } finally {
       setFetching(false);
     }
+  }
+
+  async function importAudio() {
+    if (!writable || busy) return;
+    await run(async () => {
+      const id = await ImportAudioMaterial(generation);
+      if (!id) return;
+      setError("");
+      setQuery("");
+      setSelectedID(id);
+      setConfirmConvert(false);
+      setNotice("音频已导入，可在详情里转写");
+      onChanged();
+      await refresh(inboxOnly, "");
+    });
   }
 
   async function importImages() {
@@ -265,7 +280,10 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
           <button type="submit" disabled={busy}>搜索</button>
         </form>
 
-        {writable && <button type="button" disabled={busy || fetching} onClick={() => void importImages()}>导入图片</button>}
+        {writable && <div className="preview-actions">
+          <button type="button" disabled={busy || fetching} onClick={() => void importImages()}>导入图片</button>
+          <button type="button" disabled={busy || fetching} onClick={() => void importAudio()}>导入音频</button>
+        </div>}
         {writable && <details className="preview-knowledge-bases" open={captureOpen} onToggle={(event) => setCaptureOpen(event.currentTarget.open)}>
           <summary>记录素材</summary>
           <div className="preview-actions">

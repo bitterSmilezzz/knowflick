@@ -30,3 +30,27 @@ func (s *PreviewService) SaveRecordingMaterial(ctx context.Context, generation i
 	}
 	return s.current.SaveRecording(ctx, filepath.Dir(s.path), mimeType, durationMs, data, time.Now())
 }
+
+// ImportAudioMaterial 导入一段本机音频文件为收件箱素材。
+func (s *PreviewService) ImportAudioMaterial(ctx context.Context, generation int) (string, error) {
+	s.mu.RLock()
+	ready := s.current != nil && s.generation == generation && s.writable
+	s.mu.RUnlock()
+	if !ready {
+		if s.current == nil || s.generation != generation {
+			return "", errors.New("请重新打开资料库")
+		}
+		return "", library.ErrReadOnly
+	}
+	path, err := s.app.Dialog.OpenFile().AttachToWindow(s.window).SetTitle("选择要导入的音频").
+		AddFilter("音频", "*.wav;*.webm;*.mp3;*.m4a;*.ogg;*.oga").PromptForSingleSelection()
+	if err != nil || path == "" {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	return s.current.SaveAudioFile(ctx, filepath.Dir(s.path), path, time.Now())
+}

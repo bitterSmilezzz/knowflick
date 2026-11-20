@@ -5,10 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+
+	"knowflick.local/workbench-go/internal/media"
 )
 
 type recordingMetadata struct {
@@ -24,6 +30,17 @@ func (l *Library) SaveRecording(ctx context.Context, dir, mimeType string, durat
 		return "", ErrReadOnly
 	}
 	if len(data) == 0 || durationMs <= 0 {
+		return "", errors.New("录音没有内容，请重新录制")
+	}
+	return l.SaveAudioBytes(ctx, dir, mimeType, durationMs, data, now)
+}
+
+// SaveAudioBytes 建立音频素材并保存原件；durationMs 为 0 时保留附件、标记稍后补时长。
+func (l *Library) SaveAudioBytes(ctx context.Context, dir, mimeType string, durationMs int64, data []byte, now time.Time) (string, error) {
+	if !l.writable {
+		return "", ErrReadOnly
+	}
+	if len(data) == 0 {
 		return "", errors.New("录音没有内容，请重新录制")
 	}
 	// MediaRecorder 返回的类型可能带有 codecs 参数，保存扩展名仅取媒体类型。
@@ -44,7 +61,60 @@ func (l *Library) SaveRecording(ctx context.Context, dir, mimeType string, durat
 	return l.saveMaterialAttachment(ctx, material, dir, "audio", contentType, data)
 }
 
+// SaveAudioFile 导入本机音频文件，原件保存在库内附件中。
+func (l *Library) SaveAudioFile(ctx context.Context, dir, path string, now time.Time) (string, error) {
+	if !l.writable {
+		return "", ErrReadOnly
+	}
+	name := filepath.Base(path)
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("无法读取所选音频文件")
+	}
+	if info.Size() > media.MaxAudio {
+		return "", errors.New("音频文件超过 64 MB 上限")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", errors.New("无法打开所选音频文件")
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, media.MaxAudio+1))
+	if err != nil {
+		return "", errors.New("无法读取所选音频文件")
+	}
+	if len(data) > media.MaxAudio {
+		return "", errors.New("音频文件超过 64 MB 上限")
+	}
+	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+	contentType := audioMIME(extension)
+	if contentType == "" {
+		return "", errors.New("请选择 WAV、WebM、MP3、M4A 或 OGG 音频文件")
+	}
+	return l.SaveAudioBytes(ctx, dir, contentType, 0, data, now)
+}
+
+func audioMIME(extension string) string {
+	switch extension {
+	case "wav":
+		return "audio/wav"
+	case "webm":
+		return "audio/webm"
+	case "mp3":
+		return "audio/mpeg"
+	case "m4a":
+		return "audio/mp4"
+	case "ogg", "oga":
+		return "audio/ogg"
+	default:
+		return ""
+	}
+}
+
 func recordingDuration(ms int64) string {
+	if ms <= 0 {
+		return "时长待定"
+	}
 	seconds := ms / 1000
 	if ms%1000 >= 500 {
 		seconds++
