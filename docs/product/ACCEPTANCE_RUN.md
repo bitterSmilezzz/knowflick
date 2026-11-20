@@ -1590,6 +1590,15 @@ R4 项目与画像的写入仍未迁移。
 | WebDAV 凭据 | PASS | 记住的凭据可在重新打开资料库后回填到 WebDAV 表单；读写都校验资料库代号，旧代号被拒绝。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。原生对话框与真实 WebDAV 上传待桌面解锁后验证。 |
 
+## 阶段 2 第九十一轮 · 旧 JSON 存储：快照、导入归档与导出
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 快照与保存 | PASS | LoadStore 返回 cards.json、两代备份、设置与搜索历史；SaveCardsJSON 三代轮转验证（旧值进一代备份）、SaveSettingsJSON 原子写。旧资料库代号被拒绝。 |
+| 导入归档 | PASS | ReadImportArchiveFile 接受 ZIP（cards.json + settings.json）与纯文本，与 Rust read_archive_file 同口径。 |
+| 导出 | PASS | ExportArchive 打包净化后的 settings.json（密钥字段剥除）；ExportCardsJSONFile 输出 Android 同线格式；父目录自动创建，空目标被拒绝。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。原生导出对话框待桌面解锁后验证。 |
+
 
 
 
