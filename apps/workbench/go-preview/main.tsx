@@ -27,7 +27,7 @@ import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
-import { CaptureMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { noteMediaPaths } from "../src/domain/mediaMime";
@@ -273,6 +273,21 @@ function Preview() {
     try {
       const path = await ExportSystemBackup(lib.generation);
       if (path) setNotice("已导出基础备份到 " + path + "。此备份不含项目、邮箱等新增数据。");
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function importTextNote() {
+    if (!lib || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const path = prompt("要导入的文本文件路径：", "notes.txt");
+      if (!path) return;
+      const text = String(await ReadTextFile(path));
+      const title = path.split("/").pop()?.replace(/\.(txt|md|markdown)$/i, "") || "导入笔记";
+      const now = Date.now();
+      const outcome = await SaveNote(lib.generation, { id: "", title, body: text, notebook: null, tagsJson: "[]", pinned: false, favorite: false, archivedAt: null, sourceMaterialId: null, revision: 1, createdAt: now, updatedAt: now, deleted: false, deletedAt: null, excludeFromProfile: false }, 0);
+      setNotice("已导入「" + title + "」（修订 " + outcome.revision + "）");
+      await reload(lib.generation);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
@@ -695,6 +710,7 @@ function Preview() {
                 <strong>工作台</strong>
                 <button type="button" aria-pressed={view === "materials"} disabled={busy || cardEditing} onClick={() => { setView(view === "materials" ? "notes" : "materials"); setMoreOpen(false); }}>素材</button>
                 <button type="button" disabled={busy} onClick={() => void importLegacyArchive()}>导入旧归档</button>
+                <button type="button" disabled={busy} onClick={() => void importTextNote()}>导入文本笔记</button>
                 <button type="button" disabled={busy} onClick={() => void exportLegacyArchive()}>查看旧 JSON 快照</button>
                 <button type="button" disabled={busy} onClick={() => void exportArchiveToPath()}>导出归档</button>
                 <button type="button" disabled={busy} onClick={() => void exportCardsToPath()}>导出卡片 JSON</button>
