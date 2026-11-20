@@ -82,6 +82,10 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 			return counts, fmt.Errorf("恢复卡片失败：%w", err)
 		}
 		if inserted {
+			content := cards.Content{Category: card.Category, Headline: card.Headline, Summary: card.Summary, Details: card.Details, Tags: card.Tags}
+			if err := cards.IndexContent(ctx, tx, card.ID, content); err != nil {
+				return counts, fmt.Errorf("恢复卡片索引失败：%w", err)
+			}
 			counts.Cards++
 		} else {
 			counts.Skipped++
