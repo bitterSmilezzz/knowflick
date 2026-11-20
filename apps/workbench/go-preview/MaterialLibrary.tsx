@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SaveInkMaterial, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SaveInkMaterial, SaveRecordingMaterial, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
 import type { InkDocument } from "../src/domain/ink";
-import { InkPad } from "../src/ui/workspace/NotePads";
+import { formatDuration } from "../src/domain/ink";
+import { bytesToBase64 } from "../src/shell/base64";
+import { InkPad, VoiceRecorder } from "../src/ui/workspace/NotePads";
 import { useAttachments } from "./attachments";
 import { AttachmentView } from "../src/ui/workspace/AttachmentView";
 import { attachmentKindOf } from "../src/domain/attachmentKind";
@@ -25,7 +27,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
   const [selectedID, setSelectedID] = useState("");
   const [confirmConvert, setConfirmConvert] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
-  const [inkOpen, setInkOpen] = useState(false);
+  const [capturePad, setCapturePad] = useState<"ink" | "voice" | null>(null);
   const [capTitle, setCapTitle] = useState("");
   const [capText, setCapText] = useState("");
   const [capURL, setCapURL] = useState("");
@@ -115,17 +117,17 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
     });
   }
 
-  async function saveInk(doc: InkDocument) {
-    if (busy) throw new Error("请等当前操作完成后再保存笔迹");
+  async function saveMediaCapture(save: () => Promise<string>, message: string) {
+    if (busy) throw new Error("请等当前操作完成后再保存");
     onBusy(true);
     try {
-      const id = await SaveInkMaterial(generation, JSON.stringify(doc));
-      setInkOpen(false);
+      const id = await save();
+      setCapturePad(null);
       setError("");
       setQuery("");
       setSelectedID(id);
       setConfirmConvert(false);
-      setNotice("手写笔记已存入收件箱（" + doc.strokes.length + " 笔）");
+      setNotice(message);
       onChanged();
       try {
         await refresh(inboxOnly, "");
@@ -135,6 +137,27 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
     } finally {
       onBusy(false);
     }
+  }
+
+  function saveInk(doc: InkDocument) {
+    return saveMediaCapture(
+      () => SaveInkMaterial(generation, JSON.stringify(doc)),
+      "手写笔记已存入收件箱（" + doc.strokes.length + " 笔）",
+    );
+  }
+
+  function saveRecording(audio: Blob, durationMs: number) {
+    return saveMediaCapture(async () => {
+      if (audio.size > 64 * 1024 * 1024) throw new Error("录音附件超过 64 MB 上限，请重录较短的片段");
+      const encoded = await bytesToBase64(new Uint8Array(await audio.arrayBuffer()));
+      return SaveRecordingMaterial(generation, audio.type || "audio/webm", durationMs, encoded);
+    }, "语音笔记已存入收件箱（" + formatDuration(durationMs) + "）");
+  }
+
+  function openCapturePad(pad: "ink" | "voice") {
+    setError("");
+    setNotice("");
+    setCapturePad(pad);
   }
 
   async function saveCapture() {
@@ -198,7 +221,10 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
         {writable && <button type="button" disabled={busy || fetching} onClick={() => void importImages()}>导入图片</button>}
         {writable && <details className="preview-knowledge-bases" open={captureOpen} onToggle={(event) => setCaptureOpen(event.currentTarget.open)}>
           <summary>记录素材</summary>
-          <button type="button" disabled={busy || fetching || inkOpen} aria-expanded={inkOpen} onClick={() => { setError(""); setNotice(""); setInkOpen(true); }}>手写笔记</button>
+          <div className="preview-actions">
+            <button type="button" disabled={busy || fetching || capturePad !== null} aria-expanded={capturePad === "ink"} onClick={() => openCapturePad("ink")}>手写笔记</button>
+            <button type="button" disabled={busy || fetching || capturePad !== null} aria-expanded={capturePad === "voice"} onClick={() => openCapturePad("voice")}>语音笔记</button>
+          </div>
           <form onSubmit={(event) => { event.preventDefault(); void saveCapture(); }}>
             <label>标题（可留空）<input value={capTitle} disabled={busy || fetching} onChange={(event) => setCapTitle(event.target.value)} /></label>
             <label>正文<textarea required value={capText} disabled={busy || fetching} onChange={(event) => setCapText(event.target.value)} /></label>
@@ -230,7 +256,11 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
       <section className="preview-note preview-editor" aria-label="素材正文">
         {error && <p className="preview-error preview-material-error" role="alert">{error}</p>}
         {notice && <p className="preview-notice" role="status">{notice}</p>}
-        {inkOpen && writable && <div className="preview-inkpad"><InkPad onCancel={() => setInkOpen(false)} onSave={saveInk} /></div>}
+        {capturePad && writable && <div className="preview-capture-pad">
+          {capturePad === "ink"
+            ? <InkPad onCancel={() => setCapturePad(null)} onSave={saveInk} />
+            : <VoiceRecorder onCancel={() => setCapturePad(null)} onSave={saveRecording} localStorageHint="录音保存在本机。" />}
+        </div>}
         {!selected && <p className="preview-meta">没有可显示的素材。</p>}
         {selected && <>
           <h2>{selected.title || "无标题素材"}</h2>

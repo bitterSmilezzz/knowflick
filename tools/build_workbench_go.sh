@@ -21,5 +21,9 @@ fi
 )
 (
   cd "$root/apps/workbench-go"
-  go build -tags production -trimpath -ldflags='-s -w' -o bin/knowflick-go-preview .
+  link_flags='-s -w'
+  if [[ "$(go env GOOS)" == darwin ]]; then
+    link_flags+=' -extldflags=-Wl,-sectcreate,__TEXT,__info_plist,Info.plist'
+  fi
+  go build -tags production -trimpath -ldflags="$link_flags" -o bin/knowflick-go-preview .
 )

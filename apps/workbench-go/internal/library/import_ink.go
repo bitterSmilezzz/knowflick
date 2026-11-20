@@ -68,22 +68,7 @@ func (l *Library) SaveInk(ctx context.Context, dir, documentJSON string, now int
 		RawText:      fmt.Sprintf("%s\n\n（手写笔记，%d 笔；笔迹以附件保存，可在阅读区重看。）", title, count),
 		MetadataJSON: string(metadata), InboxStatus: "inbox", CreatedAt: now, UpdatedAt: now,
 	}
-	tx, err := l.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	defer tx.Rollback()
-	inserted, err := insertImportedMaterial(ctx, tx, material)
-	if err != nil {
-		return "", err
-	}
-	if !inserted {
-		return "", errors.New("素材标识冲突，请重试")
-	}
-	if err := commitMaterialAttachment(ctx, tx, material.ID, dir, "ink", "application/json", document); err != nil {
-		return "", err
-	}
-	return material.ID, nil
+	return l.saveMaterialAttachment(ctx, material, dir, "ink", "application/json", document)
 }
 
 func validInkCoordinate(value *float64) bool {

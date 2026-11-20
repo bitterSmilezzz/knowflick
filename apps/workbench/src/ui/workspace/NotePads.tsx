@@ -151,61 +151,109 @@ export function InkPad({ initial, onCancel, onSave }: {
 }
 
 /** 录音：MediaRecorder 采集，停止后交回音频字节。 */
-export function VoiceRecorder({ onCancel, onSave }: {
+export function VoiceRecorder({ onCancel, onSave, localStorageHint = "录音保存在本机；转写走本地 Whisper，不上传音频。" }: {
   onCancel: () => void;
   onSave: (audio: Blob, durationMs: number) => Promise<void>;
+  localStorageHint?: string;
 }) {
-  const [state, setState] = useState<"idle" | "recording" | "ready" | "saving">("idle");
+  const [state, setState] = useState<"idle" | "starting" | "recording" | "stopping" | "ready" | "saving">("idle");
   const [error, setError] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [audio, setAudio] = useState<{ blob: Blob; durationMs: number; url: string } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const startedAt = useRef(0);
+  const audioURL = useRef<string | null>(null);
+  const active = useRef(false);
   const timer = useRef<number | null>(null);
 
-  const stopTimer = () => { if (timer.current !== null) { window.clearInterval(timer.current); timer.current = null; } };
-  useEffect(() => () => {
-    stopTimer();
-    recorderRef.current?.stream.getTracks().forEach(track => track.stop());
-    if (audio) URL.revokeObjectURL(audio.url);
-  }, [audio]);
+  const stopTimer = () => {
+    if (timer.current !== null) window.clearInterval(timer.current);
+    timer.current = null;
+  };
+  const releaseAudio = () => {
+    if (audioURL.current !== null) URL.revokeObjectURL(audioURL.current);
+    audioURL.current = null;
+  };
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      stopTimer();
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      recorder?.stream.getTracks().forEach(track => track.stop());
+      releaseAudio();
+    };
+  }, []);
 
   const start = async () => {
     setError("");
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setError("当前环境不支持录音。桌面客户端可用；浏览器需要麦克风权限。");
+      setError("当前环境不支持录音，请使用支持麦克风采集的桌面客户端或浏览器。");
       return;
     }
+    setState("starting");
+    let stream: MediaStream | undefined;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!active.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find(type => MediaRecorder.isTypeSupported(type)) ?? "";
       const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      chunksRef.current = [];
-      recorder.ondataavailable = event => { if (event.data.size) chunksRef.current.push(event.data); };
+      const chunks: Blob[] = [];
+      const startedAt = performance.now();
+      recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => {
+        if (recorderRef.current !== recorder) return;
+        recorderRef.current = null;
+        stopTimer();
+        recorder.stream.getTracks().forEach(track => track.stop());
+        setError("录音中断，请检查麦克风后重试。");
+        setState("idle");
+      };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        const durationMs = Date.now() - startedAt.current;
-        stream.getTracks().forEach(track => track.stop());
-        if (!blob.size) { setError("没有录到声音，请检查麦克风后重试。"); setState("idle"); return; }
-        setAudio({ blob, durationMs, url: URL.createObjectURL(blob) });
+        if (recorderRef.current !== recorder) return;
+        recorderRef.current = null;
+        stopTimer();
+        recorder.stream.getTracks().forEach(track => track.stop());
+        const blob = new Blob(chunks, { type: recorder.mimeType || chunks[0]?.type || "audio/webm" });
+        if (!blob.size) {
+          setError("没有录到声音，请检查麦克风后重试。");
+          setState("idle");
+          return;
+        }
+        const durationMs = Math.max(1, Math.round(performance.now() - startedAt));
+        const url = URL.createObjectURL(blob);
+        audioURL.current = url;
+        setAudio({ blob, durationMs, url });
         setState("ready");
       };
       recorderRef.current = recorder;
-      startedAt.current = Date.now();
       recorder.start();
+      releaseAudio();
+      setAudio(null);
       setElapsed(0);
       setState("recording");
-      timer.current = window.setInterval(() => setElapsed(Date.now() - startedAt.current), 200);
+      timer.current = window.setInterval(() => setElapsed(performance.now() - startedAt), 200);
     } catch (err) {
+      recorderRef.current = null;
+      stream?.getTracks().forEach(track => track.stop());
+      if (!active.current) return;
       setError(err instanceof Error && err.name === "NotAllowedError"
         ? "麦克风权限被拒绝。请在系统设置里允许 KnowFlick 使用麦克风。"
         : "无法开始录音：请检查麦克风是否可用。");
-      setState("idle");
+      setState(audio ? "ready" : "idle");
     }
   };
 
-  const stop = () => { stopTimer(); recorderRef.current?.stop(); };
+  const stop = () => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    stopTimer();
+    setState("stopping");
+    recorder.stop();
+  };
 
   const save = async () => {
     if (!audio || state === "saving") return;
@@ -217,7 +265,7 @@ export function VoiceRecorder({ onCancel, onSave }: {
   return <div className="voice-recorder" aria-label="语音笔记">
     <div className="voice-status" data-state={state}>
       <span className="voice-dot" aria-hidden="true" />
-      <strong>{state === "recording" ? "正在录音" : state === "ready" ? "录音完成" : state === "saving" ? "正在保存" : "准备录音"}</strong>
+      <strong>{state === "starting" ? "正在打开麦克风" : state === "recording" ? "正在录音" : state === "stopping" ? "正在结束录音" : state === "ready" ? "录音完成" : state === "saving" ? "正在保存" : "准备录音"}</strong>
       <span className="ws-hint">{state === "recording" ? formatDuration(elapsed) : audio ? formatDuration(audio.durationMs) : "点下面的按钮开始"}</span>
     </div>
     {audio ? <audio className="voice-audio" controls src={audio.url} aria-label="录音回放" /> : null}
@@ -233,13 +281,13 @@ export function VoiceRecorder({ onCancel, onSave }: {
       <button type="button" className="ws-bordered" disabled={state === "saving"} onClick={onCancel}>取消</button>
       {state === "recording"
         ? <button type="button" className="ws-primary" onClick={stop}><Icon name="check" size={14} />停止录音</button>
-        : <button type="button" className="ws-bordered" disabled={state === "saving"} onClick={() => { setAudio(null); void start(); }}>
+        : <button type="button" className="ws-bordered" disabled={state === "starting" || state === "stopping" || state === "saving"} onClick={() => void start()}>
             {audio ? "重录" : "开始录音"}
           </button>}
-      <button type="button" className="ws-primary" disabled={!audio || state === "saving"} onClick={() => void save()}>
+      <button type="button" className="ws-primary" disabled={!audio || state !== "ready"} onClick={() => void save()}>
         <Icon name="check" size={14} />{state === "saving" ? "保存中…" : "保存语音笔记"}
       </button>
     </div>
-    <p className="ws-hint">录音保存在本机；转写走本地 Whisper，不上传音频。</p>
+    <p className="ws-hint">{localStorageHint}</p>
   </div>;
 }

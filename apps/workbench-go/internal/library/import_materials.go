@@ -104,6 +104,26 @@ func nullableText(value string) any {
 	return value
 }
 
+// saveMaterialAttachment 新建素材、全文索引及库内附件。
+func (l *Library) saveMaterialAttachment(ctx context.Context, material ImportedMaterial, dir, kind, mime string, data []byte) (string, error) {
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	inserted, err := insertImportedMaterial(ctx, tx, material)
+	if err != nil {
+		return "", err
+	}
+	if !inserted {
+		return "", errors.New("素材标识冲突，请重试")
+	}
+	if err := commitMaterialAttachment(ctx, tx, material.ID, dir, kind, mime, data); err != nil {
+		return "", err
+	}
+	return material.ID, nil
+}
+
 func commitMaterialAttachment(ctx context.Context, tx *sql.Tx, id, dir, kind, mime string, data []byte) error {
 	return media.SaveLinked(dir, kind, mime, data, func(relative string) error {
 		result, err := tx.ExecContext(ctx, "UPDATE materials SET media_path = ?, media_size_bytes = ? WHERE id = ?", relative, len(data), id)
