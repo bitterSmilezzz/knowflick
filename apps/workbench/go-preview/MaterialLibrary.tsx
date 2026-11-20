@@ -1,14 +1,30 @@
 import { useEffect, useState } from "react";
 import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SaveInkMaterial, SaveRecordingMaterial, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
-import type { InkDocument } from "../src/domain/ink";
-import { formatDuration } from "../src/domain/ink";
+import { formatDuration, parseInk, type InkDocument } from "../src/domain/ink";
 import { bytesToBase64 } from "../src/shell/base64";
-import { InkPad, VoiceRecorder } from "../src/ui/workspace/NotePads";
-import { useAttachments } from "./attachments";
-import { AttachmentView } from "../src/ui/workspace/AttachmentView";
 import { attachmentKindOf } from "../src/domain/attachmentKind";
+import { AttachmentView } from "../src/ui/workspace/AttachmentView";
+import { useAttachments } from "./attachments";
+import { InkPad, VoiceRecorder } from "../src/ui/workspace/NotePads";
 import type { Material } from "./bindings/knowflick.local/workbench-go/internal/materials/models";
+
+interface RecordingMetadata {
+  durationMs?: number;
+  mime?: string;
+  ink?: unknown;
+  transcript?: string;
+  transcribed?: boolean;
+}
+
+function recordingMetadataOf(material: Material): RecordingMetadata {
+  try {
+    const parsed: unknown = JSON.parse(material.metadataJson);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as RecordingMetadata : {};
+  } catch {
+    return {};
+  }
+}
 
 type Props = {
   generation: number;
@@ -42,6 +58,9 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
   const attachmentKind = attachmentKindOf(attachmentPath);
   const attachments = useAttachments(generation, attachmentKind ? attachmentPath : "");
   const attachment = attachments?.get(attachmentPath);
+  const recording = selected?.sourceType === "audio" ? recordingMetadataOf(selected) : null;
+  const inkSketch = selected?.sourceType === "ink" ? parseInk(recordingMetadataOf(selected).ink) : null;
+  const duration = recording?.durationMs;
 
   async function refresh(inbox: boolean, term: string) {
     const rows = term
@@ -294,12 +313,26 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
         {selected && <>
           <h2>{selected.title || "无标题素材"}</h2>
           <p className="preview-meta">{statusLabels[selected.inboxStatus] ?? selected.inboxStatus} · {selected.sourceType}{selected.sourceUrl ? " · " + selected.sourceUrl : ""}</p>
-          {attachment && <div className="preview-material-attachment"><AttachmentView payload={attachment} alt={selected.title || "素材附件"} /></div>}
+          {attachment && (
+            <figure className="preview-material-attachment" data-attachment={selected.sourceType}>
+              <AttachmentView payload={attachment} alt={selected.title || "素材附件"} />
+              {selected.sourceType === "image" && <figcaption className="preview-meta">图片素材 · 保存在本机</figcaption>}
+              {selected.sourceType === "ink" && inkSketch && <figcaption className="preview-meta">手写笔记 · {inkSketch.strokes.length} 笔 · 保存在本机</figcaption>}
+              {selected.sourceType === "audio" && <figcaption className="preview-meta">录音 · {duration ? formatDuration(duration) : "时长未知"} · 保存在本机</figcaption>}
+            </figure>
+          )}
           {attachmentKind && !attachments && <p className="preview-meta" role="status">正在读取附件…</p>}
           {attachmentPath && (!attachmentKind || (attachments && !attachment)) && <p className="preview-meta">附件无法读取：{attachmentPath}</p>}
-          {writable && selected.sourceType === "audio" && attachmentKind === "audio" &&
-            <button type="button" disabled={busy} onClick={() => void run(() => transcribeRecording(selected.id, query.trim()))}>转写录音</button>}
-          <pre className="preview-material-body">{selected.rawText || "（这条素材没有正文）"}</pre>
+          {writable && selected.sourceType === "audio" && attachmentKind === "audio" && (
+            <button type="button" disabled={busy} onClick={() => void run(() => transcribeRecording(selected.id, query.trim()))}>转写录音</button>
+          )}
+          {selected.sourceType === "audio" && recording?.transcribed && recording.transcript && (
+            <details className="preview-history" open>
+              <summary>本地转写</summary>
+              <pre className="preview-material-body">{recording.transcript}</pre>
+            </details>
+          )}
+          {selected.sourceType === "audio" && !recording?.transcribed && <p className="preview-meta">这段录音还没有本地转写。</p>}
           {writable && <div className="preview-actions">
             <button type="button" disabled={busy} onClick={() => void toNote()}>转为笔记</button>
             {selected.inboxStatus === "inbox" && <>
