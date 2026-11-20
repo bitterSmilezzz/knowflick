@@ -610,7 +610,7 @@ function Preview() {
 
 
       {settingsOpen && lib && <SettingsPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
-      {asrOpen && <AsrPanel busy={busy} onBusy={setBusy} />}
+      {asrOpen && <AsrPanel key={lib?.generation ?? "asr"} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
       {mcpOpen && lib && <McpGrantPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {subsOpen && <section className="preview-mail" aria-label="订阅源">
         <div className="preview-mail-head">

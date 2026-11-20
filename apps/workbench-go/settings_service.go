@@ -28,8 +28,10 @@ func (s *PreviewService) requireGeneration(generation int) error {
 
 // SaveSettings 写 settings.json（与桌面端同名同目录）。
 func (s *PreviewService) SaveSettings(ctx context.Context, generation int, text string) error {
-	if err := s.requireGeneration(generation); err != nil {
-		return err
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.generation != generation {
+		return errors.New("请重新打开资料库")
 	}
 	dir, err := s.libraryDir()
 	if err != nil {
@@ -40,8 +42,10 @@ func (s *PreviewService) SaveSettings(ctx context.Context, generation int, text 
 
 // ReadSettings 读设置；没有文件返回空串。
 func (s *PreviewService) ReadSettings(ctx context.Context, generation int) (string, error) {
-	if err := s.requireGeneration(generation); err != nil {
-		return "", err
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.generation != generation {
+		return "", errors.New("请重新打开资料库")
 	}
 	dir, err := s.libraryDir()
 	if err != nil {

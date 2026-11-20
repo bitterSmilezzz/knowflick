@@ -119,7 +119,7 @@ func (s *PreviewService) AsrTranscribe(ctx context.Context, model, path string) 
 	if err != nil {
 		return asr.Result{}, err
 	}
-	wav, err := asr.ToWAV16kMono(path)
+	wav, err := asr.ToWAV16kMono(ctx, path)
 	if err != nil {
 		return asr.Result{}, err
 	}

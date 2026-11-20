@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SaveInkMaterial, SaveRecordingMaterial, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SaveInkMaterial, SaveRecordingMaterial, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
 import type { InkDocument } from "../src/domain/ink";
 import { formatDuration } from "../src/domain/ink";
@@ -34,6 +34,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [transcribing, setTranscribing] = useState(false);
   const selected = items?.find((item) => item.id === selectedID) ?? items?.[0] ?? null;
 
 
@@ -117,7 +118,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
     });
   }
 
-  async function saveMediaCapture(save: () => Promise<string>, message: string) {
+  async function saveMediaCapture(save: () => Promise<string>, message: string, afterSave?: (id: string) => Promise<void>) {
     if (busy) throw new Error("请等当前操作完成后再保存");
     onBusy(true);
     try {
@@ -134,6 +135,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
       } catch (cause) {
         setError("刷新素材列表失败：" + String(cause));
       }
+      await afterSave?.(id);
     } finally {
       onBusy(false);
     }
@@ -151,7 +153,33 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
       if (audio.size > 64 * 1024 * 1024) throw new Error("录音附件超过 64 MB 上限，请重录较短的片段");
       const encoded = await bytesToBase64(new Uint8Array(await audio.arrayBuffer()));
       return SaveRecordingMaterial(generation, audio.type || "audio/webm", durationMs, encoded);
-    }, "语音笔记已存入收件箱（" + formatDuration(durationMs) + "）");
+    }, "语音笔记已存入收件箱（" + formatDuration(durationMs) + "）", (id) => transcribeRecording(id, ""));
+  }
+
+  async function transcribeRecording(id: string, term: string) {
+    setTranscribing(true);
+    try {
+      const status = await TranscribeRecording(generation, id);
+      const messages: Record<string, string> = {
+        disabled: "自动转写已关闭。可在「更多 → 语音转写」中开启。",
+        "missing-model": "语音模型尚未下载。下载后可在此重试转写。",
+        empty: "没有识别出文字，录音已保留。",
+        already: "这条录音已有转写。",
+        saved: "已用本地 Whisper 转写，音频仍保存在本机。",
+      };
+      setNotice((previous) => [previous, messages[status]].filter(Boolean).join(" "));
+      if (status === "saved") {
+        try {
+          await refresh(inboxOnly, term);
+        } catch (cause) {
+          setError("转写已保存，刷新素材列表失败：" + String(cause));
+        }
+      }
+    } catch (cause) {
+      setError("录音已保留，转写失败：" + String(cause));
+    } finally {
+      setTranscribing(false);
+    }
   }
 
   function openCapturePad(pad: "ink" | "voice") {
@@ -256,10 +284,11 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
       <section className="preview-note preview-editor" aria-label="素材正文">
         {error && <p className="preview-error preview-material-error" role="alert">{error}</p>}
         {notice && <p className="preview-notice" role="status">{notice}</p>}
+        {transcribing && <p className="preview-meta" role="status">正在本地转写录音…</p>}
         {capturePad && writable && <div className="preview-capture-pad">
           {capturePad === "ink"
             ? <InkPad onCancel={() => setCapturePad(null)} onSave={saveInk} />
-            : <VoiceRecorder onCancel={() => setCapturePad(null)} onSave={saveRecording} localStorageHint="录音保存在本机。" />}
+            : <VoiceRecorder onCancel={() => setCapturePad(null)} onSave={saveRecording} localStorageHint="录音保存在本机。开启自动转写后，Whisper 会在本机识别。" />}
         </div>}
         {!selected && <p className="preview-meta">没有可显示的素材。</p>}
         {selected && <>
@@ -268,6 +297,8 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
           {attachment && <div className="preview-material-attachment"><AttachmentView payload={attachment} alt={selected.title || "素材附件"} /></div>}
           {attachmentKind && !attachments && <p className="preview-meta" role="status">正在读取附件…</p>}
           {attachmentPath && (!attachmentKind || (attachments && !attachment)) && <p className="preview-meta">附件无法读取：{attachmentPath}</p>}
+          {writable && selected.sourceType === "audio" && attachmentKind === "audio" &&
+            <button type="button" disabled={busy} onClick={() => void run(() => transcribeRecording(selected.id, query.trim()))}>转写录音</button>}
           <pre className="preview-material-body">{selected.rawText || "（这条素材没有正文）"}</pre>
           {writable && <div className="preview-actions">
             <button type="button" disabled={busy} onClick={() => void toNote()}>转为笔记</button>

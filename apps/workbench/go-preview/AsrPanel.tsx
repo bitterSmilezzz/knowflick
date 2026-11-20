@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { AsrCatalog, AsrDownloadProgress, AsrModelStatus, AsrTranscribe, StartAsrDownload } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { AsrCatalog, AsrDownloadProgress, AsrModelStatus, AsrTranscribe, ReadRecordingASRSettings, SaveRecordingASRSettings, StartAsrDownload } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Model, Result, Status } from "./bindings/knowflick.local/workbench-go/internal/asr/models";
 import type { AsrDownloadState } from "./bindings/knowflick.local/workbench-go/models";
 
 type Props = {
+  generation: number | null;
+  writable: boolean;
   busy: boolean;
   onBusy: (busy: boolean) => void;
 };
 
-export function AsrPanel({ busy, onBusy }: Props) {
+export function AsrPanel({ generation, writable, busy, onBusy }: Props) {
   const [catalog, setCatalog] = useState<Model[]>([]);
   const [model, setModel] = useState("small");
+  const [autoTranscribe, setAutoTranscribe] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(generation === null);
   const [status, setStatus] = useState<Status | null>(null);
   const [progress, setProgress] = useState<AsrDownloadState | null>(null);
   const [audioPath, setAudioPath] = useState("");
@@ -31,8 +35,20 @@ export function AsrPanel({ busy, onBusy }: Props) {
     let active = true;
     void (async () => {
       try {
-        const rows = await AsrCatalog();
-        if (active) { setCatalog(rows ?? []); await refresh("small"); }
+        const [rows, config] = await Promise.all([
+          AsrCatalog(),
+          generation === null ? null : ReadRecordingASRSettings(generation),
+        ]);
+        if (!active) return;
+        setCatalog(rows ?? []);
+        const preferred = config?.model ?? "small";
+        const supported = rows?.some((entry: Model) => entry.name === preferred);
+        const target = supported ? preferred : "small";
+        setModel(target);
+        setAutoTranscribe(config?.enabled === true);
+        setSettingsReady(true);
+        if (!supported) setNotice("资料库所选模型当前不可用。请选择可用模型并保存设置。");
+        await refresh(target);
       } catch (cause) {
         if (active) setError(String(cause));
       }
@@ -54,6 +70,14 @@ export function AsrPanel({ busy, onBusy }: Props) {
     } finally {
       onBusy(false);
     }
+  }
+
+  async function saveRecordingSettings() {
+    if (generation === null || !writable || busy || !settingsReady) return;
+    await run(async () => {
+      await SaveRecordingASRSettings(generation, autoTranscribe, model);
+      setNotice("录音转写设置已保存");
+    });
   }
 
   async function startDownload() {
@@ -107,9 +131,14 @@ export function AsrPanel({ busy, onBusy }: Props) {
               {progress?.running ? "下载中 " + percent + "%" : "下载模型"}
             </button>}
       </div>
+      {generation !== null && <div className="preview-actions">
+        <label><input type="checkbox" checked={autoTranscribe} disabled={!writable || !settingsReady || busy}
+          onChange={(event) => setAutoTranscribe(event.target.checked)} /> 保存录音后自动转写</label>
+        {writable && <button type="button" disabled={!settingsReady || busy || catalog.length === 0} onClick={() => void saveRecordingSettings()}>保存转写设置</button>}
+      </div>}
       {progress?.running && <progress aria-label="模型下载进度" value={progress.downloaded} max={progress.total || undefined} />}
       <form onSubmit={(event) => { event.preventDefault(); void transcribe(); }}>
-        <label>音频文件路径（WAV 直接转写，其它格式在 macOS 上经 afconvert 转换）
+        <label>音频文件路径（其他格式可用 FFmpeg 转换）
           <input required value={audioPath} disabled={busy} placeholder="/Users/you/Voice Note.m4a" onChange={(event) => setAudioPath(event.target.value)} />
         </label>
         <div className="preview-actions">

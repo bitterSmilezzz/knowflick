@@ -1,8 +1,8 @@
 package asr
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,25 +12,33 @@ import (
 	"github.com/google/uuid"
 )
 
-// ToWAV16kMono 把任意音频转成 16 kHz 单声道 WAV；已是 WAV 就原样返回。
-// macOS 用系统自带的 afconvert（与桌面端同一条路径），其余平台没有内置转换器。
-func ToWAV16kMono(input string) (string, error) {
-	extension := strings.TrimPrefix(filepath.Ext(input), ".")
-	if strings.EqualFold(extension, "wav") {
+// ToWAV16kMono 保留已有 WAV，其他格式转换为 16 kHz 单声道 PCM。
+func ToWAV16kMono(ctx context.Context, input string) (string, error) {
+	if strings.EqualFold(filepath.Ext(input), ".wav") {
 		return input, nil
 	}
-	if !isDarwin() {
-		return "", errors.New("非 WAV 音频需要先转成 16 kHz 单声道 WAV（当前平台没有内置转换器）")
+	output := filepath.Join(os.TempDir(), "knowflick-asr-"+uuid.NewString()+".wav")
+	if runtime.GOOS == "darwin" {
+		command := exec.CommandContext(ctx, "afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", input, output)
+		if err := command.Run(); err == nil {
+			return output, nil
+		}
+		_ = os.Remove(output)
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 	}
-	output := filepath.Join(os.TempDir(), fmt.Sprintf("knowflick-asr-%s.wav", uuid.NewString()))
-	command := exec.Command("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", input, output)
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		return "", errors.New("无法转换这段音频，请安装 FFmpeg 或使用 16 kHz 单声道 WAV")
+	}
+	command := exec.CommandContext(ctx, ffmpeg, "-nostdin", "-loglevel", "error", "-protocol_whitelist", "file", "-i", input, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", output)
 	if err := command.Run(); err != nil {
 		_ = os.Remove(output)
-		return "", errors.New("系统无法转换这段音频（支持 WAV；macOS 上其它格式经 afconvert 转换）")
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return "", errors.New("无法转换这段音频，请检查录音格式")
 	}
 	return output, nil
-}
-
-func isDarwin() bool {
-	return runtime.GOOS == "darwin"
 }
