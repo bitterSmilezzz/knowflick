@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"knowflick.local/workbench-go/internal/archive"
+	"knowflick.local/workbench-go/internal/artifacts"
 	"knowflick.local/workbench-go/internal/cards"
 	"knowflick.local/workbench-go/internal/jsonx"
 	"knowflick.local/workbench-go/internal/libfiles"
@@ -38,19 +39,8 @@ type backupMaterial struct {
 	UpdatedAt       int64   `json:"updatedAt"`
 }
 
-type backupArtifact struct {
-	ID              string   `json:"id"`
-	ArtifactType    string   `json:"artifactType"`
-	Title           string   `json:"title"`
-	ContentMarkdown string   `json:"contentMarkdown"`
-	SourceCardIDs   []string `json:"sourceCardIds"`
-	SourceNoteIDs   []string `json:"sourceNoteIds"`
-	DateScopeStart  *int64   `json:"dateScopeStart"`
-	DateScopeEnd    *int64   `json:"dateScopeEnd"`
-	CreatedAt       int64    `json:"createdAt"`
-	UpdatedAt       int64    `json:"updatedAt"`
-	IsDeleted       bool     `json:"isDeleted"`
-}
+// backupArtifact 与 artifacts.Artifact 同一份线格式：类型别名保证备份与产物视图不漂移。
+type backupArtifact = artifacts.Artifact
 
 type backupNote struct {
 	ID                 string   `json:"id"`

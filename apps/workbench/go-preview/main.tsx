@@ -20,6 +20,7 @@ import { NoteHistory } from "./NoteHistory";
 import { ReviewDeck } from "./ReviewDeck";
 import { CardLibrary } from "./CardLibrary";
 import { MaterialLibrary } from "./MaterialLibrary";
+import { ArtifactLibrary } from "./ArtifactLibrary";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -35,7 +36,7 @@ function Preview() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
-  const [view, setView] = useState<"notes" | "materials" | "cards" | "review">("notes");
+  const [view, setView] = useState<"notes" | "materials" | "cards" | "artifacts" | "review">("notes");
   const [cardEditing, setCardEditing] = useState(false);
   const [scope, setScope] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
@@ -519,6 +520,7 @@ function Preview() {
           {lib && <button type="button" disabled={busy} aria-pressed={subsOpen} onClick={() => void toggleSubscriptions()}>{subsOpen ? "收起订阅" : "订阅源"}</button>}
           {lib && lib.writable && <button type="button" disabled={busy || mailBusy} aria-pressed={mailOpen} onClick={() => void toggleMail()}>{mailOpen ? "收起邮箱" : "邮箱"}</button>}
           {lib && <button type="button" aria-pressed={view === "materials"} disabled={busy || cardEditing} onClick={() => setView(view === "materials" ? "notes" : "materials")}>{view === "materials" ? "返回笔记" : "素材"}</button>}
+          {lib && <button type="button" aria-pressed={view === "artifacts"} disabled={busy || cardEditing} onClick={() => setView(view === "artifacts" ? "notes" : "artifacts")}>{view === "artifacts" ? "返回笔记" : "产物"}</button>}
           {lib && <button type="button" aria-pressed={view === "cards"} disabled={busy || cardEditing} onClick={() => setView(view === "cards" ? "notes" : "cards")}>{view === "cards" ? "返回笔记" : "卡片库"}</button>}
           {lib && <button type="button" aria-pressed={view === "review"} disabled={busy || cardEditing} onClick={() => setView(view === "review" ? "notes" : "review")}>{view === "review" ? "收起复习" : "卡片复习"}</button>}
           {lib && <button type="button" disabled={busy || view !== "notes"} onClick={() => void toggleTrash()}>{trash ? "返回笔记" : "回收站"}</button>}
@@ -624,6 +626,7 @@ function Preview() {
       </section>}
       {lib && view === "review" && <ReviewDeck key={lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
       {lib && view === "materials" && <MaterialLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "artifacts" && <ArtifactLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "cards" && <CardLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onEditing={setCardEditing} />}
       {lib && <div className="preview-workspace" hidden={view !== "notes"}>
         <section className="preview-list" aria-label="笔记列表">
