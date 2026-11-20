@@ -135,3 +135,25 @@ func maxInt64(left, right int64) int64 {
 	}
 	return right
 }
+
+// DownloadAsrModelAndWait 同步下载一档语音模型并返回最终状态：
+// 与 Rust asr_download_model 的返回契约一致（下载完成后的 model_status）。
+// 预览端界面用 StartAsrDownload + AsrDownloadProgress 轮询；这个同步入口
+// 供后续事件推送版界面或脚本化验证复用。
+func (s *PreviewService) DownloadAsrModelAndWait(ctx context.Context, model string) (asr.Status, error) {
+	if model == "" {
+		model = "small"
+	}
+	url, err := asr.DownloadURL(model)
+	if err != nil {
+		return asr.Status{}, err
+	}
+	target, err := asr.ModelPath(dataroot.Dir(), model)
+	if err != nil {
+		return asr.Status{}, err
+	}
+	if _, err := asr.Download(ctx, url, target, func(done, total int64) {}); err != nil {
+		return asr.Status{}, err
+	}
+	return asr.ModelStatus(dataroot.Dir(), model)
+}

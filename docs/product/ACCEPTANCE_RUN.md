@@ -1633,6 +1633,15 @@ R4 项目与画像的写入仍未迁移。
 | 捕捉窗口 | 构建通过 | ToggleCapsule / HideCapsule 切换与隐藏快速捕捉窗口（?window=capsule，与前端 CapsuleWindow 路由一致）；窗口未创建时明确报错。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。快捷键实际触发与原生窗口行为待桌面解锁后验证。 |
 
+## 阶段 2 第九十七轮 · 本地语义模型预热与检索路径守卫
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 模型预热 | PASS | LocalEmbedWarmUp 对齐 Rust local_embed_warm_up 的状态语义：权重缺失时报「本地语义模型尚未下载」并返回状态，权重存在时确认可用。 |
+| 检索守卫 | PASS | LocalEmbedStrict 对齐 allow_download=false：模型缺失时拒绝生成向量，由界面提示下载；不静默拉百 MB。 |
+| 模型下载 | PASS | DownloadAsrModelAndWait 提供与 Rust asr_download_model 相同的同步返回契约（下载后的 model_status），界面轮询入口保持 StartAsrDownload + AsrDownloadProgress。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。fastembed 真推理（384 维）待引入 ONNX 运行时后验证；当前哈希投影（128 维）按身份隔离。 |
+
 ## 阶段 2 第九十四轮 · 笔记、卡片、邮箱、复习历史与回收站恢复
 
 | 验收 | 结果 | 证据与范围 |

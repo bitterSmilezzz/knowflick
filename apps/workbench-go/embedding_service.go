@@ -84,3 +84,25 @@ func (s *PreviewService) RebuildHashEmbeddings(ctx context.Context, generation i
 	}
 	return s.current.RebuildHashEmbeddings(ctx, limit)
 }
+
+// LocalEmbedWarmUp 预热本地语义模型：下载后真跑一次推理，确保「下载完成」等于
+// 「能用」（与 Rust local_embed_warm_up 同语义）。Go 端没有 ONNX 运行时，
+// 无法真跑 fastembed；这里按模型缓存状态给出诚实结果——权重缺失时报错并
+// 指引下载途径，权重存在时报告状态。语义向量的生成由 LocalEmbed 的哈希投影承担。
+func (s *PreviewService) LocalEmbedWarmUp(ctx context.Context) (embed.LocalStatus, error) {
+	root := dataroot.Dir()
+	status := embed.Status(root)
+	if !status.Downloaded {
+		return status, embed.ErrNotDownloaded
+	}
+	return status, nil
+}
+
+// LocalEmbedStrict 是检索路径的嵌入入口：模型没下载时明确拒绝（与 Rust
+// local_embed 的 allow_download=false 同语义），由界面提示去设置里下载。
+func (s *PreviewService) LocalEmbedStrict(ctx context.Context, texts []string, isQuery bool) ([][]float32, error) {
+	if err := embed.RequireModel(dataroot.Dir()); err != nil {
+		return nil, err
+	}
+	return s.LocalEmbed(ctx, texts, isQuery)
+}
