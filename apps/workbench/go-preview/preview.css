@@ -40,6 +40,13 @@ button:disabled { cursor: default; opacity: .65; }
 .preview-editor input, .preview-editor textarea { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--control); border-radius: 4px; padding: 6px 8px; }
 .preview-editor textarea { resize: vertical; min-height: 180px; line-height: 1.6; }
 .preview-editor .preview-meta { margin-top: 2px; }
+.preview-history { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--line); }
+.preview-history summary { cursor: pointer; }
+.preview-history ul { list-style: none; padding: 0; }
+.preview-history li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-block: 4px; }
+.preview-history button[aria-pressed="true"] { background: var(--selected); }
+.preview-history pre { white-space: pre-wrap; max-height: 40vh; }
+
 .preview-note-row { display: flex; align-items: stretch; gap: 4px; }
 .preview-note-row > button:first-child { flex: 1; min-width: 0; }
 .preview-restore { flex: none; padding-inline: 8px; }

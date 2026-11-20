@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
+import type { Note, NoteRevision } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
 import { DeleteSubscription, FetchSubscriptionPayload, ImportSubscriptionMaterials, ListMaterialSourceURLs, ListSubscriptions, MarkSubscriptionPolled, SaveSubscription } from "./bindings/knowflick.local/workbench-go/subscriptionservice";
 import { isDue, itemsToMaterials, parseSubscriptionPayload } from "../src/domain/subscription";
@@ -16,6 +16,7 @@ import type { Subscription } from "./bindings/knowflick.local/workbench-go/inter
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import "../src/ui/workspace/tokens.css";
 import "./preview.css";
+import { NoteHistory } from "./NoteHistory";
 
 function Preview() {
   const [lib, setLib] = useState<LibraryView | null>(null);
@@ -312,6 +313,33 @@ function Preview() {
     } finally { setBusy(false); }
   }
 
+  async function restoreHistory(revision: NoteRevision) {
+    if (!lib?.writable || !selected || selected.id !== revision.noteId || busy || dirty) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const outcome = await RestoreNoteRevision(lib.generation, selected.id, revision.revision, selected.revision);
+      const restored = { ...selected, title: revision.title, body: revision.bodyMd, revision: outcome.revision };
+      setLib((prev) => prev && prev.generation === lib.generation ? {
+        ...prev,
+        page: { ...prev.page, notes: prev.page.notes?.map((note) => note.id === restored.id ? restored : note) ?? [] },
+      } : prev);
+      setDraftTitle(restored.title);
+      setDraftBody(restored.body);
+      setNotice(outcome.revision === selected.revision ? "当前内容已与所选版本相同" : "已恢复到第 " + revision.revision + " 版，当前修订为第 " + outcome.revision + " 版");
+      try {
+        await reload(lib.generation);
+      } catch (cause) {
+        setError("刷新笔记列表失败：" + String(cause));
+      }
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove() {
     if (!lib || !selected || busy) return;
     setBusy(true); setError(""); setNotice("");
@@ -519,7 +547,7 @@ function Preview() {
           <ul>
             {notes.map((note) => <li key={note.id}>
               <div className="preview-note-row">
-                <button type="button" aria-current={note.id === selectedId ? "true" : undefined} onClick={() => { setSelectedId(note.id); setDraftTitle(note.title); setDraftBody(note.body); }}>
+                <button type="button" disabled={busy} aria-current={note.id === selectedId ? "true" : undefined} onClick={() => { setSelectedId(note.id); setDraftTitle(note.title); setDraftBody(note.body); }}>
                   <strong>{note.title || "无标题笔记"}</strong>
                   {(note.notebook || note.pinned || note.archivedAt != null) && <small>{[note.pinned ? "置顶" : "", note.notebook, note.archivedAt != null ? "已归档" : ""].filter(Boolean).join(" · ")}</small>}
                 </button>
@@ -533,9 +561,9 @@ function Preview() {
           {selected ? <div className="preview-editor">
             {lib.writable ? <form onSubmit={(e) => { e.preventDefault(); void save(); }}>
               <label htmlFor="note-title">标题</label>
-              <input id="note-title" value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} />
+              <input id="note-title" disabled={busy} value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} />
               <label htmlFor="note-body">正文（Markdown）</label>
-              <textarea id="note-body" value={draftBody} onChange={(e) => setDraftBody(e.target.value)} rows={14} />
+              <textarea id="note-body" disabled={busy} value={draftBody} onChange={(e) => setDraftBody(e.target.value)} rows={14} />
               <div className="preview-actions">
                 <button type="submit" disabled={busy || !dirty}>保存</button>
                 <button type="button" disabled={busy} onClick={() => void remove()}>移进回收站</button>
@@ -546,6 +574,15 @@ function Preview() {
               <p className="preview-meta">修订 {selected.revision} · {new Date(selected.updatedAt).toLocaleString("zh-CN")} · 只读模式</p>
               <MarkdownRenderer text={selected.body} />
             </div>}
+            <NoteHistory
+              key={lib.generation + ":" + selected.id}
+              generation={lib.generation}
+              note={selected}
+              writable={lib.writable}
+              dirty={dirty}
+              busy={busy}
+              onRestore={restoreHistory}
+            />
           </div> : <p className="preview-meta">{submitted ? "没有匹配的笔记" : "这个资料库还没有笔记"}</p>}
         </section>
       </div>}
