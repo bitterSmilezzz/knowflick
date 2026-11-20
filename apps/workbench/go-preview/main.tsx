@@ -6,9 +6,11 @@ import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
+import { DeleteSubscription, ListSubscriptions, SaveSubscription } from "./bindings/knowflick.local/workbench-go/subscriptionservice";
 import type { Account, Config as MailConfig, ImportedMail, RejectedMail } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
 import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
+import type { Subscription } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import "../src/ui/workspace/tokens.css";
 import "./preview.css";
@@ -36,6 +38,10 @@ function Preview() {
   const [mailSecret, setMailSecret] = useState("");
   const [mailRemoveId, setMailRemoveId] = useState("");
   const [mailBrowse, setMailBrowse] = useState<{ id: string; title: string; imported: ImportedMail[]; rejected: RejectedMail[] } | null>(null);
+  const [subsOpen, setSubsOpen] = useState(false);
+  const [subs, setSubs] = useState<Subscription[]>([]);
+  const [subForm, setSubForm] = useState({ type: "rss", title: "", targetUrl: "", intervalMinutes: 30 });
+  const [subRemoveId, setSubRemoveId] = useState("");
   const [restorePending, setRestorePending] = useState(false);
   const [webdavURL, setWebdavURL] = useState("");
   const [webdavUser, setWebdavUser] = useState("");
@@ -110,6 +116,32 @@ function Preview() {
       const outcome = await RetryRejectedMail(id);
       setNotice(`重试完成：导入 ${outcome.imported} 封，仍被拒 ${outcome.rejected} 封${outcome.error ? "；错误：" + outcome.error : ""}。`);
       await browseMail({ config: { id } } as Account);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+  async function toggleSubscriptions() {
+    const next = !subsOpen;
+    setSubsOpen(next);
+    if (!next) return;
+    setBusy(true); setError(""); setNotice("");
+    try { setSubs(await ListSubscriptions() ?? []); } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function saveSubscription() {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await SaveSubscription({ id: crypto.randomUUID(), createdAt: Date.now(), isActive: true, lastPolledAt: null, ...subForm } as Subscription);
+      setSubs(await ListSubscriptions() ?? []);
+      setSubForm({ type: "rss", title: "", targetUrl: "", intervalMinutes: 30 });
+      setNotice("订阅源已保存。");
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function removeSubscription(id: string) {
+    setBusy(true); setError(""); setNotice(""); setSubRemoveId("");
+    try {
+      await DeleteSubscription(id);
+      setSubs(await ListSubscriptions() ?? []);
+      setNotice("订阅源已删除；抓来的素材保留。");
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   function openMailForm(account?: Account) {
@@ -314,6 +346,7 @@ function Preview() {
         <div className="preview-actions">
           {lib && !lib.writable && <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button>}
           {lib && lib.writable && <button type="button" disabled={busy} onClick={() => void createNote()}>新建笔记</button>}
+          {lib && <button type="button" disabled={busy} aria-pressed={subsOpen} onClick={() => void toggleSubscriptions()}>{subsOpen ? "收起订阅" : "订阅源"}</button>}
           {lib && lib.writable && <button type="button" disabled={busy || mailBusy} aria-pressed={mailOpen} onClick={() => void toggleMail()}>{mailOpen ? "收起邮箱" : "邮箱"}</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void toggleTrash()}>{trash ? "返回笔记" : "回收站"}</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void exportCards("json")}>导出卡片</button>}
@@ -340,6 +373,31 @@ function Preview() {
       </section>}
 
 
+      {subsOpen && <section className="preview-mail" aria-label="订阅源">
+        <div className="preview-mail-head">
+          <strong>订阅源</strong>
+          <span>{subs.length} 条</span>
+        </div>
+        {subs.length === 0 ? <p className="preview-count">还没有订阅源</p> : (
+          <ul className="preview-mail-list">
+            {subs.map((sub) => (
+              <li key={sub.id}>
+                <span>{sub.title} · {sub.type} · 每 {sub.intervalMinutes} 分钟</span>
+                <small>{sub.lastPolledAt ? `上次抓取 ${new Date(sub.lastPolledAt).toLocaleString()}` : "还没抓取过"}{sub.isActive ? "" : " · 已停用"}</small>
+                <button type="button" disabled={busy || !lib?.writable} onClick={() => setSubRemoveId(sub.id)}>删除</button>
+                {subRemoveId === sub.id && <span className="preview-confirm">确认删除这个订阅源？抓来的素材会保留。<button type="button" disabled={busy} onClick={() => void removeSubscription(sub.id)}>确认</button><button type="button" disabled={busy} onClick={() => setSubRemoveId("")}>取消</button></span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        {lib?.writable && <form className="preview-confirm" onSubmit={(event) => { event.preventDefault(); void saveSubscription(); }} aria-label="新增订阅源">
+          <label>类型 <select aria-label="订阅类型" value={subForm.type} onChange={(event) => setSubForm({ ...subForm, type: event.target.value })}><option value="rss">RSS 地址</option><option value="tech_board">站点板块</option><option value="github_release">GitHub 发布（owner/repo）</option><option value="github_trending">GitHub 趋势（语言名）</option></select></label>
+          <label>标题 <input aria-label="订阅标题" value={subForm.title} onChange={(event) => setSubForm({ ...subForm, title: event.target.value })} /></label>
+          <label>地址 <input aria-label="订阅地址" value={subForm.targetUrl} onChange={(event) => setSubForm({ ...subForm, targetUrl: event.target.value })} /></label>
+          <label>间隔（分钟） <input type="number" min={5} aria-label="抓取间隔" value={subForm.intervalMinutes} onChange={(event) => setSubForm({ ...subForm, intervalMinutes: Number(event.target.value) })} /></label>
+          <button type="submit" disabled={busy}>添加订阅</button>
+        </form>}
+      </section>}
       {mailOpen && lib?.writable && <section className="preview-mail" aria-label="邮箱同步">
         <div className="preview-mail-head">
           <strong>邮箱同步</strong>

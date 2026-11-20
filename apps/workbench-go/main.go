@@ -25,9 +25,11 @@ func main() {
 	service := &PreviewService{initialPath: *path}
 	// 邮箱服务单独一个：它要写库，只读预览时自己会拒绝。
 	mailService := &MailService{preview: service}
+	// 订阅服务单独一个：列表只要求库已打开，写操作自己检查可写。
+	subscriptionService := &SubscriptionService{preview: service}
 	app := application.New(application.Options{
 		Name:     "KnowFlick Go Preview",
-		Services: []application.Service{application.NewService(service), application.NewService(mailService)},
+		Services: []application.Service{application.NewService(service), application.NewService(mailService), application.NewService(subscriptionService)},
 		Assets:   application.AssetOptions{Handler: application.BundledAssetFileServer(frontend)},
 		Mac:      application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})
