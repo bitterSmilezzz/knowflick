@@ -341,6 +341,51 @@ pub fn record_review(
 
 #[cfg(test)]
 mod tests {
+    /// Go 写的复习历史库，Rust 必须读出同一份快照；Go 的快照 JSON 也必须能被 Rust 恢复。
+    /// 顺序、项目标识与覆盖起点都要对上——顺序错了就意味着两侧备份不可逐字节比对。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_review_history_parity() {
+        let db_path = std::env::var("KF_GO_REVIEW_DB").expect("set KF_GO_REVIEW_DB");
+        let snapshot_path = format!("{db_path}.snapshot.json");
+        let mut conn = rusqlite::Connection::open(&db_path).unwrap();
+        let captured = capture(&conn).expect("Rust should read the Go-written history");
+        let raw = std::fs::read_to_string(&snapshot_path).unwrap();
+        let from_go: ReviewHistorySnapshot = serde_json::from_str(&raw).unwrap();
+        assert_eq!(from_go.version, captured.version, "快照版本与 Go 不一致");
+        assert_eq!(from_go.coverage_started_at, captured.coverage_started_at, "覆盖起点与 Go 不一致");
+        assert_eq!(from_go.events.len(), captured.events.len(), "事件条数与 Go 不一致");
+        for (index, (mine, theirs)) in captured.events.iter().zip(from_go.events.iter()).enumerate() {
+            assert_eq!(mine, theirs, "第 {index} 条事件与 Go 不一致");
+        }
+        assert_eq!(from_go.events[0].card_id, "card-b", "顺序错了：最早的一条应排在前面");
+        assert_eq!(from_go.events[1].card_id, "card-a", "顺序错了：第二条应排在后面");
+        assert_eq!(from_go.events[1].project_ids.len(), 2, "项目标识条数与 Go 不一致");
+        assert!(from_go.events[1].project_attribution_complete, "归属完整性与 Go 不一致");
+
+        // 恢复进一个空库：Rust 必须插入全部事件并把覆盖起点对齐。
+        let mut dest = rusqlite::Connection::open_in_memory().unwrap();
+        dest.execute_batch(
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO meta VALUES ('review_history_started_at', '10');
+            CREATE TABLE review_events (event_id TEXT PRIMARY KEY, card_id TEXT NOT NULL, reviewed_at INTEGER NOT NULL, rating TEXT NOT NULL, algorithm TEXT NOT NULL, project_ids_json TEXT NOT NULL, project_attribution_complete INTEGER NOT NULL);",
+        )
+        .unwrap();
+        let counts = restore(&mut dest, &from_go).expect("Rust should restore the Go snapshot");
+        assert_eq!(counts.inserted, 2, "恢复插入条数不对");
+        assert_eq!(counts.skipped, 0, "空库不该有跳过");
+        let merged: String = dest
+            .query_row("SELECT value FROM meta WHERE key='review_history_started_at'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(merged, "1000", "覆盖起点应取两侧最大值，不能被更早的本地值拉回去");
+
+        // 再恢复一次必须幂等：全部跳过、不重复插入。
+        let again = restore(&mut dest, &from_go).unwrap();
+        assert_eq!(again.inserted, 0, "第二次恢复不该再插入");
+        assert_eq!(again.skipped, 2, "第二次恢复应全部跳过");
+        let _ = &mut conn;
+    }
+
     use super::*;
 
     fn event(id: &str) -> ReviewEvent {
