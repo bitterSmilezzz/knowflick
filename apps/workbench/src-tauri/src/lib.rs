@@ -2013,6 +2013,52 @@ pub fn run() {
 
 #[cfg(test)]
 mod library_command_tests {
+    /// 日期换算必须与 Go 逐条一致：文件名日期错了，备份就会「凭空多出一天」或撞名。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_civil_from_days_parity() {
+        let path = std::env::var("KF_GO_CIVIL_FIXTURE").expect("set KF_GO_CIVIL_FIXTURE");
+        let text = std::fs::read_to_string(&path).unwrap();
+        for line in text.lines().filter(|line| !line.trim().is_empty()) {
+            let parts: Vec<i64> = line.split(",").map(|part| part.trim().parse().unwrap()).collect();
+            assert_eq!(parts.len(), 4, "每行应为 days,year,month,day: {line}");
+            let (year, month, day) = civil_from_days(parts[0]);
+            assert_eq!(year, parts[1], "days {} 的年份与 Go 不一致", parts[0]);
+            assert_eq!(month as i64, parts[2], "days {} 的月份与 Go 不一致", parts[0]);
+            assert_eq!(day as i64, parts[3], "days {} 的日与 Go 不一致", parts[0]);
+        }
+    }
+
+    /// 本地备份命名：两边必须挑出同一个文件名，且同一天 99 次之后必须报错。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_backup_name_parity() {
+        let path = std::env::var("KF_GO_BACKUP_NAME_FIXTURE").expect("set KF_GO_BACKUP_NAME_FIXTURE");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let mut cases: Vec<(String, Vec<String>, String)> = Vec::new();
+        for line in text.lines().filter(|line| !line.trim().is_empty()) {
+            // 格式：date|existing:name1,name2|expected
+            let mut parts = line.split("|");
+            let date = parts.next().unwrap().to_string();
+            let existing = parts.next().unwrap();
+            let expected = parts.next().unwrap().to_string();
+            let names: Vec<String> = existing.split(",").filter(|name| !name.is_empty()).map(|name| name.to_string()).collect();
+            cases.push((date, names, expected));
+        }
+        assert!(!cases.is_empty(), "夹具不能为空");
+        for (date, existing, expected) in cases {
+            let mut chosen = String::new();
+            for sequence in 1..=99 {
+                let candidate = format!("knowflick-backup-{date}-{sequence:02}.kfbackup");
+                if !existing.contains(&candidate) {
+                    chosen = candidate;
+                    break;
+                }
+            }
+            assert_eq!(chosen, expected, "date={date} existing={existing:?} 的命名与 Go 不一致");
+        }
+    }
+
     use super::*;
 
     #[test]
