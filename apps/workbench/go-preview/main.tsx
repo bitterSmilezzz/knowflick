@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
@@ -7,7 +7,7 @@ import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
 import { DeleteSubscription, FetchSubscriptionPayload, ImportSubscriptionMaterials, ListMaterialSourceURLs, ListSubscriptions, MarkSubscriptionPolled, SaveSubscription } from "./bindings/knowflick.local/workbench-go/subscriptionservice";
-import { itemsToMaterials, parseSubscriptionPayload } from "../src/domain/subscription";
+import { isDue, itemsToMaterials, parseSubscriptionPayload } from "../src/domain/subscription";
 import { makeMaterial } from "../src/ui/workspace/model";
 import type { Account, Config as MailConfig, ImportedMail, RejectedMail } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
 import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
@@ -44,6 +44,7 @@ function Preview() {
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [subForm, setSubForm] = useState({ type: "rss", title: "", targetUrl: "", intervalMinutes: 30 });
   const [subRemoveId, setSubRemoveId] = useState("");
+  const autoPollLock = useRef(false);
   const [restorePending, setRestorePending] = useState(false);
   const [webdavURL, setWebdavURL] = useState("");
   const [webdavUser, setWebdavUser] = useState("");
@@ -63,6 +64,10 @@ function Preview() {
     setSelectedId(note?.id ?? "");
     setDraftTitle(note?.title ?? "");
     setDraftBody(note?.body ?? "");
+    // 订阅源在打开库时就加载：自动轮询不依赖用户先展开面板。
+    if (result.writable) {
+      void ListSubscriptions().then((rows: Subscription[] | null) => setSubs(rows ?? [])).catch((cause: unknown) => console.warn("读取订阅源失败", cause));
+    }
   }
 
   function fail(cause: unknown) {
@@ -120,6 +125,23 @@ function Preview() {
       await browseMail({ config: { id } } as Account);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
+
+  // 自动轮询：每分钟看一次，只抓一个到期订阅；失败只记提示，不打断手上的事。
+  useEffect(() => {
+    if (!lib?.writable) return;
+    let disposed = false;
+    const tick = async () => {
+      if (disposed || autoPollLock.current || busy) return;
+      const due = subs.filter((sub) => isDue(sub as unknown as Parameters<typeof isDue>[0]));
+      if (due.length === 0) return;
+      autoPollLock.current = true;
+      try { await pollSubscription(due[0]); }
+      catch (cause) { setNotice(`「${due[0].title}」自动抓取失败：${cause instanceof Error ? cause.message : String(cause)}`); }
+      finally { autoPollLock.current = false; }
+    };
+    const timer = window.setInterval(() => void tick(), 60_000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [lib, subs, busy]);
   async function toggleSubscriptions() {
     const next = !subsOpen;
     setSubsOpen(next);
