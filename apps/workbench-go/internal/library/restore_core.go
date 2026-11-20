@@ -144,8 +144,8 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		}
 	}
 	var knowledgeBases struct {
-		Items      []backupKnowledgeBase `json:"knowledgeBases"`
-		Membership map[string]int64      `json:"membership"`
+		Items      []KnowledgeBase  `json:"knowledgeBases"`
+		Membership map[string]int64 `json:"membership"`
 	}
 	if len(backup.KnowledgeBases) > 0 {
 		if err := json.Unmarshal(backup.KnowledgeBases, &knowledgeBases); err != nil || knowledgeBases.Items == nil {

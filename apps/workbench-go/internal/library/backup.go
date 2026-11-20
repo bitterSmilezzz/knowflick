@@ -78,24 +78,6 @@ type backupNoteRevision struct {
 	SavedAt  int64  `json:"savedAt"`
 }
 
-type backupKnowledgeBase struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	CreatedAt   int64  `json:"createdAt"`
-	UpdatedAt   int64  `json:"updatedAt"`
-}
-
-type backupMembership struct {
-	kbID, noteID string
-	addedAt      int64
-}
-
-type backupKnowledgeBases struct {
-	Items      []backupKnowledgeBase `json:"knowledgeBases"`
-	Membership map[string]int64      `json:"membership"`
-}
-
 type backupDatabase struct {
 	cards          []cards.Card
 	materials      []backupMaterial
@@ -107,7 +89,7 @@ type backupDatabase struct {
 	reviewHistory  json.RawMessage
 	deletedRecords deletedRecordsSnapshot
 	r4             json.RawMessage
-	knowledgeBases backupKnowledgeBases
+	knowledgeBases KnowledgeBaseSnapshot
 }
 
 var noteAttachment = regexp.MustCompile(`!\[[^\]]*\]\((media/(?:audio|image|ink)/[A-Za-z0-9._-]+)\)`)
@@ -187,19 +169,9 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	if err != nil {
 		return backupDatabase{}, fmt.Errorf("读取备份产物失败：%w", err)
 	}
-	bases, err := readBackupRows(ctx, tx, "SELECT id,name,description,created_at,updated_at FROM knowledge_bases ORDER BY created_at ASC",
-		func(rows *sql.Rows, base *backupKnowledgeBase) error {
-			return rows.Scan(&base.ID, &base.Name, &base.Description, &base.CreatedAt, &base.UpdatedAt)
-		})
+	knowledgeBases, err := readKnowledgeBases(ctx, tx)
 	if err != nil {
-		return backupDatabase{}, fmt.Errorf("读取备份知识库失败：%w", err)
-	}
-	members, err := readBackupRows(ctx, tx, "SELECT kb_id,note_id,added_at FROM kb_membership",
-		func(rows *sql.Rows, member *backupMembership) error {
-			return rows.Scan(&member.kbID, &member.noteID, &member.addedAt)
-		})
-	if err != nil {
-		return backupDatabase{}, fmt.Errorf("读取备份成员关系失败：%w", err)
+		return backupDatabase{}, err
 	}
 	revisions, err := readBackupRows(ctx, tx, "SELECT note_id,revision,title,body_md,saved_at FROM note_revisions ORDER BY note_id,revision",
 		func(rows *sql.Rows, item *backupNoteRevision) error {
@@ -238,10 +210,6 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	if err := tx.Commit(); err != nil {
 		return backupDatabase{}, fmt.Errorf("读取备份快照失败：%w", err)
 	}
-	membership := make(map[string]int64, len(members))
-	for _, member := range members {
-		membership[member.kbID+"\n"+member.noteID] = member.addedAt
-	}
 	return backupDatabase{
 		cards: activeCards, materials: materials, artifacts: artifacts, notes: notes,
 		noteRevisions:  revisions,
@@ -250,7 +218,7 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 		reviewHistory:  reviewJSON,
 		deletedRecords: deletedRecords,
 		r4:             r4,
-		knowledgeBases: backupKnowledgeBases{Items: bases, Membership: membership},
+		knowledgeBases: knowledgeBases,
 	}, nil
 }
 

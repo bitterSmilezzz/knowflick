@@ -106,28 +106,45 @@ func (l *Library) CardsJSON(ctx context.Context, dir string) (string, error) {
 }
 
 func (l *Library) List(ctx context.Context, offset int) (Page, error) {
-	return l.query(ctx, "SELECT "+noteColumns+" FROM notes n WHERE n.is_deleted=0"+
-		" ORDER BY n.is_pinned DESC, n.updated_at DESC, n.id LIMIT ? OFFSET ?", PageSize+1, offset)
+	return l.listNotes(ctx, "", offset)
+}
+
+func (l *Library) listNotes(ctx context.Context, kbID string, offset int) (Page, error) {
+	scope, args := knowledgeBaseFilter(kbID, "n")
+	return l.query(ctx, "SELECT "+noteColumns+" FROM notes n WHERE n.is_deleted=0"+scope+
+		" ORDER BY n.is_pinned DESC, n.updated_at DESC, n.id LIMIT ? OFFSET ?", append(args, PageSize+1, offset)...)
 }
 
 // Search matches Rust's FTS5 token-prefix AND query and its LIKE fallback.
 func (l *Library) Search(ctx context.Context, query string) (Page, error) {
+	return l.SearchKnowledgeBaseNotes(ctx, "", query)
+}
+
+func (l *Library) SearchKnowledgeBaseNotes(ctx context.Context, kbID, query string) (Page, error) {
 	clean := strings.TrimSpace(query)
 	if clean == "" {
-		return l.List(ctx, 0)
+		return l.listNotes(ctx, kbID, 0)
 	}
 	terms := strings.Fields(clean)
 	for i, term := range terms {
 		terms[i] = `"` + strings.ReplaceAll(term, `"`, `""`) + `"*`
 	}
+	scope, args := knowledgeBaseFilter(kbID, "n")
 	page, err := l.query(ctx, "SELECT "+noteColumns+" FROM fts_notes f JOIN notes n ON f.note_id=n.id"+
-		" WHERE n.is_deleted=0 AND fts_notes MATCH ? ORDER BY bm25(fts_notes), n.id LIMIT ?", strings.Join(terms, " AND "), PageSize+1)
+		" WHERE n.is_deleted=0"+scope+" AND fts_notes MATCH ? ORDER BY bm25(fts_notes), n.id LIMIT ?", append(args, strings.Join(terms, " AND "), PageSize+1)...)
 	if err != nil || len(page.Notes) > 0 {
 		return page, err
 	}
 	wildcard := "%" + clean + "%"
-	return l.query(ctx, "SELECT "+noteColumns+" FROM notes n WHERE n.is_deleted=0 AND (n.title LIKE ? OR n.body_md LIKE ?)"+
-		" ORDER BY n.updated_at DESC, n.id LIMIT ?", wildcard, wildcard, PageSize+1)
+	return l.query(ctx, "SELECT "+noteColumns+" FROM notes n WHERE n.is_deleted=0"+scope+" AND (n.title LIKE ? OR n.body_md LIKE ?)"+
+		" ORDER BY n.updated_at DESC, n.id LIMIT ?", append(args, wildcard, wildcard, PageSize+1)...)
+}
+
+func knowledgeBaseFilter(kbID, noteAlias string) (string, []any) {
+	if kbID == "" {
+		return "", nil
+	}
+	return " AND " + noteAlias + ".id IN (SELECT note_id FROM kb_membership WHERE kb_id = ?)", []any{kbID}
 }
 
 func (l *Library) query(ctx context.Context, statement string, args ...any) (Page, error) {
@@ -167,6 +184,10 @@ type ChunkHit struct {
 // SearchChunks 检索分块并带回原文偏移；与 Rust 的 search_note_chunks 同义：
 // FTS5 词 AND 查询在前，连续中文匹配不上时用 LIKE 兜底；回收站里的笔记一律排除。
 func (l *Library) SearchChunks(ctx context.Context, query string, limit int) ([]ChunkHit, error) {
+	return l.SearchKnowledgeBaseChunks(ctx, "", query, limit)
+}
+
+func (l *Library) SearchKnowledgeBaseChunks(ctx context.Context, kbID, query string, limit int) ([]ChunkHit, error) {
 	clean := strings.TrimSpace(query)
 	if clean == "" || limit <= 0 {
 		return []ChunkHit{}, nil
@@ -175,17 +196,18 @@ func (l *Library) SearchChunks(ctx context.Context, query string, limit int) ([]
 	for i, term := range terms {
 		terms[i] = `"` + strings.ReplaceAll(term, `"`, `""`) + `"`
 	}
+	scope, args := knowledgeBaseFilter(kbID, "n2")
 	const cols = "SELECT f.note_id, f.chunk_index, f.content, n.char_start, n.char_end, n2.title"
 	const from = " FROM fts_note_chunks f JOIN note_chunks n ON n.note_id=f.note_id AND n.chunk_index=f.chunk_index" +
 		" JOIN notes n2 ON n2.id=f.note_id WHERE n2.is_deleted=0"
-	hits, err := l.queryChunks(ctx, cols+from+" AND fts_note_chunks MATCH ?1 ORDER BY bm25(fts_note_chunks) LIMIT ?2", strings.Join(terms, " AND "), limit)
+	hits, err := l.queryChunks(ctx, cols+from+scope+" AND fts_note_chunks MATCH ? ORDER BY bm25(fts_note_chunks) LIMIT ?", append(args, strings.Join(terms, " AND "), limit)...)
 	if err != nil || len(hits) > 0 {
 		return hits, err
 	}
 	wildcard := "%" + clean + "%"
 	return l.queryChunks(ctx, "SELECT n.note_id, n.chunk_index, n.content, n.char_start, n.char_end, n2.title"+
 		" FROM note_chunks n JOIN notes n2 ON n2.id=n.note_id"+
-		" WHERE n2.is_deleted=0 AND n.content LIKE ?1 ORDER BY n2.updated_at DESC LIMIT ?2", wildcard, limit)
+		" WHERE n2.is_deleted=0"+scope+" AND n.content LIKE ? ORDER BY n2.updated_at DESC LIMIT ?", append(args, wildcard, limit)...)
 }
 
 func (l *Library) queryChunks(ctx context.Context, statement string, args ...any) ([]ChunkHit, error) {

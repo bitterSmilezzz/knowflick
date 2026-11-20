@@ -17,6 +17,9 @@ import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import "../src/ui/workspace/tokens.css";
 import "./preview.css";
 import { NoteHistory } from "./NoteHistory";
+import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
+import { CreateKnowledgeBase, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
+import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 
 function Preview() {
   const [lib, setLib] = useState<LibraryView | null>(null);
@@ -29,6 +32,9 @@ function Preview() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
+  const [scope, setScope] = useState("");
+  const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
+  const [knowledgeError, setKnowledgeError] = useState("");
   const [chunkMode, setChunkMode] = useState(false);
   const [hits, setHits] = useState<ChunkHit[]>([]);
   const [mailOpen, setMailOpen] = useState(false);
@@ -59,6 +65,10 @@ function Preview() {
   function adopt(result: LibraryView | null, keepId = false) {
     if (!result) return;
     setLib(result);
+    setScope("");
+    setKnowledge(null);
+    setKnowledgeError("");
+    setHits([]);
     const first = result.page.notes?.[0]?.id ?? "";
     const nextId = keepId && result.page.notes?.some((n) => n.id === selectedId) ? selectedId : first;
     const note = result.page.notes?.find((n: Note) => n.id === nextId) ?? null;
@@ -80,10 +90,85 @@ function Preview() {
     void OpenInitialLibrary().then((r: LibraryView | null) => adopt(r)).catch(fail).finally(() => setBusy(false));
   }, []);
 
-  async function reload(generation: number, term = submitted, trashMode = trash) {
-    const page = trashMode ? await ListDeletedNotes(generation, 0) : term ? await SearchNotes(generation, term) : await ListNotes(generation, 0);
-    setLib((prev) => (prev ? { ...prev, page } : prev));
+  const generation = lib?.generation;
+  useEffect(() => {
+    if (generation === undefined) return;
+    let current = true;
+    setKnowledge(null);
+    setKnowledgeError("");
+    void (async () => {
+      try {
+        const snapshot = await ReadKnowledgeBases(generation);
+        if (current) setKnowledge(snapshot);
+      } catch (cause) {
+        if (current) setKnowledgeError("读取知识库失败：" + String(cause));
+      }
+    })();
+    return () => { current = false; };
+  }, [generation]);
+
+  async function readNotes(generation: number, term: string, scopeID: string) {
+    if (scopeID) return await SearchKnowledgeBaseNotes(generation, scopeID, term);
+    return term ? await SearchNotes(generation, term) : await ListNotes(generation, 0);
+  }
+
+  async function reload(generation: number, term = submitted, trashMode = trash, scopeID = scope) {
+    const page = trashMode ? await ListDeletedNotes(generation, 0) : await readNotes(generation, term, scopeID);
+    setLib((prev) => prev?.generation === generation ? { ...prev, page } : prev);
     return page;
+  }
+
+  function selectNote(note: Note | null) {
+    setSelectedId(note?.id ?? "");
+    setDraftTitle(note?.title ?? "");
+    setDraftBody(note?.body ?? "");
+  }
+
+  async function changeScope(id: string) {
+    if (!lib || busy || dirty || id === scope) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const page = await reload(lib.generation, submitted, false, id);
+      setScope(id);
+      setHits([]);
+      selectNote(page.notes?.find((note: Note) => note.id === selectedId) ?? page.notes?.[0] ?? null);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function createKnowledgeBase(name: string, description: string) {
+    if (!lib?.writable || busy) return false;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await CreateKnowledgeBase(lib.generation, crypto.randomUUID(), name, description);
+    } catch (cause) {
+      fail(cause);
+      setBusy(false);
+      return false;
+    }
+    try {
+      setKnowledge(await ReadKnowledgeBases(lib.generation));
+      setKnowledgeError("");
+      setNotice("已创建知识库「" + name.trim() + "」");
+    } catch (cause) {
+      setKnowledgeError("知识库已创建，刷新列表失败：" + String(cause));
+    } finally { setBusy(false); }
+    return true;
+  }
+
+  async function changeMembership(id: string, member: boolean) {
+    if (!lib?.writable || !selected || selected.deleted || busy || dirty) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await SetKnowledgeBaseMembership(lib.generation, id, selected.id, member);
+      setKnowledge(await ReadKnowledgeBases(lib.generation));
+      setKnowledgeError("");
+      if (id === scope && !member) {
+        setHits([]);
+        const page = await reload(lib.generation);
+        selectNote(page.notes?.[0] ?? null);
+      }
+      setNotice(member ? "已加入知识库" : "已移出知识库");
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
   async function choose() {
@@ -230,7 +315,15 @@ function Preview() {
     setRestorePending(false);
     setBusy(true); setError(""); setNotice("");
     const counts = await RestoreSystemBackup(lib.generation).catch((cause: unknown) => { fail(cause); return null; });
-    if (counts) setNotice(`已恢复：素材 ${counts.materials}、卡片 ${counts.cards}、产物 ${counts.artifacts}、笔记 ${counts.notes}、知识库 ${counts.knowledgeBases}、附件 ${counts.media}、订阅 ${counts.subscriptions}、复习事件 ${counts.reviewEvents}、回收站 ${counts.deletedMaterials + counts.deletedCards + counts.deletedArtifacts}、邮箱记录 ${counts.mailAccounts + counts.mailImports}、项目与画像 ${counts.r4Rows}；跳过 ${counts.skipped} 条。`);
+    if (counts) {
+      setNotice(`已恢复：素材 ${counts.materials}、卡片 ${counts.cards}、产物 ${counts.artifacts}、笔记 ${counts.notes}、知识库 ${counts.knowledgeBases}、附件 ${counts.media}、订阅 ${counts.subscriptions}、复习事件 ${counts.reviewEvents}、回收站 ${counts.deletedMaterials + counts.deletedCards + counts.deletedArtifacts}、邮箱记录 ${counts.mailAccounts + counts.mailImports}、项目与画像 ${counts.r4Rows}；跳过 ${counts.skipped} 条。`);
+      try {
+        setKnowledge(await ReadKnowledgeBases(lib.generation));
+        setKnowledgeError("");
+      } catch (cause) {
+        setKnowledgeError("刷新知识库失败：" + String(cause));
+      }
+    }
     setBusy(false);
   }
   async function enableEditing() {
@@ -246,10 +339,10 @@ function Preview() {
     setBusy(true); setError(""); setNotice("");
     try {
       const next = !trash;
-      const page = next ? await ListDeletedNotes(lib.generation, 0) : submitted ? await SearchNotes(lib.generation, submitted) : await ListNotes(lib.generation, 0);
+      const page = await reload(lib.generation, submitted, next);
       setTrash(next);
-      setLib({ ...lib, page });
-      setSelectedId(""); setDraftTitle(""); setDraftBody("");
+      setHits([]);
+      selectNote(page.notes?.[0] ?? null);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
@@ -260,8 +353,11 @@ function Preview() {
       const note: Note = { id: crypto.randomUUID(), title: "无标题笔记", body: "", notebook: null, tagsJson: "[]", pinned: false, favorite: false, archivedAt: null, sourceMaterialId: null, revision: 0, createdAt: 0, updatedAt: 0, deleted: false, deletedAt: null, excludeFromProfile: false };
       await SaveNote(lib.generation, note, 0);
       setQuery(""); setSubmitted("");
-      await reload(lib.generation, "", false);
+      const page = await reload(lib.generation, "", false, "");
+      setScope("");
       setTrash(false);
+      setHits([]);
+      selectNote(page.notes?.find((item: Note) => item.id === note.id) ?? null);
       setNotice("已新建笔记");
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
@@ -271,32 +367,31 @@ function Preview() {
     setBusy(true); setError(""); setNotice("");
     try {
       const ok = await RestoreNote(lib.generation, id);
-      await reload(lib.generation, "", false);
+      await reload(lib.generation, "", false, "");
+      setScope("");
+      setQuery("");
+      setSubmitted("");
       setTrash(false);
       setNotice(ok ? "已恢复到笔记列表" : "这篇不在回收站里");
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   async function search(event: FormEvent) {
     event.preventDefault();
-    if (!lib || busy) return;
+    if (!lib || busy || trash || dirty) return;
     setBusy(true); setError(""); setNotice("");
     try {
       const term = query.trim();
       if (chunkMode && term) {
-        const found = await SearchChunkHits(lib.generation, term, 20);
+        const found = scope ? await SearchKnowledgeBaseChunks(lib.generation, scope, term, 20) : await SearchChunkHits(lib.generation, term, 20);
         setHits(found ?? []);
         setNotice("分块命中 " + (found?.length ?? 0) + " 处，偏移可回原文");
         return;
       }
       setHits([]);
-      const page = term ? await SearchNotes(lib.generation, term) : await ListNotes(lib.generation, 0);
-      setLib({ ...lib, page });
+      const page = await reload(lib.generation, term, false);
       setSubmitted(term);
-      const first = page.notes?.[0] ?? null;
-      setSelectedId(first?.id ?? "");
-      setDraftTitle(first?.title ?? "");
-      setDraftBody(first?.body ?? "");
-    } catch (fail) {} finally { setBusy(false); }
+      selectNote(page.notes?.[0] ?? null);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
   async function save() {
@@ -521,11 +616,13 @@ function Preview() {
       </section>}
       {lib && <div className="preview-workspace">
         <section className="preview-list" aria-label="笔记列表">
-          <form onSubmit={(e) => void search(e)} role="search">
+          {!trash && <KnowledgeBasePicker key={lib.generation} snapshot={knowledge} error={knowledgeError} scope={scope} busy={busy} dirty={dirty} writable={lib.writable} onScope={changeScope} onCreate={createKnowledgeBase} />}
+          {!trash && <form onSubmit={(e) => void search(e)} role="search">
             <input type="search" aria-label="搜索笔记" placeholder={chunkMode ? "搜索分块（可回原文偏移）" : "搜索标题或正文"} value={query} onChange={(e) => setQuery(e.target.value)} />
             <button type="button" aria-pressed={chunkMode} onClick={() => { setChunkMode(!chunkMode); setHits([]); }}>{chunkMode ? "按整篇" : "按分块"}</button>
-            <button disabled={busy}>搜索</button>
-          </form>
+            <button disabled={busy || dirty}>搜索</button>
+          </form>}
+          {!trash && scope && !submitted && notes.length === 0 && <p className="preview-meta">这个知识库还没有笔记。</p>}
 
           {hits.length > 0 && <section className="preview-hits" aria-label="分块命中">
             <p className="preview-count" role="status">分块命中 {hits.length} 处</p>
@@ -534,8 +631,8 @@ function Preview() {
                 <strong>{hit.noteTitle}</strong>
                 <span className="preview-meta">字符 {hit.charStart}–{hit.charEnd} · 块 {hit.chunkIndex}</span>
                 <p>{hit.content}</p>
-                <button type="button" disabled={busy} onClick={() => void (async () => {
-                  const page = await SearchNotes(lib!.generation, hit.noteTitle);
+                <button type="button" disabled={busy || dirty} onClick={() => void (async () => {
+                  const page = await readNotes(lib.generation, hit.noteTitle, scope);
                   setLib({ ...lib!, page });
                   const found = page.notes?.find((n: Note) => n.id === hit.noteId);
                   if (found) { setSelectedId(found.id); setDraftTitle(found.title); setDraftBody(found.body); }
@@ -574,6 +671,14 @@ function Preview() {
               <p className="preview-meta">修订 {selected.revision} · {new Date(selected.updatedAt).toLocaleString("zh-CN")} · 只读模式</p>
               <MarkdownRenderer text={selected.body} />
             </div>}
+            {knowledge && <NoteKnowledgeBases
+              key={lib.generation + ":" + selected.id}
+              snapshot={knowledge}
+              noteID={selected.id}
+              busy={busy || dirty}
+              writable={lib.writable && !selected.deleted}
+              onChange={changeMembership}
+            />}
             <NoteHistory
               key={lib.generation + ":" + selected.id}
               generation={lib.generation}
