@@ -420,6 +420,35 @@ fn restrict_to_owner(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Go 的三代轮转结果，Rust 必须读出同样的三代。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_cards_rotation_reads_in_rust() {
+        let dir = std::path::PathBuf::from(std::env::var("KF_GO_CARDS_DIR").expect("set KF_GO_CARDS_DIR"));
+        let files = read_library(&dir).unwrap();
+        assert_eq!(files.cards.as_deref(), Some("go-v3"), "主文件与 Go 不一致");
+        assert_eq!(files.backup.as_deref(), Some("go-v2"), "一代备份与 Go 不一致");
+        assert_eq!(files.backup2.as_deref(), Some("go-v1"), "二代备份与 Go 不一致");
+        assert_eq!(files.settings.as_deref(), Some(r#"{"theme":"dark"}"#), "设置与 Go 不一致");
+    }
+
+    /// 反向：Rust 的三代轮转，Go 必须读出同样的三代。
+    #[test]
+    #[ignore = "writes a fixture for the Go reader"]
+    fn rust_cards_rotation_reads_in_go() {
+        let dir = std::path::PathBuf::from(std::env::var("KF_RUST_CARDS_DIR").expect("set KF_RUST_CARDS_DIR"));
+        assert!(!dir.join("cards.json").exists(), "fixture must be new");
+        save_cards(&dir, "rust-v1").unwrap();
+        save_cards(&dir, "rust-v2").unwrap();
+        save_cards(&dir, "rust-v3").unwrap();
+        save_settings(&dir, r#"{"theme":"light"}"#).unwrap();
+        // 当场自检，别把坏夹具交给 Go。
+        let files = read_library(&dir).unwrap();
+        assert_eq!(files.cards.as_deref(), Some("rust-v3"));
+        assert_eq!(files.backup.as_deref(), Some("rust-v2"));
+        assert_eq!(files.backup2.as_deref(), Some("rust-v1"));
+    }
+
     /// Go 写的凭据，Rust 必须按同一条路径规则读到。
     #[test]
     #[ignore = "requires the fixture exported by Go"]
