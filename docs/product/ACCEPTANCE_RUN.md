@@ -1052,6 +1052,18 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 导出不依赖界面缓存，使用 `WriteSystemBackupV4` 在只读事务中读取权威数据。v5–v11 的附加数据与恢复写入仍待迁移。
 
+## 阶段 2 第三十八轮 · 笔记历史升级到 v6 备份
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 笔记历史采集 | PASS | Go 在同一个只读事务中读取 `note_revisions`，校验修订号、重复项以及当前修订的标题与正文必须与笔记一致。三条修订（含回收站笔记）与 Rust 采集结果逐字段一致，历史中引用的附件也纳入备份。 |
+| 版本推进 | PASS | 含笔记历史的包升级为 schemaVersion 6，现有 TypeScript 恢复器成功读取并校验。 |
+| R4 依赖 | PASS + 明确边界 | v6 的读取端强制要求 `r4.json` 与六张表的计数。Go 只在六张表全部为空时写出合法的空 R4 包；只要发现任意一行就报错，不静默丢数据。测试用一条项目数据验证了这条阻断。 |
+
+本轮先补依赖链最短的笔记历史。真实 R4 项目与画像快照、订阅、邮箱、回收站和 Go 恢复写入仍未迁移。
+
+复现：用第三十六轮的 Rust fixture 命令生成新库（fixture 现在含三条笔记修订），设 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 与 `KF_GO_SQLITE_BACKUP_FIXTURE`，运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，再运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
+
 
 
 

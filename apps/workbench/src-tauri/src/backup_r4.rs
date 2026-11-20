@@ -529,9 +529,13 @@ mod tests {
             INSERT INTO cards (id, material_id, headline, summary, details, tags_json, created_at, updated_at, is_deleted)
             VALUES ('card-active', 'material-active', '活动卡片', '概要', '详情', '["标签"]', 1700000000000, 1700000000001, 0),
                    ('card-deleted', 'material-deleted', '旧卡片', '', '', '[]', 1700000000002, 1700000000003, 1);
-            INSERT INTO notes (id, title, body_md, tags_json, created_at, updated_at, is_deleted, deleted_at, source_material_id, exclude_from_profile)
-            VALUES ('note-active', '当前笔记', '![素材](media/image/material.png)', '["备份"]', 1700000000000, 1700000000001, 0, NULL, 'material-active', 1),
-                   ('note-deleted', '回收站笔记', '![笔迹](media/ink/note.json)', '[]', 1700000000002, 1700000000003, 1, 1700000000004, NULL, 0);
+            INSERT INTO notes (id, title, body_md, tags_json, current_revision, created_at, updated_at, is_deleted, deleted_at, source_material_id, exclude_from_profile)
+            VALUES ('note-active', '当前笔记', '![素材](media/image/material.png)', '["备份"]', 2, 1700000000000, 1700000000001, 0, NULL, 'material-active', 1),
+                   ('note-deleted', '回收站笔记', '![笔迹](media/ink/note.json)', '[]', 1, 1700000000002, 1700000000003, 1, 1700000000004, NULL, 0);
+            INSERT INTO note_revisions (note_id, revision, title, body_md, saved_at) VALUES
+            ('note-active', 1, '初稿', '只读旧正文', 1699999999000),
+            ('note-active', 2, '当前笔记', '![素材](media/image/material.png)', 1700000000001),
+            ('note-deleted', 1, '回收站笔记', '![笔迹](media/ink/note.json)', 1700000000003);
             INSERT INTO knowledge_bases (id, name, description, created_at, updated_at)
             VALUES ('kb-1', '测试库', '说明', 1700000000000, 1700000000001);
             INSERT INTO kb_membership VALUES ('kb-1', 'note-active', 1700000000000), ('kb-1', 'note-deleted', 1700000000004);
@@ -545,6 +549,7 @@ mod tests {
         assert_eq!(snapshot.notes.len(), 2);
         assert_eq!(snapshot.artifacts.len(), 1);
         assert_eq!(snapshot.membership.len(), 2);
+        assert_eq!(snapshot.note_revisions.len(), 3);
         std::fs::write(path.with_extension("json"), serde_json::to_vec(&snapshot).unwrap()).unwrap();
     }
 

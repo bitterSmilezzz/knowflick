@@ -34,7 +34,8 @@ describe("Go 从 SQLite 导出的 v4 备份包", () => {
   it.skipIf(!fixture)("恢复回收站笔记、成员关系和未重复打包的引用附件", () => {
     if (!fixture) throw new Error("缺少 SQLite 备份测试文件");
     const restored = restoreKfBackup(new Uint8Array(readFileSync(fixture)));
-    expect(restored.manifest.stats).toEqual({ cards: 1, materials: 1, artifacts: 1, notes: 2, knowledgeBases: 1, media: 2 });
+    expect(restored.manifest.schemaVersion).toBe(6);
+    expect(restored.manifest.stats).toEqual({ cards: 1, materials: 1, artifacts: 1, notes: 2, knowledgeBases: 1, noteRevisions: 3, media: 2, r4: { projects: 0, goals: 0, profile_claims: 0, profile_denials: 0, project_members: 0, goal_evidence: 0 } });
     expect(restored.cards[0]).toMatchObject({ id: "card-active", tags: ["标签"] });
     expect(restored.materials[0]).toMatchObject({ id: "material-active", mediaPath: "media/image/material.png" });
     expect(restored.artifacts[0]).toMatchObject({ id: "artifact-active", sourceCardIds: ["card-active"], sourceNoteIds: ["note-active"] });
@@ -46,5 +47,10 @@ describe("Go 从 SQLite 导出的 v4 备份包", () => {
     expect(restored.settings?.raw).toEqual({ ui: { theme: "dark" }, sync: { username: "demo" } });
     expect(restored.media.get("media/image/material.png")).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff]));
     expect(new TextDecoder().decode(restored.media.get("media/ink/note.json"))).toBe('{"strokes":[]}');
+    expect(restored.noteRevisions).toMatchObject([
+      { noteId: "note-active", revision: 1, title: "初稿", bodyMd: "只读旧正文" },
+      { noteId: "note-active", revision: 2, title: "当前笔记", bodyMd: "![素材](media/image/material.png)" },
+      { noteId: "note-deleted", revision: 1, title: "回收站笔记", bodyMd: "![笔迹](media/ink/note.json)" },
+    ]);
   });
 });

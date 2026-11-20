@@ -49,8 +49,11 @@ func TestWriteSystemBackupV4FromRustDatabase(t *testing.T) {
 	if err := json.Unmarshal(readFixtureFile(t, filepath.Join(source, "knowflick.json")), &rust); err != nil {
 		t.Fatal(err)
 	}
-	for _, entry := range []string{"cards", "materials", "artifacts"} {
-		assertJSONMatchesRust(t, entry, readZIPFixtureFile(t, reader, entry+".json"), rust[entry])
+	for _, pair := range [][2]string{
+		{"cards", "cards"}, {"materials", "materials"}, {"artifacts", "artifacts"},
+		{"note_revisions", "noteRevisions"},
+	} {
+		assertJSONMatchesRust(t, pair[0], readZIPFixtureFile(t, reader, pair[0]+".json"), rust[pair[1]])
 	}
 	var bases map[string]json.RawMessage
 	if err := json.Unmarshal(readZIPFixtureFile(t, reader, "knowledge_bases.json"), &bases); err != nil {
@@ -85,6 +88,11 @@ func TestWriteSystemBackupV4FromRustDatabase(t *testing.T) {
 			t.Fatalf("invalid SQLite fields should abort the export before writing: %v", err)
 		}
 		execute(t, writer, statement.repair)
+	}
+	execute(t, writer, `INSERT INTO projects (id,name,created_at,updated_at) VALUES ('project-1','尚未迁移的项目',1,1)`)
+	output.Reset()
+	if err := repo.WriteSystemBackupV4(t.Context(), &output, dir, at); err == nil || !strings.Contains(err.Error(), "R4") || output.Len() != 0 {
+		t.Fatalf("R4 data must not be silently omitted: %v", err)
 	}
 }
 

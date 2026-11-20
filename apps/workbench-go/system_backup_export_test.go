@@ -78,8 +78,12 @@ func TestSaveSystemBackupWritesOnlyValidDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifestData.Close()
-	if manifest["format"] != "knowflick-backup" || manifest["schemaVersion"] != float64(4) {
+	if manifest["format"] != "knowflick-backup" {
 		t.Fatalf("unexpected manifest: %v", manifest)
+	}
+	version := manifest["schemaVersion"].(float64)
+	if version != 4 && version != 6 {
+		t.Fatalf("unexpected version: %v", version)
 	}
 	cardData, err := reader.Open("cards.json")
 	if err != nil {

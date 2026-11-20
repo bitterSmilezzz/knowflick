@@ -66,6 +66,14 @@ type backupNote struct {
 	ExcludeFromProfile bool     `json:"excludeFromProfile"`
 }
 
+type backupNoteRevision struct {
+	NoteID   string `json:"noteId"`
+	Revision int64  `json:"revision"`
+	Title    string `json:"title"`
+	BodyMD   string `json:"bodyMd"`
+	SavedAt  int64  `json:"savedAt"`
+}
+
 type backupKnowledgeBase struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -89,6 +97,8 @@ type backupDatabase struct {
 	materials      []backupMaterial
 	artifacts      []backupArtifact
 	notes          []backupNote
+	noteRevisions  []backupNoteRevision
+	r4             json.RawMessage
 	knowledgeBases backupKnowledgeBases
 }
 
@@ -111,6 +121,8 @@ func (l *Library) WriteSystemBackupV4(ctx context.Context, dst io.Writer, dir st
 		{database.artifacts, &snapshot.Artifacts},
 		{database.notes, &snapshot.Notes},
 		{database.knowledgeBases, &snapshot.KnowledgeBases},
+		{database.noteRevisions, &snapshot.NoteRevisions},
+		{database.r4, &snapshot.R4},
 	} {
 		*item.dest, err = json.Marshal(item.data)
 		if err != nil {
@@ -173,6 +185,20 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	if err != nil {
 		return backupDatabase{}, fmt.Errorf("读取备份成员关系失败：%w", err)
 	}
+	revisions, err := readBackupRows(ctx, tx, "SELECT note_id,revision,title,body_md,saved_at FROM note_revisions ORDER BY note_id,revision",
+		func(rows *sql.Rows, item *backupNoteRevision) error {
+			return rows.Scan(&item.NoteID, &item.Revision, &item.Title, &item.BodyMD, &item.SavedAt)
+		})
+	if err != nil {
+		return backupDatabase{}, fmt.Errorf("读取笔记历史失败：%w", err)
+	}
+	if err := validateRevisions(revisions, notes); err != nil {
+		return backupDatabase{}, err
+	}
+	r4, err := captureEmptyR4(ctx, tx)
+	if err != nil {
+		return backupDatabase{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return backupDatabase{}, fmt.Errorf("读取备份快照失败：%w", err)
 	}
@@ -182,8 +208,58 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	}
 	return backupDatabase{
 		cards: activeCards, materials: materials, artifacts: artifacts, notes: notes,
+		noteRevisions:  revisions,
+		r4:             r4,
 		knowledgeBases: backupKnowledgeBases{Items: bases, Membership: membership},
 	}, nil
+}
+
+func captureEmptyR4(ctx context.Context, tx *sql.Tx) (json.RawMessage, error) {
+	tables := make(map[string][]any, 6)
+	for _, name := range []string{"projects", "goals", "profile_claims", "profile_denials", "project_members", "goal_evidence"} {
+		var count int
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+name).Scan(&count); err != nil {
+			return nil, fmt.Errorf("读取项目与画像数据失败：%w", err)
+		}
+		if count > 0 {
+			return nil, fmt.Errorf("资料库含项目与画像数据，v6 备份需要先迁移 R4 快照采集")
+		}
+		tables[name] = []any{}
+	}
+	encoded, err := json.Marshal(map[string]any{
+		"version":           1,
+		"tables":            tables,
+		"note_bindings":     map[string]string{},
+		"evidence_bindings": map[string]any{},
+		"profile_bindings":  map[string]any{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+func validateRevisions(revisions []backupNoteRevision, notes []backupNote) error {
+	byID := make(map[string]backupNote, len(notes))
+	for _, note := range notes {
+		byID[note.ID] = note
+	}
+	seen := make(map[string]struct{}, len(revisions))
+	for _, revision := range revisions {
+		note, found := byID[revision.NoteID]
+		if !found || revision.Revision < 1 || revision.Revision > note.CurrentRevision {
+			return fmt.Errorf("笔记历史引用或修订号无效：%s", revision.NoteID)
+		}
+		key := fmt.Sprintf("%s\n%d", revision.NoteID, revision.Revision)
+		if _, duplicate := seen[key]; duplicate {
+			return fmt.Errorf("笔记历史修订重复：%s", key)
+		}
+		seen[key] = struct{}{}
+		if revision.Revision == note.CurrentRevision && (revision.Title != note.Title || revision.BodyMD != note.BodyMD) {
+			return fmt.Errorf("当前笔记与历史修订不一致：%s", revision.NoteID)
+		}
+	}
+	return nil
 }
 
 func readBackupRows[T any](ctx context.Context, tx *sql.Tx, query string, scan func(*sql.Rows, *T) error) ([]T, error) {
@@ -253,6 +329,11 @@ func (snapshot backupDatabase) readBackupMedia(ctx context.Context, dir string) 
 	}
 	for _, note := range snapshot.notes {
 		for _, match := range noteAttachment.FindAllStringSubmatch(note.BodyMD, -1) {
+			wanted[match[1]] = struct{}{}
+		}
+	}
+	for _, revision := range snapshot.noteRevisions {
+		for _, match := range noteAttachment.FindAllStringSubmatch(revision.BodyMD, -1) {
 			wanted[match[1]] = struct{}{}
 		}
 	}

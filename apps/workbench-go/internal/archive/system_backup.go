@@ -25,6 +25,8 @@ type SystemSnapshotV4 struct {
 	Notes          json.RawMessage
 	KnowledgeBases json.RawMessage
 	Settings       string
+	NoteRevisions  json.RawMessage
+	R4             json.RawMessage
 	Media          map[string][]byte
 }
 
@@ -36,7 +38,7 @@ type systemManifest struct {
 	ExportedAt    int64             `json:"exportedAt"`
 	ExportedAtISO string            `json:"exportedAtIso"`
 	Limitations   []string          `json:"limitations"`
-	Stats         map[string]int    `json:"stats"`
+	Stats         map[string]any    `json:"stats"`
 	Checksums     map[string]string `json:"checksums"`
 }
 
@@ -44,6 +46,8 @@ type systemEntry struct {
 	name string
 	data []byte
 }
+
+var systemR4Tables = []string{"projects", "goals", "profile_claims", "profile_denials", "project_members", "goal_evidence"}
 
 var systemMediaPath = regexp.MustCompile(`^media/(audio|image|ink)/[A-Za-z0-9._-]+$`)
 
@@ -54,6 +58,8 @@ func IsSystemMediaPath(relative string) bool {
 
 const systemV4Limitation = "当前备份格式不含项目、目标、个人画像、订阅、邮箱账户及同步记录、外部连接授权、笔记历史版本、搜索历史、已删除的素材、卡片和产物"
 
+const systemV6Limitation = "当前备份格式不含项目、目标、个人画像、订阅、邮箱账户及同步记录、外部连接授权、搜索历史、已删除的素材、卡片和产物；附件和设置与数据库不在同一事务"
+
 // WriteSystemBackupV4 写入现有 TypeScript 恢复器兼容的基础 .kfbackup。
 // 校验和根据实际写入的字节生成，附件按二进制条目保存。
 func WriteSystemBackupV4(dst io.Writer, snapshot SystemSnapshotV4, exportedAt time.Time) error {
@@ -62,7 +68,7 @@ func WriteSystemBackupV4(dst io.Writer, snapshot SystemSnapshotV4, exportedAt ti
 		Format: "knowflick-backup", SchemaVersion: 4, AppName: "KnowFlick", AppVersion: "0.1.0",
 		ExportedAt: exportedAt.UnixMilli(), ExportedAtISO: exportedAt.Format("2006-01-02T15:04:05.000Z"),
 		Limitations: []string{systemV4Limitation},
-		Stats:       map[string]int{"media": len(snapshot.Media)},
+		Stats:       map[string]any{"media": len(snapshot.Media)},
 		Checksums:   make(map[string]string),
 	}
 	var entries []systemEntry
@@ -98,6 +104,38 @@ func WriteSystemBackupV4(dst io.Writer, snapshot SystemSnapshotV4, exportedAt ti
 		systemEntry{"knowledge_bases.json", snapshot.KnowledgeBases},
 		systemEntry{"settings.json", []byte(StripSecretSettings(snapshot.Settings))},
 	)
+	if len(snapshot.R4) > 0 {
+		var payload struct {
+			Tables map[string]json.RawMessage `json:"tables"`
+		}
+		if json.Unmarshal(snapshot.R4, &payload) != nil || len(payload.Tables) != len(systemR4Tables) {
+			return fmt.Errorf("r4.json 的表清单无效")
+		}
+		counts := make(map[string]int, len(systemR4Tables))
+		for _, name := range systemR4Tables {
+			rows, ok := payload.Tables[name]
+			if !ok {
+				return fmt.Errorf("r4.json 缺少表 %s", name)
+			}
+			count, err := countJSONArray(name, rows)
+			if err != nil {
+				return err
+			}
+			counts[name] = count
+		}
+		manifest.Stats["r4"] = counts
+		entries = append(entries, systemEntry{"r4.json", snapshot.R4})
+	}
+	if len(snapshot.NoteRevisions) > 0 {
+		revisions, err := countJSONArray("note_revisions.json", snapshot.NoteRevisions)
+		if err != nil {
+			return err
+		}
+		manifest.SchemaVersion = 6
+		manifest.Limitations = []string{systemV6Limitation}
+		manifest.Stats["noteRevisions"] = revisions
+		entries = append(entries, systemEntry{"note_revisions.json", snapshot.NoteRevisions})
+	}
 	paths := make([]string, 0, len(snapshot.Media))
 	for relative := range snapshot.Media {
 		if !IsSystemMediaPath(relative) {
