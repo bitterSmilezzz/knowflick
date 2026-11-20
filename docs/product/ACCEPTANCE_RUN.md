@@ -1270,6 +1270,18 @@ R4 项目与画像的写入仍未迁移。
 
 抓取（拉 feed 入库）与自动轮询尚未接入；只做了增删查与抓取时间记录。
 
+## 阶段 2 第五十八轮 · 订阅抓取
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 取原文 | PASS | `httpx.FetchRaw` 只接受 http(s)，回环直连、外部走系统代理，8 MiB 上限；本地 feed 服务实测取回 XML 且带 User-Agent。 |
+| 解析复用 | PASS | 解析留在 TypeScript 的 `parseSubscriptionPayload`，Go 只负责按类型解析请求地址——`requestUrlFor` 的四种规则在 Go 有对照测试。 |
+| 入库与去重 | PASS | `SaveImportedMaterial` 按 id `ON CONFLICT DO NOTHING`，同时刷新 FTS；同 id 第二次返回 false。前端用 `itemsToMaterials` 按来源链接去重，回执列出「已存在或无链接」条数。 |
+| 抓取时间 | PASS | 抓完调 `MarkSubscriptionPolled` 只更新 `last_polled_at`。 |
+
+**未完成**：原生界面的「立即抓取」按钮已接好并通过类型检查，但本轮结束时 macOS 屏幕已锁定，无法做点击验证——抓取链路的 Go 部分有单测，端到端点击留待下一轮补验。
+
+
 
 
 

@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"knowflick.local/workbench-go/internal/httpx"
 	"knowflick.local/workbench-go/internal/library"
 )
 
@@ -121,4 +124,77 @@ func (s *SubscriptionService) connection(dir string) (*sql.DB, error) {
 	}
 	s.db, s.dir = db, dir
 	return db, nil
+}
+
+// ListMaterialSourceURLs 列出未删除素材的来源链接，供前端做同链接去重。
+func (s *SubscriptionService) ListMaterialSourceURLs(ctx context.Context) ([]string, error) {
+	dir, err := s.requireOpen()
+	if err != nil {
+		return nil, err
+	}
+	db, err := s.connection(dir)
+	if err != nil {
+		return nil, err
+	}
+	return library.MaterialSourceURLs(ctx, db)
+}
+
+// FetchSubscriptionPayload 按订阅类型取回原文（feed XML / GitHub JSON）。
+// 解析留在 TypeScript 的 `parseSubscriptionPayload`——同一套规则不写第二遍。
+func (s *SubscriptionService) FetchSubscriptionPayload(ctx context.Context, id string) (string, error) {
+	dir, err := s.requireWritable()
+	if err != nil {
+		return "", err
+	}
+	db, err := s.connection(dir)
+	if err != nil {
+		return "", err
+	}
+	sub, err := library.LoadSubscription(ctx, db, id)
+	if err != nil {
+		return "", err
+	}
+	return httpx.FetchRaw(ctx, subscriptionRequestURL(sub))
+}
+
+// ImportSubscriptionMaterials 落库解析后的条目；同 id 已存在即跳过，返回新增条数。
+func (s *SubscriptionService) ImportSubscriptionMaterials(ctx context.Context, materials []library.ImportedMaterial) (int, error) {
+	dir, err := s.requireWritable()
+	if err != nil {
+		return 0, err
+	}
+	db, err := s.connection(dir)
+	if err != nil {
+		return 0, err
+	}
+	added := 0
+	for _, material := range materials {
+		if err := ctx.Err(); err != nil {
+			return added, err
+		}
+		inserted, err := library.SaveImportedMaterial(ctx, db, material)
+		if err != nil {
+			return added, err
+		}
+		if inserted {
+			added++
+		}
+	}
+	return added, nil
+}
+
+// subscriptionRequestURL 与前端 `requestUrlFor` 同一规则：GitHub 走公开 API，其余原样。
+func subscriptionRequestURL(sub library.Subscription) string {
+	switch sub.Type {
+	case "github_release":
+		return "https://api.github.com/repos/" + sub.TargetURL + "/releases?per_page=10"
+	case "github_trending":
+		if sub.TargetURL == "" {
+			return "https://api.github.com/search/repositories?q=stars:%3E10000&sort=stars&order=desc&per_page=10"
+		}
+		language := strings.ReplaceAll(url.QueryEscape(sub.TargetURL), "+", "%20")
+		return "https://api.github.com/search/repositories?q=language:" + language + "&sort=stars&order=desc&per_page=10"
+	default:
+		return sub.TargetURL
+	}
 }

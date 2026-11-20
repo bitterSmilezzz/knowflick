@@ -6,7 +6,9 @@ import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
-import { DeleteSubscription, ListSubscriptions, SaveSubscription } from "./bindings/knowflick.local/workbench-go/subscriptionservice";
+import { DeleteSubscription, FetchSubscriptionPayload, ImportSubscriptionMaterials, ListMaterialSourceURLs, ListSubscriptions, MarkSubscriptionPolled, SaveSubscription } from "./bindings/knowflick.local/workbench-go/subscriptionservice";
+import { itemsToMaterials, parseSubscriptionPayload } from "../src/domain/subscription";
+import { makeMaterial } from "../src/ui/workspace/model";
 import type { Account, Config as MailConfig, ImportedMail, RejectedMail } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
 import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
@@ -126,6 +128,24 @@ function Preview() {
     try { setSubs(await ListSubscriptions() ?? []); } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  async function pollSubscription(sub: Subscription) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const payload = await FetchSubscriptionPayload(sub.id);
+      const domainSub = sub as unknown as Parameters<typeof parseSubscriptionPayload>[0] & Parameters<typeof itemsToMaterials>[2];
+      const items = parseSubscriptionPayload(domainSub, payload);
+      if (items.length === 0) throw new Error("这次没有解析出条目，检查订阅地址是否为有效的 feed / GitHub 仓库");
+      const existing = await ListMaterialSourceURLs() ?? [];
+      const { materials, skipped } = itemsToMaterials(items, existing, domainSub);
+      const added = await ImportSubscriptionMaterials(materials.map((entry) => {
+        const base = makeMaterial({ title: entry.title, text: entry.text, url: entry.url });
+        return { id: base.id, sourceType: base.sourceType, title: base.title, sourceUrl: base.sourceUrl ?? "", rawText: base.rawText, metadataJson: entry.metadataJson, inboxStatus: base.inboxStatus, createdAt: base.createdAt, updatedAt: base.updatedAt };
+      }));
+      await MarkSubscriptionPolled(sub.id, Date.now());
+      setSubs(await ListSubscriptions() ?? []);
+      setNotice(`「${sub.title}」抓取完成：新增 ${added} 条素材` + (skipped > 0 ? `，${skipped} 条已存在或无链接` : ""));
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
   async function saveSubscription() {
     setBusy(true); setError(""); setNotice("");
     try {
@@ -384,6 +404,7 @@ function Preview() {
               <li key={sub.id}>
                 <span>{sub.title} · {sub.type} · 每 {sub.intervalMinutes} 分钟</span>
                 <small>{sub.lastPolledAt ? `上次抓取 ${new Date(sub.lastPolledAt).toLocaleString()}` : "还没抓取过"}{sub.isActive ? "" : " · 已停用"}</small>
+                <button type="button" disabled={busy || !lib?.writable} onClick={() => void pollSubscription(sub)}>立即抓取</button>
                 <button type="button" disabled={busy || !lib?.writable} onClick={() => setSubRemoveId(sub.id)}>删除</button>
                 {subRemoveId === sub.id && <span className="preview-confirm">确认删除这个订阅源？抓来的素材会保留。<button type="button" disabled={busy} onClick={() => void removeSubscription(sub.id)}>确认</button><button type="button" disabled={busy} onClick={() => setSubRemoveId("")}>取消</button></span>}
               </li>
