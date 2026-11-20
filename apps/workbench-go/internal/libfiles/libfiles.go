@@ -8,10 +8,15 @@
 package libfiles
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"knowflick.local/workbench-go/internal/creds"
 )
@@ -138,4 +143,35 @@ func copyFile(source, destination string) error {
 		return err
 	}
 	return os.WriteFile(destination, data, 0o644)
+}
+
+// ContentFingerprint 是文件内容指纹：SHA-256 前 8 字节大端整数（16 个十六进制字符）。
+// 与桌面端 content_fingerprint 同算法——签名必须跨端一致，否则轮询会误判「没变化」。
+func ContentFingerprint(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", err
+	}
+	digest := hasher.Sum(nil)
+	return fmt.Sprintf("%016x", binary.BigEndian.Uint64(digest[:8])), nil
+}
+
+// LibrarySignature 串联三个关键文件的内容指纹，缺失的文件记 "-"。
+// 这是内容指纹而不是 mtime+大小：inode 时间戳粒度会让两次写入共享同一个时间。
+func LibrarySignature(dir string) string {
+	parts := make([]string, 0, 3)
+	for _, name := range []string{"knowflick.db", "cards.json", "settings.json"} {
+		fingerprint, err := ContentFingerprint(filepath.Join(dir, name))
+		if err != nil {
+			parts = append(parts, name+":-")
+			continue
+		}
+		parts = append(parts, name+":"+fingerprint)
+	}
+	return strings.Join(parts, "|")
 }

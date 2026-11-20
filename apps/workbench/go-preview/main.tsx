@@ -26,6 +26,7 @@ import { GoalLibrary } from "./GoalLibrary";
 import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
+import { SettingsPanel } from "./SettingsPanel";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
@@ -47,6 +48,7 @@ function Preview() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [asrOpen, setAsrOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [scope, setScope] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
@@ -557,6 +559,7 @@ function Preview() {
                 {lib.writable && <button type="button" aria-pressed={mailOpen} disabled={busy || mailBusy} onClick={() => { void toggleMail(); setMoreOpen(false); }}>邮箱</button>}
                 <button type="button" aria-pressed={mcpOpen} disabled={busy} onClick={() => { setMcpOpen(!mcpOpen); setMoreOpen(false); }}>外部授权</button>
                 <button type="button" aria-pressed={asrOpen} disabled={busy} onClick={() => { setAsrOpen(!asrOpen); setMoreOpen(false); }}>语音转写</button>
+                <button type="button" aria-pressed={settingsOpen} disabled={busy} onClick={() => { setSettingsOpen(!settingsOpen); setMoreOpen(false); }}>设置与本地文件</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("json"); setMoreOpen(false); }}>导出卡片</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("zip"); setMoreOpen(false); }}>导出卡片与设置（ZIP）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportSystemBackup(); setMoreOpen(false); }}>导出基础备份</button>
@@ -587,6 +590,7 @@ function Preview() {
       </section>}
 
 
+      {settingsOpen && lib && <SettingsPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {asrOpen && <AsrPanel busy={busy} onBusy={setBusy} />}
       {mcpOpen && lib && <McpGrantPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {subsOpen && <section className="preview-mail" aria-label="订阅源">
