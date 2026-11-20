@@ -20,6 +20,10 @@ type EditableCard struct {
 	ID      string  `json:"id"`
 	Version int64   `json:"version"`
 	Content Content `json:"content"`
+	// 出处字段只在新建时写入：编辑表单不拥有它们，更新路径保持库里原值。
+	MaterialID *string       `json:"materialId,omitempty"`
+	Source     string        `json:"source,omitempty"`
+	Links      []ScienceLink `json:"links,omitempty"`
 }
 
 // Browse lists active cards or searches their full-text index, with the desktop LIKE fallback.
@@ -70,6 +74,20 @@ func readEditable(ctx context.Context, db *sql.DB, query string, args ...any) ([
 
 // SaveContent creates a card at version zero or updates the displayed version.
 func SaveContent(ctx context.Context, db *sql.DB, card EditableCard, now int64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := SaveContentTx(ctx, tx, card, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SaveContentTx 在调用方的事务里写卡片：素材转卡要与素材状态一起提交。
+// 版本冲突、内容校验与索引更新都在这里，调用方只负责事务的提交。
+func SaveContentTx(ctx context.Context, tx *sql.Tx, card EditableCard, now int64) error {
 	content := card.Content
 	content.Headline = strings.TrimSpace(content.Headline)
 	for _, value := range append([]string{content.Headline, content.Details, content.Category}, content.Tags...) {
@@ -93,17 +111,21 @@ func SaveContent(ctx context.Context, db *sql.DB, card EditableCard, now int64) 
 	if err != nil {
 		return err
 	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 
 	if card.Version == 0 {
+		links, err := json.Marshal(card.Links)
+		if err != nil {
+			return err
+		}
+		source := card.Source
+		if source == "" {
+			source = "imported"
+		}
 		result, err := tx.ExecContext(ctx, `INSERT INTO cards
-			(id, category, headline, summary, details, tags_json, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,
-			card.ID, content.Category, content.Headline, content.Summary, content.Details, string(tags), now, now)
+			(id, material_id, category, headline, summary, details, links_json, tags_json, source, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,
+			card.ID, card.MaterialID, content.Category, content.Headline, content.Summary, content.Details,
+			string(links), string(tags), source, now, now)
 		if err := requireChanged(result, err); err != nil {
 			return err
 		}
@@ -131,10 +153,7 @@ func SaveContent(ctx context.Context, db *sql.DB, card EditableCard, now int64) 
 			}
 		}
 	}
-	if err := IndexContent(ctx, tx, card.ID, content); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return IndexContent(ctx, tx, card.ID, content)
 }
 
 // DeleteContent soft-deletes the displayed card and removes its search index and embedding.

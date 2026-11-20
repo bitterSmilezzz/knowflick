@@ -12,6 +12,7 @@ button:disabled { cursor: default; opacity: .65; }
 .preview-study > details { margin-block: 12px; }
 .preview-study > details summary { cursor: pointer; }
 .preview-workspace[hidden] { display: none; }
+.preview-material-body { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 44vh; overflow: auto; }
 :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 .preview-workspace { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(0, 2fr); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .preview-list, .preview-note { padding: 16px; min-width: 0; overflow-wrap: anywhere; }
