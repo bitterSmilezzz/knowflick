@@ -5,7 +5,7 @@ import { ChooseLibrary, ExportNoteMarkdown, ReadWebDAVCredential, WriteWebDAVCre
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note, NoteRevision } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
+import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow, SyncMailHistoryNow } from "./bindings/knowflick.local/workbench-go/mailservice";
 import { DeleteSubscription, FetchSubscriptionPayload, ImportSubscriptionMaterials, ListMaterialSourceURLs, ListSubscriptions, MarkSubscriptionPolled, SaveSubscription } from "./bindings/knowflick.local/workbench-go/subscriptionservice";
 import { isDue, itemsToMaterials, parseSubscriptionPayload } from "../src/domain/subscription";
 import { makeMaterial } from "../src/ui/workspace/model";
@@ -322,6 +322,18 @@ function Preview() {
       await ExportCardsJSONFile(lib.generation, dest);
       setNotice("卡片已导出到 " + dest);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function syncMailHistory(accountID: string) {
+    setMailBusy(true);
+    try {
+      const outcome = await SyncMailHistoryNow(accountID);
+      setNotice(`历史同步：导入 ${outcome.imported} 封，拒收 ${outcome.rejected} 封` + (outcome.error ? "；错误：" + outcome.error : ""));
+      if (lib) await reload(lib.generation);
+      await refreshMail();
+    } catch (fail) {
+      setError(String(fail));
+    } finally { setMailBusy(false); }
   }
 
   async function browseMail(account: Account) {
@@ -784,6 +796,7 @@ function Preview() {
         )}
         <div className="preview-mail-actions">
           <button type="button" disabled={mailBusy} onClick={() => void syncMailNow()}>立即同步</button>
+          {mailAccounts[0] && <button type="button" disabled={mailBusy} onClick={() => void syncMailHistory(mailAccounts[0].config.id)}>补历史邮件</button>}
           <button type="button" disabled={mailBusy} onClick={() => openMailForm()}>添加账号</button>
           <input type="number" min="1" aria-label="自动同步间隔（分钟）" value={mailInterval} onChange={(event) => setMailInterval(event.target.value)} />
           <button type="button" disabled={mailBusy || mailStatus?.running} onClick={() => void startAuto()}>开启自动</button>
