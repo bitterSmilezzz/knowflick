@@ -58,6 +58,16 @@ func (s *PreviewService) ReadSettings(ctx context.Context, generation int) (stri
 	return *text, nil
 }
 
+// BackfillMaterialFTS 为缺失全文索引的素材补建索引。
+func (s *PreviewService) BackfillMaterialFTS(ctx context.Context, generation int) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return 0, errors.New("请重新打开资料库")
+	}
+	return s.current.BackfillMaterialFTS(ctx)
+}
+
 // SaveSearchHistory 写搜索历史。
 func (s *PreviewService) SaveSearchHistory(ctx context.Context, generation int, text string) error {
 	if err := s.requireGeneration(generation); err != nil {

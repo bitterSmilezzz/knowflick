@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LibrarySignature, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { BackfillMaterialFTS, LibrarySignature, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
 
 type Props = {
   generation: number;
@@ -61,6 +61,14 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
     }
   }
 
+  async function backfillMaterials() {
+    if (busy || !writable) return;
+    await run(async () => {
+      const count = await BackfillMaterialFTS(generation);
+      setNotice(count > 0 ? "已补全 " + count + " 条素材的全文索引" : "素材索引没有缺项");
+    });
+  }
+
   async function save(kind: "settings" | "history" | "key") {
     if (busy) return;
     await run(async () => {
@@ -82,6 +90,7 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
         <strong>设置与本地文件</strong>
         <span>{signature ? "签名 " + signature.slice(0, 24) + "…" : ""}</span>
         <button type="button" disabled={busy} onClick={() => void run(async () => { setSignature(await LibrarySignature(generation)); setNotice("签名已刷新"); })}>刷新签名</button>
+        {writable && <button type="button" disabled={busy} onClick={() => void backfillMaterials()}>补全素材索引</button>}
       </div>
       {error && <p className="preview-error" role="alert">{error}</p>}
       {notice && <p className="preview-notice" role="status">{notice}</p>}
