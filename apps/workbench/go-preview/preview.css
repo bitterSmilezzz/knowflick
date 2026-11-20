@@ -8,6 +8,10 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 syste
 button, input { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--control); border-radius: 4px; padding: 5px 10px; min-height: 32px; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .65; }
+.preview-study { margin-block: 16px; }
+.preview-study > details { margin-block: 12px; }
+.preview-study > details summary { cursor: pointer; }
+.preview-workspace[hidden] { display: none; }
 :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 .preview-workspace { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(0, 2fr); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .preview-list, .preview-note { padding: 16px; min-width: 0; overflow-wrap: anywhere; }

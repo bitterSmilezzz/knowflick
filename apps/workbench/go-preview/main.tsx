@@ -14,9 +14,10 @@ import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models"
 import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
 import type { Subscription } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
-import "../src/ui/workspace/tokens.css";
+import "../src/ui/workspace/workspace.css";
 import "./preview.css";
 import { NoteHistory } from "./NoteHistory";
+import { ReviewDeck } from "./ReviewDeck";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -32,6 +33,7 @@ function Preview() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [scope, setScope] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
   const [knowledgeError, setKnowledgeError] = useState("");
@@ -513,7 +515,8 @@ function Preview() {
           {lib && lib.writable && <button type="button" disabled={busy} onClick={() => void createNote()}>新建笔记</button>}
           {lib && <button type="button" disabled={busy} aria-pressed={subsOpen} onClick={() => void toggleSubscriptions()}>{subsOpen ? "收起订阅" : "订阅源"}</button>}
           {lib && lib.writable && <button type="button" disabled={busy || mailBusy} aria-pressed={mailOpen} onClick={() => void toggleMail()}>{mailOpen ? "收起邮箱" : "邮箱"}</button>}
-          {lib && <button type="button" disabled={busy} onClick={() => void toggleTrash()}>{trash ? "返回笔记" : "回收站"}</button>}
+          {lib && <button type="button" aria-pressed={reviewOpen} disabled={busy} onClick={() => setReviewOpen((open) => !open)}>{reviewOpen ? "收起复习" : "卡片复习"}</button>}
+          {lib && <button type="button" disabled={busy || reviewOpen} onClick={() => void toggleTrash()}>{trash ? "返回笔记" : "回收站"}</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void exportCards("json")}>导出卡片</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void exportCards("zip")}>导出卡片与设置（ZIP）</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void exportSystemBackup()}>导出基础备份</button>}
@@ -614,7 +617,8 @@ function Preview() {
         <button type="button" disabled={busy} onClick={() => void retryRejected(mailBrowse.id)}>重试被拒邮件</button>
         <button type="button" disabled={busy} onClick={() => setMailBrowse(null)}>收起</button>
       </section>}
-      {lib && <div className="preview-workspace">
+      {lib && reviewOpen && <ReviewDeck key={lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
+      {lib && <div className="preview-workspace" hidden={reviewOpen}>
         <section className="preview-list" aria-label="笔记列表">
           {!trash && <KnowledgeBasePicker key={lib.generation} snapshot={knowledge} error={knowledgeError} scope={scope} busy={busy} dirty={dirty} writable={lib.writable} onScope={changeScope} onCreate={createKnowledgeBase} />}
           {!trash && <form onSubmit={(e) => void search(e)} role="search">

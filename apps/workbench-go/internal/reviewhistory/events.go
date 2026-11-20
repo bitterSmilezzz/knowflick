@@ -91,6 +91,16 @@ func ValidateEvent(event Event) error {
 	if event.ReviewedAt < 0 {
 		return errors.New("复习事件时间无效")
 	}
+	switch event.Rating {
+	case RatingAgain, RatingHard, RatingGood, RatingEasy:
+	default:
+		return errors.New("复习事件评分无效")
+	}
+	switch event.Algorithm {
+	case AlgorithmSm2, AlgorithmFsrs:
+	default:
+		return errors.New("复习事件算法无效")
+	}
 	seen := map[string]struct{}{}
 	for _, id := range event.ProjectIDs {
 		if !canonicalUUID.MatchString(id) {
@@ -412,17 +422,8 @@ func Restore(db *sql.DB, snapshot Snapshot) (RestoreCounts, error) {
 		if found {
 			continue
 		}
-		projects, marshalErr := json.Marshal(event.ProjectIDs)
-		if marshalErr != nil {
-			return RestoreCounts{}, errors.New("复习项目序列化失败")
-		}
-		complete := 0
-		if event.ProjectAttributionComplete {
-			complete = 1
-		}
-		if _, execErr := tx.Exec("INSERT INTO review_events(event_id,card_id,reviewed_at,rating,algorithm,project_ids_json,project_attribution_complete) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-			event.ID, event.CardID, event.ReviewedAt, string(event.Rating), string(event.Algorithm), string(projects), complete); execErr != nil {
-			return RestoreCounts{}, execErr
+		if err := appendEvent(tx, event); err != nil {
+			return RestoreCounts{}, err
 		}
 		inserted++
 	}

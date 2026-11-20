@@ -58,6 +58,10 @@ export function createReviewEvent(input: {
   return event;
 }
 
+export function isReviewProjectID(value: unknown): value is string {
+  return typeof value === "string" && UUID_V4.test(value);
+}
+
 function validateReviewEvent(value: unknown): ReviewEvent {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("复习事件结构无效");
   const row = value as Record<string, unknown>;
@@ -69,7 +73,7 @@ function validateReviewEvent(value: unknown): ReviewEvent {
     throw new Error("复习事件字段无效");
   }
   const projects = row.projectIds as unknown[];
-  if (projects.some((id) => typeof id !== "string" || !UUID_V4.test(id)) ||
+  if (projects.some((id) => !isReviewProjectID(id)) ||
       projects.some((id, index) => index > 0 && String(projects[index - 1]) >= String(id))) {
     throw new Error("复习事件项目归属无效");
   }
