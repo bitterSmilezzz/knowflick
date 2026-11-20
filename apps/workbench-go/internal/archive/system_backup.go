@@ -47,6 +47,11 @@ type systemEntry struct {
 
 var systemMediaPath = regexp.MustCompile(`^media/(audio|image|ink)/[A-Za-z0-9._-]+$`)
 
+// IsSystemMediaPath 判断附件相对路径能否写入 .kfbackup。
+func IsSystemMediaPath(relative string) bool {
+	return systemMediaPath.MatchString(relative) && path.Clean(relative) == relative
+}
+
 const systemV4Limitation = "当前备份格式不含项目、目标、个人画像、订阅、邮箱账户及同步记录、外部连接授权、笔记历史版本、搜索历史、已删除的素材、卡片和产物"
 
 // WriteSystemBackupV4 写入现有 TypeScript 恢复器兼容的基础 .kfbackup。
@@ -95,7 +100,7 @@ func WriteSystemBackupV4(dst io.Writer, snapshot SystemSnapshotV4, exportedAt ti
 	)
 	paths := make([]string, 0, len(snapshot.Media))
 	for relative := range snapshot.Media {
-		if !systemMediaPath.MatchString(relative) || path.Clean(relative) != relative {
+		if !IsSystemMediaPath(relative) {
 			return fmt.Errorf("备份包含无效的附件路径")
 		}
 		paths = append(paths, relative)

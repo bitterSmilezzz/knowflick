@@ -36,6 +36,39 @@ func TestSaveReadRoundTripAndPathSafety(t *testing.T) {
 	}
 }
 
+func TestReadRejectsSymlinksThatLeaveMedia(t *testing.T) {
+	dir := t.TempDir()
+	outside := filepath.Join(dir, "outside")
+	if err := os.Mkdir(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(outside, "image.png")
+	if err := os.WriteFile(file, []byte("outside media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("media root", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.Symlink(outside, filepath.Join(root, "media")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if _, err := Read(root, "media/image.png"); err == nil {
+			t.Fatal("read followed a symlink in place of the media root")
+		}
+	})
+	t.Run("file in media", func(t *testing.T) {
+		folder := filepath.Join(dir, "media", "image")
+		if err := os.MkdirAll(folder, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(file, filepath.Join(folder, "image.png")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if _, err := Read(dir, "media/image/image.png"); err == nil {
+			t.Fatal("read followed a symlink outside the media root")
+		}
+	})
+}
+
 func TestKindMimeAndSizeGuards(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := Save(dir, "audio", "application/json", []byte("x")); err == nil {

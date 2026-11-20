@@ -1030,6 +1030,18 @@ Go 在写入卡片 ZIP 时递归移除凭据字段。设置缺失、损坏或根
 
 本次验证使用合成快照。Go 尚未从 SQLite 收集整库快照，桌面 v5–v11 的附加数据、Go 恢复写入和应用导出入口仍待迁移。
 
+## 阶段 2 第三十六轮 · 从 SQLite 生成基础 `.kfbackup`
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 主数据采集 | PASS | Go 在同一个 SQLite 只读事务中读取素材、卡片、产物、笔记、知识库与成员关系。对同一份 Rust 初始化的测试库，Go 与 Rust 的卡片、素材、产物和知识库数据逐字段一致。 |
+| 现有恢复器读取 | PASS | TypeScript 恢复器读回 1 张卡片、1 份素材、1 条产物、2 篇笔记、1 个知识库与 2 个附件。回收站笔记及其附件保留，共用的素材附件只写入一次。 |
+| 错误处理 | PASS | 引用附件缺失，或卡片、笔记和产物的 JSON 列损坏时，Go 在写入归档前报错。测试验证指向附件目录外的符号链接无法读取。 |
+
+SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。本轮的基础 v4 导出遇到附件读取失败会报错。桌面 v5–v11 的附加快照、Go 恢复写入和应用入口待迁移。
+
+复现时将 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 设为 `.scratch/` 下新建目录的绝对路径。先在 Rust 模块运行 `cargo test --locked --lib backup_r4::tests::export_go_system_backup_database_fixture -- --ignored --exact`。将 `KF_GO_SQLITE_BACKUP_FIXTURE` 设为该目录下的目标文件路径，再在 Go 模块运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，最后在工作台运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
+
 
 
 

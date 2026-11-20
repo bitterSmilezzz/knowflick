@@ -514,6 +514,40 @@ pub fn restore_snapshot(conn: &mut Connection, snapshot: &R4Snapshot) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "writes a SQLite fixture for Go backup verification"]
+    fn export_go_system_backup_database_fixture() {
+        let dir = std::env::var_os("KF_SYSTEM_BACKUP_DB_FIXTURE_DIR").expect("fixture directory");
+        let path = std::path::PathBuf::from(dir).join("knowflick.db");
+        assert!(!path.exists(), "fixture destination must be new");
+        let mut conn = crate::db::open_db(&path).unwrap();
+        conn.execute_batch(r#"
+            INSERT INTO materials (id, source_type, title, raw_text, content_hash, media_path, created_at, updated_at, is_deleted)
+            VALUES ('material-active', 'image', '素材附件', '正文', 'fixture', 'media/image/material.png', 1700000000000, 1700000000001, 0),
+                   ('material-deleted', 'manual', '旧素材', '', 'deleted', NULL, 1700000000002, 1700000000003, 1);
+            INSERT INTO cards (id, material_id, headline, summary, details, tags_json, created_at, updated_at, is_deleted)
+            VALUES ('card-active', 'material-active', '活动卡片', '概要', '详情', '["标签"]', 1700000000000, 1700000000001, 0),
+                   ('card-deleted', 'material-deleted', '旧卡片', '', '', '[]', 1700000000002, 1700000000003, 1);
+            INSERT INTO notes (id, title, body_md, tags_json, created_at, updated_at, is_deleted, deleted_at, source_material_id, exclude_from_profile)
+            VALUES ('note-active', '当前笔记', '![素材](media/image/material.png)', '["备份"]', 1700000000000, 1700000000001, 0, NULL, 'material-active', 1),
+                   ('note-deleted', '回收站笔记', '![笔迹](media/ink/note.json)', '[]', 1700000000002, 1700000000003, 1, 1700000000004, NULL, 0);
+            INSERT INTO knowledge_bases (id, name, description, created_at, updated_at)
+            VALUES ('kb-1', '测试库', '说明', 1700000000000, 1700000000001);
+            INSERT INTO kb_membership VALUES ('kb-1', 'note-active', 1700000000000), ('kb-1', 'note-deleted', 1700000000004);
+            INSERT INTO artifacts (id, artifact_type, title, content_markdown, source_card_ids, source_note_ids, created_at, updated_at, is_deleted)
+            VALUES ('artifact-active', 'briefing', '活动产物', '正文', '["card-active"]', '["note-active"]', 1700000000000, 1700000000001, 0),
+                   ('artifact-deleted', 'briefing', '旧产物', '', '[]', '[]', 1700000000002, 1700000000003, 1);
+        "#).unwrap();
+        let snapshot = capture_database(&mut conn).unwrap();
+        assert_eq!(snapshot.materials.len(), 1);
+        assert_eq!(snapshot.cards.len(), 1);
+        assert_eq!(snapshot.notes.len(), 2);
+        assert_eq!(snapshot.artifacts.len(), 1);
+        assert_eq!(snapshot.membership.len(), 2);
+        std::fs::write(path.with_extension("json"), serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    }
+
     fn database() -> Connection {
         let dir = std::env::temp_dir().join(format!("kf-r4-backup-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();

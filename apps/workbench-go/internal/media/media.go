@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,18 +60,46 @@ func Save(dir, kind, mime string, bytes []byte) (string, error) {
 
 // Read 读回附件；拒绝任何跑出 media 目录的路径。
 func Read(dir, relative string) ([]byte, error) {
-	path, err := safePath(dir, relative)
-	if err != nil {
-		return nil, err
+	_, err := safePath(dir, relative)
+	attachment, found := strings.CutPrefix(relative, "media/")
+	if err != nil || !found {
+		return nil, errors.New("附件路径无效")
 	}
-	info, err := os.Stat(path)
+	libraryRoot, err := os.OpenRoot(dir)
 	if err != nil {
-		return nil, errors.New("附件不存在")
+		return nil, fmt.Errorf("无法打开资料库附件目录：%w", err)
+	}
+	defer libraryRoot.Close()
+	info, err := libraryRoot.Lstat("media")
+	if err != nil || !info.IsDir() {
+		return nil, errors.New("附件目录不存在或无效")
+	}
+	mediaRoot, err := libraryRoot.OpenRoot("media")
+	if err != nil {
+		return nil, fmt.Errorf("无法打开附件目录：%w", err)
+	}
+	defer mediaRoot.Close()
+	name := filepath.FromSlash(attachment)
+	info, err = mediaRoot.Stat(name)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("附件不存在或无法读取")
 	}
 	if info.Size() > MaxAudio {
 		return nil, errors.New("附件过大，无法读取")
 	}
-	return os.ReadFile(path)
+	file, err := mediaRoot.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("无法读取附件：%w", err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, MaxAudio+1))
+	if err != nil {
+		return nil, fmt.Errorf("无法读取附件：%w", err)
+	}
+	if len(data) > MaxAudio {
+		return nil, errors.New("附件过大，无法读取")
+	}
+	return data, nil
 }
 
 // safePath 逐段校验，拒绝绝对路径、反斜杠、空段、. 与 ..；最后必须仍在 media 下。

@@ -2,8 +2,7 @@
 //
 // 与原实现一致的口径：
 //   - 只读未删除的卡片，按 created_at **降序**；
-//   - links / tags / prereq 三个 JSON 列**宽容解析**：坏了就当空数组，
-//     不让一张坏卡片挡住整次导出（Rust 用 unwrap_or_default）；
+//   - 旧卡片导出宽容解析 JSON 列。资料库备份遇到损坏字段时返回错误；
 //   - is_favorite 在库里是整数，DTO 里是布尔（非 0 即 true）；
 //   - 可空列一律映射成指针，JSON 里序列化为 null 而不是省略字段——
 //     与 Android 共享的线格式要求字段齐全。
@@ -17,6 +16,7 @@ import (
 	"path/filepath"
 	"unicode/utf8"
 
+	"knowflick.local/workbench-go/internal/jsonx"
 	"knowflick.local/workbench-go/internal/libfiles"
 )
 
@@ -69,6 +69,19 @@ const columnList = "id, material_id, category, headline, summary, details, " +
 // List 读卡片：只读未删除的，按 created_at 降序。
 // limit < 0 表示不限制（与 Rust 的 LIMIT -1 分支一致）。
 func List(ctx context.Context, db *sql.DB, limit, offset int64) ([]Card, error) {
+	return list(ctx, db, limit, offset, false)
+}
+
+// ListForBackup 读取同一个备份事务中的活动卡片，损坏的 JSON 字段会中止备份。
+func ListForBackup(ctx context.Context, tx *sql.Tx) ([]Card, error) {
+	return list(ctx, tx, -1, 0, true)
+}
+
+type cardQuery interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func list(ctx context.Context, db cardQuery, limit, offset int64, strict bool) ([]Card, error) {
 	rows, err := db.QueryContext(ctx, "SELECT "+columnList+" FROM cards WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?", limit, offset)
 	if err != nil {
 		return nil, err
@@ -76,7 +89,7 @@ func List(ctx context.Context, db *sql.DB, limit, offset int64) ([]Card, error) 
 	defer rows.Close()
 	cards := make([]Card, 0)
 	for rows.Next() {
-		card, scanErr := scanCard(rows)
+		card, scanErr := scanCard(rows, strict)
 		if scanErr != nil {
 			return nil, scanErr
 		}
@@ -117,7 +130,7 @@ func ReadJSON(ctx context.Context, db *sql.DB, dir string) (string, error) {
 // scanCard 按列下标取值——下标顺序就是 columnList 的顺序，
 // 与 Rust 的 map_card_row 一一对应。下标错了不会报错，只会取到别人的值，
 // 所以列顺序在测试里被钉住。
-func scanCard(rows *sql.Rows) (Card, error) {
+func scanCard(rows *sql.Rows, strict bool) (Card, error) {
 	var card Card
 	var isFavorite int64
 	var linksJSON, tagsJSON, prereqJSON string
@@ -131,11 +144,41 @@ func scanCard(rows *sql.Rows) (Card, error) {
 		return Card{}, err
 	}
 	card.IsFavorite = isFavorite != 0
-	// 三个 JSON 列宽容解析：坏了当空数组，不让一张坏卡片挡住整次导出。
+	if strict {
+		links, linksErr := decodeBackupLinks(linksJSON)
+		tags, tagsErr := jsonx.DecodeArray[string](tagsJSON)
+		prereq, prereqErr := jsonx.DecodeArray[string](prereqJSON)
+		if linksErr != nil || tagsErr != nil || prereqErr != nil {
+			return Card{}, errors.New("卡片链接、标签或先修数据损坏")
+		}
+		card.Links, card.Tags, card.Prereq = links, tags, prereq
+		return card, nil
+	}
+	// 旧卡片 JSON 导出沿用宽容解析，损坏的列按空数组处理。
 	card.Links = parseLinks(linksJSON)
 	card.Tags = parseStrings(tagsJSON)
 	card.Prereq = parseStrings(prereqJSON)
 	return card, nil
+}
+
+func decodeBackupLinks(raw string) ([]ScienceLink, error) {
+	objects, err := jsonx.DecodeArray[map[string]json.RawMessage](raw)
+	if err != nil {
+		return nil, err
+	}
+	links := make([]ScienceLink, len(objects))
+	for i, fields := range objects {
+		for name, target := range map[string]*string{"title": &links[i].Title, "url": &links[i].URL} {
+			if raw, exists := fields[name]; exists {
+				var value *string
+				if json.Unmarshal(raw, &value) != nil || value == nil {
+					return nil, errors.New("卡片链接的标题或地址无效")
+				}
+				*target = *value
+			}
+		}
+	}
+	return links, nil
 }
 
 func parseLinks(raw string) []ScienceLink {
