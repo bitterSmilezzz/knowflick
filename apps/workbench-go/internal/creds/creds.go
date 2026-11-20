@@ -16,7 +16,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // APIKeyFile 是 API 密钥文件名（与 Rust 的 credentials_file 同一规则）。
@@ -73,30 +72,24 @@ func WriteAPIKey(libraryDir, value string) error {
 
 // AtomicWrite 用临时文件 + Sync + Rename：断电或崩溃不会留下半截文件。
 func AtomicWrite(path string, data []byte) error {
-	tmp := strings.TrimSuffix(path, filepath.Ext(path)) + ".tmp"
-	file, err := os.Create(tmp)
+	file, err := os.CreateTemp(filepath.Dir(path), ".knowflick-*.tmp")
 	if err != nil {
 		return err
 	}
+	tmp := file.Name()
+	defer os.Remove(tmp)
 	if _, err := file.Write(data); err != nil {
 		file.Close()
-		_ = os.Remove(tmp)
 		return err
 	}
 	if err := file.Sync(); err != nil {
 		file.Close()
-		_ = os.Remove(tmp)
 		return err
 	}
 	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return os.Rename(tmp, path)
 }
 
 // RestrictToOwner 把文件收紧到 0600（非 unix 平台是空操作，

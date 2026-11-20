@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"knowflick.local/workbench-go/internal/cards"
 	_ "modernc.org/sqlite"
 )
 
@@ -98,6 +99,11 @@ func databaseURI(path string) (url.URL, error) {
 }
 
 func (l *Library) Close() error { return l.db.Close() }
+
+// CardsJSON 读当前库的卡片，用于导出。
+func (l *Library) CardsJSON(ctx context.Context, dir string) (string, error) {
+	return cards.ReadJSON(ctx, l.db, dir)
+}
 
 func (l *Library) List(ctx context.Context, offset int) (Page, error) {
 	return l.query(ctx, "SELECT "+noteColumns+" FROM notes n WHERE n.is_deleted=0"+

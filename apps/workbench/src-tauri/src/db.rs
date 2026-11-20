@@ -1998,6 +1998,34 @@ pub fn chrono_or_epoch_now() -> i64 {
 mod tests {
     use super::*;
 
+    /// Go 读同一个库导出的卡片，必须与 Rust 的 list_cards 语义一致。
+    #[test]
+    #[ignore = "requires KF_CARDS_DB"]
+    fn go_cards_list_parity() {
+        let db_path = std::env::var("KF_CARDS_DB").expect("set KF_CARDS_DB");
+        let out = std::env::var("KF_RUST_CARDS_JSON").expect("set KF_RUST_CARDS_JSON");
+        let dir = std::path::Path::new(&db_path).parent().unwrap();
+        crate::store::export_cards_json(dir, std::path::Path::new(&out)).unwrap();
+        let exported = std::fs::read_to_string(&out).unwrap();
+        let cards: Vec<KnowledgeCardDto> = serde_json::from_str(&exported).unwrap();
+        assert!(!cards.is_empty(), "夹具库里应有卡片");
+    }
+
+    /// 反向：Go 导出的 JSON，Rust 必须能按同一套 DTO 解开且与自己读到的一致。
+    #[test]
+    #[ignore = "requires KF_GO_CARDS_JSON"]
+    fn rust_reads_go_cards_json() {
+        let db_path = std::env::var("KF_CARDS_DB").expect("set KF_CARDS_DB");
+        let go_json = std::env::var("KF_GO_CARDS_JSON").expect("set KF_GO_CARDS_JSON");
+        let raw = std::fs::read_to_string(&go_json).unwrap();
+        let from_go: Vec<KnowledgeCardDto> = serde_json::from_str(&raw)
+            .expect("Go 导出的 cards.json 应能被 Rust 解开");
+        let conn = crate::db::open_db(std::path::Path::new(&db_path)).unwrap();
+        let mine = list_cards(&conn, -1, 0).unwrap();
+        assert!(!mine.is_empty(), "夹具库里应有卡片");
+        assert_eq!(mine, from_go, "Go 导出的卡片与 Rust 数据库结果不一致");
+    }
+
     #[test]
     fn old_notes_table_gains_profile_exclusion_with_opt_out_disabled() {
         let conn = Connection::open_in_memory().unwrap();
