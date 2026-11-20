@@ -798,6 +798,20 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0027-go-mail-store.md。
 
+## 2026-11-20 夜间（再续）：阶段 2 第十九刀 —— 五个包接成一条可执行的同步
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 端到端同步 | PASS（本地假服务器） | 起一个最小 IMAP 服务器（TLS + LOGIN/EXAMINE/UID SEARCH/UID FETCH），跑完整同步：2 封邮件全部导入、素材标题与正文正确、账本 2 行、游标推进到 4。 |
+| 前置校验 | PASS | 没有密码时明确报错，不尝试连接。 |
+| TLS 未被削弱 | PASS | `TestConnectVerifiesCertificates` 仍通过：不注入 roots 时自签名证书照样被拒。测试通过 `ConnectWithRoots` 注入一张测试证书，客户端仍完整校验链与主机名——**没有「跳过校验」的开关**。 |
+| 一处接口补齐 | 记录 | imap 会话原本没留 UIDVALIDITY，补上 `storedValidity` 与 `UIDValidity()`。没有它同步无法判断游标是否还有效，UIDVALIDITY 变了却沿用旧游标会让整批邮件被误判为已处理。 |
+| 自动同步调度 / 并发保护 / UI 入口 / 真实邮箱 / 备份 | SKIP | 均未做。端到端只对着本地假服务器跑过，**没有对真实邮箱验证**。 |
+
+**未验证**：真实 IMAP 服务器、自动同步调度、ACCOUNT_LOCK 等价物、Go 预览界面的邮箱入口、备份包。
+
+取舍与证据见 docs/adr/0028-go-mail-runner.md。
+
 
 
 

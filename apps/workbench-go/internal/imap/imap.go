@@ -11,6 +11,7 @@ package imap
 import (
 	"bufio"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -57,6 +58,9 @@ type Session struct {
 	raw      Transport
 	tag      int
 	deadline time.Time
+	// storedValidity 是 LoginAndExamine 拿到的 UIDVALIDITY。
+	// 同步编排要用它判断「库里的游标还能不能用」——这是唯一依据。
+	storedValidity uint32
 }
 
 // writeOnly 是只允许的四类命令前缀。
@@ -250,8 +254,16 @@ func (s *Session) LoginAndExamine(username, password, folder string, now func() 
 	if err != nil {
 		return 0, 0, err
 	}
-	return parseExamine(response.Lines)
+	validity, exists, parseErr := parseExamine(response.Lines)
+	if parseErr != nil {
+		return 0, 0, parseErr
+	}
+	s.storedValidity = validity
+	return validity, exists, nil
 }
+
+// UIDValidity 实现 mailsync 读取 UIDVALIDITY 所需的接口。
+func (s *Session) UIDValidity() uint32 { return s.storedValidity }
 
 // parseExamine 从 EXAMINE 响应里取 UIDVALIDITY 与 EXISTS。
 func parseExamine(lines []string) (uint32, uint32, error) {
@@ -290,6 +302,14 @@ func lastNumber(line string) (int, bool) {
 // DNS 解析放进带超时的 goroutine：系统解析器可能卡很久，而调用方有会话预算。
 // 多个地址逐个尝试，每个都用剩余预算——第一个地址黑洞时不至于整轮耗尽。
 func Connect(host string, port uint16) (Transport, error) {
+	return ConnectWithRoots(host, port, nil)
+}
+
+// ConnectWithRoots 与 Connect 相同，但可以额外信任一组根证书。
+//
+// 只为测试而存在：生产代码不传 roots，走的仍是系统根 + 主机名校验。
+// 这样测试可以起一个自签名的本地服务器，而生产代码没有任何「跳过校验」的开关。
+func ConnectWithRoots(host string, port uint16, roots *x509.CertPool) (Transport, error) {
 	dnsResult := make(chan []string, 1)
 	go func() {
 		addresses, err := net.LookupHost(host)
@@ -332,10 +352,14 @@ func Connect(host string, port uint16) (Transport, error) {
 		conn.Close()
 		return nil, errors.New("无法设置邮件连接超时")
 	}
-	tlsConn := tls.Client(conn, &tls.Config{
+	config := &tls.Config{
 		ServerName: host,
 		MinVersion: tls.VersionTLS12,
-	})
+	}
+	if roots != nil {
+		config.RootCAs = roots
+	}
+	tlsConn := tls.Client(conn, config)
 	if err := tlsConn.Handshake(); err != nil {
 		conn.Close()
 		return nil, errors.New("邮件 TLS 握手或证书校验失败")
