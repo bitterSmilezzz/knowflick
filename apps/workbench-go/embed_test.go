@@ -20,7 +20,10 @@ func TestEmbeddedBundleIsCurrent(t *testing.T) {
 	}
 	onDisk, err := os.ReadFile(filepath.Join("assets", "dist", "index.html"))
 	if err != nil {
-		t.Fatal(err)
+		// assets/dist 是 gitignore 的构建产物，且被 go:embed 依赖：
+		// 没有它这个包连编译都过不了（不是本测试制造的限制，是既有约束）。
+		// 所以这里说明「先跑构建脚本」，而不是给一个永远走不到的跳过分支。
+		t.Fatalf("读不到 assets/dist/index.html（请先运行 tools/build_workbench_go.sh）: %v", err)
 	}
 	if string(embedded) != string(onDisk) {
 		t.Fatal("嵌入的 index.html 与磁盘产物不一致：请重新运行 tools/build_workbench_go.sh")
