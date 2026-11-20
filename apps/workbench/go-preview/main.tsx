@@ -24,6 +24,7 @@ import { ArtifactLibrary } from "./ArtifactLibrary";
 import { ProjectLibrary } from "./ProjectLibrary";
 import { GoalLibrary } from "./GoalLibrary";
 import { ClaimLibrary } from "./ClaimLibrary";
+import { McpGrantPanel } from "./McpGrantPanel";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
@@ -43,6 +44,7 @@ function Preview() {
   const [view, setView] = useState<"notes" | "materials" | "cards" | "artifacts" | "projects" | "goals" | "claims" | "review">("notes");
   const [cardEditing, setCardEditing] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [scope, setScope] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
@@ -551,6 +553,7 @@ function Preview() {
                 <strong>接入与备份</strong>
                 <button type="button" aria-pressed={subsOpen} disabled={busy} onClick={() => { void toggleSubscriptions(); setMoreOpen(false); }}>订阅源</button>
                 {lib.writable && <button type="button" aria-pressed={mailOpen} disabled={busy || mailBusy} onClick={() => { void toggleMail(); setMoreOpen(false); }}>邮箱</button>}
+                <button type="button" aria-pressed={mcpOpen} disabled={busy} onClick={() => { setMcpOpen(!mcpOpen); setMoreOpen(false); }}>外部授权</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("json"); setMoreOpen(false); }}>导出卡片</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("zip"); setMoreOpen(false); }}>导出卡片与设置（ZIP）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportSystemBackup(); setMoreOpen(false); }}>导出基础备份</button>
@@ -581,6 +584,7 @@ function Preview() {
       </section>}
 
 
+      {mcpOpen && lib && <McpGrantPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {subsOpen && <section className="preview-mail" aria-label="订阅源">
         <div className="preview-mail-head">
           <strong>订阅源</strong>
