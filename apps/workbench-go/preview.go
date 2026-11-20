@@ -24,6 +24,9 @@ type PreviewService struct {
 	path        string
 	writable    bool
 	generation  int
+
+	asrMu        sync.Mutex
+	asrDownloads map[string]*AsrDownloadState
 }
 
 // LibraryView 是打开资料库后的返回：名称、代号与首页。
