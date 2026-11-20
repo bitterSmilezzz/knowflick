@@ -1617,6 +1617,16 @@ R4 项目与画像的写入仍未迁移。
 | R4 校验 | PASS | ValidateR4Destination 复用系统备份的项目与画像绑定校验；RestoreR4Snapshot 原子追加，冲突行跳过。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。恢复流程的前端界面待后续轮次接入。 |
 
+## 阶段 2 第九十四轮 · 笔记、卡片、邮箱、复习历史与回收站恢复
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 笔记恢复 | PASS | RestoreNoteWithHistory 对齐 Rust note_restore_upsert：本地较新跳过、同修订一致幂等、分歧拒绝；历史随笔记同事务写入并校验修订一致；保护绑定核对本地指纹（缺失态矛盾同样拒绝）。恢复后分块与 FTS 立即重建。 |
+| 卡片恢复 | PASS | RestoreCard 幂等跳过一致记录，内容或学习进度不同拒绝；恢复后重建全文索引。 |
+| 邮箱与复习历史 | PASS | RestoreMailSnapshot / RestoreReviewHistorySnapshot 复用系统备份的校验与原子追加实现；恢复前可单独 ValidateMailDestination / ValidateReviewHistoryDestination。 |
+| 回收站墓碑 | PASS | RestoreDeletedRecordsSnapshot 恢复素材、卡片与产物墓碑，目标已有非删除态记录即冲突。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。恢复流程的前端界面待后续轮次接入。 |
+
 
 
 

@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"knowflick.local/workbench-go/internal/archive"
+	"knowflick.local/workbench-go/internal/cards"
+	"knowflick.local/workbench-go/internal/reviewhistory"
 	"strings"
 )
 
@@ -246,4 +248,163 @@ func (l *Library) ValidateR4Destination(ctx context.Context, snapshotJSON json.R
 		return err
 	}
 	return validateR4DestinationDB(ctx, l.db, snapshot)
+}
+
+// ValidateMailDestination 校验邮箱快照能否写入目标库（backup_validate_mail）。
+func (l *Library) ValidateMailDestination(ctx context.Context, snapshotJSON json.RawMessage) error {
+	var snapshot backupMailSnapshot
+	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil || snapshot.Version != 1 {
+		return errors.New("mail.json 结构无效")
+	}
+	return validateMailSnapshot(snapshot)
+}
+
+// MailRestoreCounts 是邮箱恢复结果（与 Rust backup_mail::MailRestoreCounts 同形）。
+type MailRestoreCounts struct {
+	Accounts   int `json:"accounts"`
+	SyncStates int `json:"syncStates"`
+	Imports    int `json:"imports"`
+	Rejected   int `json:"rejected"`
+}
+
+// RestoreMailSnapshot 恢复邮箱快照（backup_restore_mail）。
+func (l *Library) RestoreMailSnapshot(ctx context.Context, snapshotJSON json.RawMessage) (MailRestoreCounts, error) {
+	if !l.writable {
+		return MailRestoreCounts{}, ErrReadOnly
+	}
+	var backup archive.SystemBackup
+	backup.Mail = snapshotJSON
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return MailRestoreCounts{}, err
+	}
+	defer tx.Rollback()
+	a, b, c, d, err := restoreMail(ctx, tx, backup)
+	if err != nil {
+		return MailRestoreCounts{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return MailRestoreCounts{}, err
+	}
+	return MailRestoreCounts{Accounts: a, SyncStates: b, Imports: c, Rejected: d}, nil
+}
+
+// ValidateReviewHistoryDestination 校验复习历史快照目标（backup_validate_review_history）。
+func (l *Library) ValidateReviewHistoryDestination(ctx context.Context, snapshotJSON json.RawMessage) error {
+	var snapshot reviewhistory.Snapshot
+	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil || snapshot.Version != 1 {
+		return errors.New("review_history.json 结构无效")
+	}
+	if err := reviewhistory.Validate(snapshot); err != nil {
+		return fmt.Errorf("复习历史快照无效：%w", err)
+	}
+	_, err := reviewhistory.ValidateDestination(l.db, snapshot)
+	return err
+}
+
+// ReviewRestoreCounts 是复习历史恢复结果（与 Rust ReviewRestoreCounts 同形）。
+type ReviewRestoreCounts struct {
+	Inserted int `json:"inserted"`
+}
+
+// RestoreReviewHistorySnapshot 恢复复习历史快照（backup_restore_review_history）。
+func (l *Library) RestoreReviewHistorySnapshot(ctx context.Context, snapshotJSON json.RawMessage) (ReviewRestoreCounts, error) {
+	if !l.writable {
+		return ReviewRestoreCounts{}, ErrReadOnly
+	}
+	var backup archive.SystemBackup
+	backup.ReviewHistory = snapshotJSON
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ReviewRestoreCounts{}, err
+	}
+	defer tx.Rollback()
+	inserted, err := restoreReviewHistory(ctx, tx, backup)
+	if err != nil {
+		return ReviewRestoreCounts{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ReviewRestoreCounts{}, err
+	}
+	return ReviewRestoreCounts{Inserted: inserted}, nil
+}
+
+// DeletedRestoreCounts 是回收站墓碑恢复结果。
+type DeletedRestoreCounts struct {
+	Materials int `json:"materials"`
+	Cards     int `json:"cards"`
+	Artifacts int `json:"artifacts"`
+}
+
+// RestoreDeletedRecordsSnapshot 恢复回收站墓碑（backup_restore_deleted_records）。
+func (l *Library) RestoreDeletedRecordsSnapshot(ctx context.Context, snapshotJSON json.RawMessage) (DeletedRestoreCounts, error) {
+	if !l.writable {
+		return DeletedRestoreCounts{}, ErrReadOnly
+	}
+	var backup archive.SystemBackup
+	backup.DeletedRecords = snapshotJSON
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return DeletedRestoreCounts{}, err
+	}
+	defer tx.Rollback()
+	m, c, a, err := restoreDeletedRecords(ctx, tx, backup)
+	if err != nil {
+		return DeletedRestoreCounts{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return DeletedRestoreCounts{}, err
+	}
+	return DeletedRestoreCounts{Materials: m, Cards: c, Artifacts: a}, nil
+}
+
+// RestoreCard 恢复一张卡片：已存在且完全一致幂等跳过，已删除或内容不同拒绝。
+func (l *Library) RestoreCard(ctx context.Context, card cards.Card) (bool, error) {
+	if !l.writable {
+		return false, ErrReadOnly
+	}
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	// 在事务内读取：连接池只有一条连接时，事务外再查会自锁。
+	var localVersion int
+	var localCategory, localHeadline, localSummary, localDetails, localTags, localSource string
+	err = tx.QueryRowContext(ctx, "SELECT version, category, headline, summary, details, tags_json, source FROM cards WHERE id = ? AND is_deleted = 0", card.ID).
+		Scan(&localVersion, &localCategory, &localHeadline, &localSummary, &localDetails, &localTags, &localSource)
+	if err == nil {
+		tagsMatch := localTags == mustJSON(card.Tags)
+		if localCategory != card.Category || localHeadline != card.Headline || localSummary != card.Summary ||
+			localDetails != card.Details || !tagsMatch || localSource != card.Source {
+			return false, errors.New("本地同标识卡片内容或学习进度不同，未覆盖")
+		}
+		return false, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("读取本地卡片失败，未覆盖：%w", err)
+	}
+	links := mustJSON(card.Links)
+	tags := mustJSON(card.Tags)
+	prereq := mustJSON(card.Prereq)
+	if _, err := tx.ExecContext(ctx, "INSERT INTO cards (id, material_id, category, headline, summary, details, links_json, tags_json, source, seen_at, swiped, is_favorite, favorited_at, review_count, mastery_level, last_reviewed_at, repetition, interval_days, ease_factor, stability, difficulty, subject, branch, level, track, order_key, prereq_json, created_at, edited_at, updated_at, version, is_deleted, deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,NULL)",
+		card.ID, card.MaterialID, card.Category, card.Headline, card.Summary, card.Details, links, tags, card.Source, card.SeenAt, card.Swiped, boolInt(card.IsFavorite), card.FavoritedAt, card.ReviewCount, card.MasteryLevel, card.LastReviewedAt, card.Repetition, card.IntervalDays, card.EaseFactor, card.Stability, card.Difficulty, card.Subject, card.Branch, card.Level, card.Track, card.OrderKey, prereq, card.CreatedAt, card.EditedAt, card.CreatedAt); err != nil {
+		return false, fmt.Errorf("恢复卡片失败：%w", err)
+	}
+	if err := cards.IndexContent(ctx, tx, card.ID, cards.Content{Category: card.Category, Headline: card.Headline, Summary: card.Summary, Details: card.Details, Tags: card.Tags}); err != nil {
+		return false, fmt.Errorf("恢复卡片索引失败：%w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// mustJSON 序列化 JSON；nil 序列化为 []。恢复路径的集合字段永远该是合法 JSON。
+func mustJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
 }

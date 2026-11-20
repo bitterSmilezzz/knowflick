@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"knowflick.local/workbench-go/internal/cards"
 	"knowflick.local/workbench-go/internal/library"
 )
 
@@ -76,4 +77,64 @@ func (s *PreviewService) RestoreSubscriptionSnapshot(ctx context.Context, genera
 		return 0, errors.New("请重新打开资料库")
 	}
 	return s.current.RestoreSubscriptionSnapshot(ctx, snapshot)
+}
+
+// RestoreBackupCard 恢复一条卡片（backup_restore_card）。
+func (s *PreviewService) RestoreBackupCard(ctx context.Context, generation int, card cards.Card) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return false, errors.New("请重新打开资料库")
+	}
+	return s.current.RestoreCard(ctx, card)
+}
+
+// ValidateMailDestination 校验邮箱快照目标。
+func (s *PreviewService) ValidateMailDestination(ctx context.Context, generation int, snapshot json.RawMessage) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return errors.New("请重新打开资料库")
+	}
+	return s.current.ValidateMailDestination(ctx, snapshot)
+}
+
+// RestoreMailSnapshot 恢复邮箱快照。
+func (s *PreviewService) RestoreMailSnapshot(ctx context.Context, generation int, snapshot json.RawMessage) (library.MailRestoreCounts, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return library.MailRestoreCounts{}, errors.New("请重新打开资料库")
+	}
+	return s.current.RestoreMailSnapshot(ctx, snapshot)
+}
+
+// ValidateReviewHistoryDestination 校验复习历史快照目标。
+func (s *PreviewService) ValidateReviewHistoryDestination(ctx context.Context, generation int, snapshot json.RawMessage) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return errors.New("请重新打开资料库")
+	}
+	return s.current.ValidateReviewHistoryDestination(ctx, snapshot)
+}
+
+// RestoreReviewHistorySnapshot 恢复复习历史快照。
+func (s *PreviewService) RestoreReviewHistorySnapshot(ctx context.Context, generation int, snapshot json.RawMessage) (library.ReviewRestoreCounts, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return library.ReviewRestoreCounts{}, errors.New("请重新打开资料库")
+	}
+	return s.current.RestoreReviewHistorySnapshot(ctx, snapshot)
+}
+
+// RestoreDeletedRecordsSnapshot 恢复回收站墓碑。
+func (s *PreviewService) RestoreDeletedRecordsSnapshot(ctx context.Context, generation int, snapshot json.RawMessage) (library.DeletedRestoreCounts, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return library.DeletedRestoreCounts{}, errors.New("请重新打开资料库")
+	}
+	return s.current.RestoreDeletedRecordsSnapshot(ctx, snapshot)
 }
