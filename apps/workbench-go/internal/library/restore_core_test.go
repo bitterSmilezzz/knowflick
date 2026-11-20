@@ -56,7 +56,7 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 		counts.Notes != 2 || counts.Revisions != 3 || counts.KnowledgeBases != 1 || counts.Membership != 2 ||
 		counts.Subscriptions != 2 || counts.ReviewEvents != 1 || counts.Skipped != 0 ||
 		counts.DeletedMaterials != 1 || counts.DeletedCards != 1 || counts.DeletedArtifacts != 1 ||
-		counts.MailAccounts != 1 || counts.MailSyncStates != 1 || counts.MailImports != 1 || counts.MailRejected != 1 {
+		counts.MailAccounts != 1 || counts.MailSyncStates != 1 || counts.MailImports != 1 || counts.MailRejected != 1 || counts.R4Rows != 5 {
 		t.Fatalf("unexpected counts: %+v", counts)
 	}
 	again, err := restored.RestoreCoreBackup(context.Background(), backup, restoreDir)
@@ -143,6 +143,15 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	}
 	if mailCounts != [4]int{1, 1, 1, 1} {
 		t.Fatalf("mail rows: %v", mailCounts)
+	}
+	var r4Counts [6]int
+	for index, table := range []string{"projects", "goals", "profile_claims", "profile_denials", "project_members", "goal_evidence"} {
+		if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM "+table).Scan(&r4Counts[index]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r4Counts != [6]int{1, 1, 1, 0, 1, 1} {
+		t.Fatalf("r4 rows: %v", r4Counts)
 	}
 	if _, err := restored.db.ExecContext(context.Background(), "UPDATE subscriptions SET title = '本地不同' WHERE id = 'sub-1'"); err != nil {
 		t.Fatal(err)

@@ -33,6 +33,7 @@ type CoreRestoreCounts struct {
 	MailSyncStates   int `json:"mailSyncStates"`
 	MailImports      int `json:"mailImports"`
 	MailRejected     int `json:"mailRejected"`
+	R4Rows           int `json:"r4Rows"`
 	Skipped          int `json:"skipped"`
 }
 
@@ -199,6 +200,11 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		return counts, err
 	}
 	counts.MailAccounts, counts.MailSyncStates, counts.MailImports, counts.MailRejected = mailAccounts, mailSyncStates, mailImports, mailRejected
+	r4Rows, err := restoreR4(ctx, tx, backup)
+	if err != nil {
+		return counts, err
+	}
+	counts.R4Rows = r4Rows
 	if err := tx.Commit(); err != nil {
 		return counts, fmt.Errorf("提交恢复事务失败：%w", err)
 	}
