@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ChooseLibrary, ExportNoteMarkdown, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { ChooseLibrary, ExportNoteMarkdown, ReadWebDAVCredential, WriteWebDAVCredential, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note, NoteRevision } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -337,11 +337,25 @@ function Preview() {
       setNotice("邮箱账号已删除；导入台账保留以免重复导入。");
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
+  useEffect(() => {
+    if (!lib) return;
+    let active = true;
+    void ReadWebDAVCredential(lib.generation)
+      .then((value: string) => {
+        if (!active || !value) return;
+        setWebdavSecret(value);
+        setWebdavRemember(true);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [lib?.generation]);
+
   async function uploadToWebdav() {
     if (!lib || busy || !webdavURL.trim()) { fail(new Error("请填写 WebDAV 地址")); return; }
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await UploadBackupToWebDAV(lib.generation, webdavURL.trim(), webdavUser.trim(), webdavSecret, webdavRemember);
+      if (webdavRemember) await WriteWebDAVCredential(lib.generation, webdavSecret);
       setNotice(`已上传 ${result.fileName}（${result.bytes} 字节，SHA-256 ${result.sha256}）。这是单向复制，不会删除云端旧对象。`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
