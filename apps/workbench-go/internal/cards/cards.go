@@ -211,3 +211,32 @@ func ToJSON(cards []Card) (string, error) {
 	}
 	return string(encoded), nil
 }
+
+// CardByID 按主键读一张未删除的卡片；找不到返回 sql.ErrNoRows。
+func CardByID(ctx context.Context, db *sql.DB, id string) (Card, error) {
+	row := db.QueryRowContext(ctx, "SELECT "+columnList+" FROM cards WHERE id = ? AND is_deleted = 0", id)
+	return scanCardRow(row, false)
+}
+
+// scanCardRow 是单行版本的 scanCard：QueryRowContext 没有列下标迭代器，
+// 但列顺序一致，所以按同样的下标顺序取值。
+func scanCardRow(row *sql.Row, strict bool) (Card, error) {
+	var card Card
+	var isFavorite int64
+	var linksJSON, tagsJSON, prereqJSON string
+	if err := row.Scan(
+		&card.ID, &card.MaterialID, &card.Category, &card.Headline, &card.Summary, &card.Details,
+		&linksJSON, &tagsJSON, &card.Source, &card.SeenAt, &card.Swiped, &isFavorite,
+		&card.FavoritedAt, &card.ReviewCount, &card.MasteryLevel, &card.LastReviewedAt,
+		&card.Repetition, &card.IntervalDays, &card.EaseFactor, &card.Stability, &card.Difficulty,
+		&card.Subject, &card.Branch, &card.Level, &card.Track, &card.OrderKey, &prereqJSON, &card.CreatedAt, &card.EditedAt,
+	); err != nil {
+		return Card{}, err
+	}
+	card.IsFavorite = isFavorite != 0
+	// 单卡读取用于向量召回等展示路径，沿用宽容解析。
+	card.Links = parseLinks(linksJSON)
+	card.Tags = parseStrings(tagsJSON)
+	card.Prereq = parseStrings(prereqJSON)
+	return card, nil
+}
