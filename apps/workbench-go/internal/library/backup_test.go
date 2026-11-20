@@ -89,11 +89,7 @@ func TestWriteSystemBackupV4FromRustDatabase(t *testing.T) {
 		}
 		execute(t, writer, statement.repair)
 	}
-	execute(t, writer, `INSERT INTO projects (id,name,created_at,updated_at) VALUES ('project-1','尚未迁移的项目',1,1)`)
-	output.Reset()
-	if err := repo.WriteSystemBackupV4(t.Context(), &output, dir, at); err == nil || !strings.Contains(err.Error(), "R4") || output.Len() != 0 {
-		t.Fatalf("R4 data must not be silently omitted: %v", err)
-	}
+	assertJSONMatchesRust(t, "r4", readZIPFixtureFile(t, reader, "r4.json"), rust["r4"])
 }
 
 func readFixtureFile(t *testing.T, path string) []byte {

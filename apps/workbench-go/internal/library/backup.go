@@ -2,7 +2,9 @@ package library
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -195,7 +197,7 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	if err := validateRevisions(revisions, notes); err != nil {
 		return backupDatabase{}, err
 	}
-	r4, err := captureEmptyR4(ctx, tx)
+	r4, err := captureR4(ctx, tx)
 	if err != nil {
 		return backupDatabase{}, err
 	}
@@ -214,29 +216,186 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	}, nil
 }
 
-func captureEmptyR4(ctx context.Context, tx *sql.Tx) (json.RawMessage, error) {
-	tables := make(map[string][]any, 6)
+var r4Schemas = map[string][][4]any{
+	"projects":        {{"id", "TEXT", false, 1}, {"name", "TEXT", true, 0}, {"description", "TEXT", true, 0}, {"created_at", "INTEGER", true, 0}, {"updated_at", "INTEGER", true, 0}, {"archived_at", "INTEGER", false, 0}},
+	"goals":           {{"id", "TEXT", false, 1}, {"title", "TEXT", true, 0}, {"done_criteria", "TEXT", true, 0}, {"scope", "TEXT", false, 0}, {"created_at", "INTEGER", true, 0}, {"achieved_at", "INTEGER", false, 0}, {"abandoned_at", "INTEGER", false, 0}, {"review_note", "TEXT", true, 0}},
+	"profile_claims":  {{"id", "TEXT", false, 1}, {"kind", "TEXT", true, 0}, {"content", "TEXT", true, 0}, {"evidence_json", "TEXT", true, 0}, {"scope", "TEXT", true, 0}, {"created_at", "INTEGER", true, 0}, {"confirmed_at", "INTEGER", false, 0}, {"expires_at", "INTEGER", false, 0}, {"denied_at", "INTEGER", false, 0}, {"superseded_by", "TEXT", false, 0}, {"status", "TEXT", true, 0}},
+	"profile_denials": {{"evidence_fingerprint", "TEXT", false, 1}, {"denied_at", "INTEGER", true, 0}},
+	"project_members": {{"project_id", "TEXT", true, 1}, {"note_id", "TEXT", true, 2}, {"added_at", "INTEGER", true, 0}},
+	"goal_evidence":   {{"goal_id", "TEXT", true, 1}, {"evidence_id", "TEXT", true, 2}, {"kind", "TEXT", true, 0}, {"linked_at", "INTEGER", true, 0}},
+}
+
+func captureR4(ctx context.Context, tx *sql.Tx) (json.RawMessage, error) {
+	tables := make(map[string][]map[string]any, len(r4Schemas))
 	for _, name := range []string{"projects", "goals", "profile_claims", "profile_denials", "project_members", "goal_evidence"} {
-		var count int
-		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+name).Scan(&count); err != nil {
+		expected := r4Schemas[name]
+		rows, err := tx.QueryContext(ctx, "PRAGMA table_info("+name+")")
+		if err != nil {
+			return nil, fmt.Errorf("读取项目与画像表结构失败：%w", err)
+		}
+		var actual [][4]any
+		for rows.Next() {
+			var cid, notNull, pk int
+			var colName, kind string
+			var defaultValue any
+			if err := rows.Scan(&cid, &colName, &kind, &notNull, &defaultValue, &pk); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("读取项目与画像表结构失败：%w", err)
+			}
+			actual = append(actual, [4]any{colName, kind, notNull != 0, pk})
+		}
+		rows.Close()
+		if len(actual) != len(expected) {
+			return nil, fmt.Errorf("备份表 %s 的结构不匹配，需更新备份版本", name)
+		}
+		for i := range expected {
+			if actual[i] != expected[i] {
+				return nil, fmt.Errorf("备份表 %s 的结构不匹配，需更新备份版本", name)
+			}
+		}
+		items, err := readBackupRows(ctx, tx, "SELECT * FROM "+name, func(rows *sql.Rows, item *map[string]any) error {
+			values, err := rows.Columns()
+			if err != nil {
+				return err
+			}
+			raw := make([]any, len(values))
+			pointers := make([]any, len(values))
+			for i := range raw {
+				pointers[i] = &raw[i]
+			}
+			if err := rows.Scan(pointers...); err != nil {
+				return err
+			}
+			row := make(map[string]any, len(values))
+			for i, key := range values {
+				switch value := raw[i].(type) {
+				case nil, int64, string:
+					row[key] = value
+				default:
+					return fmt.Errorf("备份表 %s 含不支持的字段类型", name)
+				}
+			}
+			*item = row
+			return nil
+		})
+		if err != nil {
 			return nil, fmt.Errorf("读取项目与画像数据失败：%w", err)
 		}
-		if count > 0 {
-			return nil, fmt.Errorf("资料库含项目与画像数据，v6 备份需要先迁移 R4 快照采集")
+		tables[name] = items
+	}
+	noteBindings := map[string]string{}
+	for _, row := range tables["project_members"] {
+		id, _ := row["note_id"].(string)
+		fingerprint, err := fingerprintRow(ctx, tx, "SELECT title,body_md,current_revision,is_deleted FROM notes WHERE id=?", id)
+		if err != nil || fingerprint == "" {
+			return nil, fmt.Errorf("项目成员笔记不存在：%s", id)
 		}
-		tables[name] = []any{}
+		noteBindings[id] = fingerprint
+	}
+	evidenceBindings := map[string]any{}
+	for _, row := range tables["goal_evidence"] {
+		kind, _ := row["kind"].(string)
+		id, _ := row["evidence_id"].(string)
+		if kind != "note" && kind != "material" {
+			return nil, fmt.Errorf("目标证据类型无效，无法安全备份")
+		}
+		query := "SELECT title,raw_text,source_url,is_deleted,updated_at FROM materials WHERE id=?"
+		if kind == "note" {
+			query = "SELECT title,body_md,current_revision,is_deleted FROM notes WHERE id=?"
+		}
+		fingerprint, err := fingerprintRow(ctx, tx, query, id)
+		if err != nil {
+			return nil, err
+		}
+		if fingerprint == "" {
+			evidenceBindings[kind+"\n"+id] = nil
+		} else {
+			evidenceBindings[kind+"\n"+id] = fingerprint
+		}
+	}
+	profileBindings := map[string]any{}
+	profileIDs := map[string]struct{}{}
+	for _, row := range tables["profile_claims"] {
+		raw, _ := row["evidence_json"].(string)
+		var ids []string
+		if json.Unmarshal([]byte(raw), &ids) != nil {
+			return nil, fmt.Errorf("画像证据格式无效，无法安全备份")
+		}
+		for _, id := range ids {
+			profileIDs[id] = struct{}{}
+		}
+	}
+	for id := range profileIDs {
+		note, err := fingerprintRow(ctx, tx, "SELECT title,body_md,current_revision,is_deleted FROM notes WHERE id=?", id)
+		if err != nil {
+			return nil, err
+		}
+		material, err := fingerprintRow(ctx, tx, "SELECT title,raw_text,source_url,is_deleted,updated_at FROM materials WHERE id=?", id)
+		if err != nil {
+			return nil, err
+		}
+		card, err := fingerprintRow(ctx, tx, "SELECT headline,summary,details,category,links_json,tags_json,is_deleted,edited_at FROM cards WHERE id=?", id)
+		if err != nil {
+			return nil, err
+		}
+		binding := map[string]any{"note": nil, "material": nil, "card": nil}
+		if note != "" {
+			binding["note"] = note
+		}
+		if material != "" {
+			binding["material"] = material
+		}
+		if card != "" {
+			binding["card"] = card
+		}
+		profileBindings[id] = binding
 	}
 	encoded, err := json.Marshal(map[string]any{
-		"version":           1,
-		"tables":            tables,
-		"note_bindings":     map[string]string{},
-		"evidence_bindings": map[string]any{},
-		"profile_bindings":  map[string]any{},
+		"version": 1, "tables": tables,
+		"note_bindings": noteBindings, "evidence_bindings": evidenceBindings, "profile_bindings": profileBindings,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return encoded, nil
+}
+
+func fingerprintRow(ctx context.Context, tx *sql.Tx, query, id string) (string, error) {
+	rows, err := tx.QueryContext(ctx, query, id)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return "", rows.Err()
+	}
+	columns, err := rows.Columns()
+	if err != nil {
+		return "", err
+	}
+	raw := make([]any, len(columns))
+	pointers := make([]any, len(columns))
+	for i := range raw {
+		pointers[i] = &raw[i]
+	}
+	if err := rows.Scan(pointers...); err != nil {
+		return "", err
+	}
+	values := make([]any, len(raw))
+	for i, value := range raw {
+		switch v := value.(type) {
+		case nil, int64, string:
+			values[i] = v
+		default:
+			return "", fmt.Errorf("指纹来源含不支持的字段类型")
+		}
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func validateRevisions(revisions []backupNoteRevision, notes []backupNote) error {

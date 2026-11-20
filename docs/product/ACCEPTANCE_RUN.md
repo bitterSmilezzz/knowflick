@@ -1062,6 +1062,18 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 本轮先补依赖链最短的笔记历史。真实 R4 项目与画像快照、订阅、邮箱、回收站和 Go 恢复写入仍未迁移。
 
+## 阶段 2 第三十九轮 · 迁移真实 R4 项目与画像快照
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 六张表 | PASS | Go 在同一只读事务中读取 projects、goals、profile_claims、profile_denials、project_members、goal_evidence，并用列清单校验字段结构；结构漂移时失败关闭，不猜列。 |
+| 指纹绑定 | PASS | note_bindings、evidence_bindings、profile_bindings 与 Rust 采集结果逐字段一致。指纹只取源文本字段，不把复习计数等会变化的状态算进去。 |
+| 恢复兼容 | PASS | 含真实项目、目标、画像声明和目标证据的 v6 备份被现有 TypeScript 恢复器接受，清单计数与六张表一致。 |
+
+上一轮的空 R4 兜底已替换为真实采集。缺失笔记、无效证据类型与画像证据格式错误会返回明确错误，不静默丢行。
+
+订阅、邮箱、回收站与 Go 恢复写入仍未迁移。
+
 复现：用第三十六轮的 Rust fixture 命令生成新库（fixture 现在含三条笔记修订），设 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 与 `KF_GO_SQLITE_BACKUP_FIXTURE`，运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，再运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
 
 

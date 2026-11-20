@@ -35,7 +35,7 @@ describe("Go 从 SQLite 导出的 v4 备份包", () => {
     if (!fixture) throw new Error("缺少 SQLite 备份测试文件");
     const restored = restoreKfBackup(new Uint8Array(readFileSync(fixture)));
     expect(restored.manifest.schemaVersion).toBe(6);
-    expect(restored.manifest.stats).toEqual({ cards: 1, materials: 1, artifacts: 1, notes: 2, knowledgeBases: 1, noteRevisions: 3, media: 2, r4: { projects: 0, goals: 0, profile_claims: 0, profile_denials: 0, project_members: 0, goal_evidence: 0 } });
+    expect(restored.manifest.stats).toEqual({ cards: 1, materials: 1, artifacts: 1, notes: 2, knowledgeBases: 1, noteRevisions: 3, media: 2, r4: { projects: 1, goals: 1, profile_claims: 1, profile_denials: 0, project_members: 1, goal_evidence: 1 } });
     expect(restored.cards[0]).toMatchObject({ id: "card-active", tags: ["标签"] });
     expect(restored.materials[0]).toMatchObject({ id: "material-active", mediaPath: "media/image/material.png" });
     expect(restored.artifacts[0]).toMatchObject({ id: "artifact-active", sourceCardIds: ["card-active"], sourceNoteIds: ["note-active"] });
