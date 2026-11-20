@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ConvertMaterialToCard, ListMaterials, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ConvertMaterialToCard, FetchClipPage, ListMaterials, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { digest } from "../src/domain/clipEngine";
 import type { Material } from "./bindings/knowflick.local/workbench-go/internal/materials/models";
 
 type Props = {
@@ -17,6 +18,11 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
   const [query, setQuery] = useState("");
   const [selectedID, setSelectedID] = useState("");
   const [confirmConvert, setConfirmConvert] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [capTitle, setCapTitle] = useState("");
+  const [capText, setCapText] = useState("");
+  const [capURL, setCapURL] = useState("");
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const selected = items?.find((item) => item.id === selectedID) ?? items?.[0] ?? null;
@@ -54,6 +60,44 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
     }
   }
 
+
+  async function fetchClipBody() {
+    if (!capURL.trim() || busy || fetching) return;
+    setFetching(true);
+    setError("");
+    setNotice("");
+    try {
+      const page = await FetchClipPage(generation, capURL.trim());
+      const result = digest(page.text, page.finalUrl);
+      if (!result) {
+        setError("未抽取到正文，请手动粘贴正文后再保存");
+        return;
+      }
+      setCapText(result.aiNote);
+      if (!capTitle.trim()) setCapTitle(result.title);
+      setNotice("已抓取网页正文，可编辑后再保存");
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setFetching(false);
+    }
+  }
+
+  async function saveCapture() {
+    if (!writable || busy) return;
+    await run(async () => {
+      const id = await CaptureMaterial(generation, capTitle, capText, capURL);
+      setCaptureOpen(false);
+      setCapTitle("");
+      setCapText("");
+      setCapURL("");
+      setNotice("已存入收件箱");
+      setSelectedID(id);
+      await refresh(inboxOnly, "");
+      setQuery("");
+    });
+  }
+
   async function search(event: { preventDefault: () => void }) {
     event.preventDefault();
     await run(() => refresh(inboxOnly, query.trim()));
@@ -85,6 +129,19 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
           <input type="search" aria-label="搜索素材" placeholder="搜索标题或正文" value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} />
           <button type="submit" disabled={busy}>搜索</button>
         </form>
+
+        {writable && <details className="preview-knowledge-bases" open={captureOpen} onToggle={(event) => setCaptureOpen(event.currentTarget.open)}>
+          <summary>记录素材</summary>
+          <form onSubmit={(event) => { event.preventDefault(); void saveCapture(); }}>
+            <label>标题（可留空）<input value={capTitle} disabled={busy || fetching} onChange={(event) => setCapTitle(event.target.value)} /></label>
+            <label>正文<textarea required value={capText} disabled={busy || fetching} onChange={(event) => setCapText(event.target.value)} /></label>
+            <label>链接（可留空）<input value={capURL} disabled={busy || fetching} onChange={(event) => setCapURL(event.target.value)} placeholder="https://example.org/article" /></label>
+            <div className="preview-actions">
+              <button type="button" disabled={busy || fetching || !capURL.trim()} onClick={() => void fetchClipBody()}>{fetching ? "抓取中…" : "从链接抓取正文"}</button>
+              <button type="submit" disabled={busy || fetching || !capText.trim()}>保存素材</button>
+            </div>
+          </form>
+        </details>}
         <label className="preview-meta">
           <input type="checkbox" checked={inboxOnly} disabled={busy || query.trim() !== ""} onChange={(event) => { const on = event.target.checked; setInboxOnly(on); void run(() => refresh(on, "")); }} />
           只看待处理

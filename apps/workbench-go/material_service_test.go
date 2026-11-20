@@ -91,4 +91,15 @@ func TestPreviewMaterialFlowOnRustLibrary(t *testing.T) {
 	if _, err := service.ConvertMaterialToCard(ctx, writable.Generation, "material-deleted"); err == nil {
 		t.Fatal("deleted material converted")
 	}
+	captured, err := service.CaptureMaterial(ctx, writable.Generation, "", "闪念正文 zebra", "https://example.org/note")
+	if err != nil || captured == "" {
+		t.Fatalf("capture: %q, %v", captured, err)
+	}
+	if _, err := service.CaptureMaterial(ctx, writable.Generation, "", "", ""); err == nil {
+		t.Fatal("empty capture accepted")
+	}
+	inbox, err = service.ListMaterials(ctx, writable.Generation, true, 100, 0)
+	if err != nil || len(inbox) != 1 || inbox[0].ID != captured || inbox[0].SourceType != "web" {
+		t.Fatalf("inbox after capture: %+v, %v", inbox, err)
+	}
 }

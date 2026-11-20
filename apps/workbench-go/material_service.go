@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"knowflick.local/workbench-go/internal/httpx"
+	"knowflick.local/workbench-go/internal/library"
 	"knowflick.local/workbench-go/internal/materials"
 )
 
@@ -50,4 +52,24 @@ func (s *PreviewService) ConvertMaterialToCard(ctx context.Context, generation i
 		return false, errors.New("请重新打开资料库")
 	}
 	return s.current.ConvertMaterialToCard(ctx, materialID, uuid.NewString(), time.Now().UnixMilli())
+}
+
+// CaptureMaterial 新建一条收件箱素材（闪念/剪贴），返回素材标识。
+func (s *PreviewService) CaptureMaterial(ctx context.Context, generation int, title, text, sourceURL string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	return s.current.Capture(ctx, library.CaptureInput{Title: title, Text: text, URL: sourceURL}, time.Now().UnixMilli())
+}
+
+// FetchClipPage 抓取网页原文（HTML/正文），由前端 digest 抽取后再入库。
+func (s *PreviewService) FetchClipPage(ctx context.Context, generation int, url string) (httpx.ClipPage, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return httpx.ClipPage{}, errors.New("请重新打开资料库")
+	}
+	return httpx.FetchClip(ctx, url)
 }
