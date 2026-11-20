@@ -1086,6 +1086,20 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 邮箱快照（v8）、回收站（v11）、搜索历史（v10）与 Go 恢复写入仍未迁移。
 
+## 阶段 2 第四十一轮 · 邮箱快照升级到 v8
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 四张表 | PASS | Go 在同一只读事务中读取 `mail_accounts`、`mail_sync_state`、`mail_imports`、`mail_rejected`，并用列清单校验结构。表缺失时输出空快照，结构不完整或漂移时失败关闭。 |
+| 凭据不入包 | PASS | 账号配置只读 `config_json`，未知字段直接拒绝——无法确认不含密码就不打包。配置必须通过 `mail.Validate` 且规范化后与原值完全一致。 |
+| 素材绑定 | PASS | 每条导入记录计算素材指纹（含删除状态），并与本包导出的素材逐字段核对；`active` 必须存在且指纹一致，`deleted`/`missing` 不得出现在活动素材里。 |
+| 与 Rust 一致 | PASS | 同一测试库中一个账号、一条同步状态、一条导入与一条隔离记录，Go 的 `mail.json` 与 Rust `MailSnapshot` 逐字段一致。 |
+| 版本推进 | PASS | 含邮箱快照的包升级为 schemaVersion 8，清单写入邮箱四项计数，现有 TypeScript 恢复器接受。 |
+
+测试期间修正一处自写缺陷：账号去重判断写成了 `!accountIDs[id]`，导致任何账号都被判为重复。
+
+回收站（v11）、搜索历史（v10）与 Go 恢复写入仍未迁移。
+
 复现：用第三十六轮的 Rust fixture 命令生成新库（fixture 现在含三条笔记修订），设 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 与 `KF_GO_SQLITE_BACKUP_FIXTURE`，运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，再运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
 
 

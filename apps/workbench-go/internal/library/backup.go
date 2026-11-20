@@ -101,6 +101,7 @@ type backupDatabase struct {
 	notes          []backupNote
 	noteRevisions  []backupNoteRevision
 	subscriptions  backupSubscriptions
+	mail           backupMailSnapshot
 	r4             json.RawMessage
 	knowledgeBases backupKnowledgeBases
 }
@@ -127,6 +128,7 @@ func (l *Library) WriteSystemBackupV4(ctx context.Context, dst io.Writer, dir st
 		{database.noteRevisions, &snapshot.NoteRevisions},
 		{database.r4, &snapshot.R4},
 		{database.subscriptions, &snapshot.Subscriptions},
+		{database.mail, &snapshot.Mail},
 	} {
 		*item.dest, err = json.Marshal(item.data)
 		if err != nil {
@@ -203,6 +205,10 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	if err != nil {
 		return backupDatabase{}, err
 	}
+	mailSnapshot, err := captureMailSnapshot(ctx, tx, materials)
+	if err != nil {
+		return backupDatabase{}, err
+	}
 	r4, err := captureR4(ctx, tx)
 	if err != nil {
 		return backupDatabase{}, err
@@ -218,6 +224,7 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 		cards: activeCards, materials: materials, artifacts: artifacts, notes: notes,
 		noteRevisions:  revisions,
 		subscriptions:  subscriptions,
+		mail:           mailSnapshot,
 		r4:             r4,
 		knowledgeBases: backupKnowledgeBases{Items: bases, Membership: membership},
 	}, nil

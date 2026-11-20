@@ -53,6 +53,7 @@ func TestWriteSystemBackupV4FromRustDatabase(t *testing.T) {
 		{"cards", "cards"}, {"materials", "materials"}, {"artifacts", "artifacts"},
 		{"note_revisions", "noteRevisions"},
 		{"subscriptions", "subscriptions"},
+		{"mail", "mail"},
 	} {
 		assertJSONMatchesRust(t, pair[0], readZIPFixtureFile(t, reader, pair[0]+".json"), rust[pair[1]])
 	}

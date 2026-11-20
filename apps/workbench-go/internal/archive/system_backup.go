@@ -28,6 +28,7 @@ type SystemSnapshotV4 struct {
 	NoteRevisions  json.RawMessage
 	R4             json.RawMessage
 	Subscriptions  json.RawMessage
+	Mail           json.RawMessage
 	Media          map[string][]byte
 }
 
@@ -66,6 +67,10 @@ const systemV6NoR4Limitation = "当前备份格式不含项目、目标、个人
 const systemV7Limitation = "当前备份格式不含邮箱账户及同步记录、外部连接授权、搜索历史、已删除的素材、卡片和产物；附件和设置与数据库不在同一事务"
 
 const systemV7NoR4Limitation = "当前备份格式不含项目、目标、个人画像、邮箱账户及同步记录、外部连接授权、搜索历史、已删除的素材、卡片和产物；附件和设置与数据库不在同一事务"
+
+const systemV8Limitation = "当前备份格式不含外部连接授权、搜索历史、已删除的素材、卡片和产物；邮箱密码不随包迁移，附件和设置与数据库不在同一事务"
+
+const systemV8NoR4Limitation = "当前备份格式不含项目、目标、个人画像、外部连接授权、搜索历史、已删除的素材、卡片和产物；邮箱密码不随包迁移，附件和设置与数据库不在同一事务"
 
 // WriteSystemBackupV4 写入现有 TypeScript 恢复器兼容的基础 .kfbackup。
 // 校验和根据实际写入的字节生成，附件按二进制条目保存。
@@ -160,6 +165,29 @@ func WriteSystemBackupV4(dst io.Writer, snapshot SystemSnapshotV4, exportedAt ti
 		manifest.Stats["subscriptions"] = len(payload.Items)
 		manifest.Stats["subscriptionsExcluded"] = payload.ExcludedCount
 		entries = append(entries, systemEntry{"subscriptions.json", snapshot.Subscriptions})
+	}
+	if len(snapshot.Mail) > 0 {
+		var payload struct {
+			Accounts         []json.RawMessage          `json:"accounts"`
+			SyncStates       []json.RawMessage          `json:"syncStates"`
+			Imports          []json.RawMessage          `json:"imports"`
+			Rejected         []json.RawMessage          `json:"rejected"`
+			MaterialBindings map[string]json.RawMessage `json:"materialBindings"`
+			Version          int                        `json:"version"`
+		}
+		if json.Unmarshal(snapshot.Mail, &payload) != nil || payload.Version != 1 || payload.Accounts == nil || payload.SyncStates == nil || payload.Imports == nil || payload.Rejected == nil || payload.MaterialBindings == nil {
+			return fmt.Errorf("mail.json 的结构无效")
+		}
+		manifest.SchemaVersion = 8
+		manifest.Limitations = []string{systemV8NoR4Limitation}
+		if len(snapshot.R4) > 0 {
+			manifest.Limitations = []string{systemV8Limitation}
+		}
+		manifest.Stats["mailAccounts"] = len(payload.Accounts)
+		manifest.Stats["mailSyncStates"] = len(payload.SyncStates)
+		manifest.Stats["mailImports"] = len(payload.Imports)
+		manifest.Stats["mailRejected"] = len(payload.Rejected)
+		entries = append(entries, systemEntry{"mail.json", snapshot.Mail})
 	}
 	paths := make([]string, 0, len(snapshot.Media))
 	for relative := range snapshot.Media {

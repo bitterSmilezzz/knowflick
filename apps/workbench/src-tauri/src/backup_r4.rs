@@ -522,6 +522,7 @@ mod tests {
         let path = std::path::PathBuf::from(dir).join("knowflick.db");
         assert!(!path.exists(), "fixture destination must be new");
         let mut conn = crate::db::open_db(&path).unwrap();
+        crate::mail::ensure_backup_schema(&mut conn).unwrap();
         conn.execute_batch(r#"
             INSERT INTO materials (id, source_type, title, raw_text, content_hash, media_path, created_at, updated_at, is_deleted)
             VALUES ('material-active', 'image', '素材附件', '正文', 'fixture', 'media/image/material.png', 1700000000000, 1700000000001, 0),
@@ -532,6 +533,14 @@ mod tests {
             INSERT INTO notes (id, title, body_md, tags_json, current_revision, created_at, updated_at, is_deleted, deleted_at, source_material_id, exclude_from_profile)
             VALUES ('note-active', '当前笔记', '![素材](media/image/material.png)', '["备份"]', 2, 1700000000000, 1700000000001, 0, NULL, 'material-active', 1),
                    ('note-deleted', '回收站笔记', '![笔迹](media/ink/note.json)', '[]', 1, 1700000000002, 1700000000003, 1, 1700000000004, NULL, 0);
+            INSERT INTO mail_accounts (id,config_json,created_at,last_sync_at,last_error,uid_validity,last_uid) VALUES
+            ('11111111-1111-4111-8111-111111111111','{"id":"11111111-1111-4111-8111-111111111111","name":"测试邮箱","email":"demo@example.org","host":"imap.example.org","port":993,"username":"demo","folder":"INBOX","syncLimit":50,"syncIntervalMinutes":0}',1700000000000,1700000000001,NULL,42,7);
+            INSERT INTO mail_sync_state (account_id,history_before,history_complete,last_attempt_at) VALUES
+            ('11111111-1111-4111-8111-111111111111',NULL,1,1700000000001);
+            INSERT INTO mail_imports (account_id,folder,uid_validity,uid,message_id,material_id) VALUES
+            ('11111111-1111-4111-8111-111111111111','INBOX',42,7,'<fixture@example.org>','material-active');
+            INSERT INTO mail_rejected (account_id,folder,uid_validity,uid,reason,rejected_at) VALUES
+            ('11111111-1111-4111-8111-111111111111','INBOX',42,8,'无法读取邮件正文或 MIME 结构',1700000000002);
             INSERT INTO subscriptions (id,type,title,target_url,interval_minutes,last_polled_at,is_active,created_at) VALUES
             ('sub-1','rss','公开订阅','https://example.org/feed.xml',30,123,1,1700000000000),
             ('sub-2','github_release','发行订阅','owner/repo',90,NULL,0,1700000000001),
@@ -562,6 +571,10 @@ mod tests {
         let subscriptions = snapshot.subscriptions.as_ref().expect("订阅快照");
         assert_eq!(subscriptions.items.len(), 2);
         assert_eq!(subscriptions.excluded_count, 1);
+        let mail = snapshot.mail.as_ref().expect("邮箱快照");
+        assert_eq!(mail.accounts.len(), 1);
+        assert_eq!(mail.imports.len(), 1);
+        assert_eq!(mail.rejected.len(), 1);
         std::fs::write(path.with_extension("json"), serde_json::to_vec(&snapshot).unwrap()).unwrap();
     }
 
