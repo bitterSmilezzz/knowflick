@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportAudioMaterial, ImportImages, ListMaterials, SaveInkMaterial, OpenURL, SaveRecordingMaterial, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, CompleteChat, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportAudioMaterial, ImportImages, ListMaterials, SaveCardContent, SaveInkMaterial, OpenURL, SaveRecordingMaterial, ReadAPIKey, ReadSettings, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
+import { cardsFromModelText, completionURL, requiresKey, TRANSFORM_SYSTEM, transformPrompt } from "../src/domain/ingest";
+import { parseSettings } from "../src/domain/settings";
+import { toCardDraftInput } from "../src/domain/cardDraft";
 import { formatDuration, parseInk, type InkDocument } from "../src/domain/ink";
 import { bytesToBase64 } from "../src/shell/base64";
 import { attachmentKindOf } from "../src/domain/attachmentKind";
@@ -254,6 +257,34 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
     });
   }
 
+  async function extractCards() {
+    if (!selected || !writable || busy) return;
+    await run(async () => {
+      const text = (selected.cleanedMarkdown ?? "").trim() || selected.rawText.trim();
+      if (!text) throw new Error("这条素材没有可提炼的正文");
+      const [settingsText, key] = await Promise.all([ReadSettings(generation), ReadAPIKey(generation)]);
+      const settings = parseSettings(settingsText || null).settings;
+      if (requiresKey(settings.baseURL) && !key.trim()) throw new Error("未配置 API 密钥。到「设置与本地文件」写入密钥后再提炼");
+      const body = JSON.stringify({
+        model: settings.model,
+        temperature: 0.7,
+        max_tokens: 3200,
+        stream: false,
+        messages: [
+          { role: "system", content: TRANSFORM_SYSTEM },
+          { role: "user", content: transformPrompt(text.slice(0, 8000)) },
+        ],
+      });
+      const response = await CompleteChat(generation, completionURL(settings.baseURL), key.trim(), body);
+      const drafted = cardsFromModelText(response);
+      for (const card of drafted) {
+        await SaveCardContent(generation, toCardDraftInput(card, selected.id));
+      }
+      setNotice("已提炼 " + drafted.length + " 张卡片，可在卡片库查看");
+      onChanged();
+    });
+  }
+
   async function toNote() {
     if (!selected || !writable || busy) return;
     await run(async () => {
@@ -354,6 +385,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
           {selected.sourceType === "audio" && !recording?.transcribed && <p className="preview-meta">这段录音还没有本地转写。</p>}
           {writable && <div className="preview-actions">
             <button type="button" disabled={busy} onClick={() => void toNote()}>转为笔记</button>
+            <button type="button" disabled={busy} onClick={() => void extractCards()}>AI 提炼成卡片</button>
             {selected.inboxStatus === "inbox" && <>
               <button type="button" disabled={busy} onClick={() => void mark("processed")}>标为已处理</button>
               <button type="button" disabled={busy} onClick={() => void mark("dismissed")}>忽略</button>

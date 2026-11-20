@@ -70,3 +70,39 @@ func TestPreviewCardEditOnRustLibrary(t *testing.T) {
 		t.Fatalf("deleted card: %+v, %v", page, err)
 	}
 }
+
+func TestPreviewCardCreationOnRustLibrary(t *testing.T) {
+	service, _ := openFixtureCopy(t)
+	ctx := t.Context()
+	opened, err := service.OpenInitialLibrary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := cards.EditableCard{
+		ID: "ai-card-1", Version: 0,
+		Content:    cards.Content{Category: "架构", Headline: "AI 提炼的卡片", Summary: "摘要", Details: "这是一段由 AI 提炼出的卡片正文，用来验证新建卡片路径。", Tags: []string{"提炼"}},
+		MaterialID: stringPtr("material-active"), Source: "ai",
+	}
+	if err := service.SaveCardContent(ctx, opened.Generation, draft); !errors.Is(err, library.ErrReadOnly) {
+		t.Fatalf("read-only create: %v", err)
+	}
+	writable, err := service.EnableEditing(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SaveCardContent(ctx, writable.Generation, draft); err != nil {
+		t.Fatal(err)
+	}
+	found, err := service.BrowseCards(ctx, writable.Generation, "AI 提炼", 0)
+	if err != nil || len(found.Cards) != 1 || found.Cards[0].ID != "ai-card-1" || found.Cards[0].Version != 1 {
+		t.Fatalf("created card: %+v, %v", found, err)
+	}
+	if found.Cards[0].Content.Tags[0] != "提炼" || found.Cards[0].Content.Category != "架构" {
+		t.Fatalf("created card content: %+v", found.Cards[0])
+	}
+	if err := service.SaveCardContent(ctx, writable.Generation, draft); err == nil {
+		t.Fatal("duplicate create with version 0 overwrote the card")
+	}
+}
+
+func stringPtr(value string) *string { return &value }
