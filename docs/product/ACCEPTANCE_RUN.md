@@ -1121,6 +1121,20 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 至此 v4 到 v11 的导出链路已全部由 Go 完成。Go 恢复写入、备份界面入口与云端往返仍未迁移。
 
+## 阶段 2 第四十四轮 · 备份包的校验关卡
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 逐文件校验 | PASS | `ReadSystemBackup` 先解析清单，再核对每个核心条目的 SHA-256；篡改 `cards.json` 后立即拒绝。v2 旧包仍按 FNV-1a（UTF-16 码元）校验，与前端同口径。 |
+| 条目白名单 | PASS | 只允许清单与 `media/{audio,image,ink}/…`。塞进 `credentials/apiKey.credential` 直接报「不支持的条目」；压缩方式非 Store、重复条目、超大条目也拒绝。 |
+| 计数对账 | PASS | 清单声称的卡片数改大后报「计数对不上」。 |
+| v11 整包 | PASS | 用第 43 轮生成的真实 v11 包验证：版本、2 个二进制附件、邮箱与回收站条目都能通过校验读回。 |
+
+二进制附件必须按字节读：首版复用了文本解码函数，两个 PNG 附件立刻被当成非法 UTF-8 拒绝。
+
+**这一步只是校验与解包，尚未写库。**恢复写入、备份界面入口与云端往返仍未迁移。
+
+
 
 复现：用第三十六轮的 Rust fixture 命令生成新库（fixture 现在含三条笔记修订），设 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 与 `KF_GO_SQLITE_BACKUP_FIXTURE`，运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，再运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
 
