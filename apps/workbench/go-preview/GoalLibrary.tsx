@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AchieveGoal, AbandonGoal, CreateGoal, GoalReview, LinkGoalEvidence, ListGoals, ListMaterials, ListNotes, ListProjects } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { AchieveGoal, AbandonGoal, CreateGoal, GoalReview, LinkGoalEvidence, ListGoals, ListMaterials, ListNotes, ListProjects, SetGoalScope } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Goal, Snapshot } from "./bindings/knowflick.local/workbench-go/internal/goals/models";
 import type { Project } from "./bindings/knowflick.local/workbench-go/internal/projects/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -101,6 +101,21 @@ export function GoalLibrary({ generation, writable, busy, onBusy }: Props) {
     });
   }
 
+  async function changeScope(projectID: string) {
+    if (!selected || busy) return;
+    onBusy(true); setError(""); setNotice("");
+    try {
+      await SetGoalScope(generation, selected.id, projectID);
+      setNotice(projectID ? "目标已归属到所选项目" : "目标已改为全局");
+      const rows = await ListGoals(generation);
+      setGoals(rows ?? []);
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      onBusy(false);
+    }
+  }
+
   async function link(id: string, kind: "note" | "material") {
     if (!selected || busy) return;
     await run(async () => {
@@ -160,6 +175,11 @@ export function GoalLibrary({ generation, writable, busy, onBusy }: Props) {
           {writable && <div className="preview-actions">
             <button type="button" disabled={busy} onClick={() => void openEvidence("note")}>关联笔记</button>
             <button type="button" disabled={busy} onClick={() => void openEvidence("material")}>关联素材</button>
+            <select value={selected.scope ?? ""} disabled={busy} aria-label="调整归属项目"
+              onChange={(event) => void changeScope(event.target.value)}>
+              <option value="">全局</option>
+              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+            </select>
           </div>}
           {evidenceTab && <div className="preview-confirm">
             <p>选择要关联到「{selected.title}」的{evidenceTab === "note" ? "笔记" : "素材"}：</p>
