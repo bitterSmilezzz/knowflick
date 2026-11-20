@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"knowflick.local/workbench-go/internal/archive"
@@ -18,6 +19,7 @@ import (
 	"knowflick.local/workbench-go/internal/jsonx"
 	"knowflick.local/workbench-go/internal/libfiles"
 	"knowflick.local/workbench-go/internal/media"
+	"knowflick.local/workbench-go/internal/reviewhistory"
 )
 
 type backupMaterial struct {
@@ -102,6 +104,7 @@ type backupDatabase struct {
 	noteRevisions  []backupNoteRevision
 	subscriptions  backupSubscriptions
 	mail           backupMailSnapshot
+	reviewHistory  json.RawMessage
 	r4             json.RawMessage
 	knowledgeBases backupKnowledgeBases
 }
@@ -129,6 +132,7 @@ func (l *Library) WriteSystemBackupV4(ctx context.Context, dst io.Writer, dir st
 		{database.r4, &snapshot.R4},
 		{database.subscriptions, &snapshot.Subscriptions},
 		{database.mail, &snapshot.Mail},
+		{database.reviewHistory, &snapshot.ReviewHistory},
 	} {
 		*item.dest, err = json.Marshal(item.data)
 		if err != nil {
@@ -143,6 +147,10 @@ func (l *Library) WriteSystemBackupV4(ctx context.Context, dst io.Writer, dir st
 		snapshot.Settings = *settings
 	}
 	snapshot.Media, err = database.readBackupMedia(ctx, dir)
+	if err != nil {
+		return err
+	}
+	snapshot.SearchHistory, err = readSearchHistory(dir)
 	if err != nil {
 		return err
 	}
@@ -205,6 +213,14 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	if err != nil {
 		return backupDatabase{}, err
 	}
+	reviewHistory, err := reviewhistory.CaptureTx(tx)
+	if err != nil {
+		return backupDatabase{}, fmt.Errorf("读取复习历史失败：%w", err)
+	}
+	reviewJSON, err := json.Marshal(reviewHistory)
+	if err != nil {
+		return backupDatabase{}, err
+	}
 	mailSnapshot, err := captureMailSnapshot(ctx, tx, materials)
 	if err != nil {
 		return backupDatabase{}, err
@@ -225,6 +241,7 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 		noteRevisions:  revisions,
 		subscriptions:  subscriptions,
 		mail:           mailSnapshot,
+		reviewHistory:  reviewJSON,
 		r4:             r4,
 		knowledgeBases: backupKnowledgeBases{Items: bases, Membership: membership},
 	}, nil
@@ -411,6 +428,41 @@ func fingerprintRow(ctx context.Context, tx *sql.Tx, query, id string) (string, 
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:]), nil
 }
+
+func readSearchHistory(dir string) (json.RawMessage, error) {
+	text, err := libfiles.ReadOptional(filepath.Join(dir, "search_history.json"))
+	if err != nil {
+		return nil, fmt.Errorf("读取搜索历史失败：%w", err)
+	}
+	if text == nil {
+		return nil, nil
+	}
+	var history []string
+	if json.Unmarshal([]byte(*text), &history) != nil || history == nil {
+		return nil, fmt.Errorf("搜索历史快照格式无效")
+	}
+	if len(history) > searchHistoryLimit {
+		return nil, fmt.Errorf("搜索历史快照超过上限 %d 条", searchHistoryLimit)
+	}
+	seen := make(map[string]struct{}, len(history))
+	for _, query := range history {
+		trimmed := strings.TrimSpace(query)
+		if trimmed == "" || trimmed != query {
+			return nil, fmt.Errorf("搜索历史快照格式无效")
+		}
+		if _, duplicate := seen[query]; duplicate {
+			return nil, fmt.Errorf("搜索历史快照包含重复条目")
+		}
+		seen[query] = struct{}{}
+	}
+	encoded, err := json.Marshal(history)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+const searchHistoryLimit = 8
 
 func validateRevisions(revisions []backupNoteRevision, notes []backupNote) error {
 	byID := make(map[string]backupNote, len(notes))

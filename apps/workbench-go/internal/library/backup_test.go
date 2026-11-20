@@ -30,6 +30,7 @@ func TestWriteSystemBackupV4FromRustDatabase(t *testing.T) {
 	material := []byte{0x89, 0x50, 0x4e, 0x47, 0xff}
 	ink := []byte(`{"strokes":[]}`)
 	writeFixtureFile(t, filepath.Join(dir, "media", "image", "material.png"), material)
+	writeFixtureFile(t, filepath.Join(dir, "search_history.json"), []byte("[\"迁移测试\",\"备份\"]"))
 	writeFixtureFile(t, filepath.Join(dir, "settings.json"), []byte(`{"ui":{"theme":"dark"},"sync":{"password":"fixture-value","username":"demo"}}`))
 	var output bytes.Buffer
 	at := time.UnixMilli(1_700_000_000_123)
@@ -54,6 +55,7 @@ func TestWriteSystemBackupV4FromRustDatabase(t *testing.T) {
 		{"note_revisions", "noteRevisions"},
 		{"subscriptions", "subscriptions"},
 		{"mail", "mail"},
+		{"review_history", "reviewHistory"},
 	} {
 		assertJSONMatchesRust(t, pair[0], readZIPFixtureFile(t, reader, pair[0]+".json"), rust[pair[1]])
 	}

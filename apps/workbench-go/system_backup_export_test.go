@@ -82,7 +82,7 @@ func TestSaveSystemBackupWritesOnlyValidDestination(t *testing.T) {
 		t.Fatalf("unexpected manifest: %v", manifest)
 	}
 	version := manifest["schemaVersion"].(float64)
-	if version != 4 && version != 6 && version != 7 && version != 8 {
+	if version < 4 || version > 9 {
 		t.Fatalf("unexpected version: %v", version)
 	}
 	cardData, err := reader.Open("cards.json")

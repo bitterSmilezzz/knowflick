@@ -283,6 +283,26 @@ func Capture(db *sql.DB) (Snapshot, error) {
 	return snapshot, nil
 }
 
+// CaptureTx 在调用方的事务里读复习历史，供 .kfbackup 与其它表共用同一快照。
+func CaptureTx(tx *sql.Tx) (Snapshot, error) {
+	if err := validateSchema(tx); err != nil {
+		return Snapshot{}, err
+	}
+	coverage, err := coverageStartedAt(tx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	events, err := readEvents(tx, nil, nil)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snapshot := Snapshot{Version: 1, CoverageStartedAt: coverage, Events: events}
+	if err := Validate(snapshot); err != nil {
+		return Snapshot{}, err
+	}
+	return snapshot, nil
+}
+
 // Period 读一段周期内的复习事件（含两端）。
 func Period(db *sql.DB, from, to int64) (Snapshot, error) {
 	if from < 0 || to < from {

@@ -533,6 +533,9 @@ mod tests {
             INSERT INTO notes (id, title, body_md, tags_json, current_revision, created_at, updated_at, is_deleted, deleted_at, source_material_id, exclude_from_profile)
             VALUES ('note-active', '当前笔记', '![素材](media/image/material.png)', '["备份"]', 2, 1700000000000, 1700000000001, 0, NULL, 'material-active', 1),
                    ('note-deleted', '回收站笔记', '![笔迹](media/ink/note.json)', '[]', 1, 1700000000002, 1700000000003, 1, 1700000000004, NULL, 0);
+            INSERT INTO meta (key,value) VALUES ('review_history_started_at','1700000000000') ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+            INSERT INTO review_events (event_id,card_id,reviewed_at,rating,algorithm,project_ids_json,project_attribution_complete) VALUES
+            ('22222222-2222-4222-8222-222222222222','card-active',1700000000100,'good','sm2','[]',1);
             INSERT INTO mail_accounts (id,config_json,created_at,last_sync_at,last_error,uid_validity,last_uid) VALUES
             ('11111111-1111-4111-8111-111111111111','{"id":"11111111-1111-4111-8111-111111111111","name":"测试邮箱","email":"demo@example.org","host":"imap.example.org","port":993,"username":"demo","folder":"INBOX","syncLimit":50,"syncIntervalMinutes":0}',1700000000000,1700000000001,NULL,42,7);
             INSERT INTO mail_sync_state (account_id,history_before,history_complete,last_attempt_at) VALUES

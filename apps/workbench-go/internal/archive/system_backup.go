@@ -29,6 +29,8 @@ type SystemSnapshotV4 struct {
 	R4             json.RawMessage
 	Subscriptions  json.RawMessage
 	Mail           json.RawMessage
+	ReviewHistory  json.RawMessage
+	SearchHistory  json.RawMessage
 	Media          map[string][]byte
 }
 
@@ -71,6 +73,14 @@ const systemV7NoR4Limitation = "当前备份格式不含项目、目标、个人
 const systemV8Limitation = "当前备份格式不含外部连接授权、搜索历史、已删除的素材、卡片和产物；邮箱密码不随包迁移，附件和设置与数据库不在同一事务"
 
 const systemV8NoR4Limitation = "当前备份格式不含项目、目标、个人画像、外部连接授权、搜索历史、已删除的素材、卡片和产物；邮箱密码不随包迁移，附件和设置与数据库不在同一事务"
+
+const systemV9Limitation = "当前备份格式不含外部连接授权、搜索历史、已删除的素材、卡片和产物；邮箱密码不随包迁移，历史覆盖起点之前的复习不补造，附件和设置与数据库不在同一事务"
+
+const systemV9NoR4Limitation = "当前备份格式不含项目、目标、个人画像、外部连接授权、搜索历史、已删除的素材、卡片和产物；邮箱密码不随包迁移，历史覆盖起点之前的复习不补造，附件和设置与数据库不在同一事务"
+
+const systemV10Limitation = "当前备份格式不含外部连接授权、已删除的素材、卡片和产物；邮箱密码不随包迁移，历史覆盖起点之前的复习不补造，附件和设置与数据库不在同一事务"
+
+const systemV10NoR4Limitation = "当前备份格式不含项目、目标、个人画像、外部连接授权、已删除的素材、卡片和产物；邮箱密码不随包迁移，历史覆盖起点之前的复习不补造，附件和设置与数据库不在同一事务"
 
 // WriteSystemBackupV4 写入现有 TypeScript 恢复器兼容的基础 .kfbackup。
 // 校验和根据实际写入的字节生成，附件按二进制条目保存。
@@ -188,6 +198,36 @@ func WriteSystemBackupV4(dst io.Writer, snapshot SystemSnapshotV4, exportedAt ti
 		manifest.Stats["mailImports"] = len(payload.Imports)
 		manifest.Stats["mailRejected"] = len(payload.Rejected)
 		entries = append(entries, systemEntry{"mail.json", snapshot.Mail})
+	}
+	if len(snapshot.ReviewHistory) > 0 {
+		var payload struct {
+			Events            []json.RawMessage `json:"events"`
+			CoverageStartedAt *int64            `json:"coverageStartedAt"`
+			Version           int               `json:"version"`
+		}
+		if json.Unmarshal(snapshot.ReviewHistory, &payload) != nil || payload.Version != 1 || payload.Events == nil || payload.CoverageStartedAt == nil || *payload.CoverageStartedAt < 0 {
+			return fmt.Errorf("review_history.json 的结构无效")
+		}
+		manifest.SchemaVersion = 9
+		manifest.Limitations = []string{systemV9NoR4Limitation}
+		if len(snapshot.R4) > 0 {
+			manifest.Limitations = []string{systemV9Limitation}
+		}
+		manifest.Stats["reviewEvents"] = len(payload.Events)
+		entries = append(entries, systemEntry{"review_history.json", snapshot.ReviewHistory})
+	}
+	if len(snapshot.SearchHistory) > 0 {
+		var payload []string
+		if json.Unmarshal(snapshot.SearchHistory, &payload) != nil || payload == nil {
+			return fmt.Errorf("search_history.json 的结构无效")
+		}
+		manifest.SchemaVersion = 10
+		manifest.Limitations = []string{systemV10NoR4Limitation}
+		if len(snapshot.R4) > 0 {
+			manifest.Limitations = []string{systemV10Limitation}
+		}
+		manifest.Stats["searchHistory"] = len(payload)
+		entries = append(entries, systemEntry{"search_history.json", snapshot.SearchHistory})
 	}
 	paths := make([]string, 0, len(snapshot.Media))
 	for relative := range snapshot.Media {
