@@ -1074,6 +1074,18 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 订阅、邮箱、回收站与 Go 恢复写入仍未迁移。
 
+## 阶段 2 第四十轮 · 订阅快照升级到 v7
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 采集与排除 | PASS | Go 按 `created_at,id` 读取订阅；带查询参数、凭据或未知类型的地址计入 `excludedCount` 而不是打包，`is_active` 只接受 0/1。单测覆盖两条排除、启用标记与空表。 |
+| 与 Rust 一致 | PASS | 同一份测试库中两条公开订阅与一条被排除记录，Go 的 `subscriptions.json` 与 Rust `SubscriptionSnapshot` 逐字段一致。 |
+| 版本推进 | PASS | 含订阅的包升级为 schemaVersion 7，清单写入 `subscriptions` 与 `subscriptionsExcluded`，现有 TypeScript 恢复器接受。 |
+
+附带修正：v6 的 limitations 文案此前误写成「不含项目、目标、个人画像」，实际应只列订阅及之后的数据；本轮改为与前端常量一致。
+
+邮箱快照（v8）、回收站（v11）、搜索历史（v10）与 Go 恢复写入仍未迁移。
+
 复现：用第三十六轮的 Rust fixture 命令生成新库（fixture 现在含三条笔记修订），设 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 与 `KF_GO_SQLITE_BACKUP_FIXTURE`，运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，再运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
 
 

@@ -532,6 +532,10 @@ mod tests {
             INSERT INTO notes (id, title, body_md, tags_json, current_revision, created_at, updated_at, is_deleted, deleted_at, source_material_id, exclude_from_profile)
             VALUES ('note-active', '当前笔记', '![素材](media/image/material.png)', '["备份"]', 2, 1700000000000, 1700000000001, 0, NULL, 'material-active', 1),
                    ('note-deleted', '回收站笔记', '![笔迹](media/ink/note.json)', '[]', 1, 1700000000002, 1700000000003, 1, 1700000000004, NULL, 0);
+            INSERT INTO subscriptions (id,type,title,target_url,interval_minutes,last_polled_at,is_active,created_at) VALUES
+            ('sub-1','rss','公开订阅','https://example.org/feed.xml',30,123,1,1700000000000),
+            ('sub-2','github_release','发行订阅','owner/repo',90,NULL,0,1700000000001),
+            ('sub-secret','rss','私有参数','https://example.org/feed?token=fixture-value',30,NULL,1,1700000000002);
             INSERT INTO projects (id,name,description,created_at,updated_at,archived_at) VALUES ('project-1','测试项目','说明',1700000000000,1700000000001,NULL);
             INSERT INTO project_members VALUES ('project-1','note-active',1700000000000);
             INSERT INTO goals (id,title,done_criteria,scope,created_at,achieved_at,abandoned_at,review_note) VALUES ('goal-1','测试目标','完成标准','',1700000000000,NULL,NULL,'');
@@ -555,6 +559,9 @@ mod tests {
         assert_eq!(snapshot.artifacts.len(), 1);
         assert_eq!(snapshot.membership.len(), 2);
         assert_eq!(snapshot.note_revisions.len(), 3);
+        let subscriptions = snapshot.subscriptions.as_ref().expect("订阅快照");
+        assert_eq!(subscriptions.items.len(), 2);
+        assert_eq!(subscriptions.excluded_count, 1);
         std::fs::write(path.with_extension("json"), serde_json::to_vec(&snapshot).unwrap()).unwrap();
     }
 

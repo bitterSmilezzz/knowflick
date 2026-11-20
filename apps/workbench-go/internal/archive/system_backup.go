@@ -27,6 +27,7 @@ type SystemSnapshotV4 struct {
 	Settings       string
 	NoteRevisions  json.RawMessage
 	R4             json.RawMessage
+	Subscriptions  json.RawMessage
 	Media          map[string][]byte
 }
 
@@ -59,6 +60,12 @@ func IsSystemMediaPath(relative string) bool {
 const systemV4Limitation = "当前备份格式不含项目、目标、个人画像、订阅、邮箱账户及同步记录、外部连接授权、笔记历史版本、搜索历史、已删除的素材、卡片和产物"
 
 const systemV6Limitation = "当前备份格式不含项目、目标、个人画像、订阅、邮箱账户及同步记录、外部连接授权、搜索历史、已删除的素材、卡片和产物；附件和设置与数据库不在同一事务"
+
+const systemV6NoR4Limitation = "当前备份格式不含项目、目标、个人画像、订阅、邮箱账户及同步记录、外部连接授权、搜索历史、已删除的素材、卡片和产物；附件和设置与数据库不在同一事务"
+
+const systemV7Limitation = "当前备份格式不含邮箱账户及同步记录、外部连接授权、搜索历史、已删除的素材、卡片和产物；附件和设置与数据库不在同一事务"
+
+const systemV7NoR4Limitation = "当前备份格式不含项目、目标、个人画像、邮箱账户及同步记录、外部连接授权、搜索历史、已删除的素材、卡片和产物；附件和设置与数据库不在同一事务"
 
 // WriteSystemBackupV4 写入现有 TypeScript 恢复器兼容的基础 .kfbackup。
 // 校验和根据实际写入的字节生成，附件按二进制条目保存。
@@ -135,6 +142,24 @@ func WriteSystemBackupV4(dst io.Writer, snapshot SystemSnapshotV4, exportedAt ti
 		manifest.Limitations = []string{systemV6Limitation}
 		manifest.Stats["noteRevisions"] = revisions
 		entries = append(entries, systemEntry{"note_revisions.json", snapshot.NoteRevisions})
+	}
+	if len(snapshot.Subscriptions) > 0 {
+		var payload struct {
+			Items         []json.RawMessage `json:"items"`
+			ExcludedCount int               `json:"excludedCount"`
+			Version       int               `json:"version"`
+		}
+		if json.Unmarshal(snapshot.Subscriptions, &payload) != nil || payload.Version != 1 || payload.Items == nil || payload.ExcludedCount < 0 {
+			return fmt.Errorf("subscriptions.json 的结构无效")
+		}
+		manifest.SchemaVersion = 7
+		manifest.Limitations = []string{systemV7NoR4Limitation}
+		if len(snapshot.R4) > 0 {
+			manifest.Limitations = []string{systemV7Limitation}
+		}
+		manifest.Stats["subscriptions"] = len(payload.Items)
+		manifest.Stats["subscriptionsExcluded"] = payload.ExcludedCount
+		entries = append(entries, systemEntry{"subscriptions.json", snapshot.Subscriptions})
 	}
 	paths := make([]string, 0, len(snapshot.Media))
 	for relative := range snapshot.Media {
