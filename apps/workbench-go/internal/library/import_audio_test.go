@@ -1,6 +1,7 @@
 package library
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -66,5 +67,9 @@ func TestSaveAudioFileKeepsOriginalAndIndexes(t *testing.T) {
 	item := items[0]
 	if item.SourceType != "audio" || item.MediaPath == nil || !strings.HasSuffix(*item.MediaPath, ".webm") {
 		t.Fatalf("audio metadata: %+v", item)
+	}
+	var metadata recordingMetadata
+	if err := json.Unmarshal([]byte(item.MetadataJSON), &metadata); err != nil || metadata.DurationMs < 3000 || metadata.MIME != "audio/webm" {
+		t.Fatalf("imported duration metadata: %s, %v", item.MetadataJSON, err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"knowflick.local/workbench-go/internal/asr"
 	"knowflick.local/workbench-go/internal/media"
 )
 
@@ -91,7 +92,8 @@ func (l *Library) SaveAudioFile(ctx context.Context, dir, path string, now time.
 	if contentType == "" {
 		return "", errors.New("请选择 WAV、WebM、MP3、M4A 或 OGG 音频文件")
 	}
-	return l.SaveAudioBytes(ctx, dir, contentType, 0, data, now)
+	duration, _ := asr.ProbeDurationMS(path)
+	return l.SaveAudioBytes(ctx, dir, contentType, duration, data, now)
 }
 
 func audioMIME(extension string) string {
