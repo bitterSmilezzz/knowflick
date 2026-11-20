@@ -246,3 +246,33 @@ func (s *PreviewService) RestoreAttachment(ctx context.Context, generation int, 
 	}
 	return media.Restore(filepath.Dir(s.path), relative, bytes)
 }
+
+// SaveMediaCapture 把一段媒体字节存到资料库 media/<kind>/ 下（save_media）。
+// 录音/手写/图片导入各自有专用服务（写库+附件事务）；这里是底层入口，
+// 供桌面端通用保存路径（如粘贴截图）复用。
+func (s *PreviewService) SaveMediaCapture(ctx context.Context, generation int, kind, mime, dataB64 string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	data, err := base64.StdEncoding.DecodeString(dataB64)
+	if err != nil {
+		return "", errors.New("媒体数据无效，无法解码")
+	}
+	return media.Save(filepath.Dir(s.path), kind, mime, data)
+}
+
+// ReadMediaBytes 读回一段媒体（read_media）：返回 base64，避免 JSON 数组放大。
+func (s *PreviewService) ReadMediaBytes(ctx context.Context, generation int, relative string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	data, err := media.Read(filepath.Dir(s.path), relative)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}

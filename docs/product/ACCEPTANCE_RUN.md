@@ -1642,6 +1642,14 @@ R4 项目与画像的写入仍未迁移。
 | 模型下载 | PASS | DownloadAsrModelAndWait 提供与 Rust asr_download_model 相同的同步返回契约（下载后的 model_status），界面轮询入口保持 StartAsrDownload + AsrDownloadProgress。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。fastembed 真推理（384 维）待引入 ONNX 运行时后验证；当前哈希投影（128 维）按身份隔离。 |
 
+## 阶段 2 第九十八轮 · 媒体保存读取与邮箱历史同步
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 媒体命令 | PASS | SaveMediaCapture / ReadMediaBytes 对齐 Rust save_media / read_media：os.Root 防符号链接逃逸，base64 传输避免 JSON 数组放大；逃逸路径与旧代号被拒绝。Rust 资料库副本实测往返一致。 |
+| 邮箱历史同步 | PASS | SyncMailHistoryNow 对齐 mail_sync_history：走 mailsync.ModeHistory 往回补下一批更早邮件，与手动同步共用锁；不可达主机明确报错而不静默跳过。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。真实 IMAP 同步待桌面解锁后验证。 |
+
 ## 阶段 2 第九十四轮 · 笔记、卡片、邮箱、复习历史与回收站恢复
 
 | 验收 | 结果 | 证据与范围 |

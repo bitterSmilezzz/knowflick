@@ -112,3 +112,26 @@ func TestSyncMailAccountNowIgnoresInterval(t *testing.T) {
 		t.Fatal("a manual sync of an unreachable host must report an error, not silently skip")
 	}
 }
+
+func TestSyncMailHistoryNowReachesAccount(t *testing.T) {
+	service := newMailService(t)
+	id := "7f2a6c4e-3d5e-4b9f-8f2c-8d6e3b0f1e44"
+	dir := filepath.Dir(service.preview.path)
+	if _, err := mail.SaveAccount(dir, mail.Config{
+		ID: id, Name: "历史同步", Email: "history@example.com", Host: "127.0.0.1",
+		Port: 1, Username: "history@example.com", Folder: "INBOX", SyncLimit: 50,
+		SyncIntervalMinutes: 0,
+	}, "p"); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := service.SyncMailHistoryNow(context.Background(), id)
+	if err != nil {
+		t.Fatalf("history sync should reach the account, got %v", err)
+	}
+	if outcome.AccountID != id {
+		t.Fatalf("outcome: %+v", outcome)
+	}
+	if outcome.Error == "" {
+		t.Fatal("a history sync of an unreachable host must report an error, not silently skip")
+	}
+}

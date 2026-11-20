@@ -11,6 +11,7 @@ import (
 	"knowflick.local/workbench-go/internal/mail"
 	"knowflick.local/workbench-go/internal/mailrunner"
 	"knowflick.local/workbench-go/internal/mailschedule"
+	"knowflick.local/workbench-go/internal/mailsync"
 )
 
 // MailService 把邮箱能力挂到预览后端：列账号、手动同步、自动同步启停。
@@ -208,4 +209,26 @@ func (m *MailService) RemoveMailAccount(ctx context.Context, id string) error {
 		return err
 	}
 	return mail.RemoveAccount(dir, id)
+}
+
+// SyncMailHistoryNow 导入某个账号下一批更早的邮件（mail_sync_history）。
+// 与「立即同步」同锁：两个入口不能同时写同一个游标。
+func (m *MailService) SyncMailHistoryNow(ctx context.Context, accountID string) (mailschedule.Outcome, error) {
+	dir, err := m.requireWritable()
+	if err != nil {
+		return mailschedule.Outcome{}, err
+	}
+	db, err := m.connection(dir)
+	if err != nil {
+		return mailschedule.Outcome{}, err
+	}
+	unlock := mailschedule.Lock()
+	defer unlock()
+	syncer := mailrunner.NewModeAccountSyncer(db, dir, mailsync.ModeHistory, nil, nil)
+	imported, rejected, syncErr := syncer.Sync(ctx, accountID)
+	outcome := mailschedule.Outcome{AccountID: accountID, Imported: imported, Rejected: rejected}
+	if syncErr != nil {
+		outcome.Error = syncErr.Error()
+	}
+	return outcome, nil
 }
