@@ -1,0 +1,35 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 system-ui, sans-serif; }
+.preview-app { max-width: 1320px; margin: 0 auto; padding: 20px; }
+.preview-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.preview-header h1 { margin: 0; font-size: 21px; }
+.preview-header p, .preview-meta, .preview-count, small { margin: 0; color: var(--muted); font-size: 12px; }
+.preview-header p { overflow-wrap: anywhere; }
+button, input { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--control); border-radius: 4px; padding: 5px 10px; min-height: 32px; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .65; }
+:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.preview-workspace { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(0, 2fr); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.preview-list, .preview-note { padding: 16px; min-width: 0; overflow-wrap: anywhere; }
+.preview-list { border-inline-end: 1px solid var(--line); }
+.preview-list form { display: flex; gap: 8px; margin-bottom: 8px; }
+.preview-list input { flex: 1; min-width: 0; }
+.preview-list form button { flex: none; white-space: nowrap; }
+.preview-list ul { list-style: none; padding: 0; margin: 8px 0; }
+.preview-list li button { width: 100%; text-align: start; border-color: transparent; }
+.preview-list li button small { display: block; }
+.preview-list li button:hover { background: var(--hover); }
+.preview-list li button[aria-current] { background: var(--selected); }
+.preview-note h2 { margin: 0 0 4px; font-size: 20px; }
+.preview-note .ws-prose { margin-top: 16px; overflow: auto; }
+.preview-note pre { overflow: auto; padding: 8px; border-radius: 4px; background: var(--sunken); }
+.preview-note .ws-prose table { border-collapse: collapse; }
+.preview-note .ws-prose td, .preview-note .ws-prose th { border: 1px solid var(--line); padding: 5px 8px; }
+.preview-note a { color: var(--accent-text); }
+.preview-error { color: var(--danger); overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .preview-app { padding: 12px; }
+  .preview-workspace { grid-template-columns: minmax(0, 1fr); }
+  .preview-list { border-inline-end: 0; border-bottom: 1px solid var(--line); }
+  .preview-list ul { max-height: 30vh; overflow: auto; }
+}

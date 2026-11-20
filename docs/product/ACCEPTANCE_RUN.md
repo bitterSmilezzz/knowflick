@@ -496,6 +496,31 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 | 为此做的改进 | 已落地 | `run_step` 的失败注解改成「先 6 条关键行（含 error/panicked/not found 等），再 4 条尾部」。此前只放 `tail -10`，cmake 真正的错误被挤出去，只剩 panic 尾巴——**知道挂了但不知道为什么挂**。本地用假日志验证：`CMake Error at CMakeLists.txt:12` 现在会作为第一条注解出现。 |
 | 仍未覆盖 | 记录 | 抖动的根因没查清（缓存假设未验证）。若再次出现，新注解会直接给出真正的 cmake 错误行，届时再定位；在那之前不再对 Windows 腿做猜测性改动。 |
 
+## 2026-11-20 上午：阶段 1 —— Go 只读数据层与 Wails 外壳（迁移）
+
+环境 macOS arm64（Go 1.27.4 / Wails v3.1.0），分支 `workbench/second-brain-validation`。新增 `apps/workbench-go`（只读数据层 + Wails 外壳）与 `apps/workbench/go-preview`（复用同一份 `MarkdownRenderer` 与设计令牌的前端入口）。Rust 版未删任何代码、未改任何行为，仅在 `notes.rs` 末尾追加一条 #[ignore] 对拍用例。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 只读是强制约束 | PASS | 连接串带 `mode=ro` 与 `_pragma=query_only(1)`。用例直接执行 UPDATE notes 并断言被拒（失败信息 read-only connection accepted a write）。 |
+| 真实库可读 | PASS | `VACUUM INTO` 克隆的真实库（372 KB / 50 张表，含 5 组 FTS5 影子表）打开成功；本机真实库当前 0 篇笔记，列表为空是正确结果。 |
+| Go 写后由 Rust 读（跨运行时对拍） | PASS | Go 在克隆副本写入 4 篇笔记 + 2 条修订 + FTS 索引（1 篇在回收站、1 篇不进 FTS 用来钉 LIKE 兜底）。`cargo test go_preview_snapshot_parity -- --ignored` 用同一文件比对排序（置顶优先、其次 updated_at）、FTS5 前缀 AND 查询、LIKE 兜底、回收站不进结果、current_revision 为 2 与正文原样，全部与 Go 侧一致。 |
+| 源库不被改动 | PASS | 克隆前后对快照文件做 SHA-256，`shasum -a 256 -c` 输出 OK。 |
+| 原生窗口（真实 WebView） | PASS | 无障碍树读出「已显示 3 篇」、三篇夹具笔记与置顶/已归档标记、「修订 2」与渲染后正文；输入 bridgephase migrat 回车得「找到 1 篇」且回收站那篇不出现；输入 中文字串 命中 LIKE 兜底的「迁移验收子串」，另两篇不出现。 |
+| 路径含 # ? % | PASS（修复并回归） | 首跑报 stat .../中文 #备份?.db: no such file or directory——裸路径被当 DSN 解析、# 后被截断。统一改走 file: URI 构造，并留回归用例（文件名即含这些字符）。 |
+| 原生文件选择器 | PASS（部分） | 「打开资料库」弹出系统面板；经 Cmd+Shift+G 定位后打开克隆库，界面刷新为「已显示 0 篇」与「这个资料库还没有笔记」。面板内逐级导航与取消分支未逐一覆盖。 |
+| 产物与构建 | PASS | `tools/build_workbench_go.sh` 一步产出二进制 12.7 MB（CGO_ENABLED=0，13,277,442 字节）；前端产物 233 KB（gzip 72.9 KB）。 |
+| 一个 UI 缺陷（截图才发现） | PASS（修复并复验） | 无障碍树显示「笔记列表」区高仅 275pt、「搜索」按钮被挤成两行。单测与断言都发现不了；修法给输入框 flex:1、按钮 flex:none。 |
+| 与现有 Tauri 版并存 | PASS，但不等于 ADR 写的形态 | 做出来是两个独立产物（Tauri 版 + Go 版独立二进制），靠用户选哪个应用来切换，不是应用内的一个开关。ADR-0007 原话是「通过开关切换」，这一条如实记为未达成。 |
+| 写能力 | SKIP | 阶段 1 定义即只读，Go 侧完全没有写路径；写入仍只有 Rust。 |
+| 打包、跨平台、大库性能 | SKIP | 未做 .app 打包与签名，只在 macOS；夹具仅 3 篇、真实库 0 篇，未造大库测分页与 FTS 性能。 |
+| 知识库 / 分块检索 / 附件 / 向量 | SKIP | 阶段 2 按模块迁。 |
+
+未验证：Windows 与 Linux 构建、.app 签名与公证、大库（万篇级）分页与检索性能、搜索结果翻页（当前只取前 60 条并提示缩小范围）、文件选择器取消分支。
+
+取舍与踩坑记在 `docs/adr/0009-go-phase1-readonly-data-layer.md`（含 §6「这一阶段没做到的」）。
+
+
 
 
 
