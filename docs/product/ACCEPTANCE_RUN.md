@@ -965,6 +965,20 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0039-go-encrypted-backup-chain.md。
 
+## 2026-11-21 傍晚：阶段 2 第三十一刀 —— 凭据文件层迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 路径规则 | PASS（跨运行时） | 库名为 `store` 时凭据落父目录的 `credentials/`。Go 写 → Rust `read_api_key`/`read_named_credential` 读到同样的值；Rust 写 → Go `Read` 读到同样的值。 |
+| 原子写 | PASS | 临时文件 → Sync → Rename；重复写不残留 `.tmp`；读缺失返回空串而不是错误（还没配过是常态）。 |
+| 权限 | PASS + 一处刻意偏离 | Go 写出的凭据统一 0600、目录 0700。**实测 Rust 不对称**：`apiKey.credential` 是 0600，`webdav.credential` 是 0644（`write_named_credential` 只原子写、不设权限）。Go 侧统一收紧，与 mail 包口径一致。 |
+| 原状记录 | 记录 | Rust 侧加了 `credential_write_permissions_asymmetric_in_rust`，断言 webdav 当前是 0644——把「原本不是这样」钉住。哪天 Rust 也收紧，这条会失败提醒同步改文档。 |
+| settings / search_history / import_report / data_root / 从库导出 | SKIP | 均未迁。**Go 版能按同一规则读写凭据且比 Rust 更严；但 Rust 侧的 0644 还没修。** |
+
+**未验证**：其余 JSON 文件读写、平台路径 data_root、从资料库导出卡片。
+
+取舍与证据见 docs/adr/0040-go-credentials.md。
+
 
 
 

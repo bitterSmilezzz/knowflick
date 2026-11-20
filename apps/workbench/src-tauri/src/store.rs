@@ -420,6 +420,52 @@ fn restrict_to_owner(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Go 写的凭据，Rust 必须按同一条路径规则读到。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_credential_reads_in_rust() {
+        let root = std::env::var("KF_GO_CREDS_DIR").expect("set KF_GO_CREDS_DIR");
+        let store = std::path::PathBuf::from(root).join("store");
+        assert_eq!(read_api_key(&store).unwrap(), "go-api-key-value", "apiKey 路径或内容与 Go 不一致");
+        assert_eq!(read_named_credential(&store, "webdav.credential").unwrap(), "go-webdav-value", "webdav 凭据与 Go 不一致");
+        // store 目录的特殊规则：凭据应在父目录的 credentials/ 下。
+        let expected = credentials_file(&store);
+        assert!(expected.ends_with("credentials/apiKey.credential"), "路径规则: {}", expected.display());
+        assert!(expected.parent().unwrap().ends_with("credentials"), "凭据应落在父目录: {}", expected.display());
+    }
+
+    /// 反向：Rust 写的凭据，Go 必须能读到。
+    #[test]
+    #[ignore = "writes a fixture for the Go reader"]
+    fn rust_credential_writes_for_go() {
+        let root = std::env::var("KF_RUST_CREDS_DIR").expect("set KF_RUST_CREDS_DIR");
+        let store = std::path::PathBuf::from(root).join("store");
+        std::fs::create_dir_all(&store).unwrap();
+        assert!(!credentials_file(&store).exists(), "fixture must be new");
+        write_api_key(&store, "rust-api-key-value").unwrap();
+        write_named_credential(&store, "webdav.credential", "rust-webdav-value").unwrap();
+        // 当场自检，别把坏夹具交给 Go。
+        assert_eq!(read_api_key(&store).unwrap(), "rust-api-key-value");
+    }
+
+    /// 钉住 Rust 当前行为：write_api_key 收紧到 0600，
+    /// 而 write_named_credential 只做原子写、**不设权限**（默认 umask 下是 0644）。
+    /// 这是两侧不对称——Go 侧统一成 0600，所以这条测试存在是为了记录「原本不是这样」。
+    #[test]
+    #[cfg(unix)]
+    fn credential_write_permissions_asymmetric_in_rust() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("credential-perms");
+        write_api_key(&dir, "key-value").unwrap();
+        let api = credentials_file(&dir);
+        let api_mode = std::fs::metadata(&api).unwrap().permissions().mode() & 0o777;
+        write_named_credential(&dir, "webdav.credential", "webdav-value").unwrap();
+        let named = credentials_file_named(&dir, "webdav.credential");
+        let named_mode = std::fs::metadata(&named).unwrap().permissions().mode() & 0o777;
+        assert_eq!(api_mode, 0o600, "apiKey 应为 0600");
+        assert_eq!(named_mode, 0o644, "webdav 凭据当前是 0644（umask 022 下）——不对称，见 ADR");
+    }
+
 
     /// Go 打的**加密**归档：Rust 必须先解密、再读出容器——两步都对才算互通。
     #[test]
