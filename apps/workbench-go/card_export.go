@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"knowflick.local/workbench-go/internal/creds"
 	"knowflick.local/workbench-go/internal/libfiles"
 	"knowflick.local/workbench-go/internal/library"
+	"knowflick.local/workbench-go/internal/webdavbackup"
 )
 
 // ExportCardsJSON 将当前库中的卡片保存为 Android 可读取的 JSON。
@@ -185,4 +187,36 @@ func (s *PreviewService) RestoreSystemBackup(ctx context.Context, generation int
 		return counts, errors.New("请重新打开资料库")
 	}
 	return s.current.RestoreCoreBackup(ctx, backup, dir)
+}
+
+// UploadBackupToWebDAV 从当前库生成备份并单向复制到 WebDAV。密码只用于本次请求；显式勾选后才写入凭据文件。
+func (s *PreviewService) UploadBackupToWebDAV(ctx context.Context, generation int, baseURL, username, secret string, remember bool) (webdavbackup.Result, error) {
+	var result webdavbackup.Result
+	s.mu.RLock()
+	current := s.current != nil && s.generation == generation
+	path := s.path
+	s.mu.RUnlock()
+	if !current {
+		return result, errors.New("请重新打开资料库")
+	}
+	var buffer bytes.Buffer
+	s.mu.RLock()
+	err := s.current.WriteSystemBackupV4(ctx, &buffer, filepath.Dir(path), time.Now())
+	s.mu.RUnlock()
+	if err != nil {
+		return result, fmt.Errorf("生成备份失败：%w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	result, err = webdavbackup.Upload(ctx, baseURL, username, secret, buffer.Bytes(), time.Now())
+	if err != nil {
+		return result, err
+	}
+	if remember && secret != "" {
+		if err := creds.Write(filepath.Dir(path), "webdav.credential", secret); err != nil {
+			return result, fmt.Errorf("备份已上传，但凭据未保存：%w", err)
+		}
+	}
+	return result, nil
 }

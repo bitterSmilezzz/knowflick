@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -32,6 +32,10 @@ function Preview() {
   const [mailInterval, setMailInterval] = useState("15");
   const [mailBusy, setMailBusy] = useState(false);
   const [restorePending, setRestorePending] = useState(false);
+  const [webdavURL, setWebdavURL] = useState("");
+  const [webdavUser, setWebdavUser] = useState("");
+  const [webdavSecret, setWebdavSecret] = useState("");
+  const [webdavRemember, setWebdavRemember] = useState(false);
 
   const notes = lib?.page.notes ?? [];
   const selected = notes.find((n) => n.id === selectedId) ?? null;
@@ -87,6 +91,14 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  async function uploadToWebdav() {
+    if (!lib || busy || !webdavURL.trim()) { fail(new Error("请填写 WebDAV 地址")); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await UploadBackupToWebDAV(lib.generation, webdavURL.trim(), webdavUser.trim(), webdavSecret, webdavRemember);
+      setNotice(`已上传 ${result.fileName}（${result.bytes} 字节，SHA-256 ${result.sha256}）。这是单向复制，不会删除云端旧对象。`);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
   async function restoreBackup() {
     if (!lib || !lib.writable || busy) return;
     setRestorePending(false);
@@ -262,6 +274,14 @@ function Preview() {
       </header>
       {error && <p className="preview-error" role="alert">{error}</p>}
       {notice && <p className="preview-notice" role="status">{notice}</p>}
+      {lib && <section className="preview-confirm" aria-label="云端备份">
+        <p>云端备份是单向复制：只上传新对象，不删除云端旧对象。</p>
+        <label>WebDAV 地址 <input value={webdavURL} onChange={(event) => setWebdavURL(event.target.value)} placeholder="https://example.com/dav" /></label>
+        <label>用户名 <input value={webdavUser} onChange={(event) => setWebdavUser(event.target.value)} /></label>
+        <label>应用密码 <input type="password" value={webdavSecret} onChange={(event) => setWebdavSecret(event.target.value)} /></label>
+        <label><input type="checkbox" checked={webdavRemember} onChange={(event) => setWebdavRemember(event.target.checked)} /> 记住密码（写入库目录凭据文件）</label>
+        <button type="button" disabled={busy} onClick={() => void uploadToWebdav()}>上传备份到 WebDAV</button>
+      </section>}
       {restorePending && <section className="preview-confirm" aria-label="确认恢复">
         <p>恢复会把备份里的素材、卡片、笔记、知识库、历史与邮箱记录合并进当前库。同标识但内容不同的记录会被拒绝，且不会覆盖现有内容。</p>
         <button type="button" disabled={busy} onClick={() => void restoreBackup()}>确认恢复</button>
