@@ -1360,6 +1360,33 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// 同一封邮件，Rust 与 Go 必须算出相同的素材 id 与标题/正文占位。
+    /// 这条守住「重复导入不产生副本」——id 不一致就会变成两条。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_mail_material_parity() {
+        let fixture = std::env::var("KF_GO_MATERIAL_FIXTURE").expect("set KF_GO_MATERIAL_FIXTURE");
+        let text = std::fs::read_to_string(fixture).unwrap();
+        let mut got = std::collections::HashMap::new();
+        for line in text.lines() {
+            if let Some((key, value)) = line.split_once('=') {
+                got.insert(key.to_string(), value.to_string());
+            }
+        }
+
+        let config = MailAccountConfig {
+            id: "acct-1".into(), name: "工作邮箱".into(), email: "me@example.com".into(),
+            host: "imap.example.com".into(), port: 993, username: "me@example.com".into(),
+            folder: "INBOX".into(), sync_limit: 50, sync_interval_minutes: 0,
+        };
+        let namespace = format!("{}\n{}\n{}\n{}\n{}", config.id, config.host, config.port, config.username, config.folder);
+        let identity = format!("{namespace}\n{}", "<m1@x>");
+        let expected = format!("mail-{}", &db::calculate_hash(&identity)[..32]);
+        assert_eq!(got["material_id"], expected, "素材 id 与 Rust 不一致");
+        assert_eq!(got["title"], "（无主题）", "无主题占位与 Rust 不一致");
+        assert_eq!(got["text"], "（这封邮件没有可读的正文，可能只有附件）", "无正文占位与 Rust 不一致");
+    }
+
     /// 同一封邮件，Rust 的 MIME 解析结果必须与 Go 一致：主题解码、Message-ID、正文选择。
     #[test]
     #[ignore = "requires the fixture exported by Go"]
