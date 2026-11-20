@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,7 +52,9 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if counts.Materials != 1 || counts.Cards != 1 || counts.Artifacts != 1 || counts.Media != 2 || counts.Skipped != 0 {
+	if counts.Materials != 1 || counts.Cards != 1 || counts.Artifacts != 1 || counts.Media != 2 ||
+		counts.Notes != 2 || counts.Revisions != 3 || counts.KnowledgeBases != 1 || counts.Membership != 2 ||
+		counts.Subscriptions != 2 || counts.ReviewEvents != 1 || counts.Skipped != 0 {
 		t.Fatalf("unexpected counts: %+v", counts)
 	}
 	again, err := restored.RestoreCoreBackup(context.Background(), backup, restoreDir)
@@ -94,6 +97,25 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	}
 	if membershipCount != 2 {
 		t.Fatalf("membership: %d", membershipCount)
+	}
+	var subscriptionCount, reviewCount int
+	if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM subscriptions").Scan(&subscriptionCount); err != nil {
+		t.Fatal(err)
+	}
+	if subscriptionCount != 2 {
+		t.Fatalf("subscriptions: %d", subscriptionCount)
+	}
+	if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM review_events").Scan(&reviewCount); err != nil {
+		t.Fatal(err)
+	}
+	if reviewCount != 1 {
+		t.Fatalf("review events: %d", reviewCount)
+	}
+	if _, err := restored.db.ExecContext(context.Background(), "UPDATE subscriptions SET title = '本地不同' WHERE id = 'sub-1'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restored.RestoreCoreBackup(context.Background(), backup, restoreDir); err == nil || !strings.Contains(err.Error(), "内容不同的订阅") {
+		t.Fatalf("conflicting subscription accepted: %v", err)
 	}
 	settings, err := os.ReadFile(filepath.Join(restoreDir, "settings.json"))
 	if err != nil {

@@ -24,6 +24,8 @@ type CoreRestoreCounts struct {
 	Revisions      int `json:"revisions"`
 	KnowledgeBases int `json:"knowledgeBases"`
 	Membership     int `json:"membership"`
+	Subscriptions  int `json:"subscriptions"`
+	ReviewEvents   int `json:"reviewEvents"`
 	Skipped        int `json:"skipped"`
 }
 
@@ -170,6 +172,16 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 			counts.Skipped++
 		}
 	}
+	subscriptions, err := restoreSubscriptions(ctx, tx, backup)
+	if err != nil {
+		return counts, err
+	}
+	counts.Subscriptions = subscriptions
+	reviewEvents, err := restoreReviewHistory(ctx, tx, backup)
+	if err != nil {
+		return counts, err
+	}
+	counts.ReviewEvents = reviewEvents
 	if err := tx.Commit(); err != nil {
 		return counts, fmt.Errorf("提交恢复事务失败：%w", err)
 	}
