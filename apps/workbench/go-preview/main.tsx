@@ -24,7 +24,8 @@ import { ArtifactLibrary } from "./ArtifactLibrary";
 import { ProjectLibrary } from "./ProjectLibrary";
 import { GoalLibrary } from "./GoalLibrary";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
-import { CreateKnowledgeBase, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
+import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 
 function Preview() {
@@ -40,6 +41,8 @@ function Preview() {
   const [trash, setTrash] = useState(false);
   const [view, setView] = useState<"notes" | "materials" | "cards" | "artifacts" | "projects" | "goals" | "review">("notes");
   const [cardEditing, setCardEditing] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [scope, setScope] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
   const [knowledgeError, setKnowledgeError] = useState("");
@@ -65,6 +68,15 @@ function Preview() {
   const [webdavUser, setWebdavUser] = useState("");
   const [webdavSecret, setWebdavSecret] = useState("");
   const [webdavRemember, setWebdavRemember] = useState(false);
+
+  useEffect(() => {
+    if (!lib) { setStats(null); return; }
+    let active = true;
+    void GetStats(lib.generation)
+      .then((value: Stats) => { if (active) setStats(value); })
+      .catch(() => { if (active) setStats(null); });
+    return () => { active = false; };
+  }, [lib]);
 
   const notes = lib?.page.notes ?? [];
   const selected = notes.find((n) => n.id === selectedId) ?? null;
@@ -519,22 +531,37 @@ function Preview() {
         <div className="preview-actions">
           {lib && !lib.writable && <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button>}
           {lib && lib.writable && view === "notes" && <button type="button" disabled={busy} onClick={() => void createNote()}>新建笔记</button>}
-          {lib && <button type="button" disabled={busy} aria-pressed={subsOpen} onClick={() => void toggleSubscriptions()}>{subsOpen ? "收起订阅" : "订阅源"}</button>}
-          {lib && lib.writable && <button type="button" disabled={busy || mailBusy} aria-pressed={mailOpen} onClick={() => void toggleMail()}>{mailOpen ? "收起邮箱" : "邮箱"}</button>}
-          {lib && <button type="button" aria-pressed={view === "materials"} disabled={busy || cardEditing} onClick={() => setView(view === "materials" ? "notes" : "materials")}>{view === "materials" ? "返回笔记" : "素材"}</button>}
-          {lib && <button type="button" aria-pressed={view === "goals"} disabled={busy || cardEditing} onClick={() => setView(view === "goals" ? "notes" : "goals")}>{view === "goals" ? "返回笔记" : "目标"}</button>}
-          {lib && <button type="button" aria-pressed={view === "projects"} disabled={busy || cardEditing} onClick={() => setView(view === "projects" ? "notes" : "projects")}>{view === "projects" ? "返回笔记" : "项目"}</button>}
-          {lib && <button type="button" aria-pressed={view === "artifacts"} disabled={busy || cardEditing} onClick={() => setView(view === "artifacts" ? "notes" : "artifacts")}>{view === "artifacts" ? "返回笔记" : "产物"}</button>}
-          {lib && <button type="button" aria-pressed={view === "cards"} disabled={busy || cardEditing} onClick={() => setView(view === "cards" ? "notes" : "cards")}>{view === "cards" ? "返回笔记" : "卡片库"}</button>}
-          {lib && <button type="button" aria-pressed={view === "review"} disabled={busy || cardEditing} onClick={() => setView(view === "review" ? "notes" : "review")}>{view === "review" ? "收起复习" : "卡片复习"}</button>}
-          {lib && <button type="button" disabled={busy || view !== "notes"} onClick={() => void toggleTrash()}>{trash ? "返回笔记" : "回收站"}</button>}
-          {lib && <button type="button" disabled={busy} onClick={() => void exportCards("json")}>导出卡片</button>}
-          {lib && <button type="button" disabled={busy} onClick={() => void exportCards("zip")}>导出卡片与设置（ZIP）</button>}
-          {lib && <button type="button" disabled={busy} onClick={() => void exportSystemBackup()}>导出基础备份</button>}
-          {lib && lib.writable && !restorePending && <button type="button" disabled={busy} onClick={() => setRestorePending(true)}>恢复备份</button>}
+          {lib && <div className="preview-more-menu">
+            <button type="button" aria-expanded={moreOpen} aria-label="更多功能" onClick={() => setMoreOpen(!moreOpen)}>更多</button>
+            {moreOpen && <div className="preview-more-panel">
+              <div className="preview-more-group">
+                <strong>工作台</strong>
+                <button type="button" aria-pressed={view === "materials"} disabled={busy || cardEditing} onClick={() => { setView(view === "materials" ? "notes" : "materials"); setMoreOpen(false); }}>素材</button>
+                <button type="button" aria-pressed={view === "cards"} disabled={busy || cardEditing} onClick={() => { setView(view === "cards" ? "notes" : "cards"); setMoreOpen(false); }}>卡片库</button>
+                <button type="button" aria-pressed={view === "artifacts"} disabled={busy || cardEditing} onClick={() => { setView(view === "artifacts" ? "notes" : "artifacts"); setMoreOpen(false); }}>产物</button>
+                <button type="button" aria-pressed={view === "projects"} disabled={busy || cardEditing} onClick={() => { setView(view === "projects" ? "notes" : "projects"); setMoreOpen(false); }}>项目</button>
+                <button type="button" aria-pressed={view === "goals"} disabled={busy || cardEditing} onClick={() => { setView(view === "goals" ? "notes" : "goals"); setMoreOpen(false); }}>目标</button>
+                <button type="button" aria-pressed={view === "review"} disabled={busy || cardEditing} onClick={() => { setView(view === "review" ? "notes" : "review"); setMoreOpen(false); }}>卡片复习</button>
+                <button type="button" disabled={busy || view !== "notes"} onClick={() => { void toggleTrash(); setMoreOpen(false); }}>{trash ? "返回笔记" : "回收站"}</button>
+                {view !== "notes" && <button type="button" disabled={busy} onClick={() => { setView("notes"); setMoreOpen(false); }}>返回笔记</button>}
+              </div>
+              <div className="preview-more-group">
+                <strong>接入与备份</strong>
+                <button type="button" aria-pressed={subsOpen} disabled={busy} onClick={() => { void toggleSubscriptions(); setMoreOpen(false); }}>订阅源</button>
+                {lib.writable && <button type="button" aria-pressed={mailOpen} disabled={busy || mailBusy} onClick={() => { void toggleMail(); setMoreOpen(false); }}>邮箱</button>}
+                <button type="button" disabled={busy} onClick={() => { void exportCards("json"); setMoreOpen(false); }}>导出卡片</button>
+                <button type="button" disabled={busy} onClick={() => { void exportCards("zip"); setMoreOpen(false); }}>导出卡片与设置（ZIP）</button>
+                <button type="button" disabled={busy} onClick={() => { void exportSystemBackup(); setMoreOpen(false); }}>导出基础备份</button>
+                {lib.writable && !restorePending && <button type="button" disabled={busy} onClick={() => { setRestorePending(true); setMoreOpen(false); }}>恢复备份</button>}
+              </div>
+            </div>}
+          </div>}
           <button type="button" disabled={busy || cardEditing} onClick={() => void choose()}>打开资料库</button>
         </div>
       </header>
+      {lib && stats && <p className="preview-stats" role="status">
+        卡片 {stats.totalCards} 张 · 素材 {stats.totalMaterials} 条（待处理 {stats.inboxMaterials}） · 收藏 {stats.favoriteCards} · 已学 {stats.seenCards} · 待复习 {stats.dueCards}
+      </p>}
       {error && <p className="preview-error" role="alert">{error}</p>}
       {notice && <p className="preview-notice" role="status">{notice}</p>}
       {lib && <section className="preview-confirm" aria-label="云端备份">
