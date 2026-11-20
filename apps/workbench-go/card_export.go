@@ -12,6 +12,7 @@ import (
 	"knowflick.local/workbench-go/internal/archive"
 	"knowflick.local/workbench-go/internal/creds"
 	"knowflick.local/workbench-go/internal/libfiles"
+	"knowflick.local/workbench-go/internal/library"
 )
 
 // ExportCardsJSON 将当前库中的卡片保存为 Android 可读取的 JSON。
@@ -152,4 +153,36 @@ func packCardArchive(dir, cards string) ([]byte, error) {
 		text = *settings
 	}
 	return archive.Write(cards, text)
+}
+
+// RestoreSystemBackup 选择 .kfbackup，校验后用当前可写资料库恢复。
+// 恢复是合并：同标识记录跳过或按冲突拒绝，不做覆盖。
+func (s *PreviewService) RestoreSystemBackup(ctx context.Context, generation int) (library.CoreRestoreCounts, error) {
+	var counts library.CoreRestoreCounts
+	s.mu.RLock()
+	current := s.current != nil && s.generation == generation && s.writable
+	path := s.path
+	s.mu.RUnlock()
+	if !current {
+		return counts, errors.New("请先启用编辑再恢复备份")
+	}
+	source, err := s.app.Dialog.OpenFile().AttachToWindow(s.window).SetTitle("选择 KnowFlick 备份").AddFilter("KnowFlick 备份", "*.kfbackup").PromptForSingleSelection()
+	if err != nil || source == "" {
+		return counts, err
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return counts, fmt.Errorf("无法读取备份文件：%w", err)
+	}
+	backup, err := archive.ReadSystemBackup(data)
+	if err != nil {
+		return counts, err
+	}
+	dir := filepath.Dir(path)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation || !s.writable {
+		return counts, errors.New("请重新打开资料库")
+	}
+	return s.current.RestoreCoreBackup(ctx, backup, dir)
 }

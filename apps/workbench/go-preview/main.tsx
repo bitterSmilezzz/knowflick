@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -31,6 +31,7 @@ function Preview() {
   const [mailStatus, setMailStatus] = useState<MailStatus | null>(null);
   const [mailInterval, setMailInterval] = useState("15");
   const [mailBusy, setMailBusy] = useState(false);
+  const [restorePending, setRestorePending] = useState(false);
 
   const notes = lib?.page.notes ?? [];
   const selected = notes.find((n) => n.id === selectedId) ?? null;
@@ -86,6 +87,14 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  async function restoreBackup() {
+    if (!lib || !lib.writable || busy) return;
+    setRestorePending(false);
+    setBusy(true); setError(""); setNotice("");
+    const counts = await RestoreSystemBackup(lib.generation).catch((cause: unknown) => { fail(cause); return null; });
+    if (counts) setNotice(`已恢复：素材 ${counts.materials}、卡片 ${counts.cards}、产物 ${counts.artifacts}、笔记 ${counts.notes}、知识库 ${counts.knowledgeBases}、附件 ${counts.media}、订阅 ${counts.subscriptions}、复习事件 ${counts.reviewEvents}、回收站 ${counts.deletedMaterials + counts.deletedCards + counts.deletedArtifacts}、邮箱记录 ${counts.mailAccounts + counts.mailImports}、项目与画像 ${counts.r4Rows}；跳过 ${counts.skipped} 条。`);
+    setBusy(false);
+  }
   async function enableEditing() {
     if (!lib) return;
     setBusy(true); setError(""); setNotice("");
@@ -247,11 +256,18 @@ function Preview() {
           {lib && <button type="button" disabled={busy} onClick={() => void exportCards("json")}>导出卡片</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void exportCards("zip")}>导出卡片与设置（ZIP）</button>}
           {lib && <button type="button" disabled={busy} onClick={() => void exportSystemBackup()}>导出基础备份</button>}
+          {lib && lib.writable && !restorePending && <button type="button" disabled={busy} onClick={() => setRestorePending(true)}>恢复备份</button>}
           <button type="button" disabled={busy} onClick={() => void choose()}>打开资料库</button>
         </div>
       </header>
       {error && <p className="preview-error" role="alert">{error}</p>}
       {notice && <p className="preview-notice" role="status">{notice}</p>}
+      {restorePending && <section className="preview-confirm" aria-label="确认恢复">
+        <p>恢复会把备份里的素材、卡片、笔记、知识库、历史与邮箱记录合并进当前库。同标识但内容不同的记录会被拒绝，且不会覆盖现有内容。</p>
+        <button type="button" disabled={busy} onClick={() => void restoreBackup()}>确认恢复</button>
+        <button type="button" disabled={busy} onClick={() => setRestorePending(false)}>取消</button>
+      </section>}
+
 
       {mailOpen && lib?.writable && <section className="preview-mail" aria-label="邮箱同步">
         <div className="preview-mail-head">
