@@ -18,44 +18,86 @@ const (
 	MaxImage = 16 * 1024 * 1024
 )
 
-// Save 新写入一个附件，返回相对库目录的路径。原子落盘并读回大小校验。
-func Save(dir, kind, mime string, bytes []byte) (string, error) {
+// Save 新写入一个附件，返回相对库目录的路径。
+func Save(dir, kind, mime string, data []byte) (string, error) {
+	return save(dir, kind, mime, data, nil)
+}
+
+// SaveLinked 写入附件并提交它的引用。引用保存失败时删除新写入的附件。
+func SaveLinked(dir, kind, mime string, data []byte, link func(path string) error) error {
+	_, err := save(dir, kind, mime, data, link)
+	return err
+}
+
+func save(dir, kind, mime string, data []byte, link func(path string) error) (string, error) {
 	ext, err := extension(kind, mime)
 	if err != nil {
 		return "", err
 	}
 	limit := limitOf(kind)
-	if len(bytes) == 0 {
+	if len(data) == 0 {
 		return "", errors.New("没有内容可保存：录音或笔迹是空的")
 	}
-	if len(bytes) > limit {
+	if len(data) > limit {
 		return "", fmt.Errorf("附件超过 %d MB 上限", limit/1024/1024)
 	}
-	folder := filepath.Join(dir, "media", kind)
-	if err := os.MkdirAll(folder, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", errors.New("无法创建附件目录")
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return "", errors.New("无法打开资料库附件目录")
+	}
+	defer root.Close()
+	mediaRoot, err := makeAttachmentDir(root, "media")
+	if err != nil {
+		return "", err
+	}
+	defer mediaRoot.Close()
+	folder, err := makeAttachmentDir(mediaRoot, kind)
+	if err != nil {
+		return "", err
+	}
+	defer folder.Close()
 	name, err := randomName()
 	if err != nil {
 		return "", err
 	}
 	name += "." + ext
-	target := filepath.Join(folder, name)
-	temp := filepath.Join(folder, "."+name+".part")
-	if err := writeSynced(temp, bytes); err != nil {
-		_ = os.Remove(temp)
+	temp := "." + name + ".part"
+	if err := writeSynced(folder, temp, data); err != nil {
 		return "", errors.New("无法写入附件")
 	}
-	if err := os.Rename(temp, target); err != nil {
-		_ = os.Remove(temp)
+	defer folder.Remove(temp)
+	if err := folder.Rename(temp, name); err != nil {
 		return "", errors.New("无法写入附件")
 	}
-	info, err := os.Stat(target)
-	if err != nil || info.Size() != int64(len(bytes)) {
-		_ = os.Remove(target)
+	info, err := folder.Stat(name)
+	if err != nil || info.Size() != int64(len(data)) {
+		_ = folder.Remove(name)
 		return "", errors.New("附件没有写完整，已丢弃这次写入")
 	}
-	return filepath.ToSlash(filepath.Join("media", kind, name)), nil
+	relative := "media/" + kind + "/" + name
+	if link != nil {
+		if err := link(relative); err != nil {
+			if removeErr := folder.Remove(name); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				return "", errors.Join(err, fmt.Errorf("无法清理未关联的附件：%w", removeErr))
+			}
+			return "", err
+		}
+	}
+	return relative, nil
+}
+
+func makeAttachmentDir(parent *os.Root, name string) (*os.Root, error) {
+	if err := parent.Mkdir(name, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		return nil, errors.New("无法创建附件目录")
+	}
+	info, err := parent.Lstat(name)
+	if err != nil || !info.IsDir() {
+		return nil, errors.New("附件目录无效或为符号链接")
+	}
+	return parent.OpenRoot(name)
 }
 
 // Read 读回附件；拒绝任何跑出 media 目录的路径。
@@ -121,16 +163,18 @@ func safePath(dir, relative string) (string, error) {
 	return resolved, nil
 }
 
-func writeSynced(path string, bytes []byte) error {
-	f, err := os.Create(path)
+func writeSynced(folder *os.Root, name string, data []byte) error {
+	file, err := folder.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	if _, err := f.Write(bytes); err != nil {
-		return err
+	_, writeErr := file.Write(data)
+	var syncErr error
+	if writeErr == nil {
+		syncErr = file.Sync()
 	}
-	if err := f.Sync(); err != nil {
+	if err := errors.Join(writeErr, syncErr, file.Close()); err != nil {
+		_ = folder.Remove(name)
 		return err
 	}
 	return nil

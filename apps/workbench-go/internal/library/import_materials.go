@@ -61,19 +61,26 @@ func MaterialSourceURLs(ctx context.Context, db *sql.DB) ([]string, error) {
 	return urls, rows.Err()
 }
 
-// SaveImportedMaterial 插入一条素材并刷新全文索引。同 id 已存在时不覆盖，
-// 返回 false——抓取是「补齐新条目」，不是「改写已有内容」。
+// SaveImportedMaterial 插入一条素材并刷新全文索引。同 id 已存在时返回 false。
 func SaveImportedMaterial(ctx context.Context, db *sql.DB, material ImportedMaterial) (bool, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	inserted, err := insertImportedMaterial(ctx, tx, material)
+	if err != nil || !inserted {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
+func insertImportedMaterial(ctx context.Context, tx *sql.Tx, material ImportedMaterial) (bool, error) {
 	if material.ID == "" || material.RawText == "" {
 		return false, errors.New("素材缺少标识或正文")
 	}
 	sum := sha256.Sum256([]byte(material.RawText))
 	hash := hex.EncodeToString(sum[:])
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, "INSERT INTO materials (id,source_type,title,source_url,raw_text,cleaned_markdown,content_hash,media_path,media_size_bytes,metadata_json,inbox_status,created_at,updated_at,version,is_deleted) "+
 		"VALUES (?,?,?,?,?,NULL,?,NULL,0,?,?,?,?,1,0) ON CONFLICT(id) DO NOTHING",
 		material.ID, material.SourceType, material.Title, nullableText(material.SourceURL), material.RawText, hash, material.MetadataJSON, material.InboxStatus, material.CreatedAt, material.UpdatedAt)
@@ -81,16 +88,11 @@ func SaveImportedMaterial(ctx context.Context, db *sql.DB, material ImportedMate
 		return false, err
 	}
 	affected, err := result.RowsAffected()
-	if err != nil {
+	if err != nil || affected == 0 {
 		return false, err
 	}
-	if affected == 0 {
-		return false, nil
-	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO fts_materials (material_id,title,raw_text,source_url) VALUES (?,?,?,?)", material.ID, material.Title, material.RawText, material.SourceURL); err != nil {
-		return false, err
-	}
-	return true, tx.Commit()
+	_, err = tx.ExecContext(ctx, "INSERT INTO fts_materials (material_id,title,raw_text,source_url) VALUES (?,?,?,?)", material.ID, material.Title, material.RawText, material.SourceURL)
+	return err == nil, err
 }
 
 func nullableText(value string) any {

@@ -69,6 +69,28 @@ func TestReadRejectsSymlinksThatLeaveMedia(t *testing.T) {
 	})
 }
 
+func TestSaveRejectsSymlinkInAttachmentDirectory(t *testing.T) {
+	for _, relative := range []string{"media", "media/image"} {
+		t.Run(relative, func(t *testing.T) {
+			root, outside := t.TempDir(), t.TempDir()
+			link := filepath.Join(root, filepath.FromSlash(relative))
+			if err := os.MkdirAll(filepath.Dir(link), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, link); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			if _, err := Save(root, "image", "image/png", []byte("image")); err == nil {
+				t.Fatal("accepted symlinked media directory")
+			}
+			entries, err := os.ReadDir(outside)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("write escaped into symlink target: %v, %v", entries, err)
+			}
+		})
+	}
+}
+
 func TestKindMimeAndSizeGuards(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := Save(dir, "audio", "application/json", []byte("x")); err == nil {

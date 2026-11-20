@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ListMaterials, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportImages, ListMaterials, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
 import { useAttachments } from "./attachments";
 import { AttachmentView } from "../src/ui/workspace/AttachmentView";
@@ -11,11 +11,12 @@ type Props = {
   writable: boolean;
   busy: boolean;
   onBusy: (busy: boolean) => void;
+  onChanged: () => void;
 };
 
 const statusLabels: Record<string, string> = { inbox: "待处理", processed: "已处理", dismissed: "已忽略" };
 
-export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
+export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged }: Props) {
   const [items, setItems] = useState<Material[] | null>(null);
   const [inboxOnly, setInboxOnly] = useState(true);
   const [query, setQuery] = useState("");
@@ -92,6 +93,25 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
     }
   }
 
+  async function importImages() {
+    if (!writable || busy) return;
+    await run(async () => {
+      const result = await ImportImages(generation);
+      const imported = result.importedIds ?? [];
+      const failures = result.failures ?? [];
+      if (imported.length === 0 && result.skipped === 0 && failures.length === 0) return;
+      setNotice("导入 " + imported.length + " 张，跳过重复 " + result.skipped + " 张，失败 " + failures.length + " 张");
+      if (failures.length > 0) setError(failures.join("\n"));
+      if (imported.length > 0) {
+        setQuery("");
+        setSelectedID(imported[0]);
+        setConfirmConvert(false);
+        onChanged();
+        await refresh(inboxOnly, "");
+      }
+    });
+  }
+
   async function saveCapture() {
     if (!writable || busy) return;
     await run(async () => {
@@ -101,6 +121,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
       setCapText("");
       setCapURL("");
       setNotice("已存入收件箱");
+      onChanged();
       setSelectedID(id);
       await refresh(inboxOnly, "");
       setQuery("");
@@ -118,6 +139,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
       const created = await ConvertMaterialToCard(generation, selected.id);
       setConfirmConvert(false);
       setNotice(created ? "已转为卡片，原始素材保留并标为已处理" : "这条素材已有卡片，只把状态标为已处理");
+      onChanged();
       await refresh(inboxOnly, query.trim());
     });
   }
@@ -135,6 +157,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
     await run(async () => {
       await UpdateMaterialStatus(generation, selected.id, status);
       setNotice(status === "processed" ? "已标为已处理" : "已忽略这条素材");
+      onChanged();
       await refresh(inboxOnly, query.trim());
     });
   }
@@ -147,6 +170,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
           <button type="submit" disabled={busy}>搜索</button>
         </form>
 
+        {writable && <button type="button" disabled={busy || fetching} onClick={() => void importImages()}>导入图片</button>}
         {writable && <details className="preview-knowledge-bases" open={captureOpen} onToggle={(event) => setCaptureOpen(event.currentTarget.open)}>
           <summary>记录素材</summary>
           <form onSubmit={(event) => { event.preventDefault(); void saveCapture(); }}>
@@ -178,7 +202,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
         </ul>
       </section>
       <section className="preview-note preview-editor" aria-label="素材正文">
-        {error && <p className="preview-error" role="alert">{error}</p>}
+        {error && <p className="preview-error preview-material-error" role="alert">{error}</p>}
         {notice && <p className="preview-notice" role="status">{notice}</p>}
         {!selected && <p className="preview-meta">没有可显示的素材。</p>}
         {selected && <>

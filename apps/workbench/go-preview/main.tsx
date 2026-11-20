@@ -52,6 +52,7 @@ function Preview() {
   const [asrOpen, setAsrOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [statsRevision, setStatsRevision] = useState(0);
   const [scope, setScope] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
   const [knowledgeError, setKnowledgeError] = useState("");
@@ -85,7 +86,7 @@ function Preview() {
       .then((value: Stats) => { if (active) setStats(value); })
       .catch(() => { if (active) setStats(null); });
     return () => { active = false; };
-  }, [lib]);
+  }, [lib, statsRevision]);
 
   const notes = lib?.page.notes ?? [];
   const selected = notes.find((n) => n.id === selectedId) ?? null;
@@ -672,7 +673,7 @@ function Preview() {
         <button type="button" disabled={busy} onClick={() => setMailBrowse(null)}>收起</button>
       </section>}
       {lib && view === "review" && <ReviewDeck key={lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
-      {lib && view === "materials" && <MaterialLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "materials" && <MaterialLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onChanged={() => setStatsRevision((value) => value + 1)} />}
       {lib && view === "claims" && <ClaimLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "goals" && <GoalLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "projects" && <ProjectLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
