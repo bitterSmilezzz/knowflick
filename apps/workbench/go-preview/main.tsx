@@ -5,8 +5,8 @@ import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCard
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import { ListMailAccounts, MailAutoSyncStatus, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
-import type { Account } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
+import { ListMailAccounts, MailAutoSyncStatus, RemoveMailAccount, SaveMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
+import type { Account, Config as MailConfig } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
 import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
@@ -31,6 +31,10 @@ function Preview() {
   const [mailStatus, setMailStatus] = useState<MailStatus | null>(null);
   const [mailInterval, setMailInterval] = useState("15");
   const [mailBusy, setMailBusy] = useState(false);
+  const [mailFormOpen, setMailFormOpen] = useState(false);
+  const [mailForm, setMailForm] = useState<MailConfig>({ id: "", name: "", email: "", host: "", port: 993, username: "", folder: "INBOX", syncLimit: 50, syncIntervalMinutes: 0 });
+  const [mailSecret, setMailSecret] = useState("");
+  const [mailRemoveId, setMailRemoveId] = useState("");
   const [restorePending, setRestorePending] = useState(false);
   const [webdavURL, setWebdavURL] = useState("");
   const [webdavUser, setWebdavUser] = useState("");
@@ -91,6 +95,29 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  function openMailForm(account?: Account) {
+    setMailForm(account ? { ...account.config } : { id: crypto.randomUUID(), name: "", email: "", host: "", port: 993, username: "", folder: "INBOX", syncLimit: 50, syncIntervalMinutes: 0 });
+    setMailSecret(""); setMailFormOpen(true); setError("");
+  }
+
+  async function saveMailAccount() {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await SaveMailAccount(mailForm, mailSecret);
+      setMailAccounts(await ListMailAccounts() ?? []);
+      setMailFormOpen(false); setMailSecret("");
+      setNotice("邮箱账号已保存；密码保存在库目录的 0600 凭据文件里。");
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function removeMailAccount(id: string) {
+    setBusy(true); setError(""); setNotice(""); setMailRemoveId("");
+    try {
+      await RemoveMailAccount(id);
+      setMailAccounts(await ListMailAccounts() ?? []);
+      setNotice("邮箱账号已删除；导入台账保留以免重复导入。");
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
   async function uploadToWebdav() {
     if (!lib || busy || !webdavURL.trim()) { fail(new Error("请填写 WebDAV 地址")); return; }
     setBusy(true); setError(""); setNotice("");
@@ -299,6 +326,9 @@ function Preview() {
             {mailAccounts.map((account) => (
               <li key={account.config.id}>
                 <span>{account.config.name || account.config.email}</span>
+                <button type="button" disabled={busy} onClick={() => openMailForm(account)}>编辑</button>
+                <button type="button" disabled={busy} onClick={() => setMailRemoveId(account.config.id)}>删除</button>
+                {mailRemoveId === account.config.id && <span className="preview-confirm">确认删除这个账号？<button type="button" disabled={busy} onClick={() => void removeMailAccount(account.config.id)}>确认</button><button type="button" disabled={busy} onClick={() => setMailRemoveId("")}>取消</button></span>}
                 <small>{account.hasPassword ? "凭据已保存" : "需要重新输入密码"}{account.lastError ? ` · ${account.lastError}` : ""}</small>
               </li>
             ))}
@@ -306,10 +336,24 @@ function Preview() {
         )}
         <div className="preview-mail-actions">
           <button type="button" disabled={mailBusy} onClick={() => void syncMailNow()}>立即同步</button>
+          <button type="button" disabled={mailBusy} onClick={() => openMailForm()}>添加账号</button>
           <input type="number" min="1" aria-label="自动同步间隔（分钟）" value={mailInterval} onChange={(event) => setMailInterval(event.target.value)} />
           <button type="button" disabled={mailBusy || mailStatus?.running} onClick={() => void startAuto()}>开启自动</button>
           <button type="button" disabled={mailBusy || !mailStatus?.running} onClick={() => void stopAuto()}>停止自动</button>
         </div>
+        {mailFormOpen && <form className="preview-confirm" onSubmit={(event) => { event.preventDefault(); void saveMailAccount(); }} aria-label="邮箱账号">
+          <label>账号名称 <input aria-label="账号名称" value={mailForm.name} onChange={(event) => setMailForm({ ...mailForm, name: event.target.value })} /></label>
+          <label>邮箱地址 <input aria-label="邮箱地址" value={mailForm.email} onChange={(event) => setMailForm({ ...mailForm, email: event.target.value })} /></label>
+          <label>IMAP 主机 <input aria-label="IMAP 主机" value={mailForm.host} onChange={(event) => setMailForm({ ...mailForm, host: event.target.value })} /></label>
+          <label>端口 <input type="number" aria-label="端口" value={mailForm.port} onChange={(event) => setMailForm({ ...mailForm, port: Number(event.target.value) })} /></label>
+          <label>用户名 <input aria-label="邮箱用户名" value={mailForm.username} onChange={(event) => setMailForm({ ...mailForm, username: event.target.value })} /></label>
+          <label>文件夹 <input aria-label="邮箱文件夹" value={mailForm.folder} onChange={(event) => setMailForm({ ...mailForm, folder: event.target.value })} /></label>
+          <label>每次同步封数 <input type="number" aria-label="每次同步封数" value={mailForm.syncLimit} onChange={(event) => setMailForm({ ...mailForm, syncLimit: Number(event.target.value) })} /></label>
+          <label>自动同步间隔（0 关闭） <input type="number" aria-label="自动同步间隔" value={mailForm.syncIntervalMinutes} onChange={(event) => setMailForm({ ...mailForm, syncIntervalMinutes: Number(event.target.value) })} /></label>
+          <label>应用密码 <input type="password" aria-label="邮箱应用密码" value={mailSecret} onChange={(event) => setMailSecret(event.target.value)} /></label>
+          <button type="submit" disabled={busy}>保存账号</button>
+          <button type="button" disabled={busy} onClick={() => setMailFormOpen(false)}>取消</button>
+        </form>}
         {mailStatus && mailStatus.lastError && <p className="preview-error" role="status">上次错误：{mailStatus.lastError}</p>}
       </section>}
 

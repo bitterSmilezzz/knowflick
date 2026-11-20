@@ -181,3 +181,31 @@ func (m *MailService) SyncMailAccountNow(ctx context.Context, accountID string) 
 	}
 	return outcome, nil
 }
+
+// SaveMailAccount 新增或编辑邮箱账号。密码写入 0600 凭据文件，不进 SQLite。
+func (m *MailService) SaveMailAccount(ctx context.Context, config mail.Config, secret string) (mail.Account, error) {
+	dir, err := m.requireWritable()
+	if err != nil {
+		return mail.Account{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return mail.Account{}, err
+	}
+	account, err := mail.SaveAccount(dir, config, secret)
+	if err != nil {
+		return mail.Account{}, err
+	}
+	return *account, nil
+}
+
+// RemoveMailAccount 删除账号，保留导入台账与去重记录以免重复导入。
+func (m *MailService) RemoveMailAccount(ctx context.Context, id string) error {
+	dir, err := m.requireWritable()
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return mail.RemoveAccount(dir, id)
+}
