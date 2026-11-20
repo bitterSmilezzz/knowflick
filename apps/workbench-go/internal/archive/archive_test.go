@@ -1,6 +1,8 @@
 package archive
 
 import (
+	"errors"
+	"knowflick.local/workbench-go/internal/e2ee"
 	"os"
 	"strings"
 	"testing"
@@ -180,5 +182,109 @@ func TestReadRustArchiveFixture(t *testing.T) {
 	}
 	if !strings.Contains(*payload.Settings, "theme") {
 		t.Fatalf("non-secret settings dropped: %s", *payload.Settings)
+	}
+}
+
+func TestEncryptedArchiveRoundTrip(t *testing.T) {
+	cards := `["card-1","card-2"]`
+	settings := StripSecretSettings(`{"theme":"dark","apiKey":"sk-must-not-leak"}`)
+	blob, err := WriteEncrypted("correct horse", cards, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(blob[:6]), "KFENC") {
+		t.Fatal("encrypted archive must start with the KFENC header")
+	}
+	// 密文里不能直接看到明文（这是「上传前加密」的意义）。
+	if strings.Contains(string(blob), "card-1") || strings.Contains(string(blob), "sk-must-not-leak") {
+		t.Fatal("plaintext leaked into the encrypted blob")
+	}
+	payload, err := ReadEncrypted("correct horse", blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Cards != cards {
+		t.Fatalf("cards: %q", payload.Cards)
+	}
+	if payload.Settings == nil || !strings.Contains(*payload.Settings, "theme") {
+		t.Fatalf("settings: %v", payload.Settings)
+	}
+}
+
+func TestEncryptedArchiveSeparatesTwoKindsOfFailure(t *testing.T) {
+	blob, err := WriteEncrypted("correct horse", `["c"]`, "{}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 口令不对 → e2ee 的错。
+	if _, err := ReadEncrypted("wrong", blob); err == nil || !strings.Contains(err.Error(), "口令不对") {
+		t.Fatalf("wrong passphrase: %v", err)
+	}
+	// 被篡改 → 同样是 e2ee 的错（GCM 认证失败）。
+	tampered := append([]byte(nil), blob...)
+	tampered[len(tampered)-1] ^= 0x01
+	if _, err := ReadEncrypted("correct horse", tampered); err == nil || !strings.Contains(err.Error(), "口令不对") {
+		t.Fatalf("tampered: %v", err)
+	}
+	// 解密成功但容器不合法 → archive 的错，不能报成「口令不对」。
+	badContainer, err := e2ee.Encrypt("correct horse", []byte("   "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadEncrypted("correct horse", badContainer); err == nil || strings.Contains(err.Error(), "口令不对") {
+		t.Fatalf("container error reported as passphrase error: %v", err)
+	}
+	// 空口令直接被拒，不会走到容器层。
+	if _, err := WriteEncrypted("", `["c"]`, "{}"); !errors.Is(err, e2ee.ErrEmptyPassphrase) {
+		t.Fatalf("empty passphrase: %v", err)
+	}
+}
+
+// TestExportEncryptedArchiveFixture 导出 Go 的加密归档，供 Rust 解密后读出。
+func TestExportEncryptedArchiveFixture(t *testing.T) {
+	target := os.Getenv("KF_GO_ENC_ARCHIVE_FIXTURE")
+	if target == "" {
+		t.Skip("set KF_GO_ENC_ARCHIVE_FIXTURE to export the encrypted archive")
+	}
+	settings := StripSecretSettings(`{"theme":"dark","apiKey":"sk-go-secret"}`)
+	blob, err := WriteEncrypted("correct horse", `["card-1","card-2"]`, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, blob, 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestReadRustEncryptedArchiveFixture 解密并读出 Rust 打的加密归档。
+func TestReadRustEncryptedArchiveFixture(t *testing.T) {
+	path := os.Getenv("KF_RUST_ENC_ARCHIVE_FIXTURE")
+	if path == "" {
+		t.Skip("set KF_RUST_ENC_ARCHIVE_FIXTURE to the Rust-written encrypted archive")
+	}
+	blob, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := ReadEncrypted("correct horse", blob)
+	if err != nil {
+		t.Fatalf("Go should decrypt and read the Rust archive: %v", err)
+	}
+	expected, err := os.ReadFile(path + ".cards")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Cards != string(expected) {
+		t.Fatalf("cards: got %q want %q", payload.Cards, expected)
+	}
+	if payload.Settings == nil || !strings.Contains(*payload.Settings, "theme") {
+		t.Fatalf("settings: %v", payload.Settings)
+	}
+	if strings.Contains(*payload.Settings, "apiKey") {
+		t.Fatalf("secret leaked: %s", *payload.Settings)
+	}
+	// 口令必须真的起作用：换个口令读不开。
+	if _, err := ReadEncrypted("wrong", blob); err == nil || !strings.Contains(err.Error(), "口令不对") {
+		t.Fatalf("wrong passphrase should fail: %v", err)
 	}
 }

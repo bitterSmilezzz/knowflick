@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"knowflick.local/workbench-go/internal/e2ee"
 	"strings"
 	"unicode/utf8"
 )
@@ -183,4 +184,28 @@ func Write(cards, settings string) ([]byte, error) {
 		return nil, err
 	}
 	return buffer.Bytes(), nil
+}
+
+// WriteEncrypted 打包后加密：容器在内、密文在外。
+//
+// 顺序与前端契约一致——先打包成 ZIP 再加密，所以解密方拿到的永远是完整容器，
+// 不会出现「解密成功但 ZIP 半截」这种中间态。
+func WriteEncrypted(passphrase, cards, settings string) ([]byte, error) {
+	plain, err := Write(cards, settings)
+	if err != nil {
+		return nil, err
+	}
+	return e2ee.Encrypt(passphrase, plain)
+}
+
+// ReadEncrypted 解密后读容器。
+//
+// 两种失败必须分开：口令不对/被改（e2ee 的错）与容器不合法（archive 的错）。
+// 混成一条会让「密码错了」看起来像「文件坏了」，两者的修法完全不同。
+func ReadEncrypted(passphrase string, data []byte) (Payload, error) {
+	plain, err := e2ee.Decrypt(passphrase, data)
+	if err != nil {
+		return Payload{}, err
+	}
+	return Read(plain)
 }

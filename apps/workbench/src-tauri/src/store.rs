@@ -420,6 +420,37 @@ fn restrict_to_owner(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Go 打的**加密**归档：Rust 必须先解密、再读出容器——两步都对才算互通。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_encrypted_archive_reads_in_rust() {
+        let path = std::env::var("KF_GO_ENC_ARCHIVE_FIXTURE").expect("set KF_GO_ENC_ARCHIVE_FIXTURE");
+        let blob = std::fs::read(&path).unwrap();
+        let plain = crate::e2ee::decrypt("correct horse", &blob).expect("Rust should decrypt the Go-written archive");
+        let payload = read_archive_zip(&plain).expect("Rust should read the decrypted container");
+        assert!(payload.cards.contains("card-1"), "卡片正文丢了: {}", payload.cards);
+        let settings = payload.settings.expect("settings 应被读出");
+        assert!(settings.contains("theme"), "非密钥设置丢了: {}", settings);
+        assert!(!settings.contains("apiKey"), "密钥泄漏: {}", settings);
+    }
+
+    /// 反向：Rust 加密的归档，Go 必须能解密并读出容器。
+    #[test]
+    #[ignore = "writes a fixture for the Go reader"]
+    fn rust_encrypted_archive_reads_in_go() {
+        let path = std::env::var("KF_RUST_ENC_ARCHIVE_FIXTURE").expect("set KF_RUST_ENC_ARCHIVE_FIXTURE");
+        assert!(!std::path::Path::new(&path).exists(), "fixture must be new");
+        let cards = r#"["rust-card-1"]"#;
+        let settings = strip_secret_settings(r#"{"theme":"light","apiKey":"sk-should-not-ship"}"#);
+        let plain = zip_store(&[("cards.json", cards.as_bytes()), ("settings.json", settings.as_bytes())]);
+        let blob = crate::e2ee::encrypt("correct horse", &plain).unwrap();
+        // 当场自检，别把坏夹具交给 Go。
+        assert_eq!(crate::e2ee::decrypt("correct horse", &blob).unwrap(), plain);
+        std::fs::write(&path, &blob).unwrap();
+        std::fs::write(format!("{path}.cards"), cards).unwrap();
+    }
+
     /// Go 打的归档，Rust 必须能读开——容器格式不是我们的契约，能被对方读开才是。
     #[test]
     #[ignore = "requires the fixture exported by Go"]
