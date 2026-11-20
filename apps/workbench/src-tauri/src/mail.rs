@@ -1360,6 +1360,26 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// 同一组服务器响应，Rust 与 Go 的同步编排必须得出相同的处理顺序与计数。
+    /// 顺序错了会让游标倒退、失败时漏重试，所以这条断言的是顺序而不是集合。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_mail_sync_parity() {
+        let fixture = std::env::var("KF_GO_SYNC_FIXTURE").expect("set KF_GO_SYNC_FIXTURE");
+        let text = std::fs::read_to_string(fixture).unwrap();
+        let mut got = std::collections::HashMap::new();
+        for line in text.lines() {
+            if let Some((key, value)) = line.split_once('=') {
+                got.insert(key.to_string(), value.to_string());
+            }
+        }
+        // History 必须降序：每次提交都安全下移 history_before。
+        assert_eq!(got["history_order"], "history:12,history:11,history:10", "历史处理顺序与 Go 不一致");
+        assert_eq!(got["imported"], "3", "导入计数与 Go 不一致");
+        assert_eq!(got["skipped"], "0");
+        assert_eq!(got["rejected"], "0");
+    }
+
     /// Go 写入的素材库，Rust 必须能读到同一行：标题、正文、哈希、version、FTS。
     #[test]
     #[ignore = "requires KF_GO_MATERIAL_DB"]

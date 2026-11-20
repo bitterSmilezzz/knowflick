@@ -771,6 +771,19 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0025-go-material-write.md。
 
+## 2026-11-20 夜间：阶段 2 第十七刀 —— 邮件同步编排迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 三种同步模式 | PASS | Go 8 项：bootstrap 对齐（validity 写入、last_uid=boundary-1、按 New 处理）；History 降序；边界 <= 1 短路且不白跑搜索；超大与 MIME 坏各记一次拒收而其余照常导入；失败写 last_error；Retry 用拒收列表；已处理过的跳过。 |
+| 跨运行时对拍 | PASS | Rust `go_mail_sync_parity` 比对同一组服务器响应的处理顺序（`history:12,history:11,history:10`）与三项计数，逐项一致。 |
+| 为什么对拍顺序 | 记录 | 游标是单向推进的。History 若用升序，每提交一封就把 `history_before` 往上抬，边界越过未处理的邮件，那些邮件**永久跳过且无任何报错**。所以断言的是处理顺序，不是「取了这三个 UID」。 |
+| Store 的 SQL 实现 / 与 IMAP 接线 / 自动同步调度 / 并发保护 / 真实邮箱 | SKIP | 均未迁。Go 版有完整的同步编排逻辑并已对拍，但**还跑不起来**——缺 Store 实现与接线。 |
+
+**未验证**：Store 的 SQLite 实现、IMAP 接线、自动同步调度、ACCOUNT_LOCK 等价物、真实邮箱同步。
+
+取舍与证据见 docs/adr/0026-go-mail-sync.md。
+
 
 
 
