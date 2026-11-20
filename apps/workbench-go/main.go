@@ -37,6 +37,20 @@ func main() {
 	service.window = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "KnowFlick · Go 版只读预览", Width: 1080, Height: 720, MinWidth: 380, MinHeight: 440, URL: "/",
 	})
+	// 快捷捕捉窗口：全局快捷键切换。与 Rust 同一快捷键 Alt+Space，
+	// 不静默回退到 Control+Space，避免抢占输入法切换。
+	service.capsuleWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title: "快速捕捉", Width: 480, Height: 220, URL: "/?window=capsule", Hidden: true,
+	})
+	if err := app.GlobalShortcut.Register("Alt+Space", func() {
+		if service.capsuleWindow.IsVisible() {
+			service.capsuleWindow.Hide()
+		} else {
+			service.capsuleWindow.Show()
+		}
+	}); err != nil {
+		log.Printf("全局快捷键未注册：%v（可从应用菜单打开捕捉窗口）", err)
+	}
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}

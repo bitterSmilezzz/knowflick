@@ -16,14 +16,15 @@ import (
 
 // PreviewService 是预览窗口的后端：默认只读，用户显式启用编辑后才可写。
 type PreviewService struct {
-	app         *application.App
-	window      application.Window
-	initialPath string
-	mu          sync.RWMutex
-	current     *library.Library
-	path        string
-	writable    bool
-	generation  int
+	app           *application.App
+	window        application.Window
+	capsuleWindow application.Window
+	initialPath   string
+	mu            sync.RWMutex
+	current       *library.Library
+	path          string
+	writable      bool
+	generation    int
 
 	asrMu        sync.Mutex
 	asrDownloads map[string]*AsrDownloadState

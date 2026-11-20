@@ -1625,6 +1625,14 @@ R4 项目与画像的写入仍未迁移。
 | SHA-256 sidecar | PASS | 写入 sha256 校验文件（摘要 + 文件名），跨设备校验用；返回 fileName、sha256、bytes、sidecar。目标目录不存在被拒绝。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。原生目录选择对话框待桌面解锁后验证。 |
 
+## 阶段 2 第九十六轮 · 全局快捷键与快捷捕捉窗口
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 全局快捷键 | 构建通过 | 启动时注册 Alt+Space（与 Rust 同键，不静默回退 Control+Space 抢占输入法）；GetShortcutStatus 返回注册状态与占用提示。 |
+| 捕捉窗口 | 构建通过 | ToggleCapsule / HideCapsule 切换与隐藏快速捕捉窗口（?window=capsule，与前端 CapsuleWindow 路由一致）；窗口未创建时明确报错。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。快捷键实际触发与原生窗口行为待桌面解锁后验证。 |
+
 ## 阶段 2 第九十四轮 · 笔记、卡片、邮箱、复习历史与回收站恢复
 
 | 验收 | 结果 | 证据与范围 |
