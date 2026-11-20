@@ -23,6 +23,7 @@ import { MaterialLibrary } from "./MaterialLibrary";
 import { ArtifactLibrary } from "./ArtifactLibrary";
 import { ProjectLibrary } from "./ProjectLibrary";
 import { GoalLibrary } from "./GoalLibrary";
+import { ClaimLibrary } from "./ClaimLibrary";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
@@ -39,7 +40,7 @@ function Preview() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
-  const [view, setView] = useState<"notes" | "materials" | "cards" | "artifacts" | "projects" | "goals" | "review">("notes");
+  const [view, setView] = useState<"notes" | "materials" | "cards" | "artifacts" | "projects" | "goals" | "claims" | "review">("notes");
   const [cardEditing, setCardEditing] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -541,6 +542,7 @@ function Preview() {
                 <button type="button" aria-pressed={view === "artifacts"} disabled={busy || cardEditing} onClick={() => { setView(view === "artifacts" ? "notes" : "artifacts"); setMoreOpen(false); }}>产物</button>
                 <button type="button" aria-pressed={view === "projects"} disabled={busy || cardEditing} onClick={() => { setView(view === "projects" ? "notes" : "projects"); setMoreOpen(false); }}>项目</button>
                 <button type="button" aria-pressed={view === "goals"} disabled={busy || cardEditing} onClick={() => { setView(view === "goals" ? "notes" : "goals"); setMoreOpen(false); }}>目标</button>
+                <button type="button" aria-pressed={view === "claims"} disabled={busy || cardEditing} onClick={() => { setView(view === "claims" ? "notes" : "claims"); setMoreOpen(false); }}>画像</button>
                 <button type="button" aria-pressed={view === "review"} disabled={busy || cardEditing} onClick={() => { setView(view === "review" ? "notes" : "review"); setMoreOpen(false); }}>卡片复习</button>
                 <button type="button" disabled={busy || view !== "notes"} onClick={() => { void toggleTrash(); setMoreOpen(false); }}>{trash ? "返回笔记" : "回收站"}</button>
                 {view !== "notes" && <button type="button" disabled={busy} onClick={() => { setView("notes"); setMoreOpen(false); }}>返回笔记</button>}
@@ -657,6 +659,7 @@ function Preview() {
       </section>}
       {lib && view === "review" && <ReviewDeck key={lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
       {lib && view === "materials" && <MaterialLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "claims" && <ClaimLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "goals" && <GoalLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "projects" && <ProjectLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "artifacts" && <ArtifactLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
