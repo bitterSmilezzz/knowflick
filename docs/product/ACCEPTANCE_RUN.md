@@ -637,6 +637,20 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 `docs/adr/0016-go-http-layer.md`。
 
+## 2026-11-20 中午（续）：阶段 2 第八刀 —— 语义向量（可确定性部分）迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 模型状态判定 | PASS | `<data_root>/models/fastembed` 递归找 `*.onnx`；空目录不算下载过；未下载时 `RequireModel` 返回哨兵 `ErrNotDownloaded`（`errors.Is` 可判）。 |
+| 哈希投影 | PASS（修后） | 6 项 Go 用例：确定性、L2 归一化、相关文本相似度高于无关、空输入零向量、余弦边界。 |
+| 跨语言对拍 | PASS（**修前失败**） | `hashParity.test.ts` 读 Go 导出的 128 维向量与 TS 同文本投影逐维比对。首版第 3 维差 0.027：JS 的 `h ^ (h >>> 16)` 是有符号 int32，负下标被 Float32Array 静默丢弃；Go 用 uint32 把那些分量算了进去。改成复刻 JS 语义后通过。 |
+| 本地 ONNX 推理 | **SKIP（未迁）** | Rust 用 `fastembed` 做真正的语义推理；Go 侧没有等价实现，本轮只迁了可确定性复现的部分。见 ADR-0017 第四节。 |
+| 向量请求 / 前缀规则 / 维度标脏 | SKIP | 未迁。 |
+
+**未验证**：任何 Go 侧 ONNX 运行时、真实语义向量、`request_embeddings`。
+
+取舍与证据见 `docs/adr/0017-go-embed-hash.md`。
+
 
 
 
