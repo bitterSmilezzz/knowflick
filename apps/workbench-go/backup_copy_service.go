@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -22,7 +23,11 @@ type BackupCopyResult struct {
 // CopyBackupToDirectory 把打包好的备份字节写到用户指定目录：
 // 版本化文件名 knowflick-backup-YYYYMMDD-NN.kfbackup + SHA-256 sidecar。
 // 明确是备份不是同步：一次性的完整快照。
-func (s *PreviewService) CopyBackupToDirectory(ctx context.Context, targetDir string, archiveBytes []byte) (BackupCopyResult, error) {
+func (s *PreviewService) CopyBackupToDirectory(ctx context.Context, targetDir, archiveB64 string) (BackupCopyResult, error) {
+	archiveBytes, err := base64.StdEncoding.DecodeString(archiveB64)
+	if err != nil {
+		return BackupCopyResult{}, errors.New("备份字节无效，无法解码")
+	}
 	info, err := os.Stat(targetDir)
 	if err != nil || !info.IsDir() {
 		return BackupCopyResult{}, fmt.Errorf("目标目录不存在：%s", targetDir)

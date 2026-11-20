@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BackfillMaterialFTS, LibrarySignature, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { BackfillMaterialFTS, CaptureDatabaseSnapshot, CopyBackupToDirectory, LibrarySignature, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
 
 type Props = {
   generation: number;
@@ -69,6 +69,18 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
     });
   }
 
+  async function downloadSnapshot() {
+    if (busy) return;
+    await run(async () => {
+      const snapshot = await CaptureDatabaseSnapshot(generation);
+      const bytes = new TextEncoder().encode(JSON.stringify(snapshot, null, 2));
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      const result = await CopyBackupToDirectory(".", btoa(binary));
+      setNotice("备份快照已落盘：" + result.fileName + "（" + result.bytes + " 字节，SHA-256 " + result.sha256.slice(0, 12) + "…）");
+    });
+  }
+
   async function save(kind: "settings" | "history" | "key") {
     if (busy) return;
     await run(async () => {
@@ -91,6 +103,7 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
         <span>{signature ? "签名 " + signature.slice(0, 24) + "…" : ""}</span>
         <button type="button" disabled={busy} onClick={() => void run(async () => { setSignature(await LibrarySignature(generation)); setNotice("签名已刷新"); })}>刷新签名</button>
         {writable && <button type="button" disabled={busy} onClick={() => void backfillMaterials()}>补全素材索引</button>}
+        <button type="button" disabled={busy} onClick={() => void downloadSnapshot()}>导出备份快照</button>
       </div>
       {error && <p className="preview-error" role="alert">{error}</p>}
       {notice && <p className="preview-notice" role="status">{notice}</p>}

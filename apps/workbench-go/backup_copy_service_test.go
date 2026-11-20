@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,7 @@ import (
 func TestCopyBackupToDirectoryVersionsAndSidecar(t *testing.T) {
 	service := &PreviewService{}
 	dir := t.TempDir()
-	result, err := service.CopyBackupToDirectory(t.Context(), dir, []byte("包内容一"))
+	result, err := service.CopyBackupToDirectory(t.Context(), dir, base64.StdEncoding.EncodeToString([]byte("包内容一")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,11 +30,11 @@ func TestCopyBackupToDirectoryVersionsAndSidecar(t *testing.T) {
 		t.Fatalf("sidecar: %q %v", sidecar, err)
 	}
 	// 同一天第二次备份：序号递增。
-	result2, err := service.CopyBackupToDirectory(t.Context(), dir, []byte("包内容二"))
+	result2, err := service.CopyBackupToDirectory(t.Context(), dir, base64.StdEncoding.EncodeToString([]byte("包内容二")))
 	if err != nil || result2.FileName == result.FileName {
 		t.Fatalf("second backup: %+v, %v", result2, err)
 	}
-	if _, err := service.CopyBackupToDirectory(t.Context(), filepath.Join(dir, "不存在"), nil); err == nil {
+	if _, err := service.CopyBackupToDirectory(t.Context(), filepath.Join(dir, "不存在"), ""); err == nil {
 		t.Fatal("missing directory accepted")
 	}
 }
