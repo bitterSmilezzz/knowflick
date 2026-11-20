@@ -732,6 +732,19 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0022-go-imap-tls-uid.md。
 
+## 2026-11-20 傍晚（续）：阶段 2 第十四刀 —— MIME 正文抽取迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 正文抽取规则 | PASS | Go 11 项：纯文本正文与头；alternative 优先纯文本；纯文本为空退到 HTML；附件只记名且字节不进正文；HTML 去 script/style 并解实体；层数守卫（未超限不误报）；UTF-8 边界截断与去 NUL；GBK 正文解码；未知编码原样透传。 |
+| 跨运行时对拍 | PASS（修复后） | Rust `go_mime_parity` 用同一封 .eml 比对主题、Message-ID 与正文选择，三项一致。**首版主题原样输出 `=?utf-8?B?...?=`**：Rust 的 mailparse 默认解码 RFC 2047，Go 的 net/mail 只拆头不解码；补 `mime.WordDecoder` 后输出「测试主题」。 |
+| 字符集 | PASS | `decodeCharset` 走 `x/text/htmlindex`：GBK 字节 D6 D0 CE C4 解出「中文」，未知编码原样透传。不留「已知会乱码」的路径。 |
+| 落素材 / 同步执行 / 备份 / 真实邮件 | SKIP | 均未迁。Go 版能把原始邮件解析成主题/发件人/正文/附件名，但还不能落成素材。 |
+
+**未验证**：真实邮箱邮件、复杂 HTML 排版（表格/列表嵌套/预格式）、落素材与同步执行。
+
+取舍与证据见 docs/adr/0023-go-mime-extraction.md。
+
 
 
 

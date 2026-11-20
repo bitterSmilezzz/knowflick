@@ -1360,6 +1360,30 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// 同一封邮件，Rust 的 MIME 解析结果必须与 Go 一致：主题解码、Message-ID、正文选择。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_mime_parity() {
+        let source = std::env::var("KF_MIME_SOURCE").expect("set KF_MIME_SOURCE");
+        let fixture = std::env::var("KF_GO_MIME_FIXTURE").expect("set KF_GO_MIME_FIXTURE");
+        let raw = std::fs::read(source).unwrap();
+        let parsed = mailparse::parse_mail(&raw).unwrap();
+        let mut attachments = Vec::new();
+        let text = body_text(&parsed, 0, &mut attachments).unwrap();
+        let subject = header(&parsed, "Subject");
+        let message_id = header(&parsed, "Message-Id");
+        let text_out = std::fs::read_to_string(fixture).unwrap();
+        let mut got = std::collections::HashMap::new();
+        for line in text_out.lines() {
+            if let Some((key, value)) = line.split_once('=') {
+                got.insert(key.to_string(), value.to_string());
+            }
+        }
+        assert_eq!(got["subject"], subject, "主题解码与 Go 不一致");
+        assert_eq!(got["message_id"], message_id, "Message-ID 与 Go 不一致");
+        assert_eq!(got["text"].trim(), text.trim(), "正文选择与 Go 不一致");
+    }
+
     /// Go 的 UID 搜索与取信结论必须与 Rust 一致：同一组响应、同样的升序与上限规则。
     #[test]
     #[ignore = "requires the fixture exported by Go"]
