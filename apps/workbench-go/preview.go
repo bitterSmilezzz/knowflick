@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"knowflick.local/workbench-go/internal/library"
+	"knowflick.local/workbench-go/internal/media"
 )
 
 // PreviewService 是预览窗口的后端：默认只读，用户显式启用编辑后才可写。
@@ -191,4 +193,35 @@ func (s *PreviewService) SearchChunkHits(ctx context.Context, generation int, qu
 		limit = 20
 	}
 	return s.current.SearchChunks(ctx, query, limit)
+}
+
+// SaveAttachment 把 IPC 送来的 base64 附件落到库目录旁的 media/ 下，返回相对路径。
+func (s *PreviewService) SaveAttachment(ctx context.Context, generation int, kind, mime, dataB64 string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	if !s.writable {
+		return "", errors.New("当前是只读模式，请先点「启用编辑」")
+	}
+	bytes, err := base64.StdEncoding.DecodeString(dataB64)
+	if err != nil {
+		return "", errors.New("附件数据无效，无法解码")
+	}
+	return media.Save(filepath.Dir(s.path), kind, mime, bytes)
+}
+
+// ReadAttachment 读回附件；返回 base64，避免 Vec/u8[] 被 JSON 展开成数字数组。
+func (s *PreviewService) ReadAttachment(ctx context.Context, generation int, relative string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	bytes, err := media.Read(filepath.Dir(s.path), relative)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(bytes), nil
 }

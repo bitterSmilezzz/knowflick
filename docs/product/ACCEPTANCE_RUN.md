@@ -590,6 +590,23 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 `docs/adr/0013-go-chunk-search.md`。
 
+## 2026-11-20 上午（第六续）：阶段 2 第五刀 —— 附件存储迁到 Go
+
+环境 macOS arm64，分支 `workbench/second-brain-validation`。附件 fixture 写在 `.scratch/`，未写本机真实库。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| Go 写入语义 | PASS | 2 项用例：256 字节全值往返一致、返回路径形如 `media/audio/<uuid>.webm`、无 `.part` 残留；kind/MIME 不匹配、空载荷、超 8 MB ink 均被拒；6 条穿越/绝对路径/反斜杠路径被拒。 |
+| Go 写 → Rust 读 | PASS | Go 写 0–255 全值附件，Rust `read_media` 读回逐字节一致；`../relative.txt` 被拒。 |
+| Rust 写 → Go 读 | PASS | Rust `save_media` 写 `rust-cross-runtime-media`，Go `media.Read` 读回一致。 |
+| 服务方法 | PASS（编译级） | `SaveAttachment` / `ReadAttachment` 已生成 Wails 绑定（12 个方法）；只读模式拒绝写；`go build ./...` 通过。**界面入口未接**。 |
+| 构建与测试 | PASS（定向） | `go test ./...` 全绿；`cargo test go_media_round_trip -- --ignored` 带 fixture 通过。前端零改动，浏览器冒烟未重跑。 |
+| 附件恢复 / UI 入口 / 真实录音 / 跨平台 | SKIP | 见 ADR-0014 第三节。 |
+
+**未验证**：备份恢复原路径分支、界面附件选择与预览、真实麦克风录音、Windows/Linux 与 `.app` 签名。
+
+取舍与证据见 `docs/adr/0014-go-media-storage.md`。
+
 
 
 

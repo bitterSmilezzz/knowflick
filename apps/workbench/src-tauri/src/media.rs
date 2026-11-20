@@ -197,6 +197,23 @@ fn safe_media_path(dir: &Path, relative: &str) -> Result<PathBuf, String> {
     Ok(resolved)
 }
 
+
+    /// Go 写、Rust 读：附件字节必须逐字节一致，路径必须是相对库目录。
+    #[test]
+    #[ignore = "requires the media fixture written by Go"]
+    fn go_media_round_trip() {
+        use std::env;
+        let dir = env::var_os("KF_GO_MEDIA_FIXTURE").expect("set KF_GO_MEDIA_FIXTURE");
+        let dir = std::path::PathBuf::from(dir);
+        let relative = fs::read_to_string(dir.join("relative.txt")).unwrap();
+        let bytes = read_media(&dir, &relative).unwrap();
+        let expected: Vec<u8> = (0..=255u8).collect();
+        assert_eq!(bytes, expected, "Go 写入的附件读回不一致");
+        assert!(read_media(&dir, "../relative.txt").is_err(), "路径穿越未被拒绝");
+
+        // 反向：Rust 写一份，给 Go 读回。
+        save_media(&dir, "image", "image/png", b"rust-cross-runtime-media").unwrap();
+    }
 #[cfg(test)]
 mod tests {
     use super::*;
