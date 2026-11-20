@@ -93,6 +93,35 @@ pub fn decrypt(passphrase: &str, blob: &[u8]) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
+    /// Go 加密的备份包，Rust 必须能用同一口令解开。
+    /// 这条验证两边的密钥派生与 GCM 参数逐字节一致。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_e2ee_fixture_decrypts_in_rust() {
+        let path = std::env::var("KF_GO_E2EE_FIXTURE").expect("set KF_GO_E2EE_FIXTURE");
+        let blob = std::fs::read(&path).unwrap();
+        let expected = std::fs::read(format!("{path}.plain")).unwrap();
+        let restored = decrypt("correct horse", &blob).expect("Rust should decrypt the Go-written blob");
+        assert_eq!(restored, expected, "Go 加密的密文解开后与原文不一致");
+    }
+
+    /// 反向：Rust 加密的备份包，Go 必须能解开。
+    /// 只测一个方向不够——密钥派生写反了也能让自测通过。
+    #[test]
+    #[ignore = "writes a fixture for the Go reader"]
+    fn rust_e2ee_fixture_decrypts_in_go() {
+        let path = std::env::var("KF_RUST_E2EE_FIXTURE").expect("set KF_RUST_E2EE_FIXTURE");
+        assert!(!std::path::Path::new(&path).exists(), "fixture must be new");
+	// 字节串里不能放非 ASCII，所以先给字节前缀再补 UTF-8 正文。
+	let mut plaintext = b"PK\x03\x04 ".to_vec();
+	plaintext.extend_from_slice("Rust 加密的备份包内容".as_bytes());
+        let blob = encrypt("correct horse", &plaintext).unwrap();
+        std::fs::write(&path, &blob).unwrap();
+        std::fs::write(format!("{path}.plain"), &plaintext).unwrap();
+        // 同一条链路当场自检，避免把坏夹具交给 Go 而误判成 Go 的问题。
+        assert_eq!(decrypt("correct horse", &blob).unwrap(), plaintext);
+    }
+
     use super::*;
 
     #[test]
