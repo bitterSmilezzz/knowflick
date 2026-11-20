@@ -1100,6 +1100,16 @@ SQLite 查询共享同一快照，设置与附件在事务外从磁盘读取。�
 
 回收站（v11）、搜索历史（v10）与 Go 恢复写入仍未迁移。
 
+## 阶段 2 第四十二轮 · 复习历史 v9 与搜索历史 v10
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 复习历史 | PASS | Go 在同一个只读事务中读取 `review_events` 与覆盖起点，复用已迁移的校验规则。一个事件与 Rust `ReviewHistorySnapshot` 逐字段一致。 |
+| 搜索历史 | PASS | 从 `search_history.json` 读取并严格校验：数组、最多 8 条、非空且已 trim、无重复。格式错误直接报错而不是导出空历史。 |
+| 版本推进 | PASS | 含复习历史升到 v9，含搜索历史升到 v10；清单写入 `reviewEvents` 与 `searchHistory`，现有 TypeScript 恢复器接受 v10 包。 |
+
+两个版本复用同一只读事务，未额外打开连接。回收站（v11）与 Go 恢复写入仍未迁移。
+
 复现：用第三十六轮的 Rust fixture 命令生成新库（fixture 现在含三条笔记修订），设 `KF_SYSTEM_BACKUP_DB_FIXTURE_DIR` 与 `KF_GO_SQLITE_BACKUP_FIXTURE`，运行 `go test -count=1 -run ^TestWriteSystemBackupV4FromRustDatabase$ ./internal/library`，再运行 `npx vitest run src/domain/goSystemBackup.test.ts`。
 
 
