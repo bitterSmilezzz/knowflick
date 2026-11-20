@@ -2,8 +2,8 @@ package library
 
 import (
 	"context"
-	"time"
 
+	"knowflick.local/workbench-go/internal/archive"
 	"knowflick.local/workbench-go/internal/materials"
 )
 
@@ -36,4 +36,34 @@ func (l *Library) ConvertMaterialToCard(ctx context.Context, materialID, cardID 
 	return materials.ConvertToCard(ctx, l.db, materialID, cardID, now)
 }
 
-var _ = time.Now
+// MaterialAttachment 是可写进笔记正文的库内素材附件。
+type MaterialAttachment struct {
+	Path  string `json:"path"`
+	Title string `json:"title"`
+}
+
+func (l *Library) ListMaterialAttachments(ctx context.Context) ([]MaterialAttachment, error) {
+	rows, err := l.db.QueryContext(ctx, "SELECT media_path, title FROM materials "+
+		"WHERE is_deleted = 0 AND media_path IS NOT NULL AND media_path <> '' ORDER BY created_at DESC, id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]MaterialAttachment, 0)
+	seen := make(map[string]struct{})
+	for rows.Next() {
+		var item MaterialAttachment
+		if err := rows.Scan(&item.Path, &item.Title); err != nil {
+			return nil, err
+		}
+		if !archive.IsSystemMediaPath(item.Path) {
+			continue
+		}
+		if _, exists := seen[item.Path]; exists {
+			continue
+		}
+		seen[item.Path] = struct{}{}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}

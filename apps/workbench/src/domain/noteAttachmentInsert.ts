@@ -22,7 +22,12 @@ export interface TextRange {
  * 一段长标题会把正文冲散。
  */
 export function attachmentAlt(label: string): string {
-  const base = label.replace(/\.[A-Za-z0-9]{1,8}$/, "").replace(/\s+/g, " ").trim();
+  const base = label.trim()
+    .replace(/\.[A-Za-z0-9]{1,8}$/, "")
+    .replaceAll("[", "［")
+    .replaceAll("]", "］")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!base) return "附件";
   return base.length > 40 ? `${base.slice(0, 40)}…` : base;
 }
@@ -46,11 +51,12 @@ export function insertAttachmentRef(
   const after = range.text.slice(range.end);
   // 前面不是行首就补两个换行：Markdown 里图片独占一行才稳。
   const lead = before === "" || before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n";
-  const tail = after === "" || after.startsWith("\n") ? "\n" : "\n\n";
+  const tail = after.startsWith("\n\n") ? "" : after === "" || after.startsWith("\n") ? "\n" : "\n\n";
   const inserted = `${lead}${snippet}${tail}`;
+  const cursor = before.length + inserted.length + (tail === "" ? 1 : 0);
   return {
     text: `${before}${inserted}${after}`,
-    start: before.length + inserted.length,
-    end: before.length + inserted.length,
+    start: cursor,
+    end: cursor,
   };
 }

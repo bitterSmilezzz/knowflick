@@ -29,6 +29,8 @@ import { AsrPanel } from "./AsrPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { noteMediaPaths } from "../src/domain/mediaMime";
+import { insertAttachmentRef } from "../src/domain/noteAttachmentInsert";
+import { NoteAttachmentPicker } from "./NoteAttachmentPicker";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
@@ -53,6 +55,7 @@ function Preview() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsRevision, setStatsRevision] = useState(0);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const [scope, setScope] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
   const [knowledgeError, setKnowledgeError] = useState("");
@@ -424,6 +427,19 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  /** 把附件引用插到光标处，并把光标放到引用之后（与桌面版同一套插入规则）。 */
+  function insertReference(path: string, label: string) {
+    const area = bodyRef.current;
+    if (!area) return;
+    const next = insertAttachmentRef({ text: draftBody, start: area.selectionStart, end: area.selectionEnd }, path, label);
+    setDraftBody(next.text);
+    requestAnimationFrame(() => {
+      if (bodyRef.current !== area) return;
+      area.focus();
+      area.setSelectionRange(next.start, next.end);
+    });
+  }
+
   async function save() {
     if (!lib || !selected || busy) return;
     setBusy(true); setError(""); setNotice("");
@@ -725,7 +741,8 @@ function Preview() {
               <label htmlFor="note-title">标题</label>
               <input id="note-title" disabled={busy} value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} />
               <label htmlFor="note-body">正文（Markdown）</label>
-              <textarea id="note-body" disabled={busy} value={draftBody} onChange={(e) => setDraftBody(e.target.value)} rows={14} />
+              <textarea key={lib.generation + ":" + selected.id} id="note-body" ref={bodyRef} disabled={busy} value={draftBody} onChange={(e) => setDraftBody(e.target.value)} rows={14} />
+              {view === "notes" && !selected.deleted && <NoteAttachmentPicker key={lib.generation} generation={lib.generation} busy={busy} onInsert={insertReference} />}
               <div className="preview-actions">
                 <button type="submit" disabled={busy || !dirty}>保存</button>
                 <button type="button" disabled={busy} onClick={() => void remove()}>移进回收站</button>

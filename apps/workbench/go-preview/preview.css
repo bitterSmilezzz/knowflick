@@ -63,7 +63,8 @@ button:disabled { cursor: default; opacity: .65; }
 .preview-knowledge-bases summary { cursor: pointer; }
 .preview-knowledge-bases label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-block: 4px; }
 .preview-list .preview-knowledge-bases form { flex-direction: column; }
-.preview-knowledge-bases select { max-width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--control); border-radius: 4px; padding: 5px 8px; }
+.preview-knowledge-bases select, .preview-attachment-picker { max-width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--control); border-radius: 4px; padding: 5px 8px; }
+.preview-attachment-picker { align-self: flex-start; min-width: 0; min-height: 32px; }
 .preview-knowledge-bases ul { list-style: none; padding: 0; }
 .preview-knowledge-bases input[type="checkbox"] { width: auto; min-height: auto; }
 

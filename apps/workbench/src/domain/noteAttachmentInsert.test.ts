@@ -11,6 +11,11 @@ describe("正文插入附件引用（B06）", () => {
     expect(attachmentAlt(".png")).toBe("附件");
   });
 
+  it("标题中的方括号不会截断 Markdown 附件说明", () => {
+    const out = insertAttachmentRef(at("", 0), "media/image/a.png", "  流程图 [新版].png  ");
+    expect(out.text).toBe("![流程图 ［新版］](media/image/a.png)\n");
+  });
+
   it("过长的标题截断，避免把正文冲散", () => {
     const long = "很".repeat(60);
     const alt = attachmentAlt(long);
@@ -29,6 +34,13 @@ describe("正文插入附件引用（B06）", () => {
     expect(out.text).not.toContain("替换我");
     expect(out.text).toContain("![录音](media/audio/a.webm)");
     expect(out.text.startsWith("保留")).toBe(true);
+  });
+
+  it("保留选区后的段落空行，光标位于附件下一行", () => {
+    const out = insertAttachmentRef(at("首段\n\n替换这里\n\n末段", 4, 8), "media/image/a.png", "图一");
+    expect(out.text).toBe("首段\n\n![图一](media/image/a.png)\n\n末段");
+    expect(out.text.slice(out.start)).toBe("\n末段");
+    expect(out.start).toBe(out.end);
   });
 
   it("空正文：不留下多余空行", () => {
