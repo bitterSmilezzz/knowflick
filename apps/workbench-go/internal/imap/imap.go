@@ -10,9 +10,12 @@ package imap
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -277,6 +280,188 @@ func lastNumber(line string) (int, bool) {
 	for i := len(fields) - 1; i >= 0; i-- {
 		if n, err := strconv.Atoi(strings.Trim(fields[i], "()[]")); err == nil {
 			return n, true
+		}
+	}
+	return 0, false
+}
+
+// Connect 建立 TCP + 校验过的 TLS 连接（TLS 1.2 起、系统根、主机名校验）。
+//
+// DNS 解析放进带超时的 goroutine：系统解析器可能卡很久，而调用方有会话预算。
+// 多个地址逐个尝试，每个都用剩余预算——第一个地址黑洞时不至于整轮耗尽。
+func Connect(host string, port uint16) (Transport, error) {
+	dnsResult := make(chan []string, 1)
+	go func() {
+		addresses, err := net.LookupHost(host)
+		if err != nil {
+			dnsResult <- nil
+			return
+		}
+		if len(addresses) > 8 {
+			addresses = addresses[:8]
+		}
+		dnsResult <- addresses
+	}()
+	var addresses []string
+	select {
+	case addresses = <-dnsResult:
+	case <-time.After(IOTimeout):
+		return nil, errors.New("邮件服务器地址解析超时")
+	}
+	if len(addresses) == 0 {
+		return nil, errors.New("无法解析邮件服务器地址")
+	}
+	started := time.Now()
+	var conn net.Conn
+	for _, address := range addresses {
+		remaining := IOTimeout - time.Since(started)
+		if remaining <= 0 {
+			break
+		}
+		dialer := net.Dialer{Timeout: remaining}
+		candidate, err := dialer.Dial("tcp", net.JoinHostPort(address, strconv.Itoa(int(port))))
+		if err == nil {
+			conn = candidate
+			break
+		}
+	}
+	if conn == nil {
+		return nil, errors.New("无法连接邮件服务器")
+	}
+	if err := conn.SetDeadline(time.Now().Add(IOTimeout)); err != nil {
+		conn.Close()
+		return nil, errors.New("无法设置邮件连接超时")
+	}
+	tlsConn := tls.Client(conn, &tls.Config{
+		ServerName: host,
+		MinVersion: tls.VersionTLS12,
+	})
+	if err := tlsConn.Handshake(); err != nil {
+		conn.Close()
+		return nil, errors.New("邮件 TLS 握手或证书校验失败")
+	}
+	return tlsConn, nil
+}
+
+// SearchRange 返回 after 之后最多 limit 个 UID，**始终升序**。
+//
+// newestFirst 保留最新的 N 封（首同步用「最近 N 封」）。即使如此列表仍升序：
+// 调用方按行推进游标，降序会让游标倒退，失败时较新的 UID 会漏重试。
+func (s *Session) SearchRange(after uint32, through *uint32, limit int, newestFirst bool, now func() time.Time) ([]uint32, error) {
+	if after == ^uint32(0) {
+		return []uint32{}, nil
+	}
+	if through != nil && *through <= after {
+		return []uint32{}, nil
+	}
+	end := "*"
+	if through != nil {
+		end = strconv.FormatUint(uint64(*through), 10)
+	}
+	response, err := s.Command(fmt.Sprintf("UID SEARCH UID %d:%s", after+1, end), false, now)
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	seen := map[uint32]struct{}{}
+	for _, line := range response.Lines {
+		if !strings.HasPrefix(strings.ToUpper(line), "* SEARCH") {
+			continue
+		}
+		found = true
+		fields := strings.Fields(line)
+		if len(fields) <= 2 {
+			continue
+		}
+		for _, token := range fields[2:] {
+			value, convErr := strconv.ParseUint(token, 10, 32)
+			if convErr != nil {
+				return nil, errors.New("邮件编号无效")
+			}
+			uid := uint32(value)
+			// 形如 100:* 的区间在 100 超过邮箱末号时也会返回末号；那个 UID 并不更新。
+			if uid <= after || (through != nil && uid > *through) {
+				continue
+			}
+			seen[uid] = struct{}{}
+		}
+	}
+	if !found {
+		return nil, errors.New("邮件服务器的搜索响应里没有结果字段")
+	}
+	uids := make([]uint32, 0, len(seen))
+	for uid := range seen {
+		uids = append(uids, uid)
+	}
+	sort.Slice(uids, func(i, j int) bool { return uids[i] < uids[j] })
+	if len(uids) > limit {
+		if newestFirst {
+			uids = uids[len(uids)-limit:]
+		} else {
+			uids = uids[:limit]
+		}
+	}
+	return uids, nil
+}
+
+// Fetch 用 BODY.PEEK[] 取一封邮件，服务器端保持未读。
+// 先查大小：超过上限返回 nil（这封不能导入），而不是让整轮同步失败。
+func (s *Session) Fetch(uid uint32, now func() time.Time) ([]byte, bool, error) {
+	response, err := s.Command(fmt.Sprintf("UID FETCH %d (UID RFC822.SIZE)", uid), false, now)
+	if err != nil {
+		return nil, false, err
+	}
+	var size uint64
+	var haveSize bool
+	for _, line := range response.Lines {
+		upper := strings.NewReplacer("(", " ", ")", " ").Replace(strings.ToUpper(line))
+		tokens := strings.Fields(upper)
+		if tokenNumber(tokens, "UID") == uint64(uid) {
+			if value, ok := tokenNumberOK(tokens, "RFC822.SIZE"); ok {
+				size, haveSize = value, true
+			}
+		}
+	}
+	if !haveSize {
+		return nil, false, errors.New("邮件服务器没有返回邮件大小或编号")
+	}
+	if size > MaxMessage {
+		return nil, false, nil
+	}
+	// 请求 BODY.PEEK[] 让服务器保持未读，但响应里要接受 BODY[]：
+	// RFC 3501 回显的是**被请求的段**，PEEK 只是请求修饰符，服务器不回显它。
+	// 早期要求响应里必须有 BODY.PEEK[]，结果真实导入全部失败。
+	response, err = s.Command(fmt.Sprintf("UID FETCH %d (UID BODY.PEEK[])", uid), true, now)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(response.Literals) == 0 {
+		return nil, false, errors.New("邮件服务器没有返回邮件正文")
+	}
+	header, _ := response.Literals[0][0].(string)
+	body, _ := response.Literals[0][1].([]byte)
+	if !strings.Contains(strings.ToUpper(header), "BODY[") {
+		return nil, false, errors.New("邮件服务器返回了预期之外的内容段")
+	}
+	joined := strings.NewReplacer("(", " ", ")", " ").Replace(strings.ToUpper(strings.Join(response.Lines, " ")))
+	if tokenNumber(strings.Fields(joined), "UID") != uint64(uid) {
+		return nil, false, errors.New("邮件服务器返回了预期之外的邮件编号")
+	}
+	return body, true, nil
+}
+
+// tokenNumber 在形如 `1 FETCH (UID 42 RFC822.SIZE 100)` 的 token 流里取某个键的数字。
+func tokenNumber(tokens []string, key string) uint64 {
+	value, _ := tokenNumberOK(tokens, key)
+	return value
+}
+
+func tokenNumberOK(tokens []string, key string) (uint64, bool) {
+	for i := 0; i+1 < len(tokens); i++ {
+		if tokens[i] == key {
+			if value, err := strconv.ParseUint(tokens[i+1], 10, 64); err == nil {
+				return value, true
+			}
 		}
 	}
 	return 0, false

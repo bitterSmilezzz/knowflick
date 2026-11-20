@@ -717,6 +717,21 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0021-go-imap-session.md。
 
+## 2026-11-20 傍晚：阶段 2 第十三刀 —— IMAP 的 TLS 连接与 UID 搜索取信迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| TLS 连接 | PASS | TLS 1.2 起、系统根、主机名校验；DNS 解析带 15 秒超时；最多 8 个地址逐个尝试。**自签名证书被拒**（校验真的生效）、不可解析主机与关闭端口被拒。 |
+| UID 搜索 | PASS | 结果始终升序（11,12,13,200）；newestFirst 保留最新两封（4,5）；`<= after` 的 UID 被丢弃（`100:*` 会返回末号本身）；缺 SEARCH 字段报错；through<=after 短路。 |
+| 取信 | PASS | 超限邮件返回「不能导入」而非整轮失败；正文返回 `hello` 且接受响应里的 `BODY[]`（请求写 PEEK，服务器不回显 PEEK）；UID 不匹配报错。 |
+| 跨运行时对拍 | PASS | Rust `go_imap_uid_parity` 比对同一组响应的 `search_all`/`search_newest2`/`fetch_body`，与 Go 逐项一致。 |
+| 一处测试教训 | 记录 | TLS 测试最初手写 PEM 常量，报 `x509: malformed algorithm identifier`——base64 是我编的。改成 `x509.CreateCertificate` 现场生成才有意义：手写证书常量看起来在测 TLS，实际只测「抄的字符串能否解析」。 |
+| MIME 解析 / 落素材 / 同步执行 / 备份 / 真实账号 | SKIP | 均未迁。Go 版能连真实服务器、只读打开文件夹、搜索 UID、取回原始字节，但**还不能把邮件变成素材**。见 ADR-0022 第四节。 |
+
+**未验证**：真实 IMAP 服务器连接、MIME 正文解析、同步执行、真实邮箱账号。
+
+取舍与证据见 docs/adr/0022-go-imap-tls-uid.md。
+
 
 
 

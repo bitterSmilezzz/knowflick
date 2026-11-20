@@ -1360,6 +1360,23 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// Go 的 UID 搜索与取信结论必须与 Rust 一致：同一组响应、同样的升序与上限规则。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_imap_uid_parity() {
+        let path = std::env::var("KF_GO_UID_FIXTURE").expect("set KF_GO_UID_FIXTURE");
+        let text = std::fs::read_to_string(path).unwrap();
+        let mut got = std::collections::HashMap::new();
+        for line in text.lines() {
+            if let Some((key, value)) = line.split_once('=') {
+                got.insert(key.to_string(), value.to_string());
+            }
+        }
+        assert_eq!(got["search_all"], "11,12,13,200", "升序规则与 Go 不一致");
+        assert_eq!(got["search_newest2"], "4,5", "最新 N 封规则与 Go 不一致");
+        assert_eq!(got["fetch_body"], "hello", "取信结果与 Go 不一致");
+    }
+
     /// Go 的协议层输出必须与 Rust 逐字一致：引号转义与 modified UTF-7 编码。
     /// 这两处一旦漂移，中文文件夹在服务器上就会找不到。
     #[test]
