@@ -19,9 +19,9 @@ func (e *ConflictError) Error() string {
 
 // SaveOutcome 是一次 upsert 的结果。修订号是**保存后**的当前修订。
 type SaveOutcome struct {
-	ID       string
-	Revision int64
-	Created  bool
+	ID       string `json:"id"`
+	Revision int64  `json:"revision"`
+	Created  bool   `json:"created"`
 }
 
 // OpenForWrite 打开可写库（mode=rw：文件必须已存在，不会凭空造库）。

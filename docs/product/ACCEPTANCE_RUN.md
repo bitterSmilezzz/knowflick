@@ -539,6 +539,23 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 `docs/adr/0010-go-write-path-parity.md`。
 
+## 2026-11-20 上午（再续）：阶段 2 第二刀 —— 界面接上编辑与回收站
+
+环境 macOS arm64，分支 `workbench/second-brain-validation`。用阶段 1 写入夹具的**副本**跑真实 Wails 窗口，全程未写本机真实库。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 默认只读 | PASS | 窗口标题显「（只读）」，有「启用编辑」按钮；正文按 Markdown 渲染出标题与段落。 |
+| 启用编辑 | PASS | 回执「已启用编辑：保存会写进这个资料库文件」；出现标题输入框、正文 textarea、「保存」「移进回收站」；无改动时保存按钮禁用。 |
+| 保存并落库 | PASS（修复并复验） | 无障碍树：回执「已保存（修订 3）」、列表标题同步更新、正文区显示「修订 3」。数据库：`current_revision` 2→3，标题为改后值，`note_revisions` 2→3 条。首版曾显示「修订 undefined」（Go 加了 json 小写标签但界面还在读 `outcome.Revision`），改成 `outcome.revision` 后复验正确。 |
+| 移进回收站 | PASS | 回执「已移进回收站」；列表变「已显示 0 篇」与「这个资料库还没有笔记」。数据库：`is_deleted=1`，`fts_notes` 对应行 0。 |
+| 构建与测试 | PASS | `tools/build_workbench_go.sh` 退出 0；`go test ./...` 全绿；TypeScript 项目检查通过（go-preview 独立 tsconfig）。 |
+| 新建 / 恢复 / 冲突并排对比 / 并发写 / 跨平台 | SKIP | 详见 `docs/adr/0011-go-editor-ui.md` 第三节。 |
+
+**未验证**：新建笔记路径、回收站恢复、多窗口同时写入、Windows/Linux 与 `.app` 签名。
+
+取舍与证据见 `docs/adr/0011-go-editor-ui.md`。
+
 
 
 
