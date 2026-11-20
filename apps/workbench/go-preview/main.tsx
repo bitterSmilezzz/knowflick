@@ -5,8 +5,8 @@ import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCard
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import { ListMailAccounts, MailAutoSyncStatus, RemoveMailAccount, SaveMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
-import type { Account, Config as MailConfig } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
+import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow } from "./bindings/knowflick.local/workbench-go/mailservice";
+import type { Account, Config as MailConfig, ImportedMail, RejectedMail } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
 import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
@@ -35,6 +35,7 @@ function Preview() {
   const [mailForm, setMailForm] = useState<MailConfig>({ id: "", name: "", email: "", host: "", port: 993, username: "", folder: "INBOX", syncLimit: 50, syncIntervalMinutes: 0 });
   const [mailSecret, setMailSecret] = useState("");
   const [mailRemoveId, setMailRemoveId] = useState("");
+  const [mailBrowse, setMailBrowse] = useState<{ id: string; title: string; imported: ImportedMail[]; rejected: RejectedMail[] } | null>(null);
   const [restorePending, setRestorePending] = useState(false);
   const [webdavURL, setWebdavURL] = useState("");
   const [webdavUser, setWebdavUser] = useState("");
@@ -95,6 +96,22 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  async function browseMail(account: Account) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const [imported, rejected] = await Promise.all([ListImportedMail(account.config.id), ListRejectedMail(account.config.id)]);
+      setMailBrowse({ id: account.config.id, title: account.config.name || account.config.email, imported: imported ?? [], rejected: rejected ?? [] });
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function retryRejected(id: string) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const outcome = await RetryRejectedMail(id);
+      setNotice(`重试完成：导入 ${outcome.imported} 封，仍被拒 ${outcome.rejected} 封${outcome.error ? "；错误：" + outcome.error : ""}。`);
+      await browseMail({ config: { id } } as Account);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
   function openMailForm(account?: Account) {
     setMailForm(account ? { ...account.config } : { id: crypto.randomUUID(), name: "", email: "", host: "", port: 993, username: "", folder: "INBOX", syncLimit: 50, syncIntervalMinutes: 0 });
     setMailSecret(""); setMailFormOpen(true); setError("");
@@ -326,6 +343,7 @@ function Preview() {
             {mailAccounts.map((account) => (
               <li key={account.config.id}>
                 <span>{account.config.name || account.config.email}</span>
+                <button type="button" disabled={busy} onClick={() => void browseMail(account)}>查看邮件</button>
                 <button type="button" disabled={busy} onClick={() => openMailForm(account)}>编辑</button>
                 <button type="button" disabled={busy} onClick={() => setMailRemoveId(account.config.id)}>删除</button>
                 {mailRemoveId === account.config.id && <span className="preview-confirm">确认删除这个账号？<button type="button" disabled={busy} onClick={() => void removeMailAccount(account.config.id)}>确认</button><button type="button" disabled={busy} onClick={() => setMailRemoveId("")}>取消</button></span>}
@@ -357,6 +375,13 @@ function Preview() {
         {mailStatus && mailStatus.lastError && <p className="preview-error" role="status">上次错误：{mailStatus.lastError}</p>}
       </section>}
 
+      {mailBrowse && <section className="preview-confirm" aria-label="邮箱邮件">
+        <p>{mailBrowse.title} · 已导入 {mailBrowse.imported.length} 封 · 被拒 {mailBrowse.rejected.length} 封</p>
+        {mailBrowse.imported.length > 0 && <ul>{mailBrowse.imported.map((item) => <li key={item.id}>{item.title || item.id}</li>)}</ul>}
+        {mailBrowse.rejected.length > 0 && <ul>{mailBrowse.rejected.map((item) => <li key={item.folder + "-" + item.uid}>UID {item.uid} · {item.folder} · {item.reason}</li>)}</ul>}
+        <button type="button" disabled={busy} onClick={() => void retryRejected(mailBrowse.id)}>重试被拒邮件</button>
+        <button type="button" disabled={busy} onClick={() => setMailBrowse(null)}>收起</button>
+      </section>}
       {lib && <div className="preview-workspace">
         <section className="preview-list" aria-label="笔记列表">
           <form onSubmit={(e) => void search(e)} role="search">

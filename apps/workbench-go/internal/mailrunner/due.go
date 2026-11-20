@@ -111,8 +111,13 @@ func SyncDueLoop(ctx context.Context, interval time.Duration, db *sql.DB, librar
 //
 // 手动同步必须走这条路：间隔为 0 表示关闭自动同步，不是禁止手动同步。
 func NewAccountSyncer(db *sql.DB, libraryDir string, now func() int64, roots *x509.CertPool) mailschedule.Syncer {
+	return NewModeAccountSyncer(db, libraryDir, mailsync.ModeNew, now, roots)
+}
+
+// NewModeAccountSyncer 允许指定同步模式：重试被拒邮件要走 ModeRetry。
+func NewModeAccountSyncer(db *sql.DB, libraryDir string, mode mailsync.Mode, now func() int64, roots *x509.CertPool) mailschedule.Syncer {
 	if now == nil {
 		now = timeNowMillis
 	}
-	return dueSyncer{db: db, dir: libraryDir, now: now, roots: roots, mode: mailsync.ModeNew}
+	return dueSyncer{db: db, dir: libraryDir, now: now, roots: roots, mode: mode}
 }
