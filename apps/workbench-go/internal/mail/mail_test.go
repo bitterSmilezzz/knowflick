@@ -140,3 +140,191 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func TestSaveListAndGetAccount(t *testing.T) {
+	dir := t.TempDir()
+	config := validConfig()
+	account, err := SaveAccount(dir, config, "secret-pass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !account.HasPassword || account.Config.Name != "工作邮箱" || account.HistoryComplete {
+		t.Fatalf("saved account: %+v", account)
+	}
+	list, err := ListAccounts(dir)
+	if err != nil || len(list) != 1 || list[0].Config.ID != config.ID {
+		t.Fatalf("list: %+v %v", list, err)
+	}
+	got, err := GetAccount(dir, config.ID)
+	if err != nil || got == nil || !got.HasPassword {
+		t.Fatalf("get: %+v %v", got, err)
+	}
+	missing, err := GetAccount(dir, "6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e44")
+	if err != nil || missing != nil {
+		t.Fatalf("missing account should be nil: %+v %v", missing, err)
+	}
+}
+
+func TestEmptyPasswordRules(t *testing.T) {
+	dir := t.TempDir()
+	config := validConfig()
+	if _, err := SaveAccount(dir, config, ""); err == nil || !strings.Contains(err.Error(), "新账号需要输入密码") {
+		t.Fatalf("new account without password: %v", err)
+	}
+	if _, err := SaveAccount(dir, config, "secret-pass"); err != nil {
+		t.Fatal(err)
+	}
+	// 同服务器同用户名：空密码沿用已存的。
+	renamed := config
+	renamed.Name = "改名后"
+	if _, err := SaveAccount(dir, renamed, ""); err != nil {
+		t.Fatalf("keep password: %v", err)
+	}
+	// 换服务器：必须重输密码。
+	moved := config
+	moved.Host = "imap.other.com"
+	if _, err := SaveAccount(dir, moved, ""); err == nil || !strings.Contains(err.Error(), "重新输入密码") {
+		t.Fatalf("host change without password: %v", err)
+	}
+}
+
+func TestIdentityChangeClearsLedger(t *testing.T) {
+	dir := t.TempDir()
+	config := validConfig()
+	if _, err := SaveAccount(dir, config, "secret-pass"); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO mail_imports(account_id,folder,uid_validity,uid,message_id,material_id) VALUES(?1,'INBOX',7,42,'m1','mat1')", config.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO mail_rejected(account_id,folder,uid_validity,uid,reason) VALUES(?1,'INBOX',7,43,'too large')", config.ID); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	// 只改名字：账本必须保留。
+	renamed := config
+	renamed.Name = "改名后"
+	if _, err := SaveAccount(dir, renamed, ""); err != nil {
+		t.Fatal(err)
+	}
+	if count := countRows(t, dir, "SELECT COUNT(*) FROM mail_imports"); count != 1 {
+		t.Fatalf("ledger dropped on rename: %d", count)
+	}
+
+	// 换文件夹：账本必须清空（不同邮箱会复用同一对 UIDVALIDITY/UID）。
+	moved := renamed
+	moved.Folder = "Archive"
+	if _, err := SaveAccount(dir, moved, "secret-pass"); err != nil {
+		t.Fatal(err)
+	}
+	if count := countRows(t, dir, "SELECT COUNT(*) FROM mail_imports"); count != 0 {
+		t.Fatalf("ledger kept after identity change: %d", count)
+	}
+	if count := countRows(t, dir, "SELECT COUNT(*) FROM mail_rejected"); count != 0 {
+		t.Fatalf("rejected kept after identity change: %d", count)
+	}
+}
+
+func TestRemoveAccountKeepsLedger(t *testing.T) {
+	dir := t.TempDir()
+	config := validConfig()
+	if _, err := SaveAccount(dir, config, "secret-pass"); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO mail_imports(account_id,folder,uid_validity,uid,message_id,material_id) VALUES(?1,'INBOX',7,42,'m1','mat1')", config.ID); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if err := RemoveAccount(dir, config.ID); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := ListAccounts(dir); len(list) != 0 {
+		t.Fatalf("account survived removal: %+v", list)
+	}
+	if count := countRows(t, dir, "SELECT COUNT(*) FROM mail_imports"); count != 1 {
+		t.Fatalf("ledger lost on removal: %d", count)
+	}
+	if _, err := ReadPassword(dir, config.ID); err == nil {
+		t.Fatal("credential survived removal")
+	}
+}
+
+func countRows(t *testing.T, dir, statement string) int {
+	t.Helper()
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var n int
+	if err := db.QueryRow(statement).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// TestExportAccountFixture 生成 Go 写的邮箱库，供 Rust 读回对拍。
+func TestExportAccountFixture(t *testing.T) {
+	target := os.Getenv("KF_GO_MAIL_FIXTURE")
+	if target == "" {
+		t.Skip("set KF_GO_MAIL_FIXTURE to export the mail fixture")
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("fixture dir must not exist: %v", err)
+	}
+	config := validConfig()
+	if _, err := SaveAccount(target, config, "go-secret-pass"); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// 拒收统计按 (account_id, uid_validity) 关联：账号还没有 uid_validity 时
+	// 统计必然为 0。夹具要先写上 UIDVALIDITY，才能验证这条统计口径。
+	if _, err := db.Exec("UPDATE mail_accounts SET uid_validity=7 WHERE id=?1", config.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO mail_rejected(account_id,folder,uid_validity,uid,reason,rejected_at) VALUES(?1,'INBOX',7,43,'too large',1000)", config.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestReadRustWrittenAccount 读回 Rust 写的账号，验证跨运行时双向一致。
+func TestReadRustWrittenAccount(t *testing.T) {
+	dir := os.Getenv("KF_RUST_MAIL_FIXTURE")
+	if dir == "" {
+		t.Skip("set KF_RUST_MAIL_FIXTURE to the Rust-written mail fixture")
+	}
+	accounts, err := ListAccounts(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accounts) != 1 {
+		t.Fatalf("expected 1 Rust-written account, got %d", len(accounts))
+	}
+	account := accounts[0]
+	if account.Config.Name != "Rust 写的账号" || account.Config.Host != "imap.rust.example" || account.Config.SyncLimit != 25 {
+		t.Fatalf("config mismatch: %+v", account.Config)
+	}
+	if account.Config.SyncIntervalMinutes != 0 {
+		t.Fatalf("interval should be 0 (sync off): %d", account.Config.SyncIntervalMinutes)
+	}
+	if !account.HasPassword {
+		t.Fatal("Rust-written credential not visible to Go")
+	}
+	password, err := ReadPassword(dir, account.Config.ID)
+	if err != nil || password != "rust-secret-pass" {
+		t.Fatalf("password: %q %v", password, err)
+	}
+}

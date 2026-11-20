@@ -680,6 +680,20 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0019-go-mail-config-credentials.md。
 
+## 2026-11-20 下午（续）：阶段 2 第十一刀 —— 邮箱账号表与去重账本迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 表结构与账号 CRUD | PASS | Go 4 项用例：存取往返与列表排序；空密码三种情形（新账号拒、同名沿用、换服务器拒）；换文件夹清空账本而改名不清；删账号保留账本并删凭据。 |
+| Go 写 → Rust 读 | PASS | Rust list_accounts 读出同一配置（名称/主机/端口/文件夹/封数 50）、has_password=true、rejected_count=1；Rust read_password 读回 Go 写的密码。 |
+| Rust 写 → Go 读 | PASS | Go ListAccounts 读出 Rust 写的账号（含 sync_interval_minutes=0）；Go ReadPassword 读回 Rust 写的密码。 |
+| 两处对拍发现 | 记录 | ① Open 漏建目录（Rust 的 open_db 会 create_dir_all）；② rejected_count 按 (account_id, uid_validity) 关联，账号无 UIDVALIDITY 时必然为 0——夹具需先写 UIDVALIDITY，否则会误判为 bug。 |
+| IMAP 会话 / 正文抽取 / 同步执行 / 备份 / 真实账号 | SKIP | 均未迁。Go 版能存账号、管凭据与账本，**仍不能连邮箱、不能同步**。见 ADR-0020 第四节。 |
+
+**未验证**：任何 IMAP 连接、正文抽取、同步执行、真实邮箱账号。
+
+取舍与证据见 docs/adr/0020-go-mail-accounts.md。
+
 
 
 

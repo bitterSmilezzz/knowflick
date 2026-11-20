@@ -1360,6 +1360,47 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+
+    /// 反向：Rust 存的账号，Go 必须读出同样的配置与状态。
+    #[test]
+    #[ignore = "writes a fixture for the Go reader"]
+    fn rust_writes_mail_fixture_for_go() {
+        let dir = std::path::PathBuf::from(std::env::var_os("KF_RUST_MAIL_FIXTURE").expect("set KF_RUST_MAIL_FIXTURE"));
+        let config = MailAccountConfig {
+            id: "6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e55".into(),
+            name: "Rust 写的账号".into(),
+            email: "rust@example.com".into(),
+            host: "imap.rust.example".into(),
+            port: 993,
+            username: "rust@example.com".into(),
+            folder: "INBOX".into(),
+            sync_limit: 25,
+            sync_interval_minutes: 0,
+        };
+        save_account(&dir, config, "rust-secret-pass").unwrap();
+    }
+    /// Go 存的账号，Rust 必须能读出同样的配置与状态；反之亦然。
+    #[test]
+    #[ignore = "requires a library dir written by Go"]
+    fn go_mail_accounts_parity() {
+        let dir = std::path::PathBuf::from(std::env::var_os("KF_GO_MAIL_DIR").expect("set KF_GO_MAIL_DIR"));
+        let accounts = list_accounts(&dir).unwrap();
+        assert_eq!(accounts.len(), 1, "Go 写的账号数不对");
+        let account = &accounts[0];
+        assert_eq!(account.config.name, "工作邮箱");
+        assert_eq!(account.config.host, "imap.example.com");
+        assert_eq!(account.config.port, 993);
+        assert_eq!(account.config.folder, "INBOX");
+        assert_eq!(account.config.sync_limit, 50);
+        assert!(account.has_password, "Go 写的凭据 Rust 应能读到");
+        assert!(!account.history_complete);
+        assert_eq!(account.rejected_count, 1, "Go 写的拒收记录应被 Rust 统计到");
+
+        // 反向：Rust 读密码，确认权限与内容都正确。
+        let password = read_password(&dir, &account.config.id).unwrap();
+        assert_eq!(password, "go-secret-pass");
+    }
+
     /// 与 Go 的 Validate 对拍：同一批配置必须给出同样的放行/拒绝结论。
     #[test]
     fn go_mail_config_parity() {
