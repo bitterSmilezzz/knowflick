@@ -300,3 +300,34 @@ const (
 	fixtureOldBody = "旧正文：只有一段。"
 	fixtureNewBody = "# 第一节\n\n第一段正文，讲记忆与检索。\n\n第二段正文，讲知识库范围。\n\n## 第二节\n\n第三段正文，比较长的一段用来确认段落合并的边界。"
 )
+
+func TestRestoreBringsBackNoteAndIndex(t *testing.T) {
+	lib, path := newWritable(t)
+	ctx := context.Background()
+	body := "# 恢复用\n\n第一段正文。\n\n第二段正文。"
+	if _, err := lib.Upsert(ctx, draftNote("r1", "恢复测试", body), 0, 1000); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := lib.Delete(ctx, "r1", 2000); err != nil || !ok {
+		t.Fatalf("delete: %v %v", ok, err)
+	}
+	if page, err := lib.ListDeleted(ctx, 0); err != nil || len(page.Notes) != 1 || page.Notes[0].ID != "r1" {
+		t.Fatalf("trash page: %v %v", page, err)
+	}
+	if ok, err := lib.Restore(ctx, "r1"); err != nil || !ok {
+		t.Fatalf("restore: %v %v", ok, err)
+	}
+	note, err := lib.get(ctx, "r1")
+	if err != nil || note == nil || note.Deleted || note.DeletedAt != nil {
+		t.Fatalf("restored note: %+v %v", note, err)
+	}
+	if page, err := lib.Search(ctx, "恢复用"); err != nil || len(page.Notes) != 1 {
+		t.Fatalf("search after restore: %v %v", page, err)
+	}
+	if n := countRows(t, path, "SELECT COUNT(*) FROM note_chunks WHERE note_id='r1' AND content_revision=1"); n != len(ChunkMarkdown(body)) {
+		t.Fatalf("chunks after restore: %d, want %d", n, len(ChunkMarkdown(body)))
+	}
+	if ok, err := lib.Restore(ctx, "r1"); err != nil || ok {
+		t.Fatalf("second restore must be a no-op: %v %v", ok, err)
+	}
+}

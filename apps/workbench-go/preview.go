@@ -156,3 +156,26 @@ func (s *PreviewService) ServiceShutdown() error {
 	}
 	return nil
 }
+
+// ListDeletedNotes 列出回收站；代号不符直接拒绝。
+func (s *PreviewService) ListDeletedNotes(ctx context.Context, generation, offset int) (library.Page, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return library.Page{}, errors.New("请重新打开资料库")
+	}
+	return s.current.ListDeleted(ctx, offset)
+}
+
+// RestoreNote 恢复一篇回收站笔记；恢复后索引立即回来。
+func (s *PreviewService) RestoreNote(ctx context.Context, generation int, id string) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return false, errors.New("请重新打开资料库")
+	}
+	if !s.writable {
+		return false, errors.New("当前是只读模式，请先点「启用编辑」")
+	}
+	return s.current.Restore(ctx, id)
+}

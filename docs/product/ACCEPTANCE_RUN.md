@@ -556,6 +556,23 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 `docs/adr/0011-go-editor-ui.md`。
 
+## 2026-11-20 上午（第四续）：阶段 2 第三刀 —— 新建与回收站恢复
+
+环境 macOS arm64，分支 `workbench/second-brain-validation`。仍只用夹具副本，未写本机真实库。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 回收站列表 | PASS | 点「回收站」后界面显示「已显示 1 篇」与「第二篇」及「恢复」按钮；后端 `Library.ListDeleted` 按 `is_deleted=1` 过滤。 |
+| 恢复 | PASS（修复并复验） | 点「恢复」回执「已恢复到笔记列表」，界面回到活动列表并显示「已显示 2 篇」；数据库 `is_deleted=0`、`deleted_at=NULL`、`fts_notes` 对应行 1、分块按修订 1 重建。首版因 `reload()` 复用旧 `trash` 状态，数据库已恢复但界面显示「已显示 0 篇」；加显式 `trashMode` 参数后复验正确。 |
+| 新建笔记 | PASS | 回执「已新建笔记」，界面「已显示 3 篇」并出现「无标题笔记」；数据库新增一行，总数 3。 |
+| Go 侧语义 | PASS | 新增 `TestRestoreBringsBackNoteAndIndex`：删除→回收站列表可见→恢复→`get` 的 `Deleted/DeletedAt` 清空→搜索命中→分块按修订 1 重建→二次恢复返回 false。`go test ./...` 全绿。 |
+| 构建 | PASS | TypeScript 项目检查通过，`tools/build_workbench_go.sh` 退出 0。 |
+| 冲突并排对比 / 并发写 / 回收站永久删除 / 跨平台 | SKIP | 见 ADR-0012 第三节。 |
+
+**未验证**：多窗口同时写入、永久删除、Windows/Linux 与 `.app` 签名。
+
+取舍与证据见 `docs/adr/0012-go-trash-and-create.md`。
+
 
 
 

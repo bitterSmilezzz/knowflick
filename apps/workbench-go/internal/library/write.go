@@ -186,3 +186,42 @@ func tagsOf(note Note) string {
 	}
 	return note.TagsJSON
 }
+
+// Restore 把回收站里的笔记恢复：清删除态、重进 FTS、按当前修订重建分块。
+// 与 Rust 的 note_restore 同义；不在回收站里的直接返回 false。
+func (l *Library) Restore(ctx context.Context, id string) (bool, error) {
+	if !l.writable {
+		return false, ErrReadOnly
+	}
+	note, err := l.get(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if note == nil || !note.Deleted {
+		return false, nil
+	}
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "UPDATE notes SET is_deleted=0, deleted_at=NULL WHERE id=?1", id); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO fts_notes (note_id, title, body) VALUES (?1,?2,?3)", id, note.Title, note.Body); err != nil {
+		return false, err
+	}
+	if err := rebuildNoteChunks(ctx, tx, id, note.Body, note.Revision); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ListDeleted 列出回收站（按删除时间倒序），与 Rust 的 scope=deleted 同义。
+func (l *Library) ListDeleted(ctx context.Context, offset int) (Page, error) {
+	return l.query(ctx, "SELECT "+noteColumns+" FROM notes n WHERE n.is_deleted=1"+
+		" ORDER BY n.deleted_at DESC, n.id LIMIT ? OFFSET ?", PageSize+1, offset)
+}
