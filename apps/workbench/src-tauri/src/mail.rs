@@ -1360,6 +1360,39 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// 与 Go 的 Validate 对拍：同一批配置必须给出同样的放行/拒绝结论。
+    #[test]
+    fn go_mail_config_parity() {
+        let base = |id: &str| MailAccountConfig {
+            id: id.to_string(),
+            name: "工作邮箱".into(),
+            email: "me@example.com".into(),
+            host: "imap.example.com".into(),
+            port: 993,
+            username: "me@example.com".into(),
+            folder: "INBOX".into(),
+            sync_limit: 50,
+            sync_interval_minutes: 15,
+        };
+        let cases: Vec<(&str, Box<dyn Fn(&mut MailAccountConfig)>, bool)> = vec![
+            ("valid", Box::new(|_| {}), true),
+            ("bad id", Box::new(|c| c.id = "nope".into()), false),
+            ("empty name", Box::new(|c| c.name = "  ".into()), false),
+            ("no at", Box::new(|c| c.email = "example.com".into()), false),
+            ("zero port", Box::new(|c| c.port = 0), false),
+            ("limit low", Box::new(|c| c.sync_limit = 0), false),
+            ("limit high", Box::new(|c| c.sync_limit = 201), false),
+            ("interval low", Box::new(|c| c.sync_interval_minutes = 3), false),
+            ("host scheme", Box::new(|c| c.host = "https://imap.example.com".into()), false),
+            ("interval off", Box::new(|c| c.sync_interval_minutes = 0), true),
+        ];
+        for (label, mutate, expected) in cases {
+            let mut config = base("6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e33");
+            mutate(&mut config);
+            assert_eq!(validate(config).is_ok(), expected, "{label} 的判定与 Go 不一致");
+        }
+    }
+
     use super::*;
     use std::collections::HashSet;
     use std::io::BufRead;
