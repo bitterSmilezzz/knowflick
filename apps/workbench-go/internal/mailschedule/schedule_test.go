@@ -3,6 +3,7 @@ package mailschedule
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,6 +178,158 @@ func TestExportScheduleFixture(t *testing.T) {
 		"at_interval_due=" + strings.Join(Due(accounts[:2], attempt+15*60_000), ","),
 		"within_interval_due=" + strings.Join(Due(accounts[:2], attempt+60_000), ","),
 		"off_due=" + strings.Join(Due(accounts[3:], attempt+999_999), ","),
+	}
+	if err := os.WriteFile(target, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fakeSyncer 记录被调用的账号与结果。
+type fakeSyncer struct {
+	results map[string]struct {
+		imported, rejected int
+		err                error
+	}
+	calls []string
+}
+
+func (f *fakeSyncer) Sync(_ context.Context, accountID string) (int, int, error) {
+	f.calls = append(f.calls, accountID)
+	result := f.results[accountID]
+	return result.imported, result.rejected, result.err
+}
+
+func TestRunDueSyncsOnlyDueAccounts(t *testing.T) {
+	db := openScheduleDB(t)
+	ctx := context.Background()
+	// a 关闭；b 从未尝试；c 刚尝试过。
+	insertAccount(t, db, "a", 0, 1, nil)
+	insertAccount(t, db, "b", 15, 2, nil)
+	recent := int64(1_000_000)
+	insertAccount(t, db, "c", 15, 3, &recent)
+
+	syncer := &fakeSyncer{results: map[string]struct {
+		imported, rejected int
+		err                error
+	}{
+		"b": {imported: 3, rejected: 1},
+	}}
+	outcomes, err := RunDue(ctx, db, syncer, recent+60_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || outcomes[0].AccountID != "b" || outcomes[0].Imported != 3 || outcomes[0].Rejected != 1 {
+		t.Fatalf("outcomes: %+v", outcomes)
+	}
+	if len(syncer.calls) != 1 || syncer.calls[0] != "b" {
+		t.Fatalf("calls: %v", syncer.calls)
+	}
+}
+
+func TestRunDueContinuesAfterOneFailure(t *testing.T) {
+	db := openScheduleDB(t)
+	insertAccount(t, db, "a", 15, 1, nil)
+	insertAccount(t, db, "b", 15, 2, nil)
+	syncer := &fakeSyncer{results: map[string]struct {
+		imported, rejected int
+		err                error
+	}{
+		"a": {err: errors.New("密码错了")},
+		"b": {imported: 2},
+	}}
+	outcomes, err := RunDue(context.Background(), db, syncer, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("one failure should not stop the rest: %+v", outcomes)
+	}
+	if outcomes[0].Error != "密码错了" || outcomes[1].Imported != 2 {
+		t.Fatalf("outcomes: %+v", outcomes)
+	}
+}
+
+func TestRunDueStopsOnCancelledContext(t *testing.T) {
+	db := openScheduleDB(t)
+	insertAccount(t, db, "a", 15, 1, nil)
+	insertAccount(t, db, "b", 15, 2, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	outcomes, err := RunDue(ctx, db, &fakeSyncer{results: map[string]struct {
+		imported, rejected int
+		err                error
+	}{}}, 0)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation: %v", err)
+	}
+	if len(outcomes) != 0 {
+		t.Fatalf("nothing should run after cancellation: %+v", outcomes)
+	}
+}
+
+func openScheduleDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "s.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func insertAccount(t *testing.T, db *sql.DB, id string, interval int, created int, attempt *int64) {
+	t.Helper()
+	config := "{\"syncIntervalMinutes\":" + itoa(interval) + "}"
+	if _, err := db.Exec("INSERT INTO mail_accounts(id,config_json,created_at) VALUES(?1,?2,?3)", id, config, created); err != nil {
+		t.Fatal(err)
+	}
+	if attempt != nil {
+		if _, err := db.Exec("INSERT INTO mail_sync_state(account_id,last_attempt_at) VALUES(?1,?2)", id, *attempt); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	out := ""
+	for n > 0 {
+		out = string(rune('0'+n%10)) + out
+		n /= 10
+	}
+	return out
+}
+
+// TestExportLoopFixture 导出一轮调度的结果，供 Rust 对拍同一批账号。
+func TestExportLoopFixture(t *testing.T) {
+	target := os.Getenv("KF_GO_LOOP_FIXTURE")
+	if target == "" {
+		t.Skip("set KF_GO_LOOP_FIXTURE to export the loop fixture")
+	}
+	db := openScheduleDB(t)
+	insertAccount(t, db, "off", 0, 1, nil)
+	insertAccount(t, db, "due", 15, 2, nil)
+	recent := int64(1_000_000)
+	insertAccount(t, db, "recent", 15, 3, &recent)
+	syncer := &fakeSyncer{results: map[string]struct {
+		imported, rejected int
+		err                error
+	}{
+		"due": {imported: 4, rejected: 1},
+	}}
+	outcomes, err := RunDue(context.Background(), db, syncer, recent+60_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := make([]string, 0, len(outcomes))
+	for _, outcome := range outcomes {
+		lines = append(lines, outcome.AccountID+" imported="+itoa(outcome.Imported)+" rejected="+itoa(outcome.Rejected))
 	}
 	if err := os.WriteFile(target, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
 		t.Fatal(err)

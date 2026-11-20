@@ -1360,6 +1360,19 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// 一轮调度里，Rust 与 Go 必须选出同一批账号并给出同样的结果。
+    /// 选错账号意味着「该同步的没同步」或「不该同步的反复撞服务器」。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_mail_loop_parity() {
+        let fixture = std::env::var("KF_GO_LOOP_FIXTURE").expect("set KF_GO_LOOP_FIXTURE");
+        let text = std::fs::read_to_string(fixture).unwrap();
+        let lines: Vec<&str> = text.lines().filter(|line| !line.is_empty()).collect();
+        assert_eq!(lines, vec!["due imported=4 rejected=1"], "调度结果与 Go 不一致");
+        // 只有 due 该跑：off 关闭、recent 还在间隔内。
+        assert_eq!(lines.len(), 1, "不该有第二个账号被选中");
+    }
+
     /// 同一批账号与时刻，Rust 与 Go 的「该不该自动同步」判定必须一致。
     #[test]
     #[ignore = "requires the fixture exported by Go"]

@@ -102,3 +102,40 @@ func TryLock() (func(), bool) {
 	}
 	return nil, false
 }
+
+// Syncer 是「同步一个账号」的能力。调度循环不关心怎么同步，只关心成功与否。
+type Syncer interface {
+	Sync(ctx context.Context, accountID string) (imported, rejected int, err error)
+}
+
+// Outcome 是一轮调度里某个账号的结果。
+type Outcome struct {
+	AccountID string `json:"accountId"`
+	Imported  int    `json:"imported"`
+	Rejected  int    `json:"rejected"`
+	Error     string `json:"error,omitempty"`
+}
+
+// RunDue 跑一轮到期账号：先判定谁该跑，再逐个同步。
+//
+// 串行而不是并发：每个账号都要动游标，并发会互相覆盖进度（见 Lock 的说明）。
+// 单个账号失败不阻断其余账号——密码错了不该让别的账号也停。
+func RunDue(ctx context.Context, db *sql.DB, syncer Syncer, now int64) ([]Outcome, error) {
+	accounts, err := LoadAccounts(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	outcomes := make([]Outcome, 0)
+	for _, id := range Due(accounts, now) {
+		if ctx.Err() != nil {
+			return outcomes, ctx.Err()
+		}
+		imported, rejected, syncErr := syncer.Sync(ctx, id)
+		outcome := Outcome{AccountID: id, Imported: imported, Rejected: rejected}
+		if syncErr != nil {
+			outcome.Error = syncErr.Error()
+		}
+		outcomes = append(outcomes, outcome)
+	}
+	return outcomes, nil
+}
