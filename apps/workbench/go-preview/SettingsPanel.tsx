@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LibrarySignature, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { LibrarySignature, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
 
 type Props = {
   generation: number;
@@ -15,6 +15,8 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
   const [apiKey, setApiKey] = useState("");
   const [keyDraft, setKeyDraft] = useState("");
   const [signature, setSignature] = useState("");
+  const [unembedded, setUnembedded] = useState<number | null>(null);
+  const [stale, setStale] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -32,6 +34,13 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
         setReport(importReport);
         setApiKey(key);
         setSignature(sig);
+        const [unembeddedIDs, staleIDs] = await Promise.all([
+          ListUnembeddedCardIDs(generation, 500),
+          ListStaleEmbeddingCardIDs(generation, 128, "hash", "char-ngram-128", 500),
+        ]);
+        if (!active) return;
+        setUnembedded(unembeddedIDs?.length ?? 0);
+        setStale(staleIDs?.length ?? 0);
       } catch (cause) {
         if (active) setError(String(cause));
       }
@@ -87,6 +96,21 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
       </label>
       <div className="preview-actions">
         <button type="button" disabled={busy || !writable || !history.trim()} onClick={() => void save("history")}>保存搜索历史</button>
+      </div>
+      <div className="preview-confirm">
+        <p>向量索引：未嵌入 {unembedded ?? "…"} 张 · 身份不匹配 {stale ?? "…"} 张（当前本地哈希引擎 hash/char-ngram-128，128 维）</p>
+        <div className="preview-actions">
+          <button type="button" disabled={busy || !writable || !unembedded} onClick={() => void run(async () => {
+            const count = await RebuildHashEmbeddings(generation, 100);
+            setNotice("已为 " + count + " 张卡片补全哈希向量");
+            const [unembeddedIDs, staleIDs] = await Promise.all([
+              ListUnembeddedCardIDs(generation, 500),
+              ListStaleEmbeddingCardIDs(generation, 128, "hash", "char-ngram-128", 500),
+            ]);
+            setUnembedded(unembeddedIDs?.length ?? 0);
+            setStale(staleIDs?.length ?? 0);
+          })}>补全哈希向量</button>
+        </div>
       </div>
       <div className="preview-confirm">
         <p>最近一次导入的转换报告：</p>

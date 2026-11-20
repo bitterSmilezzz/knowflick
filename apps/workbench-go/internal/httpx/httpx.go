@@ -8,6 +8,7 @@ package httpx
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -273,4 +274,58 @@ func charsetFromMeta(body []byte) string {
 		}
 	}
 	return ""
+}
+
+// RequestEmbeddings 调用 OpenAI 兼容的 embeddings 接口，返回按序排列的向量。
+// 错误文本与 ChatComplete 同一口径：先抹掉可能混进来的凭据，再截断。
+func RequestEmbeddings(ctx context.Context, endpoint, apiKey, model string, input []string) ([][]float32, error) {
+	target, err := ValidateURL(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(map[string]any{"model": model, "input": input})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "KnowFlick/0.1")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := NewClient(target, 60*time.Second).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Embedding 请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		snippet := []rune(RedactSecrets(string(raw)))
+		if len(snippet) > 200 {
+			snippet = snippet[:200]
+		}
+		return nil, fmt.Errorf("Embedding API 返回 %d: %s", resp.StatusCode, string(snippet))
+	}
+	var parsed struct {
+		Data []struct {
+			Embedding []float32 `json:"embedding"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, fmt.Errorf("解析 Embedding 响应 JSON 失败: %w", err)
+	}
+	if parsed.Data == nil {
+		return nil, errors.New("Embedding 响应缺少 data 数组")
+	}
+	vectors := make([][]float32, 0, len(parsed.Data))
+	for _, item := range parsed.Data {
+		vectors = append(vectors, item.Embedding)
+	}
+	return vectors, nil
 }
