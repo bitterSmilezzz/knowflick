@@ -1018,6 +1018,19 @@ mod tests {
         assert_eq!(search_notes(&conn, "旧正文", None, 10).unwrap().len(), 0, "旧正文不该还在索引里");
         assert!(search_notes(&conn, "普通正文", None, 10).unwrap().is_empty(), "已删除笔记不该被检索到");
 
+
+        let chunk_hits = search_note_chunks(&conn, "知识库范围", 10).unwrap();
+        assert_eq!(chunk_hits.len(), 1, "Go 写的分块应能被 Rust 检索到");
+        assert_eq!(chunk_hits[0].note_id, "go-write-1");
+        assert_eq!(chunk_hits[0].note_title, "夹具标题");
+        assert!(chunk_hits[0].content.contains("知识库范围"));
+        let body_chars: Vec<char> = GO_FIXTURE_BODY.chars().collect();
+        let span: String = body_chars
+            .get(chunk_hits[0].char_start as usize..chunk_hits[0].char_end as usize)
+            .expect("offsets must point back into the original body")
+            .iter()
+            .collect();
+        assert_eq!(span.trim_end(), chunk_hits[0].content, "命中片段必须能回到原文偏移（尾部换行按分块规则裁掉）");
         let chunk_hits: i64 = conn
             .query_row("SELECT COUNT(*) FROM fts_note_chunks WHERE note_id='go-write-1'", [], |r| r.get(0))
             .unwrap();

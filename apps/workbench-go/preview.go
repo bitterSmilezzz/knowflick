@@ -179,3 +179,16 @@ func (s *PreviewService) RestoreNote(ctx context.Context, generation int, id str
 	}
 	return s.current.Restore(ctx, id)
 }
+
+// SearchChunkHits 检索分块；返回原文偏移，供界面跳回原笔记的具体位置。
+func (s *PreviewService) SearchChunkHits(ctx context.Context, generation int, query string, limit int) ([]library.ChunkHit, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return nil, errors.New("请重新打开资料库")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	return s.current.SearchChunks(ctx, query, limit)
+}

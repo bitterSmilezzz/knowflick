@@ -43,3 +43,8 @@ button:disabled { cursor: default; opacity: .65; }
 .preview-note-row { display: flex; align-items: stretch; gap: 4px; }
 .preview-note-row > button:first-child { flex: 1; min-width: 0; }
 .preview-restore { flex: none; padding-inline: 8px; }
+.preview-hits { border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.preview-hits ul { list-style: none; padding: 0; margin: 4px 0; }
+.preview-hits li { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.preview-hits li p { margin: 2px 0; font-size: 12px; }
+.preview-hits .preview-meta { display: block; }

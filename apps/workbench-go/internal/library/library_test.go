@@ -241,3 +241,54 @@ CREATE TABLE note_chunks (note_id TEXT NOT NULL REFERENCES notes(id), chunk_inde
 CREATE VIRTUAL TABLE fts_notes USING fts5(note_id UNINDEXED,title,body,tokenize='porter unicode61 remove_diacritics 2');
 CREATE VIRTUAL TABLE fts_note_chunks USING fts5(note_id UNINDEXED,chunk_index UNINDEXED,content,tokenize='porter unicode61 remove_diacritics 2');
 `
+
+func TestSearchChunksReturnsOriginalOffsets(t *testing.T) {
+	lib, _ := newWritable(t)
+	ctx := context.Background()
+	body := "# 第一节\n\n第一段正文，讲记忆与检索。\n\n第二段正文，讲知识库范围。"
+	if _, err := lib.Upsert(ctx, draftNote("c1", "分块检索", body), 0, 1000); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := lib.SearchChunks(ctx, "知识库范围", 20)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("fts hits: %+v %v", hits, err)
+	}
+	hit := hits[0]
+	if hit.NoteID != "c1" || hit.NoteTitle != "分块检索" {
+		t.Fatalf("parent note lost: %+v", hit)
+	}
+	chunks := ChunkMarkdown(body)
+	var found bool
+	for _, chunk := range chunks {
+		if int64(chunk.CharStart) == hit.CharStart && int64(chunk.CharEnd) == hit.CharEnd {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("offsets do not point back to the original body: %+v, chunks %+v", hit, chunks)
+	}
+	if hit.Content != chunkTextAt(t, body, hit.CharStart, hit.CharEnd) {
+		t.Fatalf("snippet does not match original span: %q", hit.Content)
+	}
+	// 连续中文子串：FTS 前缀命中不了，LIKE 兜底必须也能回偏移。
+	fallback, err := lib.SearchChunks(ctx, "识库范", 20)
+	if err != nil || len(fallback) == 0 || fallback[0].CharStart < 0 {
+		t.Fatalf("like fallback: %+v %v", fallback, err)
+	}
+	if ok, err := lib.Delete(ctx, "c1", 2000); err != nil || !ok {
+		t.Fatalf("delete: %v %v", ok, err)
+	}
+	gone, err := lib.SearchChunks(ctx, "知识库范围", 20)
+	if err != nil || len(gone) != 0 {
+		t.Fatalf("deleted note chunk still searchable: %+v %v", gone, err)
+	}
+}
+
+func chunkTextAt(t *testing.T, body string, start, end int64) string {
+	t.Helper()
+	runes := []rune(body)
+	if start < 0 || end > int64(len(runes)) || start > end {
+		t.Fatalf("bad span %d..%d", start, end)
+	}
+	return strings.TrimSpace(string(runes[start:end]))
+}

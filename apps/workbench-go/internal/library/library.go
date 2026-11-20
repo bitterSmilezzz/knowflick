@@ -147,3 +147,54 @@ func (l *Library) query(ctx context.Context, statement string, args ...any) (Pag
 	}
 	return page, nil
 }
+
+// ChunkHit 是一处分块命中：带原文偏移，禁止切片后回不去原件。
+type ChunkHit struct {
+	NoteID     string `json:"noteId"`
+	ChunkIndex int64  `json:"chunkIndex"`
+	Content    string `json:"content"`
+	CharStart  int64  `json:"charStart"`
+	CharEnd    int64  `json:"charEnd"`
+	NoteTitle  string `json:"noteTitle"`
+}
+
+// SearchChunks 检索分块并带回原文偏移；与 Rust 的 search_note_chunks 同义：
+// FTS5 词 AND 查询在前，连续中文匹配不上时用 LIKE 兜底；回收站里的笔记一律排除。
+func (l *Library) SearchChunks(ctx context.Context, query string, limit int) ([]ChunkHit, error) {
+	clean := strings.TrimSpace(query)
+	if clean == "" || limit <= 0 {
+		return []ChunkHit{}, nil
+	}
+	terms := strings.Fields(clean)
+	for i, term := range terms {
+		terms[i] = `"` + strings.ReplaceAll(term, `"`, `""`) + `"`
+	}
+	const cols = "SELECT f.note_id, f.chunk_index, f.content, n.char_start, n.char_end, n2.title"
+	const from = " FROM fts_note_chunks f JOIN note_chunks n ON n.note_id=f.note_id AND n.chunk_index=f.chunk_index" +
+		" JOIN notes n2 ON n2.id=f.note_id WHERE n2.is_deleted=0"
+	hits, err := l.queryChunks(ctx, cols+from+" AND fts_note_chunks MATCH ?1 ORDER BY bm25(fts_note_chunks) LIMIT ?2", strings.Join(terms, " AND "), limit)
+	if err != nil || len(hits) > 0 {
+		return hits, err
+	}
+	wildcard := "%" + clean + "%"
+	return l.queryChunks(ctx, "SELECT n.note_id, n.chunk_index, n.content, n.char_start, n.char_end, n2.title"+
+		" FROM note_chunks n JOIN notes n2 ON n2.id=n.note_id"+
+		" WHERE n2.is_deleted=0 AND n.content LIKE ?1 ORDER BY n2.updated_at DESC LIMIT ?2", wildcard, limit)
+}
+
+func (l *Library) queryChunks(ctx context.Context, statement string, args ...any) ([]ChunkHit, error) {
+	rows, err := l.db.QueryContext(ctx, statement, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	hits := make([]ChunkHit, 0)
+	for rows.Next() {
+		var hit ChunkHit
+		if err := rows.Scan(&hit.NoteID, &hit.ChunkIndex, &hit.Content, &hit.CharStart, &hit.CharEnd, &hit.NoteTitle); err != nil {
+			return nil, err
+		}
+		hits = append(hits, hit)
+	}
+	return hits, rows.Err()
+}

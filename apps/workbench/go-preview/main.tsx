@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ChooseLibrary, DeleteNote, EnableEditing, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { ChooseLibrary, DeleteNote, EnableEditing, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
+import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import "../src/ui/workspace/tokens.css";
@@ -19,6 +20,8 @@ function Preview() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
+  const [chunkMode, setChunkMode] = useState(false);
+  const [hits, setHits] = useState<ChunkHit[]>([]);
 
   const notes = lib?.page.notes ?? [];
   const selected = notes.find((n) => n.id === selectedId) ?? null;
@@ -29,7 +32,7 @@ function Preview() {
     setLib(result);
     const first = result.page.notes?.[0]?.id ?? "";
     const nextId = keepId && result.page.notes?.some((n) => n.id === selectedId) ? selectedId : first;
-    const note = result.page.notes?.find((n) => n.id === nextId) ?? null;
+    const note = result.page.notes?.find((n: Note) => n.id === nextId) ?? null;
     setSelectedId(note?.id ?? "");
     setDraftTitle(note?.title ?? "");
     setDraftBody(note?.body ?? "");
@@ -105,6 +108,13 @@ function Preview() {
     setBusy(true); setError(""); setNotice("");
     try {
       const term = query.trim();
+      if (chunkMode && term) {
+        const found = await SearchChunkHits(lib.generation, term, 20);
+        setHits(found ?? []);
+        setNotice("分块命中 " + (found?.length ?? 0) + " 处，偏移可回原文");
+        return;
+      }
+      setHits([]);
       const page = term ? await SearchNotes(lib.generation, term) : await ListNotes(lib.generation, 0);
       setLib({ ...lib, page });
       setSubmitted(term);
@@ -160,9 +170,27 @@ function Preview() {
       {lib && <div className="preview-workspace">
         <section className="preview-list" aria-label="笔记列表">
           <form onSubmit={(e) => void search(e)} role="search">
-            <input type="search" aria-label="搜索笔记" placeholder="搜索标题或正文" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input type="search" aria-label="搜索笔记" placeholder={chunkMode ? "搜索分块（可回原文偏移）" : "搜索标题或正文"} value={query} onChange={(e) => setQuery(e.target.value)} />
+            <button type="button" aria-pressed={chunkMode} onClick={() => { setChunkMode(!chunkMode); setHits([]); }}>{chunkMode ? "按整篇" : "按分块"}</button>
             <button disabled={busy}>搜索</button>
           </form>
+
+          {hits.length > 0 && <section className="preview-hits" aria-label="分块命中">
+            <p className="preview-count" role="status">分块命中 {hits.length} 处</p>
+            <ul>
+              {hits.map((hit, i) => <li key={hit.noteId + "-" + hit.chunkIndex + "-" + i}>
+                <strong>{hit.noteTitle}</strong>
+                <span className="preview-meta">字符 {hit.charStart}–{hit.charEnd} · 块 {hit.chunkIndex}</span>
+                <p>{hit.content}</p>
+                <button type="button" disabled={busy} onClick={() => void (async () => {
+                  const page = await SearchNotes(lib!.generation, hit.noteTitle);
+                  setLib({ ...lib!, page });
+                  const found = page.notes?.find((n: Note) => n.id === hit.noteId);
+                  if (found) { setSelectedId(found.id); setDraftTitle(found.title); setDraftBody(found.body); }
+                })()}>打开原文</button>
+              </li>)}
+            </ul>
+          </section>}
           <p className="preview-count" role="status">{submitted ? "找到 " : "已显示 "}{notes.length} 篇</p>
           <ul>
             {notes.map((note) => <li key={note.id}>

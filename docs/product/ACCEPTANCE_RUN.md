@@ -573,6 +573,23 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 `docs/adr/0012-go-trash-and-create.md`。
 
+## 2026-11-20 上午（第五续）：阶段 2 第四刀 —— 分块检索带回原文偏移
+
+环境 macOS arm64，分支 `workbench/second-brain-validation`。仍只用夹具副本。
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| Go 分块检索语义 | PASS | `TestSearchChunksReturnsOriginalOffsets`：FTS 命中带父笔记 id/标题；charStart..charEnd 落在 ChunkMarkdown 的真实块上；用偏移从原始正文切出的片段与命中内容一致；连续中文子串走 LIKE 兜底也能回偏移；软删后无命中。 |
+| 跨运行时对拍 | PASS（修正了一条错误断言后） | 扩展 `go_preview_write_parity`：Rust 用自己的 `search_note_chunks` 查 Go 写夹具，得 1 条命中且标题正确，偏移可从原文切回片段。首版断言「span 严格等于 content」失败——Rust 块内容 `trim_end()` 而偏移覆盖尾部换行；改成 `span.trim_end()` 并写明理由后通过。 |
+| 原生窗口 | PASS | 切「按分块」出现 AXToggle，搜索框占位改变；搜「知识库范围」回执「分块命中 1 处，偏移可回原文」，命中区显示「夹具标题 字符 0–36 · 块 0」与片段；点「打开原文」右侧切到父笔记修订 2。 |
+| 嵌入产物保鲜 | PASS（新增守卫） | 新增 `TestEmbeddedBundleIsCurrent` 断言 go:embed 的 index.html 引用当前 bundle hash——防止只改 Vite 产物、二进制仍带旧界面这种静默故障。 |
+| 构建与测试 | PASS | `go test ./...` 全绿、`cargo test go_preview_write_parity -- --ignored` 通过、TypeScript 检查与构建脚本退出 0。 |
+| 向量检索 / 高亮定位 / 分页 / 跨平台 | SKIP | 见 ADR-0013 第三节。 |
+
+**未验证**：向量召回、命中字符级高亮、大库分页性能、Windows/Linux 与 `.app` 签名。
+
+取舍与证据见 `docs/adr/0013-go-chunk-search.md`。
+
 
 
 
