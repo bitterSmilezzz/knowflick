@@ -1658,6 +1658,15 @@ R4 项目与画像的写入仍未迁移。
 | 命令面收口 | 记录 | 136 条 Rust 命令已全部映射到 Go 服务方法并逐一核对存在；只剩前端接线与各端原生行为待后续轮次推进。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百零一轮 · 快捷捕捉窗口接线
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 捕捉界面 | 构建通过 | ?window=capsule 路由渲染快速捕捉：记一条灵感 → CaptureMaterial 存入收件箱 → HideCapsule 关窗；界面显示快捷键注册状态或占用提示。 |
+| 状态展示 | 构建通过 | GetShortcutStatus 结果直接展示在捕捉窗底部，注册失败给出「从应用菜单打开」的指引路径。 |
+| 绑定面盘点 | 记录 | go-preview 绑定数升至 111（本轮接 GetShortcutStatus、HideCapsule、CaptureMaterial 复用）；余 51 个按能力逐轮接线。 |
+| 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
+
 ## 阶段 2 第一百轮 · 备份快照接线到设置面板
 
 | 验收 | 结果 | 证据与范围 |

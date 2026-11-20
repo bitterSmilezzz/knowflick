@@ -27,6 +27,7 @@ import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
+import { CaptureMaterial, GetShortcutStatus, HideCapsule } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { noteMediaPaths } from "../src/domain/mediaMime";
@@ -36,6 +37,51 @@ import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
+
+function CapsuleCapture() {
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [shortcut, setShortcut] = useState<string>("");
+
+  useEffect(() => {
+    void GetShortcutStatus().then((status: { shortcut: string; registered: boolean; error: string | null }) => {
+      setShortcut(status.registered ? "快捷键 " + status.shortcut + " 可再次唤起" : "快捷键未注册：" + (status.error ?? ""));
+    }).catch(() => undefined);
+  }, []);
+
+  async function capture() {
+    const value = text.trim();
+    if (!value || saving) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const id = await CaptureMaterial(0, "", value, "");
+      setText("");
+      setNotice("已存入收件箱" + (id ? "（" + id.slice(0, 8) + "…）" : ""));
+      await HideCapsule();
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="preview-capsule">
+      <strong>快速捕捉</strong>
+      <textarea value={text} disabled={saving} autoFocus placeholder="记一条灵感或摘录…"
+        onChange={(event) => setText(event.target.value)} />
+      {error && <p className="preview-error" role="alert">{error}</p>}
+      {notice && <p className="preview-notice" role="status">{notice}</p>}
+      <div className="preview-actions">
+        <button type="button" disabled={saving || !text.trim()} onClick={() => void capture()}>存入收件箱</button>
+        <button type="button" disabled={saving} onClick={() => { setText(""); void HideCapsule(); }}>关闭</button>
+      </div>
+      {shortcut && <p className="preview-meta">{shortcut}</p>}
+    </div>
+  );
+}
 
 function Preview() {
   const [lib, setLib] = useState<LibraryView | null>(null);
@@ -824,4 +870,5 @@ function PreviewNoteBody({ generation, text }: { generation: number; text: strin
 }
 
 const root = document.getElementById("root");
-if (root) createRoot(root).render(<Preview />);
+const isCapsule = typeof window !== "undefined" && window.location.search.includes("window=capsule");
+if (root) createRoot(root).render(isCapsule ? <CapsuleCapture /> : <Preview />);
