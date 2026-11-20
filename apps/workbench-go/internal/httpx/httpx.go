@@ -139,8 +139,9 @@ func ChatComplete(ctx context.Context, endpoint, apiKey, body string) (string, e
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("User-Agent", "KnowFlick/0.1")
+	for name, value := range chatAuthHeaders(endpoint, apiKey) {
+		req.Header.Set(name, value)
 	}
 	resp, err := NewClient(target, 120*time.Second).Do(req)
 	if err != nil {
@@ -152,9 +153,41 @@ func ChatComplete(ctx context.Context, endpoint, apiKey, body string) (string, e
 		return "", err
 	}
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("服务返回 %d: %s", resp.StatusCode, RedactSecrets(string(raw)))
+		text := RedactSecrets(string(raw))
+		if len(text) > 200 {
+			text = text[:200]
+		}
+		return "", fmt.Errorf("API 返回 %d：%s", resp.StatusCode, text)
+	}
+	var payload struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(raw, &payload) == nil {
+		if len(payload.Choices) > 0 && payload.Choices[0].Message.Content != "" {
+			return payload.Choices[0].Message.Content, nil
+		}
+		if len(payload.Content) > 0 && payload.Content[0].Text != "" {
+			return payload.Content[0].Text, nil
+		}
 	}
 	return string(raw), nil
+}
+// chatAuthHeaders 按服务商给鉴权头：Anthropic 用 x-api-key，其余 OpenAI 兼容服务用 Bearer。
+func chatAuthHeaders(endpoint, apiKey string) map[string]string {
+	if strings.Contains(endpoint, "anthropic.com") {
+		return map[string]string{"x-api-key": apiKey, "anthropic-version": "2023-06-01"}
+	}
+	if apiKey == "" {
+		return nil
+	}
+	return map[string]string{"Authorization": "Bearer " + apiKey}
 }
 
 // RedactSecrets 抹掉错误文本里可能出现的凭据（与前端 redactSecrets 同一套口径）：

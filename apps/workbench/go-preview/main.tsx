@@ -26,6 +26,7 @@ import { GoalLibrary } from "./GoalLibrary";
 import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
+import { AskPanel } from "./AskPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { noteMediaPaths } from "../src/domain/mediaMime";
@@ -52,6 +53,7 @@ function Preview() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [asrOpen, setAsrOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsRevision, setStatsRevision] = useState(0);
@@ -578,6 +580,7 @@ function Preview() {
                 <button type="button" aria-pressed={view === "goals"} disabled={busy || cardEditing} onClick={() => { setView(view === "goals" ? "notes" : "goals"); setMoreOpen(false); }}>目标</button>
                 <button type="button" aria-pressed={view === "claims"} disabled={busy || cardEditing} onClick={() => { setView(view === "claims" ? "notes" : "claims"); setMoreOpen(false); }}>画像</button>
                 <button type="button" aria-pressed={view === "review"} disabled={busy || cardEditing} onClick={() => { setView(view === "review" ? "notes" : "review"); setMoreOpen(false); }}>卡片复习</button>
+                <button type="button" aria-pressed={askOpen} disabled={busy} onClick={() => { setAskOpen(!askOpen); setMoreOpen(false); }}>知识问答</button>
                 <button type="button" disabled={busy || view !== "notes"} onClick={() => { void toggleTrash(); setMoreOpen(false); }}>{trash ? "返回笔记" : "回收站"}</button>
                 {view !== "notes" && <button type="button" disabled={busy} onClick={() => { setView("notes"); setMoreOpen(false); }}>返回笔记</button>}
               </div>
@@ -619,6 +622,7 @@ function Preview() {
 
 
       {settingsOpen && lib && <SettingsPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {askOpen && <AskPanel key={lib?.generation ?? "ask"} generation={lib?.generation ?? 0} busy={busy} onBusy={setBusy} onOpenNote={(id) => { setSelectedId(id); setView("notes"); setAskOpen(false); }} />}
       {asrOpen && <AsrPanel key={lib?.generation ?? "asr"} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
       {mcpOpen && lib && <McpGrantPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {subsOpen && <section className="preview-mail" aria-label="订阅源">
