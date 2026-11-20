@@ -54,7 +54,9 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	}
 	if counts.Materials != 1 || counts.Cards != 1 || counts.Artifacts != 1 || counts.Media != 2 ||
 		counts.Notes != 2 || counts.Revisions != 3 || counts.KnowledgeBases != 1 || counts.Membership != 2 ||
-		counts.Subscriptions != 2 || counts.ReviewEvents != 1 || counts.Skipped != 0 {
+		counts.Subscriptions != 2 || counts.ReviewEvents != 1 || counts.Skipped != 0 ||
+		counts.DeletedMaterials != 1 || counts.DeletedCards != 1 || counts.DeletedArtifacts != 1 ||
+		counts.MailAccounts != 1 || counts.MailSyncStates != 1 || counts.MailImports != 1 || counts.MailRejected != 1 {
 		t.Fatalf("unexpected counts: %+v", counts)
 	}
 	again, err := restored.RestoreCoreBackup(context.Background(), backup, restoreDir)
@@ -110,6 +112,37 @@ func TestRestoreCoreBackupIntoEmptyLibrary(t *testing.T) {
 	}
 	if reviewCount != 1 {
 		t.Fatalf("review events: %d", reviewCount)
+	}
+	var deletedCards, deletedMaterials, deletedArtifacts, danglingCards int
+	for _, probe := range []struct {
+		table string
+		dest  *int
+	}{{"materials", &deletedMaterials}, {"cards", &deletedCards}, {"artifacts", &deletedArtifacts}} {
+		if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM "+probe.table+" WHERE is_deleted = 1").Scan(probe.dest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if deletedMaterials != 1 || deletedCards != 1 || deletedArtifacts != 1 {
+		t.Fatalf("deleted rows: %d %d %d", deletedMaterials, deletedCards, deletedArtifacts)
+	}
+	if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM cards c WHERE c.is_deleted = 1 AND c.material_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM materials m WHERE m.id = c.material_id)").Scan(&danglingCards); err != nil {
+		t.Fatal(err)
+	}
+	if danglingCards != 0 {
+		t.Fatalf("deleted card lost its source material: %d", danglingCards)
+	}
+	var mailCounts [4]int
+	for index, probe := range []struct {
+		table string
+		dest  *int
+	}{{"mail_accounts", &mailCounts[0]}, {"mail_sync_state", &mailCounts[1]}, {"mail_imports", &mailCounts[2]}, {"mail_rejected", &mailCounts[3]}} {
+		_ = index
+		if err := restored.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM "+probe.table).Scan(probe.dest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if mailCounts != [4]int{1, 1, 1, 1} {
+		t.Fatalf("mail rows: %v", mailCounts)
 	}
 	if _, err := restored.db.ExecContext(context.Background(), "UPDATE subscriptions SET title = '本地不同' WHERE id = 'sub-1'"); err != nil {
 		t.Fatal(err)

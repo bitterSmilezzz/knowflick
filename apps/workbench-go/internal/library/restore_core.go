@@ -16,17 +16,24 @@ import (
 
 // CoreRestoreCounts 是核心数据恢复结果。
 type CoreRestoreCounts struct {
-	Materials      int `json:"materials"`
-	Cards          int `json:"cards"`
-	Artifacts      int `json:"artifacts"`
-	Media          int `json:"media"`
-	Notes          int `json:"notes"`
-	Revisions      int `json:"revisions"`
-	KnowledgeBases int `json:"knowledgeBases"`
-	Membership     int `json:"membership"`
-	Subscriptions  int `json:"subscriptions"`
-	ReviewEvents   int `json:"reviewEvents"`
-	Skipped        int `json:"skipped"`
+	Materials        int `json:"materials"`
+	Cards            int `json:"cards"`
+	Artifacts        int `json:"artifacts"`
+	Media            int `json:"media"`
+	Notes            int `json:"notes"`
+	Revisions        int `json:"revisions"`
+	KnowledgeBases   int `json:"knowledgeBases"`
+	Membership       int `json:"membership"`
+	Subscriptions    int `json:"subscriptions"`
+	ReviewEvents     int `json:"reviewEvents"`
+	DeletedMaterials int `json:"deletedMaterials"`
+	DeletedCards     int `json:"deletedCards"`
+	DeletedArtifacts int `json:"deletedArtifacts"`
+	MailAccounts     int `json:"mailAccounts"`
+	MailSyncStates   int `json:"mailSyncStates"`
+	MailImports      int `json:"mailImports"`
+	MailRejected     int `json:"mailRejected"`
+	Skipped          int `json:"skipped"`
 }
 
 // RestoreCoreBackup 把校验过的备份写入目标库：素材、卡片、产物、附件与设置。
@@ -182,6 +189,16 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		return counts, err
 	}
 	counts.ReviewEvents = reviewEvents
+	deletedMaterials, deletedCards, deletedArtifacts, err := restoreDeletedRecords(ctx, tx, backup)
+	if err != nil {
+		return counts, err
+	}
+	counts.DeletedMaterials, counts.DeletedCards, counts.DeletedArtifacts = deletedMaterials, deletedCards, deletedArtifacts
+	mailAccounts, mailSyncStates, mailImports, mailRejected, err := restoreMail(ctx, tx, backup)
+	if err != nil {
+		return counts, err
+	}
+	counts.MailAccounts, counts.MailSyncStates, counts.MailImports, counts.MailRejected = mailAccounts, mailSyncStates, mailImports, mailRejected
 	if err := tx.Commit(); err != nil {
 		return counts, fmt.Errorf("提交恢复事务失败：%w", err)
 	}
