@@ -793,3 +793,26 @@ mod webdav_tests {
         });
     }
 }
+
+#[cfg(test)]
+mod go_parity {
+    use super::*;
+    /// 与 Go 的 ValidateURL 对拍：同样的地址列表必须给出同样的放行/拒绝结论。
+    #[test]
+    fn go_http_url_parity() {
+        let cases: &[(&str, bool)] = &[
+            ("https://example.com/a", true),
+            ("http://localhost:11434/v1", true),
+            ("http://127.0.0.1:8080", true),
+            ("http://[::1]:9000", true),
+            ("http://example.com", false),
+            ("ftp://example.com", false),
+            ("https://user:pass@example.com", false),
+            ("not a url", false),
+            ("", false),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(validate_url(raw).is_ok(), *expected, "URL {raw} 的判定与 Go 不一致");
+        }
+    }
+}

@@ -621,6 +621,22 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 `docs/adr/0015-go-media-restore.md`。
 
+## 2026-11-20 中午：阶段 2 第七刀 —— HTTP 层迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 安全口径 | PASS | `ValidateURL`：https 放行、回环 http 放行（含 `[::1]`）、外部 http/`ftp`/带凭据/空串拒绝；`NewClient` 对回环置 `Proxy=nil`；`CheckRedirect` 每次重新校验最终地址，最多 5 次。 |
+| 剪藏抓取 | PASS | httptest 本地服务：UA 为 `KnowFlick/0.1`、正文与最终地址正确；`http://example.com` 被拒。 |
+| 密钥脱敏 | PASS | `sk-` 前缀与 ≥32 位高熵串被替换为「[已隐藏]」，普通中文文本不被改动。 |
+| WebDAV 上传 | PASS | 方法 PUT、正文、Content-Type、Basic 鉴权正确，返回 201。 |
+| 字符集解码 | PASS（补做） | GBK 字节 `D6 D0 CE C4` 经头部 charset 与 meta 标签两条路径均解出「中文」；无声明时按 UTF-8 原样透传；未知编码原样。首版写成直接 `string(body)` 属错误取舍，已用 `x/text` 补上。 |
+| 跨运行时 URL 判定 | PASS | Rust `go_http_url_parity` 用同一份 9 条地址列表，与 Go `ValidateURL` 结论逐条一致。 |
+| 向量请求 / 正文抽取 / 跨平台 | SKIP | 见 ADR-0016 第四节。 |
+
+**未验证**：`request_embeddings`、HTML 正文抽取、逐项超时重试、Windows/Linux。
+
+取舍与证据见 `docs/adr/0016-go-http-layer.md`。
+
 
 
 
