@@ -1206,6 +1206,18 @@ R4 项目与画像的写入仍未迁移。
 
 采用页内二次确认而不是 `window.confirm`：不依赖 webview 对原生确认框的支持，且文案可以明确说明合并与冲突语义。
 
+## 阶段 2 第五十二轮 · WebDAV 备份上传编排
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 命名退让 | PASS | 主对象用日期名 `knowflick-backup-YYYYMMDD.kfbackup`；服务端返回 409/412 时退让到 `-01`、`-02`，三次用尽即报错。 |
+| sidecar | PASS | 写 `<对象名>.sha256`，内容为 `sha256  对象名\n`；测试逐字核对。 |
+| 回执 | PASS | 返回 `fileName`、`sha256`、`bytes`，与 Rust `webdav_upload_backup` 字段一致。 |
+| 错误 | PASS | 非 200/201/204 且非 409/412 的状态直接报错；Basic 鉴权与 Content-Type 由现有 `httpx.WebDAVPut` 负责。 |
+
+这是**单向复制**，不做双向同步或合并。界面入口尚未接入；真实服务兼容性仍需按路线图验证。
+
+
 
 
 
