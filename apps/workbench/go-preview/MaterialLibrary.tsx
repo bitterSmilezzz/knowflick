@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ListMaterials, SearchMaterials, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
+import { useAttachments } from "./attachments";
+import { AttachmentView } from "../src/ui/workspace/AttachmentView";
+import { attachmentKindOf } from "../src/domain/attachmentKind";
 import type { Material } from "./bindings/knowflick.local/workbench-go/internal/materials/models";
 
 type Props = {
@@ -26,6 +29,12 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const selected = items?.find((item) => item.id === selectedID) ?? items?.[0] ?? null;
+
+
+  const attachmentPath = selected?.mediaPath?.trim() ?? "";
+  const attachmentKind = attachmentKindOf(attachmentPath);
+  const attachments = useAttachments(generation, attachmentKind ? attachmentPath : "");
+  const attachment = attachments?.get(attachmentPath);
 
   async function refresh(inbox: boolean, term: string) {
     const rows = term
@@ -175,6 +184,9 @@ export function MaterialLibrary({ generation, writable, busy, onBusy }: Props) {
         {selected && <>
           <h2>{selected.title || "无标题素材"}</h2>
           <p className="preview-meta">{statusLabels[selected.inboxStatus] ?? selected.inboxStatus} · {selected.sourceType}{selected.sourceUrl ? " · " + selected.sourceUrl : ""}</p>
+          {attachment && <div className="preview-material-attachment"><AttachmentView payload={attachment} alt={selected.title || "素材附件"} /></div>}
+          {attachmentKind && !attachments && <p className="preview-meta" role="status">正在读取附件…</p>}
+          {attachmentPath && (!attachmentKind || (attachments && !attachment)) && <p className="preview-meta">附件无法读取：{attachmentPath}</p>}
           <pre className="preview-material-body">{selected.rawText || "（这条素材没有正文）"}</pre>
           {writable && <div className="preview-actions">
             <button type="button" disabled={busy} onClick={() => void toNote()}>转为笔记</button>

@@ -27,6 +27,8 @@ import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { SettingsPanel } from "./SettingsPanel";
+import { useAttachments } from "./attachments";
+import { noteMediaPaths } from "../src/domain/mediaMime";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
@@ -731,8 +733,9 @@ function Preview() {
             </form> : <div>
               <h2>{selected.title || "无标题笔记"}</h2>
               <p className="preview-meta">修订 {selected.revision} · {new Date(selected.updatedAt).toLocaleString("zh-CN")} · 只读模式</p>
-              <MarkdownRenderer text={selected.body} />
+              {view === "notes" && <PreviewNoteBody generation={lib.generation} text={selected.body} />}
             </div>}
+            {lib.writable && view === "notes" && <DraftNotePreview key={selected.id} generation={lib.generation} text={draftBody} />}
             {knowledge && <NoteKnowledgeBases
               key={lib.generation + ":" + selected.id}
               snapshot={knowledge}
@@ -755,6 +758,23 @@ function Preview() {
       </div>}
     </main>
   );
+}
+
+function DraftNotePreview({ generation, text }: { generation: number; text: string }) {
+  const [open, setOpen] = useState(false);
+  return <details className="preview-history" onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <summary>正文预览</summary>
+    {open && <PreviewNoteBody generation={generation} text={text} />}
+  </details>;
+}
+
+function PreviewNoteBody({ generation, text }: { generation: number; text: string }) {
+  const references = noteMediaPaths(text).join("\n");
+  const attachments = useAttachments(generation, references);
+  return <>
+    {references && !attachments && <p className="preview-meta" role="status">正在读取附件…</p>}
+    <MarkdownRenderer text={text} resolveAttachment={attachments ? (path) => attachments.get(path) ?? null : undefined} />
+  </>;
 }
 
 const root = document.getElementById("root");
