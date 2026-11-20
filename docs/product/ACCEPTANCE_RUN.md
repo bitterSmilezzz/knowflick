@@ -694,6 +694,29 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0020-go-mail-accounts.md。
 
+## 2026-11-20 下午（再续）：阶段 2 第十二刀 —— IMAP 会话协议层迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 只读命令白名单 | PASS | 11 条写命令（STORE/DELETE/EXPUNGE/COPY/APPEND/MOVE/CREATE/RENAME/SUBSCRIBE/UNSUBSCRIBE）全被拒；4 条读命令（LOGIN/EXAMINE/UID SEARCH/UID FETCH）放行。 |
+| 协议解析 | PASS | 引号转义；中文/ASCII/&/混合文件夹的 modified UTF-7 编码；非 OK 问候被拒；LOGIN+EXAMINE 解析出 UIDVALIDITY=42 与 EXISTS=7；缺 UIDVALIDITY 报错。 |
+| 不泄露服务端原文 | PASS | 服务器返回 `NO [AUTHENTICATIONFAILED] invalid credentials for secret-pass` 时，错误信息中**不含**该密码。 |
+| 三层上限 | PASS | 声明 999999999 字节的 literal 被拒（超过单封 2 MiB）。 |
+| 会话预算 | PASS | 时钟推进到 120 秒后，下一条命令立刻报「时间太长」而不是继续发送。 |
+| 跨运行时对拍 | PASS | Rust `go_imap_protocol_parity` 比对引号转义与四种文件夹编码，与 Go **逐字一致**（中文为 `&g0l6Pw-`）。 |
+| TCP+TLS 连接 / UID SEARCH+FETCH 封装 / 正文解析 / 同步执行 / 真实账号 | SKIP | 均未迁。Go 版能构造只读会话并登录打开文件夹，但**不能真正连服务器、不能同步**。见 ADR-0021 第五节。 |
+
+**未验证**：任何真实 IMAP 连接、TLS 握手、UID SEARCH/FETCH、正文解析、同步执行。
+
+### 测试里踩到的四个坑
+
+1. `[UIDVALIDITY 42]` 的最后一个「数字」是 `42]`，只裁圆括号会解析失败。
+2. 中文编码的期望值不能猜：我先写 `&6Ik-`，实测是 `&g0l6Pw-`；改成断言结构 + 跨运行时对拍。
+3. `net.Pipe` 是无缓冲同步管道，服务器不读时客户端连命令都发不出去——用它测超时会死锁。
+4. 同一个过期时钟算不出过期：`deadline = 过期时刻 + 120s` 仍在过去，判据永不触发；必须用可推进的时钟。
+
+取舍与证据见 docs/adr/0021-go-imap-session.md。
+
 
 
 

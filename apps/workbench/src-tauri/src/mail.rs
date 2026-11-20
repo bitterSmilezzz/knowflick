@@ -1360,6 +1360,25 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// Go 的协议层输出必须与 Rust 逐字一致：引号转义与 modified UTF-7 编码。
+    /// 这两处一旦漂移，中文文件夹在服务器上就会找不到。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_imap_protocol_parity() {
+        let path = std::env::var("KF_GO_IMAP_FIXTURE").expect("set KF_GO_IMAP_FIXTURE");
+        let text = std::fs::read_to_string(path).unwrap();
+        let mut got = std::collections::HashMap::new();
+        for line in text.lines() {
+            if let Some((key, value)) = line.split_once('=') {
+                got.insert(key.to_string(), value.to_string());
+            }
+        }
+        assert_eq!(got["quote"], quote("a\\b\"c"), "引号转义与 Go 不一致");
+        assert_eq!(got["mailbox_cjk"], mailbox_name("草稿"), "中文文件夹编码与 Go 不一致");
+        assert_eq!(got["mailbox_ascii"], mailbox_name("INBOX"), "ASCII 文件夹与 Go 不一致");
+        assert_eq!(got["mailbox_amp"], mailbox_name("A&B"), "& 转义与 Go 不一致");
+    }
+
 
     /// 反向：Rust 存的账号，Go 必须读出同样的配置与状态。
     #[test]
