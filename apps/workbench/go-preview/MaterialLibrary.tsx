@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportAudioMaterial, ImportImages, ListMaterials, SaveInkMaterial, SaveRecordingMaterial, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportAudioMaterial, ImportImages, ListMaterials, SaveInkMaterial, OpenURL, SaveRecordingMaterial, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
 import { formatDuration, parseInk, type InkDocument } from "../src/domain/ink";
 import { bytesToBase64 } from "../src/shell/base64";
@@ -331,6 +331,7 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
         {selected && <>
           <h2>{selected.title || "无标题素材"}</h2>
           <p className="preview-meta">{statusLabels[selected.inboxStatus] ?? selected.inboxStatus} · {selected.sourceType}{selected.sourceUrl ? " · " + selected.sourceUrl : ""}</p>
+          {selected.sourceUrl && <button type="button" disabled={busy} onClick={() => void run(async () => { await OpenURL(selected.sourceUrl as string); setNotice("已用浏览器打开原始来源"); })}>查看原始来源</button>}
           {attachment && (
             <figure className="preview-material-attachment" data-attachment={selected.sourceType}>
               <AttachmentView payload={attachment} alt={selected.title || "素材附件"} />

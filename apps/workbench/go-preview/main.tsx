@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ChooseLibrary, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { ChooseLibrary, ExportNoteMarkdown, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note, NoteRevision } from "./bindings/knowflick.local/workbench-go/internal/library/models";
@@ -440,6 +440,15 @@ function Preview() {
     });
   }
 
+  async function exportMarkdown() {
+    if (!lib || !selected || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const path = await ExportNoteMarkdown(lib.generation, selected.id);
+      if (path) setNotice("已导出：" + path);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
   async function save() {
     if (!lib || !selected || busy) return;
     setBusy(true); setError(""); setNotice("");
@@ -745,6 +754,7 @@ function Preview() {
               {view === "notes" && !selected.deleted && <NoteAttachmentPicker key={lib.generation} generation={lib.generation} busy={busy} onInsert={insertReference} />}
               <div className="preview-actions">
                 <button type="submit" disabled={busy || !dirty}>保存</button>
+                <button type="button" disabled={busy} onClick={() => void exportMarkdown()}>导出 Markdown</button>
                 <button type="button" disabled={busy} onClick={() => void remove()}>移进回收站</button>
                 <span className="preview-meta">{dirty ? "有未保存改动" : "已保存 · 修订 " + selected.revision}</span>
               </div>
