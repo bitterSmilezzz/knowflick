@@ -9,7 +9,9 @@
 package mailimport
 
 import (
+	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -138,4 +140,56 @@ func MessageIDOf(metadataJSON string) string {
 		return ""
 	}
 	return strings.TrimSpace(metadata.MessageID)
+}
+
+// SaveMaterial 把素材写进 materials 表并同步刷新全文索引。
+//
+// 与 Rust 的 db::save_material 逐条一致：
+// - content_hash 是 raw_text 的 SHA-256 十六进制。
+// - 冲突时整行更新、version 自增、is_deleted 复位、deleted_at 清空。
+// - FTS 先删后插，保证「库里改了、索引也改」。
+func SaveMaterial(ctx context.Context, db *sql.DB, material Material, now int64) error {
+	contentHash := sha256Hex(material.RawText)
+	updatedAt := material.UpdatedAt
+	if updatedAt <= 0 {
+		updatedAt = now
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO materials (
+            id, source_type, title, source_url, raw_text, cleaned_markdown,
+            content_hash, media_path, media_size_bytes, metadata_json,
+            inbox_status, created_at, updated_at, version, is_deleted
+        ) VALUES (?1, ?2, ?3, NULL, ?4, NULL, ?5, NULL, 0, ?6, ?7, ?8, ?9, 1, 0)
+        ON CONFLICT(id) DO UPDATE SET
+            source_type = excluded.source_type,
+            title = excluded.title,
+            raw_text = excluded.raw_text,
+            content_hash = excluded.content_hash,
+            metadata_json = excluded.metadata_json,
+            inbox_status = excluded.inbox_status,
+            updated_at = excluded.updated_at,
+            version = materials.version + 1,
+            is_deleted = 0,
+            deleted_at = NULL`,
+		material.ID, material.SourceType, material.Title, material.RawText, contentHash,
+		material.MetadataJSON, material.InboxStatus, material.CreatedAt, updatedAt); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM fts_materials WHERE material_id = ?1", material.ID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO fts_materials (material_id, title, raw_text, source_url) VALUES (?1, ?2, ?3, '')",
+		material.ID, material.Title, material.RawText); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func sha256Hex(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
 }

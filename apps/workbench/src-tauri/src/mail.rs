@@ -1360,6 +1360,37 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// Go 写入的素材库，Rust 必须能读到同一行：标题、正文、哈希、version、FTS。
+    #[test]
+    #[ignore = "requires KF_GO_MATERIAL_DB"]
+    fn go_material_write_parity() {
+        let path = std::path::PathBuf::from(std::env::var_os("KF_GO_MATERIAL_DB").expect("set KF_GO_MATERIAL_DB"));
+        let conn = rusqlite::Connection::open(&path).expect("open fixture db");
+        // id 从 Go 导出的 sidecar 读：猜 id 会让「查不到行」伪装成写入失败。
+        let id_path = format!("{}.id", std::env::var("KF_GO_MATERIAL_DB").unwrap());
+        let id = std::fs::read_to_string(id_path).expect("material id sidecar");
+        let id = id.trim();
+        let (title, body, hash, version): (String, String, String, i64) = conn
+            .query_row(
+                "SELECT title, raw_text, content_hash, version FROM materials WHERE id=?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("material row");
+        assert_eq!(title, "夹具标题");
+        assert!(body.contains("夹具正文"));
+        assert_eq!(hash, db::calculate_hash(&body));
+        assert_eq!(version, 1);
+        let fts_title: String = conn
+            .query_row(
+                "SELECT title FROM fts_materials WHERE material_id=?1",
+                [id],
+                |row| row.get(0),
+            )
+            .expect("fts row");
+        assert_eq!(fts_title, title, "FTS 与主表不同步");
+    }
+
     /// 同一封邮件，Rust 与 Go 必须算出相同的素材 id 与标题/正文占位。
     /// 这条守住「重复导入不产生副本」——id 不一致就会变成两条。
     #[test]

@@ -758,6 +758,19 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0024-go-mail-material-mapping.md。
 
+## 2026-11-20 晚间（续）：阶段 2 第十六刀 —— 素材写入库迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 写入与索引 | PASS | Go 4 项：插入并写索引（title、content_hash、version=1、索引行与主表一致）；upsert 后 version=2、is_deleted 复位、deleted_at 清空、索引里是新正文；同一 Message-ID 换 UID 只留一行。 |
+| 跨运行时对拍 | PASS | Rust `go_material_write_parity` 读 Go 写的库：标题、正文、`content_hash == calculate_hash(body)`、version=1、FTS 标题与主表一致。 |
+| 两处对拍发现 | 记录 | ① 我先把素材 id 写死成别的夹具的值，得到 `QueryReturnedNoRows`——猜 id 会让「查不到行」伪装成「写入失败」，改成 Go 导出真实 id 的 sidecar。② 用 `fts_materials MATCH '本周'` 断言得到 0 命中；改用按 material_id 直读索引行——用「搜得到」证明「写进去了」是不稳的，分词/大小写/查询语法任一不同都会假阴性。 |
+| 去重账本 / 同步执行 / SyncMode / 真实邮件 | SKIP | 均未迁。Go 版能把一封邮件变成库里的一行素材并进索引，但还没有「跑一轮同步」这件事。 |
+
+**未验证**：去重账本写入、同步执行与进度、New/History/Retry 三种模式、单封失败隔离、真实邮箱邮件。
+
+取舍与证据见 docs/adr/0025-go-material-write.md。
+
 
 
 
