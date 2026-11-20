@@ -420,6 +420,36 @@ fn restrict_to_owner(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Go 打的归档，Rust 必须能读开——容器格式不是我们的契约，能被对方读开才是。
+    #[test]
+    #[ignore = "requires the fixture exported by Go"]
+    fn go_archive_reads_in_rust() {
+        let path = std::env::var("KF_GO_ARCHIVE_FIXTURE").expect("set KF_GO_ARCHIVE_FIXTURE");
+        let payload = read_archive_file(std::path::Path::new(&path)).expect("Rust should read the Go-written archive");
+        assert!(payload.cards.contains("card-1"), "卡片正文丢了: {}", payload.cards);
+        let settings = payload.settings.expect("settings.json 应被读出");
+        assert!(settings.contains("theme"), "非密钥设置丢了: {}", settings);
+        assert!(!settings.contains("apiKey"), "密钥泄漏进导出包: {}", settings);
+        assert!(!settings.to_lowercase().contains("sk-secret"), "密钥值泄漏: {}", settings);
+    }
+
+    /// 反向：Rust 手写的 zip_store 归档，Go 必须能读开。
+    #[test]
+    #[ignore = "writes a fixture for the Go reader"]
+    fn rust_archive_writes_for_go() {
+        let path = std::env::var("KF_RUST_ARCHIVE_FIXTURE").expect("set KF_RUST_ARCHIVE_FIXTURE");
+        assert!(!std::path::Path::new(&path).exists(), "fixture must be new");
+        let cards = r#"["rust-card-1","rust-card-2"]"#;
+        let settings = strip_secret_settings(r#"{"theme":"light","apiKey":"sk-should-not-ship"}"#);
+        assert!(!settings.contains("apiKey"), "strip 失效: {}", settings);
+        let bytes = zip_store(&[("cards.json", cards.as_bytes()), ("settings.json", settings.as_bytes())]);
+        // 当场自检：自己写的包自己先读一遍，别把坏夹具交给 Go 而误判成 Go 的问题。
+        let payload = read_archive_zip(&bytes).expect("Rust should read its own archive");
+        assert_eq!(payload.cards, cards);
+        std::fs::write(&path, &bytes).unwrap();
+        std::fs::write(format!("{path}.cards"), cards).unwrap();
+    }
+
 
     #[test]
     fn export_archive_does_not_carry_legacy_secret_fields() {
