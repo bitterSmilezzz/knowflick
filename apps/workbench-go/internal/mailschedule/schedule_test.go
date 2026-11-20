@@ -335,3 +335,71 @@ func TestExportLoopFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLoopRunsImmediatelyThenOnEachTick(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var count int32
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = Loop(ctx, 10*time.Millisecond, func(context.Context) error {
+			atomic.AddInt32(&count, 1)
+			return nil
+		}, nil)
+	}()
+	// 第一次必须立刻跑：还没到任何 tick 就应该有计数。
+	time.Sleep(5 * time.Millisecond)
+	if atomic.LoadInt32(&count) == 0 {
+		close(done)
+		t.Fatal("first run should happen immediately")
+	}
+	time.Sleep(40 * time.Millisecond)
+	cancel()
+	<-done
+	if atomic.LoadInt32(&count) < 2 {
+		t.Fatalf("loop should tick repeatedly: %d", count)
+	}
+}
+
+func TestLoopKeepsGoingAfterStepError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var calls, errorsSeen int32
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = Loop(ctx, 5*time.Millisecond, func(context.Context) error {
+			atomic.AddInt32(&calls, 1)
+			return errors.New("网络断了")
+		}, func(error) { atomic.AddInt32(&errorsSeen, 1) })
+	}()
+	time.Sleep(40 * time.Millisecond)
+	cancel()
+	<-done
+	if atomic.LoadInt32(&calls) < 2 {
+		t.Fatalf("a failing step must not stop the loop: %d calls", calls)
+	}
+	if atomic.LoadInt32(&errorsSeen) < 2 {
+		t.Fatalf("errors should be reported: %d", errorsSeen)
+	}
+}
+
+func TestLoopRejectsNonPositiveInterval(t *testing.T) {
+	if err := Loop(context.Background(), 0, func(context.Context) error { return nil }, nil); err == nil {
+		t.Fatal("zero interval accepted")
+	}
+}
+
+func TestLoopStopsOnCancelWithoutAnotherStep(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var calls int32
+	cancel()
+	if err := Loop(ctx, time.Hour, func(context.Context) error {
+		atomic.AddInt32(&calls, 1)
+		return nil
+	}, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation: %v", err)
+	}
+	if atomic.LoadInt32(&calls) != 0 {
+		t.Fatalf("cancelled loop ran a step: %d", calls)
+	}
+}

@@ -16,10 +16,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"knowflick.local/workbench-go/internal/mail"
+	"knowflick.local/workbench-go/internal/mailschedule"
 	"knowflick.local/workbench-go/internal/mailsync"
 
 	_ "modernc.org/sqlite"
@@ -90,18 +93,26 @@ func startFakeImap(t *testing.T, validity uint32, uids []uint32, bodies map[uint
 		t.Fatal(err)
 	}
 	server := &fakeImap{listener: listener, validity: validity, uids: uids, bodies: bodies, roots: roots}
-	go server.serve()
+	go server.acceptLoop()
 	t.Cleanup(func() { _ = listener.Close() })
 	return server
 }
 
 func (f *fakeImap) port() uint16 { return uint16(f.listener.Addr().(*net.TCPAddr).Port) }
 
-func (f *fakeImap) serve() {
-	conn, err := f.listener.Accept()
-	if err != nil {
-		return
+// acceptLoop 持续接受连接：一轮同步结束后连接会关，下一轮必须能再连上。
+// 只接受一次会让第二轮挂在 TLS 握手上直到超时，看起来像「同步失败」。
+func (f *fakeImap) acceptLoop() {
+	for {
+		conn, err := f.listener.Accept()
+		if err != nil {
+			return
+		}
+		go f.serve(conn)
 	}
+}
+
+func (f *fakeImap) serve(conn net.Conn) {
 	defer conn.Close()
 	fmt.Fprintf(conn, "* OK fake ready\r\n")
 	reader := make([]byte, 4096)
@@ -342,5 +353,71 @@ func TestSyncDueRunsRunnerAndSkipsUntilInterval(t *testing.T) {
 		if err := os.WriteFile(target, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestSyncDueLoopRunsRoundsUntilCancelled 验证定时器真的会反复跑「一轮到期同步」，
+// 且取消后停下——不是「调了一次就算数」。
+func TestSyncDueLoopRunsRoundsUntilCancelled(t *testing.T) {
+	db := openDB(t)
+	dir := t.TempDir()
+	id := "6f1a5b3e-2c4d-4a8f-9e1b-7c5d2a9f0e55"
+	if err := mail.WritePassword(dir, id, "p"); err != nil {
+		t.Fatal(err)
+	}
+	server := startFakeImap(t, 7, []uint32{3}, map[uint32]string{
+		3: mailBody("唯一一封", "<m1@x>", "正文"),
+	})
+	config := fmt.Sprintf(`{"id":"%s","host":"127.0.0.1","port":%d,"username":"u","folder":"INBOX","syncLimit":10,"syncIntervalMinutes":5}`, id, server.port())
+	if _, err := db.Exec("INSERT INTO mail_accounts(id,config_json,created_at) VALUES(?1,?2,1)", id, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO mail_sync_state(account_id) VALUES(?1)", id); err != nil {
+		t.Fatal(err)
+	}
+	// 固定时钟：第一轮到期并导入，之后 last_attempt_at 等于当前时刻，
+	// 后续轮次按间隔跳过。这正好同时验证两件事：定时器在反复跑、重复轮次不重复导入。
+	// （不能让时钟每次推进 10 分钟——那会越过 120 秒的会话预算，会话直接被判超时。）
+	clock := func() int64 { return 1_000_000 }
+	ctx, cancel := context.WithCancel(context.Background())
+	var rounds int32
+	var errMu sync.Mutex
+	firstErr := ""
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = SyncDueLoop(ctx, 5*time.Millisecond, db, dir, clock, server.roots, func(outcomes []mailschedule.Outcome, err error) {
+			atomic.AddInt32(&rounds, 1)
+			if err != nil {
+				errMu.Lock()
+				if firstErr == "" {
+					firstErr = err.Error()
+				}
+				errMu.Unlock()
+			} else {
+				for _, o := range outcomes {
+					if o.Error != "" {
+						errMu.Lock()
+						if firstErr == "" {
+							firstErr = o.AccountID + ": " + o.Error
+						}
+						errMu.Unlock()
+					}
+				}
+			}
+		})
+	}()
+	time.Sleep(60 * time.Millisecond)
+	cancel()
+	<-done
+	if atomic.LoadInt32(&rounds) < 2 {
+		t.Fatalf("loop should run several rounds: %d", rounds)
+	}
+	var materials int
+	if err := db.QueryRow("SELECT COUNT(*) FROM materials").Scan(&materials); err != nil {
+		t.Fatal(err)
+	}
+	if materials != 1 {
+		t.Fatalf("repeated rounds must not duplicate the material: %d (first error: %s)", materials, firstErr)
 	}
 }

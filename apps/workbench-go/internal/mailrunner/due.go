@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"knowflick.local/workbench-go/internal/mail"
 	"knowflick.local/workbench-go/internal/mailschedule"
@@ -90,4 +91,18 @@ func (s dueSyncer) Sync(ctx context.Context, accountID string) (int, int, error)
 		return 0, 0, err
 	}
 	return result.Imported, result.Rejected, nil
+}
+
+// SyncDueLoop 每隔 interval 跑一轮到期同步，直到 ctx 取消。
+//
+// 传的是「跑一轮」而不是「一直同步」：每轮都重新查库，
+// 用户在两次轮询之间改了同步间隔，下一轮就会生效。
+func SyncDueLoop(ctx context.Context, interval time.Duration, db *sql.DB, libraryDir string, now func() int64, roots *x509.CertPool, onRound func([]mailschedule.Outcome, error)) error {
+	return mailschedule.Loop(ctx, interval, func(ctx context.Context) error {
+		outcomes, err := SyncDue(ctx, db, libraryDir, now, roots)
+		if onRound != nil {
+			onRound(outcomes, err)
+		}
+		return err
+	}, nil)
 }
