@@ -1360,6 +1360,44 @@ fn material_from_mail(
 
 #[cfg(test)]
 mod tests {
+    /// Go 写的账本库，Rust 必须读出同样的去重结论：哪些 UID 已导入、哪些被拒、游标在哪。
+    #[test]
+    #[ignore = "requires KF_GO_STORE_DB"]
+    fn go_mail_ledger_parity() {
+        let path = std::path::PathBuf::from(std::env::var_os("KF_GO_STORE_DB").expect("set KF_GO_STORE_DB"));
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        let (validity, last_uid): (u32, u32) = conn
+            .query_row("SELECT uid_validity,last_uid FROM mail_accounts WHERE id='acct-1'", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(validity, 7, "UIDVALIDITY 与 Go 不一致");
+        // bootstrap 把 last_uid 设成 boundary-1=99；推进到 42 后 MAX 仍应是 99。
+        assert_eq!(last_uid, 99, "游标单调性与 Go 不一致");
+        let material: String = conn
+            .query_row(
+                "SELECT material_id FROM mail_imports WHERE account_id='acct-1' AND folder='INBOX' AND message_id='<ledger@x>'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(material, "mail-ledger", "去重账本的素材引用与 Go 不一致");
+        let reason: String = conn
+            .query_row("SELECT reason FROM mail_rejected WHERE uid=43", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(reason, "邮件大小超过导入上限", "拒收原因与 Go 不一致");
+        // 同一 Message-ID 的去重查询：Rust 用同一条 SQL 必须查到同一个素材。
+        let duplicate: Option<String> = conn
+            .query_row(
+                "SELECT material_id FROM mail_imports WHERE account_id=?1 AND folder=?2 AND message_id=?3 LIMIT 1",
+                rusqlite::params!["acct-1", "INBOX", "<ledger@x>"],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(duplicate.as_deref(), Some("mail-ledger"));
+    }
+
     /// 同一组服务器响应，Rust 与 Go 的同步编排必须得出相同的处理顺序与计数。
     /// 顺序错了会让游标倒退、失败时漏重试，所以这条断言的是顺序而不是集合。
     #[test]

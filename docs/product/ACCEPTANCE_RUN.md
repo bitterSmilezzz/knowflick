@@ -784,6 +784,20 @@ B02 剩下的两件事。过程中被自己的冒烟抓到两个真实缺陷，�
 
 取舍与证据见 docs/adr/0026-go-mail-sync.md。
 
+## 2026-11-20 夜间（续）：阶段 2 第十八刀 —— 同步存储层（去重账本）迁到 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 存储层 | PASS | Go 7 项：bootstrap 对齐（last_uid=boundary-1）；游标单调（New 给更小 UID 不倒退、History 给更大 UID 不上抬）；Retry 模式拒收不算已处理；导入后清掉该 UID 的拒收记录；同 Message-ID 跨 UID 复用素材且账本保留两行；Finish/Fail 与 last_error 置 NULL。 |
+| 接口完整性 | PASS | `var _ mailsync.Store = (*Store)(nil)` 由编译器保证接口实现完整，不靠人眼核对。 |
+| 跨运行时对拍 | PASS | Rust `go_mail_ledger_parity` 读 Go 写的账本：UIDVALIDITY=7、last_uid=99（推进到 42 后仍 99）、去重引用 `mail-ledger`、拒收原因一致、同一条去重 SQL 查到同一素材。 |
+| 一处语义确认 | 记录 | Finish 之后用 `string` 接 `last_error` 报 `converting NULL`。这不是 bug——清空就是写 NULL，与 Rust 的 `last_error=NULL` 一致；测试改用 `sql.NullString` 并断言 `Valid == false`。若实现成写空串，`last_error IS NULL` 的查询会查不到它，界面会出现「明明没错误却显示上次错误」。 |
+| 接线 / 自动同步调度 / 并发保护 / 真实邮箱 | SKIP | 均未做。五个包（imap / mimex / mailimport / mailsync / mailstore）都齐了，但没有组装成可运行的同步入口。 |
+
+**未验证**：接线后的真实同步、自动同步调度、ACCOUNT_LOCK 等价物、真实邮箱。
+
+取舍与证据见 docs/adr/0027-go-mail-store.md。
+
 
 
 
