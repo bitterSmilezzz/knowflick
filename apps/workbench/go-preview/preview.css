@@ -127,6 +127,3 @@ button:disabled { cursor: default; opacity: .65; }
 .preview-ask-message.user { background: var(--selected); }
 .preview-ask-message strong { display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); }
 .preview-cite { margin-inline-end: 6px; padding: 2px 8px; min-height: auto; font-size: 12px; }
-
-.preview-capsule { display: flex; flex-direction: column; gap: 10px; padding: 16px; max-width: 460px; margin: 24px auto; }
-.preview-capsule textarea { min-height: 96px; resize: vertical; }

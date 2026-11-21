@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ChooseLibrary, ExportNoteMarkdown, ReadWebDAVCredential, WriteWebDAVCredential, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
-import type { LibraryView } from "./bindings/knowflick.local/workbench-go/models";
+import type { LibraryView, ShortcutStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note, NoteRevision } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow, SyncMailHistoryNow } from "./bindings/knowflick.local/workbench-go/mailservice";
@@ -13,6 +13,7 @@ import type { Account, Config as MailConfig, ImportedMail, RejectedMail } from "
 import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
 import type { Subscription } from "./bindings/knowflick.local/workbench-go/internal/library/models";
+import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import "../src/ui/workspace/workspace.css";
 import "./preview.css";
@@ -39,49 +40,20 @@ import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseC
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 
-function CapsuleCapture() {
-  const [text, setText] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-  const [shortcut, setShortcut] = useState<string>("");
+function WailsCapsule() {
+  const [shortcut, setShortcut] = useState<string>();
 
   useEffect(() => {
-    void GetShortcutStatus().then((status: { shortcut: string; registered: boolean; error: string | null }) => {
-      setShortcut(status.registered ? "快捷键 " + status.shortcut + " 可再次唤起" : "快捷键未注册：" + (status.error ?? ""));
-    }).catch(() => undefined);
+    let active = true;
+    void GetShortcutStatus().then((status: ShortcutStatus) => {
+      if (active) setShortcut(status.registered ? status.shortcut : "全局快捷键未注册");
+    }, () => {
+      if (active) setShortcut("快捷键状态不可用");
+    });
+    return () => { active = false; };
   }, []);
 
-  async function capture() {
-    const value = text.trim();
-    if (!value || saving) return;
-    setSaving(true); setError(""); setNotice("");
-    try {
-      const id = await CaptureCapsuleMaterial(value);
-      setText("");
-      setNotice("已存入收件箱" + (id ? "（" + id.slice(0, 8) + "…）" : ""));
-      await HideCapsule();
-    } catch (cause) {
-      setError(String(cause));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="preview-capsule">
-      <strong>快速捕捉</strong>
-      <textarea aria-label="写入当前资料库收件箱" value={text} disabled={saving} autoFocus placeholder="记一条灵感或摘录…"
-        onChange={(event) => setText(event.target.value)} />
-      {error && <p className="preview-error" role="alert">{error}</p>}
-      {notice && <p className="preview-notice" role="status">{notice}</p>}
-      <div className="preview-actions">
-        <button type="button" disabled={saving || !text.trim()} onClick={() => void capture()}>存入收件箱</button>
-        <button type="button" disabled={saving} onClick={() => { setText(""); void HideCapsule(); }}>关闭</button>
-      </div>
-      {shortcut && <p className="preview-meta">{shortcut}</p>}
-    </div>
-  );
+  return <CapsuleWindow saveCapture={CaptureCapsuleMaterial} hide={HideCapsule} shortcut={shortcut} />;
 }
 
 function Preview() {
@@ -994,4 +966,4 @@ function PreviewNoteBody({ generation, text }: { generation: number; text: strin
 
 const root = document.getElementById("root");
 const isCapsule = typeof window !== "undefined" && window.location.search.includes("window=capsule");
-if (root) createRoot(root).render(isCapsule ? <CapsuleCapture /> : <Preview />);
+if (root) createRoot(root).render(isCapsule ? <WailsCapsule /> : <Preview />);

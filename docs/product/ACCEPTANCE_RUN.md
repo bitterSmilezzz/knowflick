@@ -1700,6 +1700,15 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百一十轮 · 闪念胶囊复用工作台前端
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 共享组件 | 构建通过 | Wails、Tauri 与网页复用 CapsuleWindow。Wails 接入 CaptureCapsuleMaterial、HideCapsule 和快捷键状态。Tauri 和网页保留各自原有的素材保存路径。 |
+| 键盘与草稿 | PASS | Chromium 运行 Wails 生产构建与模拟 IPC。在 480 × 220 的窗口内核对输入焦点和保存按钮可见，验证 Shift+Enter 换行、Enter 保存、失败保留完整草稿、Esc 隐藏后保留草稿与成功重试。网页生产构建通过旧的 #capture-capsule 入口保存本地素材并保留未提交草稿。 |
+| 原生保存 | PASS（macOS） | 从测试库的「更多 → 设置与本地文件 → 打开闪念胶囊」进入，共享组件的输入框获得焦点。保存一条测试内容后，SQLite 确认只有一条匹配的收件箱记录，窗口随即隐藏。 |
+| 验证范围 | 记录 | 两套生产构建、前端 941 项、Go 全量（含 Rust 库夹具）、Rust 195 项通过。主工作台界面切换及其他平台实机仍待验。 |
+
 ## 阶段 2 第一百零九轮 · 画像记忆与胶囊入口
 
 | 验收 | 结果 | 证据与范围 |

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { makeMaterial } from "./model";
-import { storeMaterial } from "./repository";
 import { Icon, useSystemAppearance } from "./Icon";
-import { inShell } from "../../shell/store";
 import "./workspace.css";
 
-export function CapsuleWindow() {
+type CapsuleWindowProps = {
+  saveCapture: (text: string) => Promise<unknown>;
+  hide?: () => Promise<void>;
+  shortcut?: string;
+};
+
+export function CapsuleWindow({ saveCapture, hide, shortcut }: CapsuleWindowProps) {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -14,7 +16,6 @@ export function CapsuleWindow() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const savingRef = useRef(false);
   const appearance = useSystemAppearance();
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
   useEffect(() => {
     document.body.classList.add("capsule-window");
@@ -32,7 +33,7 @@ export function CapsuleWindow() {
   const closeCapsule = async () => {
     if (savingRef.current) return;
     try {
-      if (inShell()) await invoke("hide_capsule");
+      if (hide) await hide();
       else setNotice("草稿已保留，桌面客户端中此操作会隐藏窗口。");
     } catch (err) { setError(`无法隐藏窗口：${String(err)}`); }
   };
@@ -44,11 +45,11 @@ export function CapsuleWindow() {
     setError("");
     setNotice("");
     try {
-      await storeMaterial(makeMaterial({ text, title: "", url: "" }), "");
+      await saveCapture(text);
       setText("");
       setNotice("已存入收件箱");
-      if (inShell()) {
-        try { await invoke("hide_capsule"); }
+      if (hide) {
+        try { await hide(); }
         catch (err) { setError(`内容已保存，窗口未能隐藏：${String(err)}`); }
       }
     } catch (err) { setError(`未能保存，草稿已保留：${String(err)}`); }
@@ -77,9 +78,7 @@ export function CapsuleWindow() {
           <div className="ws-capsule-brand" data-tauri-drag-region="">
             <Icon name="edit" size={16} />
             <strong>闪念胶囊</strong>
-            {/* ⌥ 这个字形在部分 webview 字体里缺失，会渲染成方框。
-                这里用纯 ASCII 的 "Option+Space"，含义相同且不依赖字体。 */}
-            <span className="ws-capsule-sub">{isMac ? "Option+Space" : "Alt+Space"}</span>
+            {shortcut && <span className="ws-capsule-sub">{shortcut}</span>}
           </div>
           <button type="button" className="ws-capsule-close" disabled={saving} onClick={() => void closeCapsule()} aria-label="隐藏闪念胶囊">
             <Icon name="close" size={14} />
