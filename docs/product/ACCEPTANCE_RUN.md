@@ -1700,6 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百二十二轮 · 目标页重取循环修复与完整验收
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 重取循环修复 | PASS（实测复现并修复） | 共享 GoalsView 的 refresh 回调依赖 onGoalsChange；主界面传内联箭头并递增统计代号，形成「读取 → 回调 → 重渲染 → 新回调 → 再读取」循环。实测 1.2 秒内 GetStats / ListGoals / ListProjects 各被调用约 1.6 万次。改为 useCallback 稳定引用后，每种调用稳定为 1 次。 |
+| 目标完整流程 | PASS | Chromium 生产构建 + 模拟 IPC：目标页渲染并读取列表；新建目标成功（CreateGoal 平面参数与代号 5 正确）；关联笔记证据成功（LinkGoalEvidence）；界面显示目标与完成条件。 |
+| 桥接参数复核 | PASS | 兼容层的 goal_create_cmd 嵌套拆解把 doneCriteria 映射到 criteria；模拟器最初仍按对象载荷校验导致假失败，改为平面参数后确认桥接行为正确。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例、桥接命令测试通过。 |
 ## 阶段 2 第一百二十一轮 · 目标页切共享视图
 
 | 验收 | 结果 | 证据与范围 |

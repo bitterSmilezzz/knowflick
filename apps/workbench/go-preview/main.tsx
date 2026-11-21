@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { setBridgeGeneration } from "./tauriCoreShim";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
@@ -86,6 +86,8 @@ function Preview() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsRevision, setStatsRevision] = useState(0);
+  // 共享目标页每次读取都会调用此回调；必须是稳定引用，否则其 effect 会反复触发。
+  const handleGoalsChange = useCallback(() => {}, []);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentCursor = useRef<{ area: HTMLTextAreaElement; start: number; end: number } | null>(null);
   const [scope, setScope] = useState("");
@@ -922,7 +924,7 @@ function Preview() {
         dir={lib.path}
         materials={[]}
         notes={(lib.page.notes ?? []).map(toSharedNote)}
-        onGoalsChange={() => setStatsRevision((value) => value + 1)}
+        onGoalsChange={handleGoalsChange}
       />}
       {lib && view === "projects" && <ProjectLibrary key={"ProjectLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "artifacts" && <ArtifactsView
