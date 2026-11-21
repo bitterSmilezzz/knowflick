@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { setBridgeGeneration } from "./tauriCoreShim";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ChooseLibrary, ExportNoteMarkdown, ReadWebDAVCredential, WriteWebDAVCredential, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
@@ -109,6 +110,7 @@ function Preview() {
   const [webdavRemember, setWebdavRemember] = useState(false);
 
   useEffect(() => {
+    setBridgeGeneration(lib?.generation ?? 0);
     if (!lib) { setStats(null); return; }
     let active = true;
     void GetStats(lib.generation)

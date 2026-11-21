@@ -1,1 +1,1 @@
-{"extends":"../tsconfig.json","include":["main.tsx"]}
+{"extends":"../tsconfig.json","include":["main.tsx","commandTable.ts","tauriCoreShim.ts"]}

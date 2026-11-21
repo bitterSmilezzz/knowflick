@@ -1700,6 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百一十六轮 · Tauri 调用桥接基础
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 命令映射表 | 构建通过 | 从共享前端提取 133 个 invoke 命令名，结合 Rust 命令签名与 Wails 绑定生成显式映射表：127 个映射到具体服务方法，6 个明确标为未实现（素材原始写入、知识库成员增删、按标识取笔记、通用文本写文件）。未实现的调用会给出明确中文错误，不会静默成功。 |
+| invoke 兼容层 | PASS | tauriCoreShim 把 Tauri 风格 invoke(name, args) 转为 Wails Call.ByName：忽略桌面端目录参数并注入当前资料库代号，按参数名补齐位置参数，处理蛇形/驼峰差异及两处语义差异（FTS 分页、卡片分页查询）。应用打开资料库时同步当前代号。 |
+| 桥接验证 | PASS | Node 运行类型剥离测试：核对 133 个命令全部登记、6 个缺口显式存在，并验证 GetStats / ListNotes / CompleteChat / BrowseCards / MailService 的参数转换及未知命令与未实现命令的报错。生产构建后用现有邮箱到期同步冒烟复验应用仍正常。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。本轮只交付桥接基础，还没有把共享工作台视图接进来；6 个缺口与 dialog/event 插件适配留待后续轮次。 |
 ## 阶段 2 第一百一十五轮 · 到期同步与退出清理
 
 | 验收 | 结果 | 证据与范围 |
