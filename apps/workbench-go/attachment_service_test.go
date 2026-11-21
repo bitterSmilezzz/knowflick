@@ -46,6 +46,20 @@ func TestAttachmentRoundTripAndPathSafety(t *testing.T) {
 	if err != nil || back != encoded {
 		t.Fatalf("read back: %q, %v", back, err)
 	}
+	note, err := service.current.NoteByID(ctx, "note-active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := "![附件](" + relative + ")"
+	note.Body += "\n\n" + ref
+	outcome, err := service.SaveNote(ctx, writable.Generation, note, note.Revision)
+	if err != nil || outcome.Revision != note.Revision+1 {
+		t.Fatalf("save attachment reference: %+v, %v", outcome, err)
+	}
+	stored, err := service.current.NoteByID(ctx, note.ID)
+	if err != nil || !strings.HasSuffix(stored.Body, ref) {
+		t.Fatalf("saved note reference: %q, %v", stored.Body, err)
+	}
 	if _, err := service.ReadAttachment(ctx, opened.Generation, relative); err == nil {
 		t.Fatal("stale generation accepted")
 	}

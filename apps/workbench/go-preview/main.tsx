@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ChooseLibrary, ExportNoteMarkdown, ReadWebDAVCredential, WriteWebDAVCredential, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
@@ -27,10 +27,11 @@ import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
-import { CaptureMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, SaveAttachment } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
-import { noteMediaPaths } from "../src/domain/mediaMime";
+import { mediaMimeOfExtension, noteMediaPaths } from "../src/domain/mediaMime";
+import { bytesToBase64 } from "../src/shell/base64";
 import { insertAttachmentRef } from "../src/domain/noteAttachmentInsert";
 import { NoteAttachmentPicker } from "./NoteAttachmentPicker";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
@@ -91,6 +92,7 @@ function Preview() {
   const [draftTitle, setDraftTitle] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [busy, setBusy] = useState(true);
+  const [savingAttachment, setSavingAttachment] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
@@ -104,6 +106,7 @@ function Preview() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsRevision, setStatsRevision] = useState(0);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const attachmentCursor = useRef<{ area: HTMLTextAreaElement; start: number; end: number } | null>(null);
   const [scope, setScope] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeBaseSnapshot | null>(null);
   const [knowledgeError, setKnowledgeError] = useState("");
@@ -564,17 +567,55 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
-  /** 把附件引用插到光标处，并把光标放到引用之后（与桌面版同一套插入规则）。 */
+  useLayoutEffect(() => {
+    const cursor = attachmentCursor.current;
+    if (!cursor || busy) return;
+    attachmentCursor.current = null;
+    if (bodyRef.current !== cursor.area) return;
+    cursor.area.focus();
+    cursor.area.setSelectionRange(cursor.start, cursor.end);
+  }, [busy, draftBody]);
+
+  /** 把附件引用插到光标处，并把光标放到引用之后。 */
   function insertReference(path: string, label: string) {
     const area = bodyRef.current;
     if (!area) return;
-    const next = insertAttachmentRef({ text: draftBody, start: area.selectionStart, end: area.selectionEnd }, path, label);
-    setDraftBody(next.text);
-    requestAnimationFrame(() => {
-      if (bodyRef.current !== area) return;
+    const next = insertAttachmentRef({ text: area.value, start: area.selectionStart, end: area.selectionEnd }, path, label);
+    if (next.text === area.value && !area.disabled) {
       area.focus();
       area.setSelectionRange(next.start, next.end);
-    });
+      return;
+    }
+    attachmentCursor.current = { area, start: next.start, end: next.end };
+    setDraftBody(next.text);
+  }
+
+  async function addNoteAttachment(file: File) {
+    const area = bodyRef.current;
+    if (!lib?.writable || !selected || selected.deleted || busy || !area) return;
+    setBusy(true);
+    setSavingAttachment(true);
+    setError("");
+    setNotice("");
+    try {
+      const extension = file.name.slice(file.name.lastIndexOf(".") + 1);
+      const mime = mediaMimeOfExtension(extension) ?? file.type;
+      const kind = mime.startsWith("image/") ? "image" : mime.startsWith("audio/") ? "audio" : null;
+      if (!kind) throw new Error("请选择图片或音频文件");
+      const maxMiB = kind === "image" ? 16 : 64;
+      if (file.size === 0 || file.size > maxMiB * 1024 * 1024) {
+        throw new Error("附件须大于 0 字节且不超过 " + maxMiB + " MiB");
+      }
+      const encoded = await bytesToBase64(new Uint8Array(await file.arrayBuffer()));
+      if (bodyRef.current !== area) return;
+      const attachmentPath = await SaveAttachment(lib.generation, kind, mime, encoded);
+      if (bodyRef.current === area) insertReference(attachmentPath, file.name);
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      setSavingAttachment(false);
+      setBusy(false);
+    }
   }
 
   async function exportMarkdown() {
@@ -896,7 +937,8 @@ function Preview() {
               <input id="note-title" disabled={busy} value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} />
               <label htmlFor="note-body">正文（Markdown）</label>
               <textarea key={lib.generation + ":" + selected.id} id="note-body" ref={bodyRef} disabled={busy} value={draftBody} onChange={(e) => setDraftBody(e.target.value)} rows={14} />
-              {view === "notes" && !selected.deleted && <NoteAttachmentPicker key={lib.generation} generation={lib.generation} busy={busy} onInsert={insertReference} />}
+              {view === "notes" && !selected.deleted && <NoteAttachmentPicker key={lib.generation} generation={lib.generation} busy={busy} onAddFile={(file) => void addNoteAttachment(file)} onInsert={insertReference} />}
+              {savingAttachment && <p className="preview-meta" role="status">正在保存附件…</p>}
               <div className="preview-actions">
                 <button type="submit" disabled={busy || !dirty}>保存</button>
                 <button type="button" disabled={busy} onClick={() => void exportMarkdown()}>导出 Markdown</button>
