@@ -1700,6 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百二十四轮 · 邮箱页切共享视图
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 邮箱页切换 | 构建通过 | go-preview 的邮箱区块改为挂载共享前端 MailboxView，删除主界面内联的账号/同步/表单逻辑（约 40 行渲染与十余个函数）。 |
+| 数据适配 | PASS | Wails 的账号是嵌套 config 结构，共享前端是平铺类型；兼容层逐字段摊平，并把同步结果补齐 skipped 字段。邮箱命令的 id/密码参数与 Go 的 accountID/secret 别名也已映射。 |
+| 浏览器验证 | PASS | Chromium 生产构建 + 模拟 IPC：共享邮箱页显示账号名称、邮箱与上次同步；点「立即同步」经桥接调用 SyncMailAccountNow(acc-1)，回执「新增 2 封，跳过 0 封重复邮件，另有 1 封仍无法读取」。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例、桥接命令测试通过。连接账号表单与真实 IMAP 未在本轮点击验证。 |
 ## 阶段 2 第一百二十三轮 · 项目页切共享视图
 
 | 验收 | 结果 | 证据与范围 |

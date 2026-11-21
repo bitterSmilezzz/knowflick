@@ -34,6 +34,11 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
     if (param === "now") return Date.now();
     if (name === "db_search_cards_fts" && param === "offset") return args.limit ?? 0;
     if (name === "db_load_cards" && param === "query") return "";
+    if (param.toLowerCase() === "accountid") {
+      if ("id" in args) return args.id;
+      if ("accountId" in args) return args.accountId;
+    }
+    if (param === "secret" && "password" in args) return args.password;
     if (name === "goal_create_cmd" && param === "criteria") {
       const nested = args.goal as Record<string, unknown> | undefined;
       return nested?.doneCriteria ?? null;
@@ -57,5 +62,32 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
     const runtime = await import("/wails/runtime.js");
     return runtime.Call.ByName(fullName, ...rest);
   });
-  return dispatch("main." + entry.service + "." + entry.method, ...values) as Promise<T>;
+  const result = await dispatch("main." + entry.service + "." + entry.method, ...values);
+  return adaptResult(name, result) as T;
+}
+
+/** Wails 返回的嵌套账号结构与共享前端的平铺类型不同，逐字段摊平。 */
+function flattenMailAccount(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const item = value as Record<string, unknown>;
+  const config = (item.config ?? {}) as Record<string, unknown>;
+  return {
+    ...config,
+    lastSyncAt: item.lastSyncAt ?? null,
+    lastError: item.lastError ?? null,
+    hasPassword: item.hasPassword ?? false,
+    historyComplete: item.historyComplete ?? false,
+    rejectedCount: item.rejectedCount ?? 0,
+    lastAttemptAt: item.lastAttemptAt ?? null,
+  };
+}
+
+function adaptResult(name: string, result: unknown): unknown {
+  if (name === "mail_list_accounts") return Array.isArray(result) ? result.map(flattenMailAccount) : [];
+  if (name === "mail_save_account") return flattenMailAccount(result);
+  if (name === "mail_sync_account" || name === "mail_sync_history" || name === "mail_sync_due_accounts") {
+    const adapt = (item: unknown) => item && typeof item === "object" ? { skipped: 0, ...(item as Record<string, unknown>) } : item;
+    return Array.isArray(result) ? result.map(adapt) : adapt(result);
+  }
+  return result;
 }

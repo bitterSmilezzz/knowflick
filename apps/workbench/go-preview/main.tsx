@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { setBridgeGeneration } from "./tauriCoreShim";
+import { MailboxView } from "../src/ui/workspace/MailboxView";
+import { defaultSettings } from "../src/domain/settings";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ChooseLibrary, ExportNoteMarkdown, ReadWebDAVCredential, WriteWebDAVCredential, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { LibraryView, ShortcutStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note, NoteRevision } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow, SyncMailDueNow, SyncMailHistoryNow } from "./bindings/knowflick.local/workbench-go/mailservice";
 import { DeleteSubscription, FetchSubscriptionPayload, ImportSubscriptionMaterials, ListMaterialSourceURLs, ListSubscriptions, MarkSubscriptionPolled, SaveSubscription } from "./bindings/knowflick.local/workbench-go/subscriptionservice";
 import { isDue, itemsToMaterials, parseSubscriptionPayload } from "../src/domain/subscription";
 import { makeMaterial } from "../src/ui/workspace/model";
-import type { Account, Config as MailConfig, ImportedMail, RejectedMail } from "./bindings/knowflick.local/workbench-go/internal/mail/models";
-import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
-import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/mailschedule/models";
 import type { Subscription } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
@@ -96,15 +94,6 @@ function Preview() {
   const [chunkMode, setChunkMode] = useState(false);
   const [hits, setHits] = useState<ChunkHit[]>([]);
   const [mailOpen, setMailOpen] = useState(false);
-  const [mailAccounts, setMailAccounts] = useState<Account[]>([]);
-  const [mailStatus, setMailStatus] = useState<MailStatus | null>(null);
-  const [mailInterval, setMailInterval] = useState("15");
-  const [mailBusy, setMailBusy] = useState(false);
-  const [mailFormOpen, setMailFormOpen] = useState(false);
-  const [mailForm, setMailForm] = useState<MailConfig>({ id: "", name: "", email: "", host: "", port: 993, username: "", folder: "INBOX", syncLimit: 50, syncIntervalMinutes: 0 });
-  const [mailSecret, setMailSecret] = useState("");
-  const [mailRemoveId, setMailRemoveId] = useState("");
-  const [mailBrowse, setMailBrowse] = useState<{ id: string; title: string; imported: ImportedMail[]; rejected: RejectedMail[] } | null>(null);
   const [subsOpen, setSubsOpen] = useState(false);
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [subForm, setSubForm] = useState({ type: "rss", title: "", targetUrl: "", intervalMinutes: 30 });
@@ -354,35 +343,6 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
-  async function syncMailHistory(accountID: string) {
-    setMailBusy(true);
-    try {
-      const outcome = await SyncMailHistoryNow(accountID);
-      setNotice(`历史同步：导入 ${outcome.imported} 封，拒收 ${outcome.rejected} 封` + (outcome.error ? "；错误：" + outcome.error : ""));
-      if (lib) await reload(lib.generation);
-      await refreshMail();
-    } catch (fail) {
-      setError(String(fail));
-    } finally { setMailBusy(false); }
-  }
-
-  async function browseMail(account: Account) {
-    setBusy(true); setError(""); setNotice("");
-    try {
-      const [imported, rejected] = await Promise.all([ListImportedMail(account.config.id), ListRejectedMail(account.config.id)]);
-      setMailBrowse({ id: account.config.id, title: account.config.name || account.config.email, imported: imported ?? [], rejected: rejected ?? [] });
-    } catch (cause) { fail(cause); } finally { setBusy(false); }
-  }
-
-  async function retryRejected(id: string) {
-    setBusy(true); setError(""); setNotice("");
-    try {
-      const outcome = await RetryRejectedMail(id);
-      setNotice(`重试完成：导入 ${outcome.imported} 封，仍被拒 ${outcome.rejected} 封${outcome.error ? "；错误：" + outcome.error : ""}。`);
-      await browseMail({ config: { id } } as Account);
-    } catch (cause) { fail(cause); } finally { setBusy(false); }
-  }
-
   // 自动轮询：每分钟看一次，只抓一个到期订阅；失败只记提示，不打断手上的事。
   useEffect(() => {
     if (!lib?.writable) return;
@@ -441,36 +401,6 @@ function Preview() {
       await DeleteSubscription(id);
       setSubs(await ListSubscriptions() ?? []);
       setNotice("订阅源已删除；抓来的素材保留。");
-    } catch (cause) { fail(cause); } finally { setBusy(false); }
-  }
-  function openMailForm(account?: Account) {
-    setMailForm(account ? { ...account.config } : { id: crypto.randomUUID(), name: "", email: "", host: "", port: 993, username: "", folder: "INBOX", syncLimit: 50, syncIntervalMinutes: 0 });
-    setMailSecret(""); setMailFormOpen(true); setError("");
-  }
-
-  async function saveMailAccount() {
-    setBusy(true); setError(""); setNotice("");
-    try {
-      await SaveMailAccount(mailForm, mailSecret);
-      setMailAccounts(await ListMailAccounts() ?? []);
-      setMailFormOpen(false); setMailSecret("");
-      setNotice("邮箱账号已保存；密码保存在库目录的 0600 凭据文件里。");
-    } catch (cause) { fail(cause); } finally { setBusy(false); }
-  }
-
-  async function testMailConnection() {
-    setBusy(true); setError(""); setNotice("");
-    try {
-      const summary = await TestMailAccount(mailForm, mailSecret);
-      setNotice(`连接成功：${summary.folder}，共 ${summary.messageCount} 封邮件`);
-    } catch (cause) { fail(cause); } finally { setBusy(false); }
-  }
-  async function removeMailAccount(id: string) {
-    setBusy(true); setError(""); setNotice(""); setMailRemoveId("");
-    try {
-      await RemoveMailAccount(id);
-      setMailAccounts(await ListMailAccounts() ?? []);
-      setNotice("邮箱账号已删除；导入台账保留以免重复导入。");
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   useEffect(() => {
@@ -691,82 +621,6 @@ function Preview() {
     } catch (fail) {} finally { setBusy(false); }
   }
 
-  async function refreshMail() {
-    setMailBusy(true);
-    try {
-      const [accounts, status] = await Promise.all([ListMailAccounts(), MailAutoSyncStatus()]);
-      setMailAccounts(accounts ?? []);
-      setMailStatus(status);
-    } catch (fail) {
-      setError(String(fail));
-    } finally { setMailBusy(false); }
-  }
-
-  async function toggleMail() {
-    const next = !mailOpen;
-    setMailOpen(next);
-    if (next) await refreshMail();
-  }
-
-  async function syncMailDue() {
-    setMailBusy(true);
-    try {
-      const list: Outcome[] = await SyncMailDueNow() ?? [];
-      if (list.length === 0) {
-        setNotice("没有到期的邮箱账号（自动同步间隔未到）");
-        setError("");
-        return;
-      }
-      const imported = list.reduce((sum, item) => sum + item.imported, 0);
-      const rejected = list.reduce((sum, item) => sum + item.rejected, 0);
-      const failed = list.filter((item) => item.error);
-      setNotice("到期同步：导入 " + imported + " 封，拒收 " + rejected + " 封" + (failed.length ? "，" + failed.length + " 个账号报错" : ""));
-      setError(failed.map((item) => item.accountId + ": " + item.error).join("；"));
-      if (lib) await reload(lib.generation);
-      await refreshMail();
-    } catch (fail) {
-      setError(String(fail));
-    } finally { setMailBusy(false); }
-  }
-
-  async function syncMailNow() {
-    setMailBusy(true);
-    try {
-      // 手动同步逐个账号跑，**不看自动同步间隔**：间隔为 0 只是关掉自动，
-      // 不该让「立即同步」也失效（早期版本就踩过这个，点完只得到「导入 0 封」）。
-      const accounts: Account[] = await ListMailAccounts() ?? [];
-      const results = await Promise.all(accounts.map((account) => SyncMailAccountNow(account.config.id)));
-      const list: Outcome[] = results ?? [];
-      const imported = list.reduce((sum, item) => sum + item.imported, 0);
-      const rejected = list.reduce((sum, item) => sum + item.rejected, 0);
-      const failed = list.filter((item) => item.error);
-      setNotice(`邮箱同步：导入 ${imported} 封，拒收 ${rejected} 封` + (failed.length ? `，${failed.length} 个账号报错` : ""));
-      setError(failed.map((item) => `${item.accountId}: ${item.error}`).join("；"));
-      if (lib) await reload(lib.generation);
-      await refreshMail();
-    } catch (fail) {
-      setError(String(fail));
-    } finally { setMailBusy(false); }
-  }
-
-  async function startAuto() {
-    const minutes = Number(mailInterval);
-    if (!Number.isFinite(minutes) || minutes <= 0) { setError("自动同步间隔必须是大于 0 的分钟数"); return; }
-    setMailBusy(true);
-    try {
-      setMailStatus(await StartMailAutoSync(minutes));
-      setNotice(`已开启自动同步，每 ${minutes} 分钟检查一次`);
-    } catch (fail) { setError(String(fail)); } finally { setMailBusy(false); }
-  }
-
-  async function stopAuto() {
-    setMailBusy(true);
-    try {
-      setMailStatus(await StopMailAutoSync());
-      setNotice("已停止自动同步");
-    } catch (fail) { setError(String(fail)); } finally { setMailBusy(false); }
-  }
-
   return (
     <main className="preview-app" aria-busy={busy}>
       <header className="preview-header">
@@ -801,7 +655,7 @@ function Preview() {
               <div className="preview-more-group">
                 <strong>接入与备份</strong>
                 <button type="button" aria-pressed={subsOpen} disabled={busy} onClick={() => { void toggleSubscriptions(); setMoreOpen(false); }}>订阅源</button>
-                {lib.writable && <button type="button" aria-pressed={mailOpen} disabled={busy || mailBusy} onClick={() => { void toggleMail(); setMoreOpen(false); }}>邮箱</button>}
+                {lib.writable && <button type="button" aria-pressed={mailOpen} disabled={busy} onClick={() => { setMailOpen(!mailOpen); setMoreOpen(false); }}>邮箱</button>}
                 <button type="button" aria-pressed={mcpOpen} disabled={busy} onClick={() => { setMcpOpen(!mcpOpen); setMoreOpen(false); }}>外部授权</button>
                 <button type="button" aria-pressed={asrOpen} disabled={busy} onClick={() => { setAsrOpen(!asrOpen); setMoreOpen(false); }}>语音转写</button>
                 <button type="button" aria-pressed={settingsOpen} disabled={busy} onClick={() => { setSettingsOpen(!settingsOpen); setMoreOpen(false); }}>设置与本地文件</button>
@@ -865,58 +719,23 @@ function Preview() {
           <button type="submit" disabled={busy}>添加订阅</button>
         </form>}
       </section>}
-      {mailOpen && lib?.writable && <section className="preview-mail" aria-label="邮箱同步">
-        <div className="preview-mail-head">
-          <strong>邮箱同步</strong>
-          <span>{mailAccounts.length} 个账号 · 自动同步{mailStatus?.running ? "运行中" : "已停止"}</span>
-        </div>
-        {mailAccounts.length === 0 ? <p className="preview-count">还没有配置邮箱账号</p> : (
-          <ul className="preview-mail-list">
-            {mailAccounts.map((account) => (
-              <li key={account.config.id}>
-                <span>{account.config.name || account.config.email}</span>
-                <button type="button" disabled={busy} onClick={() => void browseMail(account)}>查看邮件</button>
-                <button type="button" disabled={busy} onClick={() => openMailForm(account)}>编辑</button>
-                <button type="button" disabled={busy} onClick={() => setMailRemoveId(account.config.id)}>删除</button>
-                {mailRemoveId === account.config.id && <span className="preview-confirm">确认删除这个账号？<button type="button" disabled={busy} onClick={() => void removeMailAccount(account.config.id)}>确认</button><button type="button" disabled={busy} onClick={() => setMailRemoveId("")}>取消</button></span>}
-                <small>{account.hasPassword ? "凭据已保存" : "需要重新输入密码"}{account.lastError ? ` · ${account.lastError}` : ""}</small>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="preview-mail-actions">
-          <button type="button" disabled={mailBusy} onClick={() => void syncMailNow()}>立即同步</button>
-          <button type="button" disabled={mailBusy} onClick={() => void syncMailDue()}>同步到期账号</button>
-          {mailAccounts[0] && <button type="button" disabled={mailBusy} onClick={() => void syncMailHistory(mailAccounts[0].config.id)}>补历史邮件</button>}
-          <button type="button" disabled={mailBusy} onClick={() => openMailForm()}>添加账号</button>
-          <input type="number" min="1" aria-label="自动同步间隔（分钟）" value={mailInterval} onChange={(event) => setMailInterval(event.target.value)} />
-          <button type="button" disabled={mailBusy || mailStatus?.running} onClick={() => void startAuto()}>开启自动</button>
-          <button type="button" disabled={mailBusy || !mailStatus?.running} onClick={() => void stopAuto()}>停止自动</button>
-        </div>
-        {mailFormOpen && <form className="preview-confirm" onSubmit={(event) => { event.preventDefault(); void saveMailAccount(); }} aria-label="邮箱账号">
-          <label>账号名称 <input aria-label="账号名称" value={mailForm.name} onChange={(event) => setMailForm({ ...mailForm, name: event.target.value })} /></label>
-          <label>邮箱地址 <input aria-label="邮箱地址" value={mailForm.email} onChange={(event) => setMailForm({ ...mailForm, email: event.target.value })} /></label>
-          <label>IMAP 主机 <input aria-label="IMAP 主机" value={mailForm.host} onChange={(event) => setMailForm({ ...mailForm, host: event.target.value })} /></label>
-          <label>端口 <input type="number" aria-label="端口" value={mailForm.port} onChange={(event) => setMailForm({ ...mailForm, port: Number(event.target.value) })} /></label>
-          <label>用户名 <input aria-label="邮箱用户名" value={mailForm.username} onChange={(event) => setMailForm({ ...mailForm, username: event.target.value })} /></label>
-          <label>文件夹 <input aria-label="邮箱文件夹" value={mailForm.folder} onChange={(event) => setMailForm({ ...mailForm, folder: event.target.value })} /></label>
-          <label>每次同步封数 <input type="number" aria-label="每次同步封数" value={mailForm.syncLimit} onChange={(event) => setMailForm({ ...mailForm, syncLimit: Number(event.target.value) })} /></label>
-          <label>自动同步间隔（0 关闭） <input type="number" aria-label="自动同步间隔" value={mailForm.syncIntervalMinutes} onChange={(event) => setMailForm({ ...mailForm, syncIntervalMinutes: Number(event.target.value) })} /></label>
-          <label>应用密码 <input type="password" aria-label="邮箱应用密码" value={mailSecret} onChange={(event) => setMailSecret(event.target.value)} /></label>
-          <button type="button" disabled={busy} onClick={() => void testMailConnection()}>测试连接</button>
-          <button type="submit" disabled={busy}>保存账号</button>
-          <button type="button" disabled={busy} onClick={() => setMailFormOpen(false)}>取消</button>
-        </form>}
-        {mailStatus && mailStatus.lastError && <p className="preview-error" role="status">上次错误：{mailStatus.lastError}</p>}
-      </section>}
+      {mailOpen && lib?.writable && <MailboxView
+        dir={lib.path}
+        materials={[]}
+        settings={defaultSettings}
+        apiKey=""
+        onRefresh={async () => { await reload(lib.generation); }}
+        onOpenMaterial={() => setNotice("素材详情请到素材库查看")}
+        onSettings={() => setSettingsOpen(true)}
+        onSaveDigest={async () => { setNotice("邮件简报暂未接入"); }}
+        digest={null}
+        onDigestChange={() => {}}
+        digestTitle=""
+        onDigestTitleChange={() => {}}
+        insights={[]}
+        personalizationOn={false}
+      />}
 
-      {mailBrowse && <section className="preview-confirm" aria-label="邮箱邮件">
-        <p>{mailBrowse.title} · 已导入 {mailBrowse.imported.length} 封 · 被拒 {mailBrowse.rejected.length} 封</p>
-        {mailBrowse.imported.length > 0 && <ul>{mailBrowse.imported.map((item) => <li key={item.id}>{item.title || item.id}</li>)}</ul>}
-        {mailBrowse.rejected.length > 0 && <ul>{mailBrowse.rejected.map((item) => <li key={item.folder + "-" + item.uid}>UID {item.uid} · {item.folder} · {item.reason}</li>)}</ul>}
-        <button type="button" disabled={busy} onClick={() => void retryRejected(mailBrowse.id)}>重试被拒邮件</button>
-        <button type="button" disabled={busy} onClick={() => setMailBrowse(null)}>收起</button>
-      </section>}
       {lib && view === "review" && <ReviewDeck key={"ReviewDeck:" + lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
       {lib && view === "materials" && <MaterialLibrary key={"MaterialLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onChanged={() => setStatsRevision((value) => value + 1)} />}
       {lib && view === "claims" && <ClaimLibrary key={"ClaimLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
