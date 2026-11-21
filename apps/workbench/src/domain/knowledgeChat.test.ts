@@ -30,4 +30,21 @@ describe("知识问答检索", () => {
     expect(body.messages[1].content).toContain("[笔记 1] 标题: 架构笔记");
     expect(body.messages[1].content).toContain("怎么优化？");
   });
+
+  it("卡片与笔记片段作为附加参考资料进入请求体，引用提示同步提到", () => {
+    const body = JSON.parse(buildKnowledgeChatBody("m", [{ id: "a", title: "架构笔记", excerpt: "正文" }], "怎么优化？", [], [
+      { kind: "card", title: "卡片标题", body: "卡片正文" },
+      { kind: "chunk", title: "来源笔记", body: "片段内容" },
+    ]));
+    expect(body.messages[1].content).toContain("[笔记 1] 标题: 架构笔记");
+    expect(body.messages[1].content).toContain("[卡片 1] 标题: 卡片标题");
+    expect(body.messages[1].content).toContain("[笔记片段 1] 来源: 来源笔记");
+    expect(body.messages[0].content).toContain("【卡片 1】");
+  });
+
+  it("没有笔记命中但有卡片或片段时，上下文仍非空", () => {
+    const body = JSON.parse(buildKnowledgeChatBody("m", [], "怎么优化？", [], [{ kind: "card", title: "卡片标题", body: "卡片正文" }]));
+    expect(body.messages[1].content).toContain("[卡片 1] 标题: 卡片标题");
+    expect(body.messages[1].content).not.toContain("[笔记 1]");
+  });
 });

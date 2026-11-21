@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { CompleteChat, ListNotes, ReadAPIKey, ReadSettings } from "./bindings/knowflick.local/workbench-go/previewservice";
-import type { Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import { buildKnowledgeChatBody, selectKnowledgeNotes } from "../src/domain/knowledgeChat";
+import { CompleteChat, ListNotes, LocalEmbed, ReadAPIKey, ReadSettings, SearchCardsHybrid, SearchNoteChunksVector } from "./bindings/knowflick.local/workbench-go/previewservice";
+import type { ChunkHit, HybridCardHit, Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
+import { buildKnowledgeChatBody, selectKnowledgeNotes, type KnowledgeChatExtra } from "../src/domain/knowledgeChat";
 import { completionURL, requiresKey } from "../src/domain/ingest";
 import { parseSettings } from "../src/domain/settings";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
@@ -15,6 +15,9 @@ type Props = {
 
 type Cited = { id: string; title: string };
 type Message = { role: "user" | "assistant"; content: string; cited?: Cited[] };
+
+/** 哈希投影的向量身份，与 Go 端 embed.HashProvider/HashModel 一致（设置页同款）。 */
+const HASH_IDENTITY = { provider: "hash", model: "char-ngram-128" };
 
 export function AskPanel({ generation, busy, onBusy, onOpenNote }: Props) {
   const [notes, setNotes] = useState<Note[] | null>(null);
@@ -55,16 +58,47 @@ export function AskPanel({ generation, busy, onBusy, onOpenNote }: Props) {
     const nextMessages: Message[] = [...messages, { role: "user", content: text }];
     setMessages(nextMessages);
     const matched = selectKnowledgeNotes(notes ?? [], text);
-    if (matched.length === 0) {
-      setMessages([...nextMessages, { role: "assistant", content: "当前资料库中没有检索到与此问题相关的笔记。可以先补充资料，或换一个更通用的关键词。" }]);
+    // 多信号检索（与桌面端同形）：关键词笔记之外，再用本地向量做卡片混合召回
+    // 与笔记分块召回；向量链路不可用时静默降级为纯关键词，不阻断提问。
+    let extraCards: KnowledgeChatExtra[] = [];
+    let extraChunks: KnowledgeChatExtra[] = [];
+    try {
+      const vectors = await LocalEmbed([text], true);
+      const queryVector = vectors?.[0] ?? null;
+      if (queryVector) {
+        const [hybridHits, chunkHits] = await Promise.all([
+          SearchCardsHybrid(generation, text, queryVector, HASH_IDENTITY.provider, HASH_IDENTITY.model, 6),
+          SearchNoteChunksVector(generation, queryVector, HASH_IDENTITY.provider, HASH_IDENTITY.model, 3),
+        ]);
+        extraCards = (hybridHits ?? []).slice(0, 4).map((hit: HybridCardHit) => ({
+          kind: "card" as const,
+          title: hit.card.headline || "无标题卡片",
+          body: hit.card.details.slice(0, 1200),
+        }));
+        extraChunks = (chunkHits ?? []).map((hit: ChunkHit) => ({
+          kind: "chunk" as const,
+          title: hit.noteTitle || "无标题笔记",
+          body: hit.content,
+        }));
+      }
+    } catch (cause) {
+      console.warn("向量检索不可用，降级为关键词笔记检索:", cause);
+    }
+    if (matched.length === 0 && extraCards.length === 0 && extraChunks.length === 0) {
+      setMessages([...nextMessages, { role: "assistant", content: "当前资料库中没有检索到与此问题相关的资料。可以先补充资料，或换一个更通用的关键词。" }]);
       return;
     }
     onBusy(true);
     try {
-      const body = buildKnowledgeChatBody(settings.model, matched, text, messages.slice(-4).map((message) => ({ role: message.role, content: message.content })));
+      const body = buildKnowledgeChatBody(settings.model, matched, text, messages.slice(-4).map((message) => ({ role: message.role, content: message.content })), [...extraCards, ...extraChunks]);
       const answer = await CompleteChat(generation, completionURL(settings.baseURL), apiKey.trim(), body);
       setMessages([...nextMessages, { role: "assistant", content: answer, cited: matched.map((note) => ({ id: note.id, title: note.title })) }]);
-      setNotice("回答基于本地检索到的 " + matched.length + " 篇笔记");
+      const parts = [
+        matched.length > 0 ? matched.length + " 篇笔记" : "",
+        extraCards.length > 0 ? extraCards.length + " 张卡片" : "",
+        extraChunks.length > 0 ? extraChunks.length + " 段笔记片段" : "",
+      ].filter(Boolean);
+      setNotice("回答基于本地检索到的 " + parts.join("、"));
     } catch (cause) {
       setError(String(cause));
       setMessages(nextMessages);
@@ -77,7 +111,7 @@ export function AskPanel({ generation, busy, onBusy, onOpenNote }: Props) {
     <section className="preview-mail" aria-label="知识问答">
       <div className="preview-mail-head">
         <strong>知识问答</strong>
-        <span>只在当前资料库中检索笔记</span>
+        <span>在当前资料库中检索笔记、卡片与笔记片段</span>
       </div>
       {error && <p className="preview-error" role="alert">{error}</p>}
       {notice && <p className="preview-notice" role="status">{notice}</p>}

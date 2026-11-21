@@ -1700,6 +1700,16 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百零七轮 · 知识问答多信号检索
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 三信号检索 | 构建通过 | 知识问答提问时先用 LocalEmbed 生成查询向量（hash/char-ngram-128 身份），并行调用 SearchCardsHybrid（RRF 融合取前 4 张卡片）与 SearchNoteChunksVector（3 段笔记片段），与关键词笔记选择一起进入提示词；任一向量调用失败时静默降级为纯关键词笔记，不阻断提问。 |
+| 提示词分段 | PASS | buildKnowledgeChatBody 新增 extras 参数：[卡片 N] 与 [笔记片段 N] 按类分别编号，引用提示同步提到卡片与片段；共享域新增 2 条测试（分段进入请求体、无笔记命中时上下文仍非空）。 |
+| 浏览器验证 | PASS | Chromium 使用模拟 IPC 运行生产构建。验证三信号回执（1 篇笔记、1 张卡片、1 段笔记片段）、提示词三段内容与系统提示引用词、identity 参数（hash/char-ngram-128、limit 6/3、isQuery=true），以及 ?novector 降级为纯关键词仍可回答。 |
+| 绑定面盘点 | 记录 | go-preview 绑定数升至 124（本轮接 LocalEmbed、SearchCardsHybrid、SearchNoteChunksVector；上一轮的 SaveAttachment 一并计入）；余 38 个按能力逐轮接线。 |
+| 验证范围 | 记录 | Wails production 构建、Go 全量（带 Rust 库 fixture）、前端 939 例（含哈希对拍与备份 fixture，0 跳过）、Rust 195 例回归通过；真实 LLM 端点与本地 ONNX 模型待实机验证。 |
+
 ## 阶段 2 第一百零一轮 · 快捷捕捉窗口接线
 
 | 验收 | 结果 | 证据与范围 |

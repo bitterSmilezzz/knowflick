@@ -43,18 +43,34 @@ export function selectKnowledgeNotes(notes: KnowledgeChatSource[], question: str
   }));
 }
 
+/** 向量检索追加的参考资料：卡片或笔记分块片段。 */
+export interface KnowledgeChatExtra {
+  kind: "card" | "chunk";
+  title: string;
+  body: string;
+}
+
 /** 与桌面端知识问答同形的请求体：系统提示 + 命中的笔记段落 + 用户问题。 */
 export function buildKnowledgeChatBody(
   model: string,
   notes: KnowledgeChatNote[],
   question: string,
   history: { role: "user" | "assistant"; content: string }[] = [],
+  extras: KnowledgeChatExtra[] = [],
 ): string {
-  const context = notes
+  const notesContext = notes
     .map((note, index) => "[笔记 " + (index + 1) + "] 标题: " + note.title + "\n内容: " + note.excerpt)
     .join("\n---\n");
+  const cardNumbering = extras.filter((extra) => extra.kind === "card");
+  const chunkNumbering = extras.filter((extra) => extra.kind === "chunk");
+  const extrasContext = extras
+    .map((extra) => extra.kind === "card"
+      ? "[卡片 " + (cardNumbering.indexOf(extra) + 1) + "] 标题: " + extra.title + "\n内容: " + extra.body
+      : "[笔记片段 " + (chunkNumbering.indexOf(extra) + 1) + "] 来源: " + extra.title + "\n内容: " + extra.body)
+    .join("\n---\n");
+  const context = [notesContext, extrasContext].filter((part) => part.trim()).join("\n---\n");
   const systemPrompt = "你是一个个人知识库第二大脑问答助理。你的职责是根据用户提供的知识库参考资料回答问题。\n" +
-    "要求：\n1. 优先使用参考资料中的事实进行回答。\n2. 回答中如引用了某篇笔记，请明确指出【笔记 1】、【笔记 2】等来源。\n3. 语言精炼、重点突出。\n4. 参考资料不足时直说没有依据，不要编造。";
+    "要求：\n1. 优先使用参考资料中的事实进行回答。\n2. 回答中如引用了某篇笔记、卡片或笔记片段，请明确指出【笔记 1】、【卡片 1】、【笔记片段 1】等来源。\n3. 语言精炼、重点突出。\n4. 参考资料不足时直说没有依据，不要编造。";
   const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: "参考资料：\n" + context + "\n\n问题：" + question },
