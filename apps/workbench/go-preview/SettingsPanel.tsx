@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { parseImportReport, reportLines, summarizeReport } from "../src/domain/importReport";
 import { BackfillMaterialFTS, CaptureDatabaseSnapshot, CopyBackupToDirectory, GetShortcutStatus, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, ToggleCapsule, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
 
 /** 哈希投影的向量身份，与 Go 端 embed.HashProvider/HashModel 一致。 */
@@ -9,12 +10,14 @@ type Props = {
   writable: boolean;
   busy: boolean;
   onBusy: (busy: boolean) => void;
+  reportRevision?: number;
 };
 
-export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
+export function SettingsPanel({ generation, writable, busy, onBusy, reportRevision = 0 }: Props) {
   const [settings, setSettings] = useState("");
   const [history, setHistory] = useState("");
   const [report, setReport] = useState<string | null>(null);
+  const parsedReport = parseImportReport(report);
   const [apiKey, setApiKey] = useState("");
   const [keyDraft, setKeyDraft] = useState("");
   const [signature, setSignature] = useState("");
@@ -57,7 +60,7 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
       }
     })();
     return () => { active = false; };
-  }, [generation]);
+  }, [generation, reportRevision]);
 
   async function run(action: () => Promise<void>) {
     onBusy(true);
@@ -185,7 +188,10 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
       </div>
       <div className="preview-confirm">
         <p>最近一次导入的转换报告：</p>
-        <pre className="preview-material-body">{report ?? "（无报告）"}</pre>
+        {parsedReport ? <>
+          <p className="preview-meta">{summarizeReport(parsedReport)} · {new Date(parsedReport.at).toLocaleString("zh-CN")}</p>
+          <ul>{reportLines(parsedReport).map((line, index) => <li key={index} className="preview-meta">{line.text}</li>)}</ul>
+        </> : <pre className="preview-material-body">{report ?? "（无报告）"}</pre>}
       </div>
       <label>AI 接口密钥（凭据文件，导出会被剥掉）
         <input type="password" value={keyDraft} disabled={busy || !writable} placeholder={apiKey ? "已配置，输入以覆盖" : "尚未配置"} onChange={(event) => setKeyDraft(event.target.value)} />

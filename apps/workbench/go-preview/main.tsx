@@ -15,6 +15,7 @@ import type { Outcome } from "./bindings/knowflick.local/workbench-go/internal/m
 import type { Subscription } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
+import { buildImportReport, serializeImportReport } from "../src/domain/importReport";
 import "../src/ui/workspace/workspace.css";
 import "./preview.css";
 import { NoteHistory } from "./NoteHistory";
@@ -28,7 +29,7 @@ import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
-import { CaptureCapsuleMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, SaveAttachment } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureCapsuleMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, SaveAttachment, SaveImportReport } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { mediaMimeOfExtension, noteMediaPaths } from "../src/domain/mediaMime";
@@ -65,6 +66,7 @@ function Preview() {
   const [draftBody, setDraftBody] = useState("");
   const [busy, setBusy] = useState(true);
   const [savingAttachment, setSavingAttachment] = useState(false);
+  const [importReportRevision, setImportReportRevision] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
@@ -251,19 +253,35 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  async function writeImportReport(ok: string[], failed: Array<{ name: string; reason: string }>) {
+    if (!lib) return;
+    const report = serializeImportReport(buildImportReport({ ok, skipped: [], failed }));
+    try {
+      await SaveImportReport(lib.generation, report);
+      setImportReportRevision((value) => value + 1);
+    } catch (cause) {
+      console.warn("导入报告未能落盘:", cause);
+    }
+  }
+
   async function importTextNote() {
     if (!lib || busy) return;
     setBusy(true); setError(""); setNotice("");
+    let path = "";
     try {
-      const path = prompt("要导入的文本文件路径：", "notes.txt");
+      path = prompt("要导入的文本文件路径：", "notes.txt") ?? "";
       if (!path) return;
       const text = String(await ReadTextFile(path));
       const title = path.split("/").pop()?.replace(/\.(txt|md|markdown)$/i, "") || "导入笔记";
       const now = Date.now();
       const outcome = await SaveNote(lib.generation, { id: "", title, body: text, notebook: null, tagsJson: "[]", pinned: false, favorite: false, archivedAt: null, sourceMaterialId: null, revision: 1, createdAt: now, updatedAt: now, deleted: false, deletedAt: null, excludeFromProfile: false }, 0);
+      await writeImportReport([title], []);
       setNotice("已导入「" + title + "」（修订 " + outcome.revision + "）");
       await reload(lib.generation);
-    } catch (cause) { fail(cause); } finally { setBusy(false); }
+    } catch (cause) {
+      if (path) await writeImportReport([], [{ name: path, reason: String(cause) }]);
+      fail(cause);
+    } finally { setBusy(false); }
   }
 
   async function importLegacyArchive() {
@@ -273,8 +291,12 @@ function Preview() {
       const payload = await ReadImportArchiveFile("cards.json");
       if (!payload.cards.trim()) throw new Error("归档中没有可用的卡片数据");
       await SaveCardsJSONIfNeeded(payload.cards);
+      await writeImportReport(["cards.json"], []);
       setNotice("旧归档已导入 cards.json（三代轮转），可在卡片库搜索确认");
-    } catch (cause) { fail(cause); } finally { setBusy(false); }
+    } catch (cause) {
+      await writeImportReport([], [{ name: "cards.json", reason: String(cause) }]);
+      fail(cause);
+    } finally { setBusy(false); }
   }
 
   async function SaveCardsJSONIfNeeded(text: string) {
@@ -774,7 +796,7 @@ function Preview() {
       </section>}
 
 
-      {settingsOpen && lib && <SettingsPanel key={"SettingsPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {settingsOpen && lib && <SettingsPanel key={"SettingsPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy}  reportRevision={importReportRevision} />}
       {askOpen && <AskPanel key={"AskPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? 0} busy={busy} onBusy={setBusy} onOpenNote={(id) => { setSelectedId(id); setView("notes"); setAskOpen(false); }} />}
       {asrOpen && <AsrPanel key={"AsrPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
       {mcpOpen && lib && <McpGrantPanel key={"McpGrantPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
