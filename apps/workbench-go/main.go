@@ -32,6 +32,12 @@ func main() {
 		Services: []application.Service{application.NewService(service), application.NewService(mailService), application.NewService(subscriptionService)},
 		Assets:   application.AssetOptions{Handler: application.BundledAssetFileServer(frontend)},
 		Mac:      application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		OnShutdown: func() {
+			if err := service.ServiceShutdown(); err != nil {
+				log.Printf("关闭资料库失败：%v", err)
+			}
+			mailService.StopMailAutoSync()
+		},
 	})
 	service.app = app
 	service.window = app.Window.NewWithOptions(application.WebviewWindowOptions{

@@ -5,7 +5,7 @@ import { ChooseLibrary, ExportNoteMarkdown, ReadWebDAVCredential, WriteWebDAVCre
 import type { LibraryView, ShortcutStatus } from "./bindings/knowflick.local/workbench-go/models";
 import type { ChunkHit } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Note, NoteRevision } from "./bindings/knowflick.local/workbench-go/internal/library/models";
-import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow, SyncMailHistoryNow } from "./bindings/knowflick.local/workbench-go/mailservice";
+import { ListImportedMail, ListMailAccounts, ListRejectedMail, MailAutoSyncStatus, RemoveMailAccount, RetryRejectedMail, SaveMailAccount, TestMailAccount, StartMailAutoSync, StopMailAutoSync, SyncMailAccountNow, SyncMailDueNow, SyncMailHistoryNow } from "./bindings/knowflick.local/workbench-go/mailservice";
 import { DeleteSubscription, FetchSubscriptionPayload, ImportSubscriptionMaterials, ListMaterialSourceURLs, ListSubscriptions, MarkSubscriptionPolled, SaveSubscription } from "./bindings/knowflick.local/workbench-go/subscriptionservice";
 import { isDue, itemsToMaterials, parseSubscriptionPayload } from "../src/domain/subscription";
 import { makeMaterial } from "../src/ui/workspace/model";
@@ -696,6 +696,27 @@ function Preview() {
     if (next) await refreshMail();
   }
 
+  async function syncMailDue() {
+    setMailBusy(true);
+    try {
+      const list: Outcome[] = await SyncMailDueNow() ?? [];
+      if (list.length === 0) {
+        setNotice("没有到期的邮箱账号（自动同步间隔未到）");
+        setError("");
+        return;
+      }
+      const imported = list.reduce((sum, item) => sum + item.imported, 0);
+      const rejected = list.reduce((sum, item) => sum + item.rejected, 0);
+      const failed = list.filter((item) => item.error);
+      setNotice("到期同步：导入 " + imported + " 封，拒收 " + rejected + " 封" + (failed.length ? "，" + failed.length + " 个账号报错" : ""));
+      setError(failed.map((item) => item.accountId + ": " + item.error).join("；"));
+      if (lib) await reload(lib.generation);
+      await refreshMail();
+    } catch (fail) {
+      setError(String(fail));
+    } finally { setMailBusy(false); }
+  }
+
   async function syncMailNow() {
     setMailBusy(true);
     try {
@@ -853,6 +874,7 @@ function Preview() {
         )}
         <div className="preview-mail-actions">
           <button type="button" disabled={mailBusy} onClick={() => void syncMailNow()}>立即同步</button>
+          <button type="button" disabled={mailBusy} onClick={() => void syncMailDue()}>同步到期账号</button>
           {mailAccounts[0] && <button type="button" disabled={mailBusy} onClick={() => void syncMailHistory(mailAccounts[0].config.id)}>补历史邮件</button>}
           <button type="button" disabled={mailBusy} onClick={() => openMailForm()}>添加账号</button>
           <input type="number" min="1" aria-label="自动同步间隔（分钟）" value={mailInterval} onChange={(event) => setMailInterval(event.target.value)} />
