@@ -1,9 +1,16 @@
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
+  resolve: {
+    alias: {
+      // 共享前端仍按 Tauri 方式调用原生；在 Wails 预览里换成兼容层。
+      "@tauri-apps/api/core": path.resolve(fileURLToPath(new URL("./tauriCoreShim.ts", import.meta.url))),
+    },
+  },
   plugins: [react()],
   publicDir: false,
   build: {

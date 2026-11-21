@@ -53,3 +53,13 @@ func (s *PreviewService) SaveMaterial(ctx context.Context, generation int, title
 	}
 	return s.current.Capture(ctx, library.CaptureInput{Title: title, Text: text, URL: sourceURL}, time.Now().UnixMilli())
 }
+
+// RestoreKnowledgeBaseMembership 批量恢复知识库成员关系（共享前端 kb_restore_membership）。
+func (s *PreviewService) RestoreKnowledgeBaseMembership(ctx context.Context, generation int, entries []library.MembershipRestoreEntry) ([]library.MembershipRestoreOutcome, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return nil, errors.New("请重新打开资料库")
+	}
+	return s.current.RestoreMembership(ctx, entries)
+}

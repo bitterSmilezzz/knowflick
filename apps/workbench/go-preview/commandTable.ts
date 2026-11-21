@@ -65,7 +65,7 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "kb_list": {"service": "PreviewService","method": "ReadKnowledgeBases","args": ["generation"]},
   "kb_membership": {"service": "PreviewService","method": "ReadKnowledgeBases","args": ["generation"]},
   "kb_remove_note": {"service": "PreviewService","method": "SetKnowledgeBaseMembership","args": ["generation","kbID","noteID","member"],"fixed": {"member": false}},
-  "kb_restore_membership": null,
+  "kb_restore_membership": {"service": "PreviewService","method": "RestoreKnowledgeBaseMembership","args": ["generation","entries"]},
   "load_store": {"service": "PreviewService","method": "LoadStore","args": ["generation"]},
   "local_embed": {"service": "PreviewService","method": "LocalEmbed","args": ["texts","isQuery"]},
   "local_embed_status": {"service": "PreviewService","method": "LocalEmbedStatus","args": []},

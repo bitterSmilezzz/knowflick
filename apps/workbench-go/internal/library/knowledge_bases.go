@@ -113,3 +113,54 @@ func (l *Library) SetKnowledgeBaseMembership(ctx context.Context, kbID, noteID s
 	}
 	return tx.Commit()
 }
+
+// MembershipRestoreEntry 是备份恢复时的一条知识库成员关系。
+type MembershipRestoreEntry struct {
+	KBID    string `json:"kbId"`
+	NoteID  string `json:"noteId"`
+	AddedAt int64  `json:"addedAt"`
+}
+
+// MembershipRestoreOutcome 逐条报告成员关系的处置结果，不因单条失败中断整批。
+type MembershipRestoreOutcome struct {
+	KBID   string `json:"kbId"`
+	NoteID string `json:"noteId"`
+	Action string `json:"action"`
+	Error  string `json:"error,omitempty"`
+}
+
+// RestoreMembership 按备份记录的 addedAt 幂等恢复成员关系（kb_restore_membership）。
+func (l *Library) RestoreMembership(ctx context.Context, entries []MembershipRestoreEntry) ([]MembershipRestoreOutcome, error) {
+	if !l.writable {
+		return nil, ErrReadOnly
+	}
+	outcomes := make([]MembershipRestoreOutcome, 0, len(entries))
+	for _, entry := range entries {
+		outcome := MembershipRestoreOutcome{KBID: entry.KBID, NoteID: entry.NoteID}
+		var baseExists, noteExists bool
+		if err := l.db.QueryRowContext(ctx,
+			"SELECT EXISTS(SELECT 1 FROM knowledge_bases WHERE id = ?), EXISTS(SELECT 1 FROM notes WHERE id = ?)",
+			entry.KBID, entry.NoteID).Scan(&baseExists, &noteExists); err != nil {
+			return nil, err
+		}
+		switch {
+		case !baseExists:
+			outcome.Error = "知识库不存在"
+		case !noteExists:
+			outcome.Error = "笔记不存在"
+		default:
+			result, err := l.db.ExecContext(ctx,
+				"INSERT OR IGNORE INTO kb_membership (kb_id, note_id, added_at) VALUES (?, ?, ?)",
+				entry.KBID, entry.NoteID, entry.AddedAt)
+			if err != nil {
+				outcome.Error = err.Error()
+			} else if changed, _ := result.RowsAffected(); changed > 0 {
+				outcome.Action = "added"
+			} else {
+				outcome.Action = "already"
+			}
+		}
+		outcomes = append(outcomes, outcome)
+	}
+	return outcomes, nil
+}

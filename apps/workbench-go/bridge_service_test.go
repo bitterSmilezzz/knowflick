@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"knowflick.local/workbench-go/internal/library"
 )
 
 func TestBridgeServiceMethodsOnRustLibrary(t *testing.T) {
@@ -73,5 +75,23 @@ func TestBridgeServiceMethodsOnRustLibrary(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("material not persisted: %+v", inbox)
+	}
+
+	if err := service.CreateKnowledgeBase(ctx, writable.Generation, "kb-bridge", "桥接知识库", ""); err != nil {
+		t.Fatalf("CreateKnowledgeBase: %v", err)
+	}
+	noteID := page.Notes[0].ID
+	entries := []library.MembershipRestoreEntry{{KBID: "kb-bridge", NoteID: noteID, AddedAt: 123}, {KBID: "missing-kb", NoteID: noteID, AddedAt: 123}}
+	outcomes, err := service.RestoreKnowledgeBaseMembership(ctx, writable.Generation, entries)
+	if err != nil || len(outcomes) != 2 || outcomes[0].Action != "added" || outcomes[1].Error == "" {
+		t.Fatalf("restore membership: %+v, %v", outcomes, err)
+	}
+	again, err := service.RestoreKnowledgeBaseMembership(ctx, writable.Generation, entries[:1])
+	if err != nil || len(again) != 1 || again[0].Action != "already" {
+		t.Fatalf("idempotent restore: %+v, %v", again, err)
+	}
+	snapshot, err := service.ReadKnowledgeBases(ctx, writable.Generation)
+	if err != nil || snapshot.Membership["kb-bridge\n"+noteID] != 123 {
+		t.Fatalf("membership snapshot: %+v, %v", snapshot, err)
 	}
 }

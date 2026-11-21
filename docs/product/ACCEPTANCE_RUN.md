@@ -1700,6 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百一十八轮 · 桥接全覆盖与构建解析
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 命令全覆盖 | PASS | 补齐最后一个缺口：Library.RestoreMembership 与 PreviewService.RestoreKnowledgeBaseMembership 按备份里的 addedAt 幂等恢复知识库成员关系，逐条报告新增、已存在或失败原因。桥接表达到 133/133，无显式缺口。 |
+| 构建解析 | 构建通过 | go-preview 的 Vite 配置把 @tauri-apps/api/core 解析到 Wails 兼容层；共享前端今后直接按 Tauri 方式调用原生也能在 Go 预览构建中解析。 |
+| Go 回归 | PASS | 在 Rust 资料库夹具上，成员关系首次恢复为 added、重复恢复为 already、缺失知识库逐条给出错误且不影响其他条目，快照中的 addedAt 与备份一致。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。本轮只打通命令解析与构建，共享工作台视图尚未挂载，dialog/event 等插件适配待后续轮次。 |
 ## 阶段 2 第一百一十七轮 · 补齐桥接命令缺口
 
 | 验收 | 结果 | 证据与范围 |
