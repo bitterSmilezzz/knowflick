@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-update-material-status"
+description = "Enables the db_update_material_status command without any pre-configured scope."
+commands.allow = ["db_update_material_status"]
+
+[[permission]]
+identifier = "deny-db-update-material-status"
+description = "Denies the db_update_material_status command without any pre-configured scope."
+commands.deny = ["db_update_material_status"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-backup-restore-note-history"
+description = "Enables the backup_restore_note_history command without any pre-configured scope."
+commands.allow = ["backup_restore_note_history"]
+
+[[permission]]
+identifier = "deny-backup-restore-note-history"
+description = "Denies the backup_restore_note_history command without any pre-configured scope."
+commands.deny = ["backup_restore_note_history"]

@@ -1,0 +1,212 @@
+name: Workbench Release (Web + Tauri)
+
+# ADR-0002 第一套桌面（apps/workbench）的发布通道：同一份 Web + Tauri 代码在三台机器上各打一个原生安装包。
+#
+# 为什么必须是三台机器：Tauri 和 jpackage 一样**不支持交叉编译**——DMG 只能在 macOS 出、
+# MSI 只能在 Windows 出、DEB 只能在 Linux 出。这里是「一份配置 × 三台机器」，不是三套配置。
+#
+# 与冻结的 JVM 桌面（desktop.yml，tag `desktop-v*`）是**两条独立序列**：tag 前缀不同、产物名也不同
+# （`KnowFlick-Workbench-<版本>-<系统>.<扩展名>`），避免下载者拿错包。
+#
+# paths 过滤对 tag 推送**不生效**（GitHub 官方文档："Path filters are not evaluated for pushes of tags"），
+# 所以这里不写 paths——写了只会让人误以为「改文档的提交打 tag 不会触发」。
+on:
+  # 新 workflow 进默认分支之前不能手动触发，先在 PR 中验证三平台安装包。
+  # PR 只留 CI 附件；release job 仍仅接受 workbench-v* tag。
+  pull_request:
+    paths:
+      - 'apps/workbench/**'
+      - 'shared/assets/**'
+      - 'tools/verify_workbench.sh'
+      # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
+      - 'tools/check_doc_consistency.py'
+      - 'tools/check_tauri_permissions.py'
+      - 'tools/check_rust_error_messages.py'
+      - 'tools/test_check_frontend_error_text.py'
+      - 'tools/check_frontend_error_text.py'
+      - 'tools/test_check_user_facing_content.py'
+      - 'tools/test_check_destructive_confirm.py'
+      - 'tools/test_check_test_assertions.py'
+      - 'tools/test_check_source_labels.py'
+      - 'tools/check_user_facing_content.py'
+      - 'tools/check_destructive_confirm.py'
+      - 'tools/destructive_confirm_reverse_test.py'
+      - 'tools/check_test_assertions.py'
+      - 'tools/check_test_assertions.mjs'
+      - 'tools/check_source_labels.py'
+      - 'tools/test_windows_console.py'
+      - 'tools/windows_console.py'
+      - 'tools/test_check_rust_error_messages.py'
+      - 'tools/test_check_tauri_permissions.py'
+      - 'tools/check_loopback_parity.mjs'
+      - 'tools/test_check_doc_consistency.py'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/run_all_smokes.sh'
+      - 'tools/workflow_paths.py'
+      - 'tools/test_workflow_paths.py'
+      - 'tools/test_desktop_ci_triggers.py'
+      - 'tools/workspace_ui_smoke.mjs'
+      - 'tools/brain_ui_smoke.mjs'
+      - 'tools/import_ui_smoke.mjs'
+      - 'tools/notes_ui_smoke.mjs'
+      - 'tools/mailbox_ui_smoke.mjs'
+      - 'tools/review_ui_smoke.mjs'
+      - 'tools/scale_ui_smoke.mjs'
+      - 'tools/settings_plugins_smoke.mjs'
+      - 'tools/subscriptions_ui_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/usability_journey_smoke.mjs'
+      - 'tools/desktop_interaction_smoke.mjs'
+      - 'tools/desktop_external_write_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/mcp_server_smoke.mjs'
+      - 'tools/mcp_material_search_reverse_test.mjs'
+      - 'tools/mcp-server.mjs'
+      - 'tools/ci_run_browser_smokes.sh'
+      - '.github/workflows/android.yml'
+      - '.github/workflows/workbench-release.yml'
+  workflow_dispatch:
+  push:
+    tags:
+      - 'workbench-v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux (deb)
+            format: deb
+          - os: macos-latest
+            label: macOS (dmg)
+            format: dmg
+          - os: windows-latest
+            label: Windows (msi)
+            format: msi
+    steps:
+      - uses: actions/checkout@v7
+
+      # Linux 上 Tauri 走 WebKitGTK：Tauri v2 认 4.1，apt 源里的包名就是它。
+      - name: 安装 Linux 系统依赖
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          # apt 的默认超时太长：源响应慢时它会一直挂着，把整个 job 拖到超时上限。
+          # 这里给每次 apt 调用加超时并重试——失败要快，恢复了就继续。
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=2 update \
+               && sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=2 install -y \
+                 cmake libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils; then
+              echo "系统依赖安装成功（第 ${attempt} 次尝试）"
+              exit 0
+            fi
+            echo "第 ${attempt} 次安装失败，等 15 秒再试" >&2
+            sleep 15
+          done
+          echo "::error::安装 Linux 系统依赖失败（已重试 3 次）" >&2
+          exit 1
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: 配置 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 Rust 构建
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/workbench/src-tauri -> target
+
+      - name: npm ci
+        working-directory: apps/workbench
+        run: npm ci
+
+      # 与 workbench.yml 同一套门禁。发出去的安装包不能是没跑过测试的那份代码。
+      - name: 门禁（npm test + tsc + cargo test）
+        shell: bash
+        run: ./tools/verify_workbench.sh
+
+      # 显式点名只出本系统那一种格式：tauri.conf 的 targets 是 "all"，
+      # 但 Linux 上的 rpm / AppImage 各自还依赖 rpmbuild / linuxdeploy 这些 runner 不一定有的东西，
+      # 让它们决定成败属于自找不确定。三台机器各出一个确定格式。
+      - name: 打本系统安装包
+        working-directory: apps/workbench
+        run: npm run tauri build -- --bundles ${{ matrix.format }}
+
+      # whisper.cpp 用到 C++17 的 std::filesystem，低于 macOS 10.15 会直接编译失败。
+      # 这里兜住两处：产物声明的 LSMinimumSystemVersion，以及二进制实际的 minos。
+      - name: 校验 macOS 最低系统版本
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          binary=apps/workbench/src-tauri/target/release/knowflick-workbench
+          minos=$(otool -l "$binary" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+          echo "binary minos=$minos"
+          [[ "$minos" == 11.* ]] || { echo "::error::二进制 minos 是 ${minos}，应为 11.x（whisper.cpp 需要 ≥10.15）"; exit 1; }
+          dmg=$(ls apps/workbench/src-tauri/target/release/bundle/dmg/*.dmg)
+          mnt=$(mktemp -d)
+          hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -quiet
+          plist_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$mnt/KnowFlick.app/Contents/Info.plist")
+          hdiutil detach "$mnt" -quiet
+          echo "LSMinimumSystemVersion=$plist_version"
+          [[ "$plist_version" == 11.* ]] || { echo "::error::Info.plist 的 LSMinimumSystemVersion 是 ${plist_version}，应为 11.x"; exit 1; }
+
+      - name: 校验产物存在
+        shell: bash
+        run: |
+          cd apps/workbench/src-tauri/target/release/bundle/${{ matrix.format }}
+          ls -la
+          test -n "$(ls -A)" || { echo "::error::没有产出 ${{ matrix.format }} 安装包"; exit 1; }
+
+      # 三平台产物短期留档，便于 PR 安装验收；不创建 Release、不打 tag。
+      - name: 留档安装包
+        uses: actions/upload-artifact@v7
+        with:
+          name: workbench-${{ matrix.format }}
+          path: apps/workbench/src-tauri/target/release/bundle/${{ matrix.format }}/*
+          retention-days: 7
+
+  release:
+    name: 附到 Release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/workbench-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 取回三个安装包
+        uses: actions/download-artifact@v7
+        with:
+          pattern: workbench-*
+          merge-multiple: false
+
+      # 命名映射 / 校验和 / 版本校验 / 发布都在脚本里，workflow 不重复实现一遍。
+      # 本地空跑：tools/assemble_workbench_release.sh --tag workbench-v0.1.0 --artifacts-dir <目录>
+      - name: 组装附件并附到 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/assemble_workbench_release.sh --publish

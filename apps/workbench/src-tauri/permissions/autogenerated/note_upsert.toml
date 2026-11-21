@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-upsert"
+description = "Enables the note_upsert command without any pre-configured scope."
+commands.allow = ["note_upsert"]
+
+[[permission]]
+identifier = "deny-note-upsert"
+description = "Denies the note_upsert command without any pre-configured scope."
+commands.deny = ["note_upsert"]

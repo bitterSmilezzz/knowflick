@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-search-chunks"
+description = "Enables the note_search_chunks command without any pre-configured scope."
+commands.allow = ["note_search_chunks"]
+
+[[permission]]
+identifier = "deny-note-search-chunks"
+description = "Denies the note_search_chunks command without any pre-configured scope."
+commands.deny = ["note_search_chunks"]

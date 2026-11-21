@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-restore"
+description = "Enables the note_restore command without any pre-configured scope."
+commands.allow = ["note_restore"]
+
+[[permission]]
+identifier = "deny-note-restore"
+description = "Denies the note_restore command without any pre-configured scope."
+commands.deny = ["note_restore"]

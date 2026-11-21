@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-backup-validate-review-history"
+description = "Enables the backup_validate_review_history command without any pre-configured scope."
+commands.allow = ["backup_validate_review_history"]
+
+[[permission]]
+identifier = "deny-backup-validate-review-history"
+description = "Denies the backup_validate_review_history command without any pre-configured scope."
+commands.deny = ["backup_validate_review_history"]

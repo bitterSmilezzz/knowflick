@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-ensure-from-material"
+description = "Enables the note_ensure_from_material command without any pre-configured scope."
+commands.allow = ["note_ensure_from_material"]
+
+[[permission]]
+identifier = "deny-note-ensure-from-material"
+description = "Denies the note_ensure_from_material command without any pre-configured scope."
+commands.deny = ["note_ensure_from_material"]

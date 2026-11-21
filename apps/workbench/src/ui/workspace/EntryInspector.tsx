@@ -1,0 +1,386 @@
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import type { Entry } from "./model";
+import { Icon, sourceLabel } from "./Icon";
+import { attachmentBlob, attachmentMime, inlineImageUrl } from "./attachment";
+import { openExternalUrl, readMedia, type RawMaterial } from "../../shell/store";
+import type { KnowledgeCard } from "../../domain/card";
+import { estimateTokenCount } from "../../domain/ingest";
+import { MarkdownRenderer } from "./MarkdownRenderer";
+import { mailMetadata } from "../../domain/mail";
+import { parseInk, type InkDocument } from "../../domain/ink";
+import { userError } from "./userError";
+import { useDeleteConfirm } from "./useDeleteConfirm";
+
+interface Props {
+  entry: Entry;
+  /** 当前库目录：附件按这个目录读写，避免自定义库时写到别处。 */
+  dir?: string;
+  readerRef?: RefObject<HTMLElement | null>;
+  onSave: (title: string, text: string, category: string, tags: string[]) => Promise<void>;
+  onArchive: () => Promise<void>;
+  onConvert: () => Promise<void>;
+  /** R2：把这篇素材映射为一篇可持续编辑的笔记（幂等）。 */
+  onEnsureNote?: () => Promise<void>;
+  onAi: () => Promise<void>;
+  onFetch: () => Promise<void>;
+  onFavorite: () => Promise<void>;
+  /** 删除知识卡；素材走归档，不提供删除。 */
+  onDelete?: () => Promise<void>;
+  busy: boolean;
+  onSettings: () => void;
+  aiReady: boolean;
+}
+
+export function EntryInspector({
+  entry,
+  dir,
+  readerRef,
+  onSave,
+  onArchive,
+  onConvert,
+  onEnsureNote,
+  onAi,
+  onFetch,
+  onFavorite,
+  onDelete,
+  busy,
+  onSettings,
+  aiReady,
+}: Props) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(entry.title);
+  const [text, setText] = useState(entry.text);
+  const [category, setCategory] = useState(entry.category);
+  const [tags, setTags] = useState(entry.tags.join(", "));
+  const [error, setError] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const resetDraft = () => {
+    setTitle(entry.title); setText(entry.text); setCategory(entry.category); setTags(entry.tags.join(", "));
+  };
+  useEffect(() => {
+    const edit = () => { if (!busy) { resetDraft(); setEditing(true); } };
+    window.addEventListener("knowflick:edit-entry", edit);
+    return () => window.removeEventListener("knowflick:edit-entry", edit);
+  }, [entry, busy]);
+  useEffect(() => {
+    if (editing) titleRef.current?.focus();
+  }, [editing]);
+
+  const run = async (action: () => Promise<void>) => {
+    setError("");
+    try {
+      await action();
+    } catch (e) {
+      setError(userError(e));
+    }
+  };
+
+  // 删除是不可撤销的：第一下只是"请再点一次确认"，四秒后自动收回。
+  // 与删除订阅共用同一个 hook——同一个行为只留一份实现。
+  const confirm = useDeleteConfirm((id) => {
+    if (id !== entry.id || !onDelete) return;
+    void run(onDelete);
+  });
+  const confirmDelete = confirm.isArmed(entry.id);
+
+  const isCard = entry.kind === "card";
+  const card = isCard ? (entry.original as KnowledgeCard) : null;
+  const material = !isCard ? (entry.original as RawMaterial) : null;
+  const mail = material ? mailMetadata(material) : null;
+  // 附件（图片 / 录音）按需读出来再转 blob：库目录不在 webview 的可读范围内，
+  // 只能由宿主读字节、前端自己造 URL。
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [mediaMissing, setMediaMissing] = useState(false);
+  useEffect(() => {
+    const path = material?.mediaPath;
+    if (!material) { setMediaUrl(null); return; }
+    // 浏览器体验里图片以内嵌 data URL 存放，没有可读的 media/ 文件。
+    if (!path) {
+      setMediaUrl(inlineImageUrl(material));
+      return;
+    }
+    let disposed = false;
+    let created: string | null = null;
+    setMediaMissing(false);
+    void readMedia(path, dir)
+      .then(bytes => {
+        if (disposed) return;
+        const blob = attachmentBlob(bytes, attachmentMime(material));
+        created = URL.createObjectURL(blob);
+        setMediaUrl(created);
+      })
+      .catch(() => { if (!disposed) { setMediaUrl(null); setMediaMissing(true); } });
+    return () => { disposed = true; if (created) URL.revokeObjectURL(created); };
+  }, [material?.id, material?.mediaPath, material?.sourceType, material?.metadataJson]);
+  /** 手写笔记的笔迹（存盘时内嵌一份），用于只读重绘，不做回写。 */
+  const inkDoc: InkDocument | null = useMemo(() => {
+    if (!material || material.sourceType !== "ink") return null;
+    try { return parseInk(JSON.parse(material.metadataJson).ink); } catch { return null; }
+  }, [material]);
+
+  const archived = material ? material.inboxStatus !== "inbox" : false;
+  const meta = sourceLabel(isCard ? "card" : material?.sourceType ?? "", entry.url);
+
+  return (
+    <article ref={readerRef} tabIndex={-1} className="ws-reader" data-workspace-pane="inspector" aria-label="内容详情">
+      <div className="ws-reader-scroll">
+        {error ? (
+          <div className="ws-feedback" role="alert">
+            <span>{error}</span>
+          </div>
+        ) : null}
+
+        {editing ? (
+          <form
+            className="ws-editor"
+            onKeyDown={e => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Escape" && !busy) {
+                e.preventDefault(); e.stopPropagation();
+                resetDraft(); setEditing(false);
+                requestAnimationFrame(() => readerRef?.current?.focus());
+              }
+            }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => {
+                await onSave(
+                  title,
+                  text,
+                  category,
+                  tags
+                    .split(/[,，]/)
+                    .map((t) => t.trim())
+                    .filter(Boolean)
+                );
+                setEditing(false);
+              });
+            }}
+          >
+            <label className="ws-field">
+              标题
+              <input ref={titleRef} aria-label="标题" required value={title} onChange={(e) => setTitle(e.target.value)} />
+            </label>
+            {isCard ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <label className="ws-field">
+                  分类
+                  <input value={category} onChange={(e) => setCategory(e.target.value)} />
+                </label>
+                <label className="ws-field">
+                  标签（逗号分隔）
+                  <input value={tags} onChange={(e) => setTags(e.target.value)} />
+                </label>
+              </div>
+            ) : null}
+            <label className="ws-field">
+              正文
+              <textarea aria-label="正文" required value={text} onChange={(e) => setText(e.target.value)} />
+            </label>
+            <div className="ws-editor-actions">
+              <button className="ws-primary" type="submit" disabled={busy}>
+                保存修改
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  resetDraft();
+                  setEditing(false);
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="ws-reader-inner">
+            <div className="ws-reader-meta">
+              <Icon name={meta.icon} size={14} />
+              <span>{meta.label}</span>
+            </div>
+            <h1>{entry.title}</h1>
+            <div className="ws-byline">
+              {new Date(entry.date).toLocaleDateString("zh-CN", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </div>
+            {(entry.tags.length > 0 || entry.category) && (
+              <div className="ws-tags">
+                <span>
+                  <Icon name="folder" size={14} />
+                  {entry.category}
+                </span>
+                {entry.tags.map((t) => (
+                  <span key={t}># {t}</span>
+                ))}
+              </div>
+            )}
+            {mail ? (
+              <>
+                <dl className="mail-inspector-headers">
+                  <dt>发件人</dt><dd>{mail.from || "未提供"}</dd>
+                  <dt>收件人</dt><dd>{mail.to || "未提供"}</dd>
+                  {mail.date ? <><dt>邮件时间</dt><dd>{mail.date}</dd></> : null}
+                  {mail.attachments.length ? <><dt>附件名称</dt><dd>{mail.attachments.join("、")}（仅名称，未导入附件）</dd></> : null}
+                </dl>
+                <div className="ws-prose" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{entry.text}</div>
+              </>
+            ) : <MarkdownRenderer text={entry.text} />}
+            {material?.mediaPath && !mediaUrl && mediaMissing ? (
+              <p className="ws-hint ws-attachment-missing" role="status">
+                附件没能读取（可能已被移动或删除）。正文与知识卡不受影响。
+              </p>
+            ) : null}
+            {inkDoc ? (
+              <figure className="ws-attachment" data-attachment="ink">
+                <InkPreview doc={inkDoc} />
+                <figcaption className="ws-hint">手写笔记 · {inkDoc.strokes.length} 笔 · 保存在本机</figcaption>
+              </figure>
+            ) : material?.mediaPath && mediaUrl ? (
+              <figure className="ws-attachment" data-attachment={material.sourceType}>
+                {material.sourceType === "image" ? (
+                  <img src={mediaUrl} alt={material.title} className="ws-attachment-image" />
+                ) : material?.sourceType === "ink" ? null : (
+                  <audio controls src={mediaUrl} className="ws-attachment-audio" aria-label="录音回放" />
+                )}
+                <figcaption className="ws-hint">
+                  {material.sourceType === "image" ? "图片素材" : "录音"} · 保存在本机
+                </figcaption>
+              </figure>
+            ) : null}
+            {entry.url ? (
+              <button
+                className="ws-source-link"
+                onClick={() => void run(() => openExternalUrl(entry.url))}
+              >
+                <Icon name="external" size={14} />
+                查看原始来源
+              </button>
+            ) : null}
+
+            {!isCard ? (
+              /* 提炼是「应用」阶段的事，读的时候不该一直占着一整块版面。
+                 默认收成一行动作条，需要时再展开说明与选项。 */
+              <details className="ws-material-box" data-material-actions="">
+                <summary className="ws-material-summary">
+                  <Icon name="layers" size={15} />
+                  <span>提炼成知识卡</span>
+                  <em>{estimateTokenCount(entry.text).summary}</em>
+                </summary>
+                <div className="ws-material-box-body">
+                  <p className="ws-hint">
+                    保留原始记录，把关键结论沉淀为原子知识卡。
+                  </p>
+                  <div className="ws-material-box-actions">
+                    <button className="ws-primary" disabled={busy} onClick={() => void run(onConvert)}>
+                      <Icon name="card" size={14} /> 保存为知识卡
+                    </button>
+                    <button className="ws-bordered" disabled={busy} onClick={() => (aiReady ? void run(onAi) : onSettings())}>
+                      <Icon name="ask" size={14} /> {aiReady ? "AI 提炼卡片" : "配置 AI"}
+                    </button>
+                    {onEnsureNote ? (
+                      <button className="ws-bordered" disabled={busy} onClick={() => void run(onEnsureNote)}>
+                        <Icon name="note" size={14} /> 转为可编辑笔记
+                      </button>
+                    ) : null}
+                    {entry.url ? (
+                      <button className="ws-bordered" disabled={busy} onClick={() => void run(onFetch)}>
+                        <Icon name="note" size={14} /> 抓取正文
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </details>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <footer className="ws-reader-foot">
+        <span>{busy ? "正在处理…" : `${entry.text.length.toLocaleString()} 字符 · 已保存在本机`}</span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {!editing ? (
+            <button className="ws-icon-button" aria-label="编辑" title="编辑" onClick={() => { resetDraft(); setEditing(true); }} disabled={busy}>
+              <Icon name="edit" />
+            </button>
+          ) : null}
+          {card ? (
+            <button
+              className="ws-icon-button"
+              aria-label={card.isFavorite ? "取消收藏" : "收藏此卡片"}
+              title={card.isFavorite ? "取消收藏" : "收藏"}
+              onClick={() => void run(onFavorite)}
+              disabled={busy}
+            >
+              <Icon name="star" />
+            </button>
+          ) : null}
+          {card && onDelete ? (
+            <button
+              className={confirmDelete ? "ws-icon-button ws-danger" : "ws-icon-button"}
+              aria-label={confirmDelete ? "确认删除这张卡片" : "删除这张卡片"}
+              title={confirmDelete ? "再点一次即删除，无法撤销" : "删除"}
+              disabled={busy || editing}
+              onClick={() => confirm.request(entry.id)}
+            >
+              <Icon name="trash" />
+              {confirmDelete ? <span className="ws-danger-text">确认</span> : null}
+            </button>
+          ) : null}
+          {!isCard ? (
+            <button
+              className="ws-icon-button"
+              aria-label={archived ? "移回收件箱" : "归档素材"}
+              title={archived ? "移回收件箱" : "归档"}
+              onClick={() => void run(onArchive)}
+              disabled={busy || editing}
+            >
+              <Icon name={archived ? "inbox" : "archive"} />
+            </button>
+          ) : null}
+        </div>
+      </footer>
+    </article>
+  );
+}
+
+/** 只读手写预览：坐标已归一化，换尺寸重绘不会变形。 */
+export function InkPreview({ doc, height = 240 }: { doc: InkDocument; height?: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(rect.width * ratio));
+    canvas.height = Math.round(height * ratio);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(ratio, ratio);
+    ctx.clearRect(0, 0, rect.width, height);
+    const styles = getComputedStyle(canvas);
+    const palette: Record<string, string> = {
+      ink: styles.getPropertyValue("--ink").trim() || "#1c1e20",
+      accent: styles.getPropertyValue("--accent").trim() || "#315e8b",
+      muted: styles.getPropertyValue("--muted").trim() || "#596168",
+    };
+    for (const stroke of doc.strokes) {
+      if (stroke.points.length < 2) continue;
+      ctx.beginPath();
+      ctx.lineWidth = Math.max(1, stroke.width * Math.min(rect.width, height));
+      ctx.strokeStyle = palette[stroke.color] ?? palette.ink;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      stroke.points.forEach((point, i) => {
+        const x = point.x * rect.width;
+        const y = point.y * height;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+  }, [doc, height]);
+  return <canvas ref={ref} className="ws-attachment-image" style={{ height }} role="img" aria-label={`手写笔记，${doc.strokes.length} 笔`} />;
+}

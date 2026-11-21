@@ -25,8 +25,10 @@ sdk.dir=/absolute/path/to/Android/sdk
 
 ### :shared-ui 模块（跨端共享界面层）
 
-`shared-ui/` 是 Compose Multiplatform 的共享界面层，**Windows / macOS / Linux 三端 + Android 共用
-同一份界面代码**（目标与决策见 [ADR-0001](../../docs/adr/0001-desktop-tri-platform-shared-kotlin.md)）。
+`shared-ui/` 是 Compose Multiplatform 的共享界面层，**Android 与已冻住的 JVM 桌面宿主 `:desktop` 共用
+同一份界面代码**。注意 [ADR-0002](../../docs/adr/0002-desktop-web-split-from-android.md) 之后，
+「桌面三端 + Android 共用一份 Kotlin 界面」不再是活计划：Windows / Linux / macOS 与稍后的网页走
+`apps/workbench` 的 Web 界面；已落地的共享代码不因这个决定删除。
 已迁入 8 个生产文件 2578 行：主题令牌（4 套纸质主题 + `EditorialColor`）、**`QuizScreen`(833) 与
 `LibraryScreen`(326) 两个整屏**、`LearningHeatmap`(214)、`AppIcons`(668)、`MarkdownTextRenderer`(297)、
 `CategoryStampColor`(27)。
@@ -35,12 +37,14 @@ sdk.dir=/absolute/path/to/Android/sdk
 平台边界处理（系统返回外移宿主、多平台 Material 图标停更于 1.7.3、`java.*` 走 `jvmAndAndroidMain`）
 与分档进度见 [界面共享迁移](../../docs/windows-route/UI_EXTRACTION.md)。
 
-### :desktop 模块（桌面宿主，跑 Windows / macOS / Linux）
+### :desktop 模块（已冻住的 JVM 桌面宿主）
 
 `desktop/` 是 Kotlin JVM + Compose Multiplatform 宿主，用 `project(":domain")` 与
 `project(":shared-ui")` 复用同一份逻辑与界面，**主界面直接渲染 `LibraryScreen`**。
-`./gradlew :desktop:test`（2 项：领域层复用 + 共享整屏无头渲染）与 `./gradlew :desktop:run`
-**都只需 JDK 17，不需要 Android SDK**。定位、未实现项与「何时提升为独立端」见
+`./gradlew :desktop:test` 与 `./gradlew :desktop:run` **都只需 JDK 17，不需要 Android SDK**。
+
+[ADR-0002](../../docs/adr/0002-desktop-web-split-from-android.md) 把桌面第一套定为 `apps/workbench`
+（Web + Tauri），所以这里**冻住不加功能**，等第一套闭环跑通前也不删。定位与沿革见
 [desktop/README.md](desktop/README.md)。
 
 ### :domain 模块（KMP 领域层）

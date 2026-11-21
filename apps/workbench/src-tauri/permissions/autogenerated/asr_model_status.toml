@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-asr-model-status"
+description = "Enables the asr_model_status command without any pre-configured scope."
+commands.allow = ["asr_model_status"]
+
+[[permission]]
+identifier = "deny-asr-model-status"
+description = "Denies the asr_model_status command without any pre-configured scope."
+commands.deny = ["asr_model_status"]

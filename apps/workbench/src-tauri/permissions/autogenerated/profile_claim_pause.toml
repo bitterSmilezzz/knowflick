@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-profile-claim-pause"
+description = "Enables the profile_claim_pause command without any pre-configured scope."
+commands.allow = ["profile_claim_pause"]
+
+[[permission]]
+identifier = "deny-profile-claim-pause"
+description = "Denies the profile_claim_pause command without any pre-configured scope."
+commands.deny = ["profile_claim_pause"]

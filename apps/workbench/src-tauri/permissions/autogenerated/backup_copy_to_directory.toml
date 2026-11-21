@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-backup-copy-to-directory"
+description = "Enables the backup_copy_to_directory command without any pre-configured scope."
+commands.allow = ["backup_copy_to_directory"]
+
+[[permission]]
+identifier = "deny-backup-copy-to-directory"
+description = "Denies the backup_copy_to_directory command without any pre-configured scope."
+commands.deny = ["backup_copy_to_directory"]

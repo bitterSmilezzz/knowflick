@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-save-subscription"
+description = "Enables the db_save_subscription command without any pre-configured scope."
+commands.allow = ["db_save_subscription"]
+
+[[permission]]
+identifier = "deny-db-save-subscription"
+description = "Denies the db_save_subscription command without any pre-configured scope."
+commands.deny = ["db_save_subscription"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-project-remove-note"
+description = "Enables the project_remove_note command without any pre-configured scope."
+commands.allow = ["project_remove_note"]
+
+[[permission]]
+identifier = "deny-project-remove-note"
+description = "Denies the project_remove_note command without any pre-configured scope."
+commands.deny = ["project_remove_note"]

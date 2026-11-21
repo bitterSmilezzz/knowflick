@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-backfill-material-fts"
+description = "Enables the db_backfill_material_fts command without any pre-configured scope."
+commands.allow = ["db_backfill_material_fts"]
+
+[[permission]]
+identifier = "deny-db-backfill-material-fts"
+description = "Denies the db_backfill_material_fts command without any pre-configured scope."
+commands.deny = ["db_backfill_material_fts"]

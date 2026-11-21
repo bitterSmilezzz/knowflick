@@ -5,6 +5,11 @@
 # 打包产物
 dist/
 
+# 第一套桌面（apps/workbench，Tauri）
+node_modules/
+apps/workbench/src-tauri/target/
+apps/workbench/src-tauri/gen/
+
 # macOS
 .DS_Store
 
@@ -16,16 +21,17 @@ xcuserdata/
 __pycache__/
 *.pyc
 
-# Generated icon artwork
-apps/mac/Resources/AppIcon-artwork.png
-apps/mac/Resources/AppIcon.iconset/
-
-# mac 端资源由 tools/sync_shared_assets.sh 从 shared/assets 生成，不入 Git
-/apps/mac/Sources/KnowFlickCore/Resources/*
-!/apps/mac/Sources/KnowFlickCore/Resources/.gitkeep
+# 图标美术源（母版 iconset）不入 Git：仓库只分发派生产物 shared/icons/AppIcon.{icns,ico,png}——
+# 它们是二进制、打包直接可用；只有「改美术后重新生成」才需要原始 iconset（tools/generate_app_icons.py）。
+shared/icons/AppIcon.iconset/
 
 # Linter caches
 .brooks-lint-history.json
 
 # 会话临时工作区
 .scratch/
+
+# 本地库文件（运行时产物，绝不入库）
+*.db
+*.db-wal
+*.db-shm

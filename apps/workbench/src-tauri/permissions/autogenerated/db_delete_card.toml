@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-delete-card"
+description = "Enables the db_delete_card command without any pre-configured scope."
+commands.allow = ["db_delete_card"]
+
+[[permission]]
+identifier = "deny-db-delete-card"
+description = "Denies the db_delete_card command without any pre-configured scope."
+commands.deny = ["db_delete_card"]

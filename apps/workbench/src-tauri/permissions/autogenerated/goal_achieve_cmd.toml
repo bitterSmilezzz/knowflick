@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-goal-achieve-cmd"
+description = "Enables the goal_achieve_cmd command without any pre-configured scope."
+commands.allow = ["goal_achieve_cmd"]
+
+[[permission]]
+identifier = "deny-goal-achieve-cmd"
+description = "Denies the goal_achieve_cmd command without any pre-configured scope."
+commands.deny = ["goal_achieve_cmd"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mcp-server-paths"
+description = "Enables the mcp_server_paths command without any pre-configured scope."
+commands.allow = ["mcp_server_paths"]
+
+[[permission]]
+identifier = "deny-mcp-server-paths"
+description = "Denies the mcp_server_paths command without any pre-configured scope."
+commands.deny = ["mcp_server_paths"]

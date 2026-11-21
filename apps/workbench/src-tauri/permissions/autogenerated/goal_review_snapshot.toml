@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-goal-review-snapshot"
+description = "Enables the goal_review_snapshot command without any pre-configured scope."
+commands.allow = ["goal_review_snapshot"]
+
+[[permission]]
+identifier = "deny-goal-review-snapshot"
+description = "Denies the goal_review_snapshot command without any pre-configured scope."
+commands.deny = ["goal_review_snapshot"]

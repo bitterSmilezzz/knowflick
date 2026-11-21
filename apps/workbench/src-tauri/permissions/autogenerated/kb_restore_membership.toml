@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-kb-restore-membership"
+description = "Enables the kb_restore_membership command without any pre-configured scope."
+commands.allow = ["kb_restore_membership"]
+
+[[permission]]
+identifier = "deny-kb-restore-membership"
+description = "Denies the kb_restore_membership command without any pre-configured scope."
+commands.deny = ["kb_restore_membership"]

@@ -47,6 +47,8 @@ kotlin {
             dependencies {
                 implementation("org.jetbrains.compose.runtime:runtime:1.7.3")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+                // WebClipFetcher 与 :domain 的 AiService 用同一份 OkHttp
+                implementation("com.squareup.okhttp3:okhttp:4.12.0")
             }
         }
         val commonTest by getting {

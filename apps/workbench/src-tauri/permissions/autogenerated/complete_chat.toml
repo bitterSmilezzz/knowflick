@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-complete-chat"
+description = "Enables the complete_chat command without any pre-configured scope."
+commands.allow = ["complete_chat"]
+
+[[permission]]
+identifier = "deny-complete-chat"
+description = "Denies the complete_chat command without any pre-configured scope."
+commands.deny = ["complete_chat"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mail-test-account"
+description = "Enables the mail_test_account command without any pre-configured scope."
+commands.allow = ["mail_test_account"]
+
+[[permission]]
+identifier = "deny-mail-test-account"
+description = "Denies the mail_test_account command without any pre-configured scope."
+commands.deny = ["mail_test_account"]

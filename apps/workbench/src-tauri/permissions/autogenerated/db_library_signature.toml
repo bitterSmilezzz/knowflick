@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-library-signature"
+description = "Enables the db_library_signature command without any pre-configured scope."
+commands.allow = ["db_library_signature"]
+
+[[permission]]
+identifier = "deny-db-library-signature"
+description = "Denies the db_library_signature command without any pre-configured scope."
+commands.deny = ["db_library_signature"]

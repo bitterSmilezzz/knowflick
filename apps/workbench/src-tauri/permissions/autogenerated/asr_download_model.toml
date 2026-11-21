@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-asr-download-model"
+description = "Enables the asr_download_model command without any pre-configured scope."
+commands.allow = ["asr_download_model"]
+
+[[permission]]
+identifier = "deny-asr-download-model"
+description = "Denies the asr_download_model command without any pre-configured scope."
+commands.deny = ["asr_download_model"]

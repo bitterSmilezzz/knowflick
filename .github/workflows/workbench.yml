@@ -1,0 +1,246 @@
+name: Workbench (Web + Tauri)
+
+# ADR-0002 第一套桌面：apps/workbench 的前端单测与 Rust 壳单测。
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/workbench/**'
+      - 'apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/WebClipEngine.kt'
+      - 'shared/assets/**'
+      - 'tools/verify_workbench.sh'
+      - 'tools/check_clip_parity.py'
+      # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
+      # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
+      - 'tools/check_doc_consistency.py'
+      - 'tools/check_test_assertions.mjs'
+      - 'tools/check_tauri_permissions.py'
+      - 'tools/check_rust_error_messages.py'
+      - 'tools/test_check_frontend_error_text.py'
+      - 'tools/check_frontend_error_text.py'
+      - 'tools/test_check_user_facing_content.py'
+      - 'tools/test_check_destructive_confirm.py'
+      - 'tools/test_check_test_assertions.py'
+      - 'tools/test_check_source_labels.py'
+      - 'tools/check_user_facing_content.py'
+      - 'tools/check_destructive_confirm.py'
+      - 'tools/destructive_confirm_reverse_test.py'
+      - 'tools/check_test_assertions.py'
+      - 'tools/check_source_labels.py'
+      - 'tools/test_windows_console.py'
+      - 'tools/windows_console.py'
+      - 'tools/test_check_rust_error_messages.py'
+      - 'tools/test_check_tauri_permissions.py'
+      - 'tools/check_loopback_parity.mjs'
+      - 'tools/test_check_doc_consistency.py'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/run_all_smokes.sh'
+      - 'tools/workflow_paths.py'
+      - 'tools/test_workflow_paths.py'
+      - 'tools/test_desktop_ci_triggers.py'
+      - 'tools/workspace_ui_smoke.mjs'
+      - 'tools/brain_ui_smoke.mjs'
+      - 'tools/import_ui_smoke.mjs'
+      - 'tools/notes_ui_smoke.mjs'
+      - 'tools/notes_editor_smoke.mjs'
+      - 'tools/note_retrieval_smoke.mjs'
+      - 'tools/creative_smoke.mjs'
+      - 'tools/review_reminder_smoke.mjs'
+      - 'tools/mailbox_ui_smoke.mjs'
+      - 'tools/review_ui_smoke.mjs'
+      - 'tools/scale_ui_smoke.mjs'
+      - 'tools/settings_plugins_smoke.mjs'
+      - 'tools/goal_scope_smoke.mjs'
+      - 'tools/subscriptions_ui_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/usability_journey_smoke.mjs'
+      - 'tools/desktop_interaction_smoke.mjs'
+      - 'tools/desktop_external_write_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/mcp_server_smoke.mjs'
+      - 'tools/mcp-access.mjs'
+      - 'tools/mcp_access_test.mjs'
+      - 'tools/mcp_scoped_server_test.mjs'
+      - 'tools/knowflick-mcp/**'
+      - 'tools/mcp_material_search_reverse_test.mjs'
+      - 'tools/mcp-server.mjs'
+      - 'tools/ci_run_browser_smokes.sh'
+      - '.github/workflows/android.yml'
+      - '.github/workflows/workbench.yml'
+  pull_request:
+    paths:
+      - 'apps/workbench/**'
+      - 'apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/WebClipEngine.kt'
+      - 'shared/assets/**'
+      - 'tools/verify_workbench.sh'
+      - 'tools/check_clip_parity.py'
+      # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
+      # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
+      - 'tools/check_doc_consistency.py'
+      - 'tools/check_source_labels.py'
+      - 'tools/test_check_source_labels.py'
+      - 'tools/check_test_assertions.py'
+      - 'tools/check_test_assertions.mjs'
+      - 'tools/test_check_test_assertions.py'
+      - 'tools/check_loopback_parity.mjs'
+      - 'tools/test_check_doc_consistency.py'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/run_all_smokes.sh'
+      - 'tools/workspace_ui_smoke.mjs'
+      - 'tools/brain_ui_smoke.mjs'
+      - 'tools/import_ui_smoke.mjs'
+      - 'tools/notes_ui_smoke.mjs'
+      - 'tools/notes_editor_smoke.mjs'
+      - 'tools/note_retrieval_smoke.mjs'
+      - 'tools/creative_smoke.mjs'
+      - 'tools/review_reminder_smoke.mjs'
+      - 'tools/mailbox_ui_smoke.mjs'
+      - 'tools/review_ui_smoke.mjs'
+      - 'tools/scale_ui_smoke.mjs'
+      - 'tools/settings_plugins_smoke.mjs'
+      - 'tools/goal_scope_smoke.mjs'
+      - 'tools/subscriptions_ui_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/usability_journey_smoke.mjs'
+      - 'tools/desktop_interaction_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/mcp_server_smoke.mjs'
+      - 'tools/mcp-server.mjs'
+      - 'tools/mcp-access.mjs'
+      - 'tools/mcp_access_test.mjs'
+      - 'tools/mcp_scoped_server_test.mjs'
+      - 'tools/knowflick-mcp/**'
+      - 'tools/mcp_material_search_reverse_test.mjs'
+      - 'tools/ci_run_browser_smokes.sh'
+      - '.github/workflows/workbench.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web-checks:
+    name: 前端单测 + 类型检查 + 守卫
+    runs-on: ubuntu-latest
+    # 前端这半以前和 cargo test 绑在一个 job 里：Rust 编整棵 tauri 依赖树，慢的时候
+    # 把「门禁过没过」的信号一起拖住（实测 2.5～20+ 分钟）。拆开后这半通常 2～4 分钟出结果。
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
+      - name: 前端门禁（单测 + 类型检查 + 守卫）
+        run: ./tools/verify_workbench.sh web
+
+      - name: 校验剪藏规则表跨端一致
+        # 前端这份 `clipEngine.ts` 与 Android 的 `WebClipEngine.kt` 服务同一篇文章，规则表必须同源。
+        run: python3 tools/check_clip_parity.py
+
+  rust-checks:
+    name: Rust 单测
+    runs-on: ubuntu-latest
+    # 与 web-checks 分开：cargo test 要编整棵 tauri 依赖树，慢了不该连累前端那半的信号。
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/workbench
+    steps:
+      - uses: actions/checkout@v7
+
+      # cargo test 在 Linux 上要 WebKitGTK 的 pkg-config 文件；不装这几包，CI 会在
+      # `glib-sys` / `webkit2gtk-sys` 的 build script 上直接红，且报错离原因很远。
+      # 与 workbench-release.yml 同一份清单。
+      - name: 安装 Linux 系统依赖
+        run: |
+          # apt 的默认超时太长：源响应慢时它会一直挂着，把整个 job 拖到超时上限。
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=2 update \
+               && sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=2 install -y \
+                 cmake libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils; then
+              echo "系统依赖安装成功（第 ${attempt} 次尝试）"
+              exit 0
+            fi
+            echo "第 ${attempt} 次安装失败，等 15 秒再试" >&2
+            sleep 15
+          done
+          echo "::error::安装 Linux 系统依赖失败（已重试 3 次）" >&2
+          exit 1
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: 配置 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # 不缓存的话每次都要把整棵 tauri 依赖树从零编一遍（ubuntu 上实测十几分钟）。
+      # 与 workbench-release.yml 同一份写法（同一个 action、同一个 workspaces）。
+      - name: 缓存 Rust 构建
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/workbench/src-tauri -> target
+
+      # 回环判定对照（tools/check_loopback_parity.mjs）要同时跑 Rust 与 TypeScript 两半：
+      # Rust 那半用 cargo，TypeScript 那半用**已安装的** vitest（node_modules/vitest/vitest.mjs）。
+      # 少这一步它会报「找不到 vitest 入口」——不是代码坏了，是依赖没装。
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
+      - name: Rust 门禁
+        run: ./tools/verify_workbench.sh rust
+        working-directory: .
+  browser-smokes:
+    name: 浏览器冒烟
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
+      - name: 装 agent-browser（含浏览器二进制）
+        # 少装浏览器二进制时，冒烟会在开页面那一步失败，报错离原因很远。
+        run: |
+          npm install -g agent-browser
+          agent-browser install
+
+      - name: 跑全部浏览器冒烟
+        # 不用 run_all_smokes.sh：它缺 agent-browser 时 exit 0，在 CI 上会变成
+        # 「什么都没跑也算成功」。这个脚本自己遍历，缺任何一套都算失败。
+        run: ./tools/ci_run_browser_smokes.sh

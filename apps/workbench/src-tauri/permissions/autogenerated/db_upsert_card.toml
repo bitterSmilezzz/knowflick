@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-upsert-card"
+description = "Enables the db_upsert_card command without any pre-configured scope."
+commands.allow = ["db_upsert_card"]
+
+[[permission]]
+identifier = "deny-db-upsert-card"
+description = "Denies the db_upsert_card command without any pre-configured scope."
+commands.deny = ["db_upsert_card"]

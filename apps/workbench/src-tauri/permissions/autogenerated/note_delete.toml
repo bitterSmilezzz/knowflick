@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-delete"
+description = "Enables the note_delete command without any pre-configured scope."
+commands.allow = ["note_delete"]
+
+[[permission]]
+identifier = "deny-note-delete"
+description = "Denies the note_delete command without any pre-configured scope."
+commands.deny = ["note_delete"]

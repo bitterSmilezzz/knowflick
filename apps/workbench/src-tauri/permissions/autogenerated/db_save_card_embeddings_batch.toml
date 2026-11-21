@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-save-card-embeddings-batch"
+description = "Enables the db_save_card_embeddings_batch command without any pre-configured scope."
+commands.allow = ["db_save_card_embeddings_batch"]
+
+[[permission]]
+identifier = "deny-db-save-card-embeddings-batch"
+description = "Denies the db_save_card_embeddings_batch command without any pre-configured scope."
+commands.deny = ["db_save_card_embeddings_batch"]

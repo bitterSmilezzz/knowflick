@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-kb-remove-note"
+description = "Enables the kb_remove_note command without any pre-configured scope."
+commands.allow = ["kb_remove_note"]
+
+[[permission]]
+identifier = "deny-kb-remove-note"
+description = "Denies the kb_remove_note command without any pre-configured scope."
+commands.deny = ["kb_remove_note"]

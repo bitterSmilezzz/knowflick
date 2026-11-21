@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-e2ee-decrypt"
+description = "Enables the e2ee_decrypt command without any pre-configured scope."
+commands.allow = ["e2ee_decrypt"]
+
+[[permission]]
+identifier = "deny-e2ee-decrypt"
+description = "Denies the e2ee_decrypt command without any pre-configured scope."
+commands.deny = ["e2ee_decrypt"]

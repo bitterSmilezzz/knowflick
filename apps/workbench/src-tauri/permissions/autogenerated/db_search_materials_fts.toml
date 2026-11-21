@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-search-materials-fts"
+description = "Enables the db_search_materials_fts command without any pre-configured scope."
+commands.allow = ["db_search_materials_fts"]
+
+[[permission]]
+identifier = "deny-db-search-materials-fts"
+description = "Denies the db_search_materials_fts command without any pre-configured scope."
+commands.deny = ["db_search_materials_fts"]

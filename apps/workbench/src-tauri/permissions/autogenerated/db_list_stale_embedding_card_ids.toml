@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-list-stale-embedding-card-ids"
+description = "Enables the db_list_stale_embedding_card_ids command without any pre-configured scope."
+commands.allow = ["db_list_stale_embedding_card_ids"]
+
+[[permission]]
+identifier = "deny-db-list-stale-embedding-card-ids"
+description = "Denies the db_list_stale_embedding_card_ids command without any pre-configured scope."
+commands.deny = ["db_list_stale_embedding_card_ids"]

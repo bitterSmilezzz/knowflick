@@ -5,22 +5,26 @@
  * 为什么手写协议而不装 @modelcontextprotocol/sdk：这台机器在中国大陆网络下，
  * npm 安装与依赖供应链都不可靠；stdio 上的 JSON-RPC 只有几个方法，手写反而更稳、可审计。
  *
- * 安全边界：**只读** cards.json；唯一的写路径是 staged_cards.json（与 cards.json 同构），
- * 由用户在 App 的「导入归档数据」里人工确认后才进卡库。Agent 永远不会直接改你的库。
+ * 数据请求需要工作台签发的全库令牌；唯一的写路径是 staged_cards.json，
+ * 由用户在 App 的「导入归档数据」里人工确认后才进卡库。
  *
  * 用法：
- *   node tools/knowflick-mcp/server.mjs                     # 用默认 App 数据目录
- *   node tools/knowflick-mcp/server.mjs --cards <path>      # 指定 cards.json
- *   node tools/knowflick-mcp/server.mjs --allow-write       # 打开 kf_stage_card
+ *   客户端配置中提供 KNOWFLICK_MCP_TOKEN；--cards 必须指向授权库目录内文件。
+ *   --allow-write 同时需要建卡授权，才可调用 kf_stage_card。
  *   node tools/knowflick-mcp/server.mjs --selftest "查询"    # 不启动 stdio，直接跑一遍工具
  */
 
 import readline from "node:readline";
+import fs from "node:fs";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { canUse, mcpEnabled, withMcpGrant } from "../mcp-access.mjs";
 import {
   DEFAULT_APP_DIR,
   browseMap,
   createSearcher,
   createLibraryReader,
+  defaultCardsPath,
   indexTaxonomy,
   learningPath,
   loadLibrary,
@@ -184,7 +188,7 @@ function handleLine(line, context) {
         protocolVersion: context.negotiated,
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
-        instructions: "只读访问本机 KnowFlick 卡库。写回仅支持 kf_stage_card，且需 --allow-write；结果进暂存队列，由用户在 App 内确认入库。",
+        instructions: "数据访问需要连接令牌；暂存还需建卡权限及 --allow-write，由用户在 App 内确认入库。",
       });
     }
     case "notifications/initialized":
@@ -193,25 +197,60 @@ function handleLine(line, context) {
     case "ping":
       return respond(id, {});
     case "tools/list":
-      return respond(id, {
-        tools: context.library.allowWrite ? TOOL_DEFS : TOOL_DEFS.filter((tool) => tool.name !== "kf_stage_card"),
-        ttlMs: 300_000,
-      });
+      try {
+        return respond(id, context.authorize("tools_list", (grant) => {
+          if (grant.scope !== "library") throw denied();
+          return { tools: TOOL_DEFS.filter(tool => tool.name === "kf_stage_card"
+            ? context.allowWrite && canUse(grant, "legacy_card_stage")
+            : canUse(grant, "legacy_card_read")), ttlMs: 0 };
+        }));
+      } catch (error) { return fail(id, error.code ?? -32603, error.message); }
     case "tools/call": {
       const name = params?.name;
       if (!TOOL_DEFS.some((tool) => tool.name === name)) return fail(id, -32602, `未知工具：${name}`);
-      if (name === "kf_stage_card" && !context.library.allowWrite) {
+      if (name === "kf_stage_card" && !context.allowWrite) {
         return respond(id, { isError: true, content: [{ type: "text", text: "写回未开启：需以 --allow-write 启动 server" }] });
       }
       try {
-        const payload = context.call(name, params?.arguments ?? {});
+        const stage = name === "kf_stage_card";
+        // 文件暂存不属于 SQLite 事务。先持久记录操作意图，再重新校验、持锁写文件。
+        if (stage) context.authorize("legacy_card_stage_attempt", () => null);
+        let started = false;
+        const payload = context.authorize(stage ? "legacy_card_stage" : "legacy_card_read", () => {
+          started = stage;
+          try { return context.call(name, params?.arguments ?? {}); }
+          catch (error) {
+            if (error.code === "KF_STAGE_LOCKED") throw error;
+            if (started) throw new Error("暂存未完成，队列可能已更改，请检查暂存队列。");
+            throw error;
+          }
+        }, stage);
         return respond(id, { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError: payload?.ok === false });
       } catch (error) {
-        return respond(id, { content: [{ type: "text", text: `工具执行失败：${error.message}` }], isError: true });
+        if (error.code === -32001 || error.code === -32000) return fail(id, error.code, error.message);
+        return respond(id, { content: [{ type: "text", text: error.message || "工具执行失败，请检查库与授权。" }], isError: true });
       }
     }
     default:
       return isNotification ? null : fail(id, -32601, `方法不支持：${method}`);
+  }
+}
+
+function denied() {
+  const error = new Error("授权无效或无权执行此操作；请在 KnowFlick 设置中检查连接授权。");
+  error.code = -32001;
+  return error;
+}
+
+/** 限定卡片与暂存文件位于凭据所属库目录，拒绝越界符号链接。 */
+function verifyFiles(libraryDir, cardsFile, stage) {
+  const root = fs.realpathSync(libraryDir);
+  const cards = fs.realpathSync(cardsFile);
+  if (path.dirname(cards) !== root) throw denied();
+  if (stage) {
+    const staged = path.join(root, "staged_cards.json");
+    try { if (fs.lstatSync(staged).isSymbolicLink()) throw denied(); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
   }
 }
 
@@ -239,13 +278,40 @@ function main() {
     return;
   }
 
-  const library = { ...loadLibrary(options), allowWrite: options.allowWrite };
-  const readLibrary = createLibraryReader(options);
+  const cardsFile = path.resolve(options.cardsFile ?? defaultCardsPath(options.appDir));
+  const libraryDir = path.dirname(cardsFile);
+  const readLibrary = createLibraryReader({ ...options, cardsFile });
   let snapshot;
   let call;
   const context = {
-    library,
+    allowWrite: options.allowWrite,
     negotiated: PROTOCOL_FALLBACK,
+    authorize(operation, run, stage = false) {
+      if (!mcpEnabled(libraryDir)) {
+        const error = new Error("MCP 模块已停用或设置不可读取，请在 KnowFlick 中检查设置。");
+        error.code = -32000;
+        throw error;
+      }
+      let db;
+      let callbackStarted = false;
+      try {
+        const dbPath = path.join(libraryDir, "knowflick.db");
+        if (!fs.existsSync(dbPath)) throw new Error("数据库不存在");
+        if (fs.lstatSync(dbPath).isSymbolicLink() || path.dirname(fs.realpathSync(dbPath)) !== fs.realpathSync(libraryDir)) throw denied();
+        db = new DatabaseSync(dbPath);
+        return withMcpGrant(db, process.env.KNOWFLICK_MCP_TOKEN, operation, grant => {
+          if (grant.scope !== "library") throw denied();
+          verifyFiles(libraryDir, cardsFile, stage);
+          callbackStarted = true;
+          return run(grant);
+        });
+      } catch (error) {
+        if (error.code === -32001 || error.code === -32000 || error.code === "KF_STAGE_LOCKED") throw error;
+        throw new Error(stage && callbackStarted
+          ? "暂存未完成，队列可能已更改，请检查暂存队列。"
+          : "请求未完成，请检查知识库、授权与审计设置。");
+      } finally { db?.close(); }
+    },
     call(name, args) {
       const next = readLibrary();
       if (next !== snapshot) {

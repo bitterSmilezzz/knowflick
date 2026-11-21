@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-list-artifacts"
+description = "Enables the db_list_artifacts command without any pre-configured scope."
+commands.allow = ["db_list_artifacts"]
+
+[[permission]]
+identifier = "deny-db-list-artifacts"
+description = "Denies the db_list_artifacts command without any pre-configured scope."
+commands.deny = ["db_list_artifacts"]

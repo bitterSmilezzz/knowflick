@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-cards-json"
+description = "Enables the export_cards_json command without any pre-configured scope."
+commands.allow = ["export_cards_json"]
+
+[[permission]]
+identifier = "deny-export-cards-json"
+description = "Denies the export_cards_json command without any pre-configured scope."
+commands.deny = ["export_cards_json"]
