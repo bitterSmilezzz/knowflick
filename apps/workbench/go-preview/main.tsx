@@ -30,7 +30,8 @@ import { CardLibrary } from "./CardLibrary";
 import { MaterialLibrary } from "./MaterialLibrary";
 import { ArtifactsView } from "../src/ui/workspace/ArtifactsView";
 import { ProjectLibrary } from "./ProjectLibrary";
-import { GoalLibrary } from "./GoalLibrary";
+import { GoalsView } from "../src/ui/workspace/GoalsView";
+import { toSharedNote } from "./sharedAdapters";
 import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "../src/ui/workspace/McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
@@ -917,7 +918,12 @@ function Preview() {
       {lib && view === "review" && <ReviewDeck key={"ReviewDeck:" + lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
       {lib && view === "materials" && <MaterialLibrary key={"MaterialLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onChanged={() => setStatsRevision((value) => value + 1)} />}
       {lib && view === "claims" && <ClaimLibrary key={"ClaimLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
-      {lib && view === "goals" && <GoalLibrary key={"GoalLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "goals" && <GoalsView
+        dir={lib.path}
+        materials={[]}
+        notes={(lib.page.notes ?? []).map(toSharedNote)}
+        onGoalsChange={() => setStatsRevision((value) => value + 1)}
+      />}
       {lib && view === "projects" && <ProjectLibrary key={"ProjectLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "artifacts" && <ArtifactsView
         dir={lib.path}

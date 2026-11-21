@@ -1700,6 +1700,13 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百二十一轮 · 目标页切共享视图
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 目标页切换 | 构建通过 | go-preview 的目标页改为挂载共享前端 GoalsView，删除预览专用 GoalLibrary。为跨过 Wails 绑定与共享领域笔记的字段差异，新增 sharedAdapters.ts 逐字段转换笔记（含 tagsJson 解析），不用类型断言硬套。 |
+| 浏览器验证 | PARTIAL | Chromium 生产构建 + 模拟 IPC：共享目标页正常渲染，ListGoals / ListProjects 经桥接读取且带当前代号 5；无头点击下「新建目标」按钮未触发提交，本轮未验证创建与证据关联接口，留待下轮排查。桥接测试已补上 goal_create_cmd 的嵌套载荷拆解（doneCriteria → criteria）。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。其余共享视图继续逐屏切换。 |
 ## 阶段 2 第一百二十轮 · 产物库切共享与回归修复
 
 | 验收 | 结果 | 证据与范围 |

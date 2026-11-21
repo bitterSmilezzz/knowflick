@@ -34,13 +34,21 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
     if (param === "now") return Date.now();
     if (name === "db_search_cards_fts" && param === "offset") return args.limit ?? 0;
     if (name === "db_load_cards" && param === "query") return "";
-    const source = name === "db_save_material" && args.material && typeof args.material === "object"
-      ? args.material as Record<string, unknown>
-      : args;
+    if (name === "goal_create_cmd" && param === "criteria") {
+      const nested = args.goal as Record<string, unknown> | undefined;
+      return nested?.doneCriteria ?? null;
+    }
+    const sources: Record<string, unknown>[] = [args];
+    for (const nested of ["goal", "material", "request"]) {
+      const value = args[nested];
+      if (value && typeof value === "object") sources.push(value as Record<string, unknown>);
+    }
     for (const key of [param, snakeToCamel(param)]) {
-      if (key in source) return source[key];
-      const insensitive = Object.keys(source).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
-      if (insensitive) return source[insensitive];
+      for (const source of sources) {
+        if (key in source) return source[key];
+        const insensitive = Object.keys(source).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+        if (insensitive) return source[insensitive];
+      }
     }
     return null;
   });
