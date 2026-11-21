@@ -1700,6 +1700,15 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百零八轮 · 笔记片段向量化
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 片段向量化 | 构建通过 | 设置面板新增「向量化笔记片段」：循环 ListNoteChunkTexts（16 段/批，hash/char-ngram-128 身份）→ LocalEmbed 文本向量 → SaveNoteChunkEmbeddings 写回（按 contentRevision 校验，过期不写），写完刷新待办数并提示已向量化段数；没有缺项时按钮禁用。这是第一百零七轮片段检索的写入来源，此前该检索在真实库上永远为空。 |
+| 读取闭环 | PASS | Chromium 生产构建 + 模拟 IPC 冒烟：先在设置面板向量化 1 段（断言 SaveNoteChunkEmbeddings 的身份与 contentRevision=7 载荷、待办 1→0、按钮转禁用），再提问，SearchNoteChunksVector 命中该片段并以 [笔记片段 1] 进入提示词。 |
+| 绑定面盘点 | 记录 | go-preview 绑定数升至 126（本轮接 ListNoteChunkTexts、SaveNoteChunkEmbeddings）；余 36 个按能力逐轮接线。 |
+| 验证范围 | 记录 | Wails production 构建、前端 939 例（带 fixture，0 跳过）、Rust 195 例通过；Go 全量通过（TestSyncDueLoopRunsRoundsUntilCancelled 出现一次时序抖动，隔离重跑 3 次与全量复跑均通过，前端改动不触及 Go 代码）。 |
+
 ## 阶段 2 第一百零七轮 · 知识问答多信号检索
 
 | 验收 | 结果 | 证据与范围 |

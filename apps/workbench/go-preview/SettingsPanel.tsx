@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { BackfillMaterialFTS, CaptureDatabaseSnapshot, CopyBackupToDirectory, LibrarySignature, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { BackfillMaterialFTS, CaptureDatabaseSnapshot, CopyBackupToDirectory, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+
+/** 哈希投影的向量身份，与 Go 端 embed.HashProvider/HashModel 一致。 */
+const HASH_IDENTITY = { provider: "hash", model: "char-ngram-128" };
 
 type Props = {
   generation: number;
@@ -17,6 +20,7 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
   const [signature, setSignature] = useState("");
   const [unembedded, setUnembedded] = useState<number | null>(null);
   const [stale, setStale] = useState<number | null>(null);
+  const [chunkPending, setChunkPending] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -41,6 +45,9 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
         if (!active) return;
         setUnembedded(unembeddedIDs?.length ?? 0);
         setStale(staleIDs?.length ?? 0);
+        const chunkTexts = await ListNoteChunkTexts(generation, 500, HASH_IDENTITY.provider, HASH_IDENTITY.model);
+        if (!active) return;
+        setChunkPending(chunkTexts?.length ?? 0);
       } catch (cause) {
         if (active) setError(String(cause));
       }
@@ -66,6 +73,37 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
     await run(async () => {
       const count = await BackfillMaterialFTS(generation);
       setNotice(count > 0 ? "已补全 " + count + " 条素材的全文索引" : "素材索引没有缺项");
+    });
+  }
+
+  async function embedNoteChunks() {
+    if (busy || !writable) return;
+    await run(async () => {
+      let total = 0;
+      for (let round = 0; round < 50; round++) {
+        const chunks = await ListNoteChunkTexts(generation, 16, HASH_IDENTITY.provider, HASH_IDENTITY.model);
+        if (!chunks?.length) break;
+        const vectors = await LocalEmbed(chunks.map((chunk: { content: string }) => chunk.content), false);
+        if (!vectors || vectors.length !== chunks.length) break;
+        const items = [];
+        for (let index = 0; index < chunks.length; index++) {
+          const embedding = vectors[index];
+          if (!embedding) continue;
+          items.push({
+            noteId: chunks[index].noteId,
+            chunkIndex: chunks[index].chunkIndex,
+            contentRevision: chunks[index].contentRevision,
+            embedding,
+          });
+        }
+        if (!items.length) break;
+        const saved = await SaveNoteChunkEmbeddings(generation, items, HASH_IDENTITY.provider, HASH_IDENTITY.model);
+        total += saved;
+        if (!saved) break;
+      }
+      const pending = await ListNoteChunkTexts(generation, 500, HASH_IDENTITY.provider, HASH_IDENTITY.model);
+      setChunkPending(pending?.length ?? 0);
+      setNotice(total > 0 ? "已向量化 " + total + " 段笔记片段" : "笔记片段没有缺项");
     });
   }
 
@@ -120,8 +158,9 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
         <button type="button" disabled={busy || !writable || !history.trim()} onClick={() => void save("history")}>保存搜索历史</button>
       </div>
       <div className="preview-confirm">
-        <p>向量索引：未嵌入 {unembedded ?? "…"} 张 · 身份不匹配 {stale ?? "…"} 张（当前本地哈希引擎 hash/char-ngram-128，128 维）</p>
+        <p>向量索引：未嵌入 {unembedded ?? "…"} 张 · 身份不匹配 {stale ?? "…"} 张 · 笔记片段待向量化 {chunkPending ?? "…"} 段（当前本地哈希引擎 hash/char-ngram-128，128 维）</p>
         <div className="preview-actions">
+          <button type="button" disabled={busy || !writable || !chunkPending} onClick={() => void embedNoteChunks()}>向量化笔记片段</button>
           <button type="button" disabled={busy || !writable || !unembedded} onClick={() => void run(async () => {
             const count = await RebuildHashEmbeddings(generation, 100);
             setNotice("已为 " + count + " 张卡片补全哈希向量");
