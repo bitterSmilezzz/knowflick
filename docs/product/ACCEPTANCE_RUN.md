@@ -1700,6 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百一十七轮 · 补齐桥接命令缺口
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| Go 服务补齐 | 构建通过 | 新增 GetNote、WriteTextFile、SaveMaterial 三个服务方法，分别对应共享前端的 note_get、write_text_file、db_save_material；知识库增删成员复用 SetKnowledgeBaseMembership，由命令表提供固定成员标志。桥接表从 127/133 提升到 132/133。 |
+| 桥接规则 | PASS | 兼容层支持固定参数、参数名大小写差异与素材对象拆解。Node 测试核对 133 个命令全部登记、只剩 kb_restore_membership 一个显式缺口，并逐条验证新增命令、知识库固定标志及既有转换。 |
+| Go 回归 | PASS | 在 Rust 资料库夹具上：GetNote 读出笔记；WriteTextFile 创建父目录并逐字节写回，空路径拒绝；只读库拒绝新建素材，启用编辑后 SaveMaterial 写入收件箱且内容可查。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。按静态绑定口径，新服务方法由桥接层动态调用，仍显示为未直接导入；共享视图挂载留待后续轮次。 |
 ## 阶段 2 第一百一十六轮 · Tauri 调用桥接基础
 
 | 验收 | 结果 | 证据与范围 |

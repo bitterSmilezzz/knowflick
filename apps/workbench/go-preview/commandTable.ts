@@ -1,5 +1,5 @@
 /** 由 Rust 命令签名与 Wails 绑定生成的命令表；null 表示 Go 预览尚无等价入口。 */
-export type BridgeEntry = { service: string; method: string; args: string[] } | null;
+export type BridgeEntry = { service: string; method: string; args: string[]; fixed?: Record<string, unknown> } | null;
 
 export const COMMANDS: Record<string, BridgeEntry> = {
   "asr_download_model": {"service": "PreviewService","method": "StartAsrDownload","args": ["model"]},
@@ -40,7 +40,7 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "db_save_artifact": {"service": "PreviewService","method": "SaveArtifact","args": ["generation","artifact"]},
   "db_save_card_embedding": {"service": "PreviewService","method": "SaveCardEmbedding","args": ["generation","cardID","vector","provider","model"]},
   "db_save_card_embeddings_batch": {"service": "PreviewService","method": "SaveCardEmbeddingsBatch","args": ["generation","items","provider","model"]},
-  "db_save_material": null,
+  "db_save_material": {"service": "PreviewService","method": "SaveMaterial","args": ["generation","title","text","sourceURL"]},
   "db_save_subscription": {"service": "SubscriptionService","method": "SaveSubscription","args": ["item"]},
   "db_search_cards_fts": {"service": "PreviewService","method": "BrowseCards","args": ["generation","query","offset"]},
   "db_search_cards_hybrid": {"service": "PreviewService","method": "SearchCardsHybrid","args": ["generation","query","queryEmbedding","provider","model","limit"]},
@@ -60,11 +60,11 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "goal_review_snapshot": {"service": "PreviewService","method": "GoalReview","args": ["generation","to"]},
   "goal_set_scope_cmd": {"service": "PreviewService","method": "SetGoalScope","args": ["generation","id","scope"]},
   "hide_capsule": {"service": "PreviewService","method": "HideCapsule","args": []},
-  "kb_add_note": null,
+  "kb_add_note": {"service": "PreviewService","method": "SetKnowledgeBaseMembership","args": ["generation","kbID","noteID","member"],"fixed": {"member": true}},
   "kb_create": {"service": "PreviewService","method": "CreateKnowledgeBase","args": ["generation","id","name","description"]},
   "kb_list": {"service": "PreviewService","method": "ReadKnowledgeBases","args": ["generation"]},
   "kb_membership": {"service": "PreviewService","method": "ReadKnowledgeBases","args": ["generation"]},
-  "kb_remove_note": null,
+  "kb_remove_note": {"service": "PreviewService","method": "SetKnowledgeBaseMembership","args": ["generation","kbID","noteID","member"],"fixed": {"member": false}},
   "kb_restore_membership": null,
   "load_store": {"service": "PreviewService","method": "LoadStore","args": ["generation"]},
   "local_embed": {"service": "PreviewService","method": "LocalEmbed","args": ["texts","isQuery"]},
@@ -85,7 +85,7 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "mcp_server_paths": {"service": "PreviewService","method": "McpServerPaths","args": ["generation"]},
   "note_delete": {"service": "PreviewService","method": "DeleteNote","args": ["generation","id"]},
   "note_ensure_from_material": {"service": "PreviewService","method": "EnsureNoteFromMaterial","args": ["generation","materialID"]},
-  "note_get": null,
+  "note_get": {"service": "PreviewService","method": "GetNote","args": ["generation","id"]},
   "note_history_list": {"service": "PreviewService","method": "ListNoteHistory","args": ["generation","id"]},
   "note_history_read": {"service": "PreviewService","method": "ReadNoteHistory","args": ["generation","id","revision"]},
   "note_list": {"service": "PreviewService","method": "ListNotes","args": ["generation","offset"]},
@@ -133,6 +133,6 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "toggle_capsule": {"service": "PreviewService","method": "ToggleCapsule","args": []},
   "webdav_upload_backup": {"service": "PreviewService","method": "UploadBackupToWebDAV","args": ["generation","baseURL","username","secret","remember"]},
   "write_api_key": {"service": "PreviewService","method": "WriteAPIKey","args": ["generation","value"]},
-  "write_text_file": null,
+  "write_text_file": {"service": "PreviewService","method": "WriteTextFile","args": ["path","contents"]},
   "write_webdav_credential": {"service": "PreviewService","method": "WriteWebDAVCredential","args": ["generation","value"]},
 };

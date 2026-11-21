@@ -28,12 +28,18 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
   if (!(name in COMMANDS)) throw new Error("未知的原生命令：" + name);
   if (entry === null) throw new Error("Go 预览还没有实现命令：" + name);
   const values = entry.args.map((param) => {
+    if (entry.fixed && param in entry.fixed) return entry.fixed[param];
     if (param === "generation") return generation;
     if (param === "now") return Date.now();
     if (name === "db_search_cards_fts" && param === "offset") return args.limit ?? 0;
     if (name === "db_load_cards" && param === "query") return "";
+    const source = name === "db_save_material" && args.material && typeof args.material === "object"
+      ? args.material as Record<string, unknown>
+      : args;
     for (const key of [param, snakeToCamel(param)]) {
-      if (key in args) return args[key];
+      if (key in source) return source[key];
+      const insensitive = Object.keys(source).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+      if (insensitive) return source[insensitive];
     }
     return null;
   });
