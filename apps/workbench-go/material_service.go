@@ -64,6 +64,16 @@ func (s *PreviewService) CaptureMaterial(ctx context.Context, generation int, ti
 	return s.current.Capture(ctx, library.CaptureInput{Title: title, Text: text, URL: sourceURL}, time.Now().UnixMilli())
 }
 
+// CaptureCapsuleMaterial 写入当前资料库的收件箱。胶囊与主窗口共享编辑权限。
+func (s *PreviewService) CaptureCapsuleMaterial(ctx context.Context, text string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || !s.writable {
+		return "", errors.New("请先在主窗口打开资料库并启用编辑")
+	}
+	return s.current.Capture(ctx, library.CaptureInput{Text: text}, time.Now().UnixMilli())
+}
+
 // FetchClipPage 抓取网页原文（HTML/正文），由前端 digest 抽取后再入库。
 func (s *PreviewService) FetchClipPage(ctx context.Context, generation int, url string) (httpx.ClipPage, error) {
 	s.mu.RLock()

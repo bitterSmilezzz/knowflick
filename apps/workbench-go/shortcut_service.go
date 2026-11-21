@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // ShortcutStatus 是全局快捷键的注册状态（与 Rust ShortcutStatus 同形）。
@@ -28,23 +31,45 @@ func (s *PreviewService) GetShortcutStatus(ctx context.Context) (ShortcutStatus,
 
 // HideCapsule 隐藏快捷捕捉窗口（hide_capsule）。
 func (s *PreviewService) HideCapsule(ctx context.Context) error {
-	if s.capsuleWindow == nil {
-		return errors.New("捕捉窗口尚未创建")
+	if s.app == nil {
+		return errors.New("应用尚未启动")
 	}
-	s.capsuleWindow.Hide()
-	return nil
+	return application.InvokeSyncWithError(func() error {
+		if s.capsuleWindow == nil {
+			return errors.New("捕捉窗口尚未创建")
+		}
+		s.capsuleWindow.Hide()
+		return nil
+	})
 }
 
-// ToggleCapsule 显示/隐藏快捷捕捉窗口（toggle_capsule）。
+// ToggleCapsule 显示或隐藏快捷捕捉窗口（toggle_capsule）。
 func (s *PreviewService) ToggleCapsule(ctx context.Context) error {
-	if s.capsuleWindow == nil {
-		return errors.New("捕捉窗口尚未创建")
+	return s.toggleCapsule()
+}
+
+func (s *PreviewService) toggleCapsule() error {
+	if s.app == nil {
+		return errors.New("应用尚未启动")
 	}
-	if s.capsuleWindow.IsVisible() {
-		s.capsuleWindow.Hide()
-	} else {
-		s.capsuleWindow.Show()
-	}
+	application.InvokeSync(func() {
+		if s.capsuleWindow == nil {
+			window := s.app.Window.NewWithOptions(application.WebviewWindowOptions{
+				Title: "快速捕捉", Width: 480, Height: 220, URL: "/?window=capsule",
+			})
+			window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+				event.Cancel()
+				window.Hide()
+			})
+			s.capsuleWindow = window
+			return
+		}
+		if s.capsuleWindow.IsVisible() {
+			s.capsuleWindow.Hide()
+		} else {
+			s.capsuleWindow.Show()
+		}
+	})
 	return nil
 }
 

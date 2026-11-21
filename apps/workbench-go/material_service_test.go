@@ -49,6 +49,9 @@ func TestPreviewMaterialFlowOnRustLibrary(t *testing.T) {
 	if err := service.UpdateMaterialStatus(ctx, opened.Generation, "material-active", "dismissed"); !errors.Is(err, library.ErrReadOnly) {
 		t.Fatalf("read-only status: %v", err)
 	}
+	if _, err := service.CaptureCapsuleMaterial(ctx, "只读胶囊草稿"); err == nil {
+		t.Fatal("capsule capture accepted in a read-only library")
+	}
 	writable, err := service.EnableEditing(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -101,5 +104,13 @@ func TestPreviewMaterialFlowOnRustLibrary(t *testing.T) {
 	inbox, err = service.ListMaterials(ctx, writable.Generation, true, 100, 0)
 	if err != nil || len(inbox) != 1 || inbox[0].ID != captured || inbox[0].SourceType != "web" {
 		t.Fatalf("inbox after capture: %+v, %v", inbox, err)
+	}
+	capsuleID, err := service.CaptureCapsuleMaterial(ctx, "胶囊速记")
+	if err != nil || capsuleID == "" {
+		t.Fatalf("capsule capture: %q, %v", capsuleID, err)
+	}
+	var body, statusValue string
+	if err := db.QueryRow("SELECT raw_text, inbox_status FROM materials WHERE id = ?", capsuleID).Scan(&body, &statusValue); err != nil || body != "胶囊速记" || statusValue != "inbox" {
+		t.Fatalf("capsule row: %q %q %v", body, statusValue, err)
 	}
 }

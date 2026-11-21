@@ -47,4 +47,26 @@ describe("知识问答检索", () => {
     expect(body.messages[1].content).toContain("[卡片 1] 标题: 卡片标题");
     expect(body.messages[1].content).not.toContain("[笔记 1]");
   });
+
+  it("携带画像记忆时按范围标注进请求体，未携带则没有记忆段", () => {
+    const withMemory = JSON.parse(buildKnowledgeChatBody("m", [{ id: "a", title: "架构笔记", excerpt: "正文" }], "问题", [], [], { scopeLabel: "全局", contents: ["偏好简洁的回答", "常用 Go"] }));
+    expect(withMemory.messages[1].content).toContain("【本次用户明确允许提供给当前模型的已确认个人记忆】");
+    expect(withMemory.messages[1].content).toContain("\"全局\"");
+    expect(withMemory.messages[1].content).toContain("偏好简洁的回答");
+    const without = JSON.parse(buildKnowledgeChatBody("m", [{ id: "a", title: "架构笔记", excerpt: "正文" }], "问题"));
+    expect(without.messages[1].content).not.toContain("个人记忆");
+  });
+
+  it("后续请求保留普通对话，省略使用过画像记忆的问答", () => {
+    const body = JSON.parse(buildKnowledgeChatBody("m", [], "下一题", [
+      { role: "user", content: "普通问题" },
+      { role: "assistant", content: "普通回答" },
+      { role: "user", content: "带记忆的提问", includedProfileMemory: true },
+      { role: "assistant", content: "可能复述画像的回答", includedProfileMemory: true },
+    ]));
+    expect(body.messages.slice(2)).toEqual([
+      { role: "user", content: "普通问题" },
+      { role: "assistant", content: "普通回答" },
+    ]);
+  });
 });

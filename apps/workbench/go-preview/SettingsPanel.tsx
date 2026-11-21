@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BackfillMaterialFTS, CaptureDatabaseSnapshot, CopyBackupToDirectory, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { BackfillMaterialFTS, CaptureDatabaseSnapshot, CopyBackupToDirectory, GetShortcutStatus, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, ToggleCapsule, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
 
 /** 哈希投影的向量身份，与 Go 端 embed.HashProvider/HashModel 一致。 */
 const HASH_IDENTITY = { provider: "hash", model: "char-ngram-128" };
@@ -21,6 +21,7 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
   const [unembedded, setUnembedded] = useState<number | null>(null);
   const [stale, setStale] = useState<number | null>(null);
   const [chunkPending, setChunkPending] = useState<number | null>(null);
+  const [shortcut, setShortcut] = useState<{ shortcut: string; registered: boolean; error: string | null } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -48,6 +49,9 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
         const chunkTexts = await ListNoteChunkTexts(generation, 500, HASH_IDENTITY.provider, HASH_IDENTITY.model);
         if (!active) return;
         setChunkPending(chunkTexts?.length ?? 0);
+        const shortcutStatus = await GetShortcutStatus();
+        if (!active) return;
+        setShortcut(shortcutStatus ?? null);
       } catch (cause) {
         if (active) setError(String(cause));
       }
@@ -171,6 +175,12 @@ export function SettingsPanel({ generation, writable, busy, onBusy }: Props) {
             setUnembedded(unembeddedIDs?.length ?? 0);
             setStale(staleIDs?.length ?? 0);
           })}>补全哈希向量</button>
+        </div>
+      </div>
+      <div className="preview-confirm">
+        <p>快速记录：{shortcut?.registered ? shortcut.shortcut + " 已注册" : "全局快捷键未注册" + (shortcut?.error ? "：" + shortcut.error : "")}；也可从这里呼出胶囊窗口。</p>
+        <div className="preview-actions">
+          <button type="button" disabled={busy} onClick={() => void run(async () => { await ToggleCapsule(); setNotice("已切换闪念胶囊窗口"); })}>打开闪念胶囊</button>
         </div>
       </div>
       <div className="preview-confirm">

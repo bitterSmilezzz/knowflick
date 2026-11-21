@@ -27,7 +27,7 @@ import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
-import { CaptureMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, SaveAttachment } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureCapsuleMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, SaveAttachment } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { mediaMimeOfExtension, noteMediaPaths } from "../src/domain/mediaMime";
@@ -57,7 +57,7 @@ function CapsuleCapture() {
     if (!value || saving) return;
     setSaving(true); setError(""); setNotice("");
     try {
-      const id = await CaptureMaterial(0, "", value, "");
+      const id = await CaptureCapsuleMaterial(value);
       setText("");
       setNotice("已存入收件箱" + (id ? "（" + id.slice(0, 8) + "…）" : ""));
       await HideCapsule();
@@ -71,7 +71,7 @@ function CapsuleCapture() {
   return (
     <div className="preview-capsule">
       <strong>快速捕捉</strong>
-      <textarea value={text} disabled={saving} autoFocus placeholder="记一条灵感或摘录…"
+      <textarea aria-label="写入当前资料库收件箱" value={text} disabled={saving} autoFocus placeholder="记一条灵感或摘录…"
         onChange={(event) => setText(event.target.value)} />
       {error && <p className="preview-error" role="alert">{error}</p>}
       {notice && <p className="preview-notice" role="status">{notice}</p>}
@@ -802,10 +802,10 @@ function Preview() {
       </section>}
 
 
-      {settingsOpen && lib && <SettingsPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
-      {askOpen && <AskPanel key={lib?.generation ?? "ask"} generation={lib?.generation ?? 0} busy={busy} onBusy={setBusy} onOpenNote={(id) => { setSelectedId(id); setView("notes"); setAskOpen(false); }} />}
-      {asrOpen && <AsrPanel key={lib?.generation ?? "asr"} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
-      {mcpOpen && lib && <McpGrantPanel key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {settingsOpen && lib && <SettingsPanel key={"SettingsPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {askOpen && <AskPanel key={"AskPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? 0} busy={busy} onBusy={setBusy} onOpenNote={(id) => { setSelectedId(id); setView("notes"); setAskOpen(false); }} />}
+      {asrOpen && <AsrPanel key={"AsrPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
+      {mcpOpen && lib && <McpGrantPanel key={"McpGrantPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {subsOpen && <section className="preview-mail" aria-label="订阅源">
         <div className="preview-mail-head">
           <strong>订阅源</strong>
@@ -883,13 +883,13 @@ function Preview() {
         <button type="button" disabled={busy} onClick={() => void retryRejected(mailBrowse.id)}>重试被拒邮件</button>
         <button type="button" disabled={busy} onClick={() => setMailBrowse(null)}>收起</button>
       </section>}
-      {lib && view === "review" && <ReviewDeck key={lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
-      {lib && view === "materials" && <MaterialLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onChanged={() => setStatsRevision((value) => value + 1)} />}
-      {lib && view === "claims" && <ClaimLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
-      {lib && view === "goals" && <GoalLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
-      {lib && view === "projects" && <ProjectLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
-      {lib && view === "artifacts" && <ArtifactLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
-      {lib && view === "cards" && <CardLibrary key={lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onEditing={setCardEditing} />}
+      {lib && view === "review" && <ReviewDeck key={"ReviewDeck:" + lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
+      {lib && view === "materials" && <MaterialLibrary key={"MaterialLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onChanged={() => setStatsRevision((value) => value + 1)} />}
+      {lib && view === "claims" && <ClaimLibrary key={"ClaimLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "goals" && <GoalLibrary key={"GoalLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "projects" && <ProjectLibrary key={"ProjectLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "artifacts" && <ArtifactLibrary key={"ArtifactLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "cards" && <CardLibrary key={"CardLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onEditing={setCardEditing} />}
       {lib && <div className="preview-workspace" hidden={view !== "notes"}>
         <section className="preview-list" aria-label="笔记列表">
           {!trash && <KnowledgeBasePicker key={lib.generation} snapshot={knowledge} error={knowledgeError} scope={scope} busy={busy} dirty={dirty} writable={lib.writable} onScope={changeScope} onCreate={createKnowledgeBase} />}
@@ -952,7 +952,7 @@ function Preview() {
             </div>}
             {lib.writable && view === "notes" && <DraftNotePreview key={selected.id} generation={lib.generation} text={draftBody} />}
             {knowledge && <NoteKnowledgeBases
-              key={lib.generation + ":" + selected.id}
+              key={"membership:" + lib.generation + ":" + selected.id}
               snapshot={knowledge}
               noteID={selected.id}
               busy={busy || dirty}
@@ -960,7 +960,7 @@ function Preview() {
               onChange={changeMembership}
             />}
             <NoteHistory
-              key={lib.generation + ":" + selected.id}
+              key={"history:" + lib.generation + ":" + selected.id}
               generation={lib.generation}
               note={selected}
               writable={lib.writable}
