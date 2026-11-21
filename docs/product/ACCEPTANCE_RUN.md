@@ -1700,6 +1700,15 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百一十三轮 · API 向量化与检索身份一致
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| API 向量化 | 构建通过 | 设置面板新增「用 API 向量化卡片」：按设置里的接口地址与厂商推导端点与嵌入模型，分页取卡片富文本，循环未嵌入与身份不匹配批次调用 RequestEmbeddings，再用 SaveCardEmbeddingsBatch 连同身份写回；接口返回数量不符时明确报错、不写半批。 |
+| 检索身份一致 | PASS | 知识问答在配置了接口地址与密钥时，用同一身份发起查询向量并做卡片混合检索；笔记片段仍按哈希身份（分块写入时就是该身份）；API 向量失败时回退本地哈希，不阻断提问。 |
+| 浏览器验证 | PASS | Chromium 生产构建 + 模拟 IPC：2 张卡片按 openai/text-embedding-3-small 写入并显示回执；提问时 RequestEmbeddings 查询 1 条文本、SearchCardsHybrid 身份一致、SearchNoteChunksVector 仍为 hash/char-ngram-128。 |
+| 绑定面盘点 | 记录 | go-preview 已接 133 个方法（本轮接 RequestEmbeddings、SaveCardEmbeddingsBatch）；余 30 个按能力逐轮核对。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。真实 embeddings 接口与费用仍由用户密钥决定，未在本轮发起真实请求。 |
 ## 阶段 2 第一百一十二轮 · 旧归档导入真正落库
 
 | 验收 | 结果 | 证据与范围 |

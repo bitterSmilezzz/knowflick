@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { parseImportReport, reportLines, summarizeReport } from "../src/domain/importReport";
-import { BackfillMaterialFTS, CaptureDatabaseSnapshot, CopyBackupToDirectory, GetShortcutStatus, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, ToggleCapsule, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { BackfillMaterialFTS, BrowseCards, CaptureDatabaseSnapshot, CopyBackupToDirectory, GetShortcutStatus, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, RequestEmbeddings, SaveCardEmbeddingsBatch, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, ToggleCapsule, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
 
-/** 哈希投影的向量身份，与 Go 端 embed.HashProvider/HashModel 一致。 */
-const HASH_IDENTITY = { provider: "hash", model: "char-ngram-128" };
+import { HASH_IDENTITY, apiEmbeddingConfig, cardText } from "./embeddingConfig";
+
 
 type Props = {
   generation: number;
@@ -114,6 +114,56 @@ export function SettingsPanel({ generation, writable, busy, onBusy, reportRevisi
     });
   }
 
+  async function embedCardsViaAPI() {
+    if (busy || !writable) return;
+    await run(async () => {
+      const config = apiEmbeddingConfig(settings, apiKey);
+      if (!config) throw new Error("先保存设置里的接口地址，并写入接口密钥，才能用 API 生成向量");
+      const { endpoint, provider, model } = config;
+      const textByID = new Map<string, string>();
+      let offset = 0;
+      for (let page = 0; page < 200; page++) {
+        const result = await BrowseCards(generation, "", offset);
+        const cards = result?.cards ?? [];
+        for (const card of cards) textByID.set(card.id, cardText(card.content));
+        if (!result?.hasMore || cards.length === 0) break;
+        offset += cards.length;
+      }
+      if (textByID.size === 0) throw new Error("资料库里还没有卡片");
+      async function writeBatch(ids: string[]): Promise<number> {
+        const pairs = ids.filter((id) => textByID.has(id));
+        if (pairs.length === 0) return 0;
+        const texts = pairs.map((id) => textByID.get(id)!);
+        const vectors = await RequestEmbeddings(endpoint, apiKey.trim(), model, texts);
+        if (!vectors || vectors.length !== texts.length) throw new Error("接口返回的向量数量与文本数量不一致");
+        await SaveCardEmbeddingsBatch(generation, pairs.map((id, index) => ({ cardId: id, vector: vectors[index] })), provider, model);
+        return pairs.length;
+      }
+      let written = 0;
+      for (let round = 0; round < 200; round++) {
+        const ids = await ListUnembeddedCardIDs(generation, 20);
+        if (!ids?.length) break;
+        const count = await writeBatch(ids);
+        if (count === 0) break;
+        written += count;
+      }
+      for (let round = 0; round < 200; round++) {
+        const ids = await ListStaleEmbeddingCardIDs(generation, 0, provider, model, 20);
+        if (!ids?.length) break;
+        const count = await writeBatch(ids);
+        if (count === 0) break;
+        written += count;
+      }
+      const [unembeddedIDs, staleIDs] = await Promise.all([
+        ListUnembeddedCardIDs(generation, 500),
+        ListStaleEmbeddingCardIDs(generation, 128, "hash", "char-ngram-128", 500),
+      ]);
+      setUnembedded(unembeddedIDs?.length ?? 0);
+      setStale(staleIDs?.length ?? 0);
+      setNotice(written > 0 ? "已用 " + provider + "/" + model + " 向量化 " + written + " 张卡片" : "没有需要向量化的卡片");
+    });
+  }
+
   async function downloadSnapshot() {
     if (busy) return;
     await run(async () => {
@@ -168,6 +218,7 @@ export function SettingsPanel({ generation, writable, busy, onBusy, reportRevisi
         <p>向量索引：未嵌入 {unembedded ?? "…"} 张 · 身份不匹配 {stale ?? "…"} 张 · 笔记片段待向量化 {chunkPending ?? "…"} 段（当前本地哈希引擎 hash/char-ngram-128，128 维）</p>
         <div className="preview-actions">
           <button type="button" disabled={busy || !writable || !chunkPending} onClick={() => void embedNoteChunks()}>向量化笔记片段</button>
+          <button type="button" disabled={busy || !writable || !apiKey.trim() || (!unembedded && !stale)} onClick={() => void embedCardsViaAPI()}>用 API 向量化卡片</button>
           <button type="button" disabled={busy || !writable || !unembedded} onClick={() => void run(async () => {
             const count = await RebuildHashEmbeddings(generation, 100);
             setNotice("已为 " + count + " 张卡片补全哈希向量");

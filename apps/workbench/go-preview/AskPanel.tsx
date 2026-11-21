@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CompleteChat, ListClaims, ListNotes, ListProjectClaims, ListProjects, LocalEmbed, ReadAPIKey, ReadSettings, SearchCardsHybrid, SearchNoteChunksVector } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CompleteChat, ListClaims, ListNotes, ListProjectClaims, ListProjects, LocalEmbed, ReadAPIKey, ReadSettings, RequestEmbeddings, SearchCardsHybrid, SearchNoteChunksVector } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { ChunkHit, HybridCardHit, Note } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import type { Claim } from "./bindings/knowflick.local/workbench-go/internal/profile/models";
 import type { Project } from "./bindings/knowflick.local/workbench-go/internal/projects/models";
@@ -18,8 +18,7 @@ type Props = {
 type Cited = { id: string; title: string };
 type Message = { role: "user" | "assistant"; content: string; cited?: Cited[]; includedProfileMemory?: boolean };
 
-/** 哈希投影的向量身份，与 Go 端 embed.HashProvider/HashModel 一致（设置页同款）。 */
-const HASH_IDENTITY = { provider: "hash", model: "char-ngram-128" };
+import { HASH_IDENTITY, apiEmbeddingConfig } from "./embeddingConfig";
 
 export function AskPanel({ generation, busy, onBusy, onOpenNote }: Props) {
   const [notes, setNotes] = useState<Note[] | null>(null);
@@ -93,25 +92,46 @@ export function AskPanel({ generation, busy, onBusy, onOpenNote }: Props) {
       const matched = selectKnowledgeNotes(notes ?? [], text);
       let extraCards: KnowledgeChatExtra[] = [];
       let extraChunks: KnowledgeChatExtra[] = [];
+      // 卡片与查询同空间才能召回：配了接口地址与密钥时用 API 向量，
+      // 否则退回哈希投影；片段向量始终按哈希身份（分块写入时就是它）。
+      const apiConfig = apiEmbeddingConfig(settingsText, apiKey);
+      let cardVector: number[] | null = null;
+      let cardIdentity = HASH_IDENTITY;
+      if (apiConfig) {
+        try {
+          const vectors = await RequestEmbeddings(apiConfig.endpoint, apiKey.trim(), apiConfig.model, [text]);
+          cardVector = vectors?.[0] ?? null;
+          cardIdentity = { provider: apiConfig.provider, model: apiConfig.model };
+        } catch (cause) {
+          console.warn("API 向量不可用，回退本地哈希:", cause);
+        }
+      }
+      let chunkVector: number[] | null = null;
       try {
         const vectors = await LocalEmbed([text], true);
-        const queryVector = vectors?.[0] ?? null;
-        if (queryVector) {
-          const [hybridHits, chunkHits] = await Promise.all([
-            SearchCardsHybrid(generation, text, queryVector, HASH_IDENTITY.provider, HASH_IDENTITY.model, 6),
-            SearchNoteChunksVector(generation, queryVector, HASH_IDENTITY.provider, HASH_IDENTITY.model, 3),
-          ]);
-          extraCards = (hybridHits ?? []).slice(0, 4).map((hit: HybridCardHit) => ({
-            kind: "card" as const,
-            title: hit.card.headline || "无标题卡片",
-            body: hit.card.details.slice(0, 1200),
-          }));
-          extraChunks = (chunkHits ?? []).map((hit: ChunkHit) => ({
-            kind: "chunk" as const,
-            title: hit.noteTitle || "无标题笔记",
-            body: hit.content,
-          }));
+        chunkVector = vectors?.[0] ?? null;
+        if (!cardVector) {
+          cardVector = chunkVector;
+          cardIdentity = HASH_IDENTITY;
         }
+      } catch (cause) {
+        console.warn("本地向量不可用，跳过向量召回:", cause);
+      }
+      try {
+        const [hybridHits, chunkHits] = await Promise.all([
+          cardVector ? SearchCardsHybrid(generation, text, cardVector, cardIdentity.provider, cardIdentity.model, 6) : Promise.resolve(null),
+          chunkVector ? SearchNoteChunksVector(generation, chunkVector, HASH_IDENTITY.provider, HASH_IDENTITY.model, 3) : Promise.resolve(null),
+        ]);
+        extraCards = (hybridHits ?? []).slice(0, 4).map((hit: HybridCardHit) => ({
+          kind: "card" as const,
+          title: hit.card.headline || "无标题卡片",
+          body: hit.card.details.slice(0, 1200),
+        }));
+        extraChunks = (chunkHits ?? []).map((hit: ChunkHit) => ({
+          kind: "chunk" as const,
+          title: hit.noteTitle || "无标题笔记",
+          body: hit.content,
+        }));
       } catch (cause) {
         console.warn("向量检索不可用，降级为关键词笔记检索:", cause);
       }
