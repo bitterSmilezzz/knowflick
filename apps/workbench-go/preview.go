@@ -33,6 +33,7 @@ type PreviewService struct {
 // LibraryView 是打开资料库后的返回：名称、代号与首页。
 type LibraryView struct {
 	Name       string       `json:"name"`
+	Path       string       `json:"path"`
 	Writable   bool         `json:"writable"`
 	Generation int          `json:"generation"`
 	Page       library.Page `json:"page"`
@@ -93,7 +94,7 @@ func (s *PreviewService) open(ctx context.Context, path string, writable bool) (
 	s.path = path
 	s.writable = writable
 	s.generation++
-	return &LibraryView{Name: filepath.Base(filepath.Dir(path)) + " / " + filepath.Base(path), Writable: writable, Generation: s.generation, Page: page}, nil
+	return &LibraryView{Name: filepath.Base(filepath.Dir(path)) + " / " + filepath.Base(path), Path: path, Writable: writable, Generation: s.generation, Page: page}, nil
 }
 
 // ListNotes 分页列笔记；代号不符说明界面拿的是旧库，直接拒绝而不是串库。

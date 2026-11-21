@@ -18,6 +18,10 @@ import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import { buildImportReport, serializeImportReport } from "../src/domain/importReport";
 import { decodeCardList } from "../src/domain/card";
+// 共享前端用 __TAURI_INTERNALS__ 判定是否运行在桌面壳；Wails 预览同为原生桌面。
+if (!("__TAURI_INTERNALS__" in window)) {
+  (window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> }).__TAURI_INTERNALS__ = {};
+}
 import "../src/ui/workspace/workspace.css";
 import "./preview.css";
 import { NoteHistory } from "./NoteHistory";
@@ -28,7 +32,7 @@ import { ArtifactLibrary } from "./ArtifactLibrary";
 import { ProjectLibrary } from "./ProjectLibrary";
 import { GoalLibrary } from "./GoalLibrary";
 import { ClaimLibrary } from "./ClaimLibrary";
-import { McpGrantPanel } from "./McpGrantPanel";
+import { McpGrantPanel } from "../src/ui/workspace/McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
 import { CaptureCapsuleMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, ReplaceCards, SaveAttachment, SaveImportReport } from "./bindings/knowflick.local/workbench-go/previewservice";
@@ -111,6 +115,7 @@ function Preview() {
 
   useEffect(() => {
     setBridgeGeneration(lib?.generation ?? 0);
+    (window as unknown as { __kfGeneration?: number }).__kfGeneration = lib?.generation ?? 0;
     if (!lib) { setStats(null); return; }
     let active = true;
     void GetStats(lib.generation)
@@ -125,6 +130,8 @@ function Preview() {
 
   function adopt(result: LibraryView | null, keepId = false) {
     if (!result) return;
+    setBridgeGeneration(result.generation);
+    (window as unknown as { __kfGeneration?: number }).__kfGeneration = result.generation;
     setLib(result);
     setScope("");
     setKnowledge(null);
@@ -828,7 +835,7 @@ function Preview() {
       {settingsOpen && lib && <SettingsPanel key={"SettingsPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy}  reportRevision={importReportRevision} />}
       {askOpen && <AskPanel key={"AskPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? 0} busy={busy} onBusy={setBusy} onOpenNote={(id) => { setSelectedId(id); setView("notes"); setAskOpen(false); }} />}
       {asrOpen && <AsrPanel key={"AsrPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
-      {mcpOpen && lib && <McpGrantPanel key={"McpGrantPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      <McpGrantPanel dir={lib?.path ?? ""} enabled={lib?.writable ?? false} />
       {subsOpen && <section className="preview-mail" aria-label="订阅源">
         <div className="preview-mail-head">
           <strong>订阅源</strong>

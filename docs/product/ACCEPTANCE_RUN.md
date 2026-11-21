@@ -1700,6 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百一十九轮 · 首个共享视图经桥接落地
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 共享视图切换 | 构建通过 | go-preview 不再使用自写 MCP 授权面板，改为直接挂载共享前端的 McpGrantPanel；旧的预览专用面板已删除。为让共享代码识别原生壳，设置 __TAURI_INTERNALS__ 标记；LibraryView 增加库路径字段，供共享视图生成 MCP 配置。 |
+| 桥接链路 | PASS | Chromium 生产构建 + 模拟 IPC：共享视图的 ListMcpGrants / ListProjects / McpServerPaths 经兼容层转到 Wails，参数携带当前资料库代号 5；创建连接授权与撤销均走通，界面显示一次性令牌配置与最新授权列表。 |
+| 代号时序修复 | 记录 | 共享视图的子组件 effect 可能先于主界面 effect 执行；改为在 adopt() 打开资料库时同步注入代号，避免桥接调用拿到代号 0。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。其余共享视图仍按能力逐步切换。 |
 ## 阶段 2 第一百一十八轮 · 桥接全覆盖与构建解析
 
 | 验收 | 结果 | 证据与范围 |

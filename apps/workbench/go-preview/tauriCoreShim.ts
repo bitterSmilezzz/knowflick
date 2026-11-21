@@ -29,7 +29,8 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
   if (entry === null) throw new Error("Go 预览还没有实现命令：" + name);
   const values = entry.args.map((param) => {
     if (entry.fixed && param in entry.fixed) return entry.fixed[param];
-    if (param === "generation") return generation;
+    const active = (globalThis as unknown as { __kfGeneration?: number }).__kfGeneration ?? generation;
+    if (param === "generation") return active;
     if (param === "now") return Date.now();
     if (name === "db_search_cards_fts" && param === "offset") return args.limit ?? 0;
     if (name === "db_load_cards" && param === "query") return "";
