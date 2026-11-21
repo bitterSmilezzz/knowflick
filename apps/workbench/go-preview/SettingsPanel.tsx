@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { parseImportReport, reportLines, summarizeReport } from "../src/domain/importReport";
-import { BackfillMaterialFTS, BrowseCards, CaptureDatabaseSnapshot, CopyBackupToDirectory, GetShortcutStatus, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, RequestEmbeddings, SaveCardEmbeddingsBatch, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, ToggleCapsule, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { BackfillMaterialFTS, BrowseCards, CaptureDatabaseSnapshot, CopyBackupToDirectory, GetShortcutStatus, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, LocalEmbedStatus, LocalEmbedWarmUp, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, RequestEmbeddings, SaveCardEmbeddingsBatch, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, ToggleCapsule, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
 
 import { HASH_IDENTITY, apiEmbeddingConfig, cardText } from "./embeddingConfig";
 
@@ -25,6 +25,7 @@ export function SettingsPanel({ generation, writable, busy, onBusy, reportRevisi
   const [stale, setStale] = useState<number | null>(null);
   const [chunkPending, setChunkPending] = useState<number | null>(null);
   const [shortcut, setShortcut] = useState<{ shortcut: string; registered: boolean; error: string | null } | null>(null);
+  const [localStatus, setLocalStatus] = useState<{ model: string; dim: number; downloaded: boolean; cacheDir: string } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -52,6 +53,9 @@ export function SettingsPanel({ generation, writable, busy, onBusy, reportRevisi
         const chunkTexts = await ListNoteChunkTexts(generation, 500, HASH_IDENTITY.provider, HASH_IDENTITY.model);
         if (!active) return;
         setChunkPending(chunkTexts?.length ?? 0);
+        const status = await LocalEmbedStatus();
+        if (!active) return;
+        setLocalStatus(status ?? null);
         const shortcutStatus = await GetShortcutStatus();
         if (!active) return;
         setShortcut(shortcutStatus ?? null);
@@ -111,6 +115,15 @@ export function SettingsPanel({ generation, writable, busy, onBusy, reportRevisi
       const pending = await ListNoteChunkTexts(generation, 500, HASH_IDENTITY.provider, HASH_IDENTITY.model);
       setChunkPending(pending?.length ?? 0);
       setNotice(total > 0 ? "已向量化 " + total + " 段笔记片段" : "笔记片段没有缺项");
+    });
+  }
+
+  async function warmUpLocalModel() {
+    if (busy || !localStatus?.downloaded) return;
+    await run(async () => {
+      const status = await LocalEmbedWarmUp();
+      setLocalStatus(status ?? null);
+      setNotice("本地语义模型状态已刷新");
     });
   }
 
@@ -216,9 +229,13 @@ export function SettingsPanel({ generation, writable, busy, onBusy, reportRevisi
       </div>
       <div className="preview-confirm">
         <p>向量索引：未嵌入 {unembedded ?? "…"} 张 · 身份不匹配 {stale ?? "…"} 张 · 笔记片段待向量化 {chunkPending ?? "…"} 段（当前本地哈希引擎 hash/char-ngram-128，128 维）</p>
+        <p>{localStatus?.downloaded
+          ? "本地语义模型 " + localStatus.model + "（" + localStatus.dim + " 维）已就绪，缓存 " + localStatus.cacheDir
+          : "本地语义模型" + (localStatus ? "（" + localStatus.model + "，" + localStatus.dim + " 维）" : "") + "未下载；当前使用哈希投影或 API 向量。"}</p>
         <div className="preview-actions">
           <button type="button" disabled={busy || !writable || !chunkPending} onClick={() => void embedNoteChunks()}>向量化笔记片段</button>
           <button type="button" disabled={busy || !writable || !apiKey.trim() || (!unembedded && !stale)} onClick={() => void embedCardsViaAPI()}>用 API 向量化卡片</button>
+          {localStatus?.downloaded && <button type="button" disabled={busy} onClick={() => void warmUpLocalModel()}>预热本地模型</button>}
           <button type="button" disabled={busy || !writable || !unembedded} onClick={() => void run(async () => {
             const count = await RebuildHashEmbeddings(generation, 100);
             setNotice("已为 " + count + " 张卡片补全哈希向量");

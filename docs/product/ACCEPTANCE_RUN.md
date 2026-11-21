@@ -1700,6 +1700,15 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百一十四轮 · 本地语义模型状态
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 模型状态 | 构建通过 | 设置面板读取 LocalEmbedStatus，显示本地语义模型名称、维度、缓存目录与是否就绪；未下载时如实写「当前使用哈希投影或 API 向量」，不提供无效的下载按钮。 |
+| 预热入口 | PASS | 仅在模型已下载时出现「预热本地模型」，调用 LocalEmbedWarmUp 复验并刷新状态与回执；Go 侧没有 ONNX 运行时的限制仍按既有说明保留。 |
+| 浏览器验证 | PASS | Chromium 生产构建 + 模拟 IPC：已下载场景显示模型与缓存路径、预热按钮可用且调用成功；未下载场景显示「未下载；当前使用哈希投影或 API 向量」且没有预热按钮。 |
+| 绑定面盘点 | 记录 | go-preview 已接 135 个方法（本轮接 LocalEmbedStatus、LocalEmbedWarmUp）；余 28 个按能力逐轮核对。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。真实本地模型文件（fastembed 权重）不在 Go 运行时的能力范围内，状态仅如实报告缓存是否存在。 |
 ## 阶段 2 第一百一十三轮 · API 向量化与检索身份一致
 
 | 验收 | 结果 | 证据与范围 |
