@@ -29,7 +29,7 @@ import { ReviewDeck } from "./ReviewDeck";
 import { CardLibrary } from "./CardLibrary";
 import { MaterialLibrary } from "./MaterialLibrary";
 import { ArtifactsView } from "../src/ui/workspace/ArtifactsView";
-import { ProjectLibrary } from "./ProjectLibrary";
+import { ProjectsView } from "../src/ui/workspace/ProjectsView";
 import { GoalsView } from "../src/ui/workspace/GoalsView";
 import { toSharedNote } from "./sharedAdapters";
 import { ClaimLibrary } from "./ClaimLibrary";
@@ -926,7 +926,10 @@ function Preview() {
         notes={(lib.page.notes ?? []).map(toSharedNote)}
         onGoalsChange={handleGoalsChange}
       />}
-      {lib && view === "projects" && <ProjectLibrary key={"ProjectLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "projects" && <ProjectsView
+        dir={lib.path}
+        notes={(lib.page.notes ?? []).map((item) => ({ id: item.id, title: item.title }))}
+      />}
       {lib && view === "artifacts" && <ArtifactsView
         dir={lib.path}
         cards={[]}

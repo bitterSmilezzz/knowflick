@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       // 共享前端仍按 Tauri 方式调用原生；在 Wails 预览里换成兼容层。
       "@tauri-apps/api/core": path.resolve(fileURLToPath(new URL("./tauriCoreShim.ts", import.meta.url))),
+      "@tauri-apps/api/app": path.resolve(fileURLToPath(new URL("./tauriAppShim.ts", import.meta.url))),
     },
   },
   plugins: [react()],

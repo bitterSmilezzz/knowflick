@@ -1700,6 +1700,13 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百二十三轮 · 项目页切共享视图
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 项目页切换 | 构建通过 | go-preview 的项目页改为挂载共享前端 ProjectsView，删除预览专用 ProjectLibrary。新增 app 插件兼容层（getVersion/ getName/ getTauriVersion），供技能包导出读取版本。 |
+| 浏览器验证 | PASS | Chromium 生产构建 + 模拟 IPC：项目列表与成员读取带当前代号 5；新建项目经桥接创建并出现在列表；选择笔记加入项目后成员笔记显示「性能笔记」。项目列表调用次数受断言约束，未出现重取循环。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。技能包导出（依赖 app 插件版本号）本轮未在浏览器点击验证。 |
 ## 阶段 2 第一百二十二轮 · 目标页重取循环修复与完整验收
 
 | 验收 | 结果 | 证据与范围 |
