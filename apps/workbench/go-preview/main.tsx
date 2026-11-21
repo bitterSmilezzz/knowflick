@@ -28,7 +28,7 @@ import { NoteHistory } from "./NoteHistory";
 import { ReviewDeck } from "./ReviewDeck";
 import { CardLibrary } from "./CardLibrary";
 import { MaterialLibrary } from "./MaterialLibrary";
-import { ArtifactLibrary } from "./ArtifactLibrary";
+import { ArtifactsView } from "../src/ui/workspace/ArtifactsView";
 import { ProjectLibrary } from "./ProjectLibrary";
 import { GoalLibrary } from "./GoalLibrary";
 import { ClaimLibrary } from "./ClaimLibrary";
@@ -835,7 +835,7 @@ function Preview() {
       {settingsOpen && lib && <SettingsPanel key={"SettingsPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy}  reportRevision={importReportRevision} />}
       {askOpen && <AskPanel key={"AskPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? 0} busy={busy} onBusy={setBusy} onOpenNote={(id) => { setSelectedId(id); setView("notes"); setAskOpen(false); }} />}
       {asrOpen && <AsrPanel key={"AsrPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
-      <McpGrantPanel dir={lib?.path ?? ""} enabled={lib?.writable ?? false} />
+      {mcpOpen && lib && <McpGrantPanel dir={lib.path} enabled={lib.writable} />}
       {subsOpen && <section className="preview-mail" aria-label="订阅源">
         <div className="preview-mail-head">
           <strong>订阅源</strong>
@@ -919,7 +919,14 @@ function Preview() {
       {lib && view === "claims" && <ClaimLibrary key={"ClaimLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "goals" && <GoalLibrary key={"GoalLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "projects" && <ProjectLibrary key={"ProjectLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
-      {lib && view === "artifacts" && <ArtifactLibrary key={"ArtifactLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
+      {lib && view === "artifacts" && <ArtifactsView
+        dir={lib.path}
+        cards={[]}
+        notes={(lib.page.notes ?? []).map((item) => ({ id: item.id, title: item.title }))}
+        onOpenNote={(id) => { setSelectedId(id); setView("notes"); }}
+        onOpenCard={() => setNotice("卡片详情请到卡片库查看")}
+        onBack={() => setView("notes")}
+      />}
       {lib && view === "cards" && <CardLibrary key={"CardLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onEditing={setCardEditing} />}
       {lib && <div className="preview-workspace" hidden={view !== "notes"}>
         <section className="preview-list" aria-label="笔记列表">

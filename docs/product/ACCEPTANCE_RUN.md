@@ -1700,6 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百二十轮 · 产物库切共享与回归修复
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 产物库切换 | 构建通过 | go-preview 的产物页改为直接挂载共享前端 ArtifactsView，删除预览专用 ArtifactLibrary；列表、展开、删除与回原件笔记均走桥接命令。 |
+| 浏览器验证 | PASS | Chromium 生产构建 + 模拟 IPC：产物列表带当前代号读出，展开显示 Markdown，点来源笔记切回笔记编辑，删除后空态显示；DeleteArtifact 经桥接调用。 |
+| 回归修复 | PASS（修复并复验） | 上一轮切共享 MCP 面板时误把渲染条件去掉，资料库未就绪时子组件对空项目列表调用 map 导致首屏空白；恢复 mcpOpen && lib 条件后，MCP 冒烟与产物冒烟均通过。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例、Go 全量与 Rust 195 例回归通过。共享视图切换继续按能力逐屏推进。 |
 ## 阶段 2 第一百一十九轮 · 首个共享视图经桥接落地
 
 | 验收 | 结果 | 证据与范围 |
