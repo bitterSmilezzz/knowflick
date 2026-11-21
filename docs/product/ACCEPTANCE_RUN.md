@@ -1700,6 +1700,16 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
+## 阶段 2 第一百一十二轮 · 旧归档导入真正落库
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 旧归档落库 | 构建通过 | 导入旧归档不再只写 cards.json：按共享解码器解析归档卡片后调用 ReplaceCards，整体重建资料库卡片（软删缺失项、重建全文索引），并按卡片数回执。 |
+| 报告与失败 | PASS | 成功时导入报告写入「cards.json（N 张卡片）」。失败（如库仍为只读）时报告记录归档名与原因，界面同时显示错误，不把失败伪装成成功。 |
+| 浏览器验证 | PASS | Chromium 生产构建 + 模拟 IPC：含 2 张卡片的归档触发一次 ReplaceCards，校验两张卡片的标识；成功回执提示重建卡片库；只读失败时报告与错误都带原因。 |
+| 绑定面盘点 | 记录 | go-preview 已接 131 个方法（本轮接 ReplaceCards）；余 32 个按能力逐轮核对。 |
+| 验证范围 | 记录 | Wails production 构建、前端 941 例（含跨端夹具）、Go 全量（含 Rust 库夹具）与 Rust 195 例回归通过。 |
+
 ## 阶段 2 第一百一十一轮 · 导入报告接线
 
 | 验收 | 结果 | 证据与范围 |

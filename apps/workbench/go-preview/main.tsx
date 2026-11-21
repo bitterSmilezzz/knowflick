@@ -16,6 +16,7 @@ import type { Subscription } from "./bindings/knowflick.local/workbench-go/inter
 import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import { buildImportReport, serializeImportReport } from "../src/domain/importReport";
+import { decodeCardList } from "../src/domain/card";
 import "../src/ui/workspace/workspace.css";
 import "./preview.css";
 import { NoteHistory } from "./NoteHistory";
@@ -29,7 +30,7 @@ import { ClaimLibrary } from "./ClaimLibrary";
 import { McpGrantPanel } from "./McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
-import { CaptureCapsuleMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, SaveAttachment, SaveImportReport } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureCapsuleMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, ReplaceCards, SaveAttachment, SaveImportReport } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { mediaMimeOfExtension, noteMediaPaths } from "../src/domain/mediaMime";
@@ -290,9 +291,14 @@ function Preview() {
     try {
       const payload = await ReadImportArchiveFile("cards.json");
       if (!payload.cards.trim()) throw new Error("归档中没有可用的卡片数据");
+      const cards = decodeCardList(payload.cards);
+      if (cards.length === 0) throw new Error("归档中没有可用的卡片数据");
       await SaveCardsJSONIfNeeded(payload.cards);
-      await writeImportReport(["cards.json"], []);
-      setNotice("旧归档已导入 cards.json（三代轮转），可在卡片库搜索确认");
+      const replacePayload = cards.map((card) => ({ ...card, materialId: card.materialId ?? null, tags: card.tags ?? null, orderKey: card.orderKey ?? null, prereq: card.prereq ?? [] }));
+      await ReplaceCards(lib.generation, replacePayload);
+      await writeImportReport(["cards.json（" + cards.length + " 张卡片）"], []);
+      setNotice("旧归档已导入 " + cards.length + " 张卡片（cards.json 三代轮转），卡片库已按归档重建");
+      await reload(lib.generation);
     } catch (cause) {
       await writeImportReport([], [{ name: "cards.json", reason: String(cause) }]);
       fail(cause);
