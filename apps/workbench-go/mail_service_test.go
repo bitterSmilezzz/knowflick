@@ -99,17 +99,12 @@ func TestSyncMailAccountNowIgnoresInterval(t *testing.T) {
 	}, "p"); err != nil {
 		t.Fatal(err)
 	}
-	outcome, err := service.SyncMailAccountNow(context.Background(), id)
-	if err != nil {
-		t.Fatalf("manual sync should reach the account, got %v", err)
+	if _, err := service.SyncMailAccountNow(context.Background(), id); err == nil {
+		t.Fatal("a manual sync of an unreachable host must return an error")
 	}
-	if outcome.AccountID != id {
-		t.Fatalf("outcome: %+v", outcome)
-	}
-	// 连不上 imap.example.com 是预期内的失败，但**必须尝试、必须报错**，
-	// 而不是因为间隔为 0 被静默跳过。
-	if outcome.Error == "" {
-		t.Fatal("a manual sync of an unreachable host must report an error, not silently skip")
+	account, err := mail.GetAccount(dir, id)
+	if err != nil || account == nil || account.LastAttemptAt == nil {
+		t.Fatalf("sync did not reach the saved account: %+v, %v", account, err)
 	}
 }
 
@@ -124,14 +119,11 @@ func TestSyncMailHistoryNowReachesAccount(t *testing.T) {
 	}, "p"); err != nil {
 		t.Fatal(err)
 	}
-	outcome, err := service.SyncMailHistoryNow(context.Background(), id)
-	if err != nil {
-		t.Fatalf("history sync should reach the account, got %v", err)
+	if _, err := service.SyncMailHistoryNow(context.Background(), id); err == nil {
+		t.Fatal("a history sync of an unreachable host must return an error")
 	}
-	if outcome.AccountID != id {
-		t.Fatalf("outcome: %+v", outcome)
-	}
-	if outcome.Error == "" {
-		t.Fatal("a history sync of an unreachable host must report an error, not silently skip")
+	account, err := mail.GetAccount(dir, id)
+	if err != nil || account == nil || account.LastAttemptAt == nil {
+		t.Fatalf("sync did not reach the saved account: %+v, %v", account, err)
 	}
 }

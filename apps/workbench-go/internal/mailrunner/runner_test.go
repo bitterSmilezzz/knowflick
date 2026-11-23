@@ -342,6 +342,16 @@ func TestSyncDueRunsRunnerAndSkipsUntilInterval(t *testing.T) {
 	if len(again) != 0 {
 		t.Fatalf("second round should wait: %+v", again)
 	}
+	// 游标落后于去重账本时，手动同步应在回执里报告实际跳过的邮件。
+	if _, err := db.Exec("UPDATE mail_accounts SET last_uid=3 WHERE id=?1", id); err != nil {
+		t.Fatal(err)
+	}
+	manualClock := func() int64 { return clock() + 1 }
+	manual, err := SyncAccount(context.Background(), db, dir, id, mailsync.ModeNew, manualClock, server.roots)
+	if err != nil || manual.AccountID != id || manual.Imported != 0 || manual.Skipped != 1 ||
+		manual.Rejected != 0 || manual.LastSyncAt != manualClock() || !manual.HistoryComplete {
+		t.Fatalf("manual sync result: %+v, %v", manual, err)
+	}
 	// 导出真实结果供 Rust 对拍：不靠猜「应该导入几封」。
 	if target := os.Getenv("KF_GO_DUE_FIXTURE"); target != "" {
 		lines := make([]string, 0, len(outcomes))

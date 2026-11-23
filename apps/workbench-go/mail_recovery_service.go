@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"knowflick.local/workbench-go/internal/mail"
-	"knowflick.local/workbench-go/internal/mailrunner"
-	"knowflick.local/workbench-go/internal/mailschedule"
 	"knowflick.local/workbench-go/internal/mailsync"
 )
 
@@ -34,22 +32,6 @@ func (m *MailService) ListImportedMail(ctx context.Context, id string) ([]mail.I
 }
 
 // RetryRejectedMail 重试被隔离的邮件。和手动同步共用锁，避免双写同一游标。
-func (m *MailService) RetryRejectedMail(ctx context.Context, id string) (mailschedule.Outcome, error) {
-	dir, err := m.requireWritable()
-	if err != nil {
-		return mailschedule.Outcome{}, err
-	}
-	db, err := m.connection(dir)
-	if err != nil {
-		return mailschedule.Outcome{}, err
-	}
-	unlock := mailschedule.Lock()
-	defer unlock()
-	syncer := mailrunner.NewModeAccountSyncer(db, dir, mailsync.ModeRetry, nil, nil)
-	imported, rejected, syncErr := syncer.Sync(ctx, id)
-	outcome := mailschedule.Outcome{AccountID: id, Imported: imported, Rejected: rejected}
-	if syncErr != nil {
-		outcome.Error = syncErr.Error()
-	}
-	return outcome, nil
+func (m *MailService) RetryRejectedMail(ctx context.Context, id string) (mailsync.Result, error) {
+	return m.syncAccount(ctx, id, mailsync.ModeRetry)
 }

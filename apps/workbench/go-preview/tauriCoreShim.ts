@@ -85,9 +85,9 @@ function flattenMailAccount(value: unknown): unknown {
 function adaptResult(name: string, result: unknown): unknown {
   if (name === "mail_list_accounts") return Array.isArray(result) ? result.map(flattenMailAccount) : [];
   if (name === "mail_save_account") return flattenMailAccount(result);
-  if (name === "mail_sync_account" || name === "mail_sync_history" || name === "mail_sync_due_accounts") {
-    const adapt = (item: unknown) => item && typeof item === "object" ? { skipped: 0, ...(item as Record<string, unknown>) } : item;
-    return Array.isArray(result) ? result.map(adapt) : adapt(result);
+  if (name === "mail_list_rejected" || name === "mail_sync_due_accounts") return result ?? [];
+  if (name === "mail_test_account" && result && typeof result === "object" && "folder" in result && "messageCount" in result) {
+    return { message: `连接成功：${result.folder}，共 ${result.messageCount} 封邮件` };
   }
   return result;
 }

@@ -9,6 +9,7 @@ import (
 
 	"knowflick.local/workbench-go/internal/imap"
 	"knowflick.local/workbench-go/internal/mail"
+	"knowflick.local/workbench-go/internal/mailschedule"
 )
 
 // MailTestSummary 是连接测试的回执：登录成功后只读打开文件夹，报它和邮件数。
@@ -17,22 +18,26 @@ type MailTestSummary struct {
 	MessageCount uint32 `json:"messageCount"`
 }
 
-// TestMailAccount 只登录并只读打开文件夹，不写库、不拉邮件。
-// 凭据与配置由调用方提供，不落盘——「测试」和「保存」是两件事。
+// TestMailAccount 只登录并只读打开文件夹，不写凭据、不拉邮件。
 func (m *MailService) TestMailAccount(ctx context.Context, config mail.Config, secret string) (MailTestSummary, error) {
-	return testMailConnection(ctx, config, secret, nil)
+	return m.testMailAccount(ctx, config, secret, nil)
 }
 
-// testMailConnection 是可注入根证书的实现：测试用自签名本地服务器，生产不传 roots。
-func testMailConnection(ctx context.Context, config mail.Config, secret string, roots *x509.CertPool) (MailTestSummary, error) {
+func (m *MailService) testMailAccount(ctx context.Context, config mail.Config, secret string, roots *x509.CertPool) (MailTestSummary, error) {
 	var summary MailTestSummary
-	if _, err := mail.Validate(config); err != nil {
+	config, err := mail.Validate(config)
+	if err != nil {
+		return summary, err
+	}
+	if err := ctx.Err(); err != nil {
 		return summary, err
 	}
 	if secret == "" {
-		return summary, errors.New("请填写应用密码后再测试连接")
+		secret, err = m.savedTestPassword(ctx, config)
+	} else {
+		err = mail.ValidatePassword(secret)
 	}
-	if err := ctx.Err(); err != nil {
+	if err != nil {
 		return summary, err
 	}
 	transport, err := imap.ConnectWithRoots(config.Host, config.Port, roots)
@@ -51,4 +56,28 @@ func testMailConnection(ctx context.Context, config mail.Config, secret string, 
 		return summary, err
 	}
 	return MailTestSummary{Folder: config.Folder, MessageCount: count}, nil
+}
+
+// savedTestPassword 只为与已保存登录身份一致的连接读取凭据。
+func (m *MailService) savedTestPassword(ctx context.Context, config mail.Config) (string, error) {
+	dir, err := m.requireWritable()
+	if err != nil {
+		return "", err
+	}
+	unlock := mailschedule.Lock()
+	defer unlock()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	account, err := mail.GetAccount(dir, config.ID)
+	if err != nil {
+		return "", err
+	}
+	if account == nil {
+		return "", errors.New("请填写应用密码后再测试连接")
+	}
+	if account.Config.Host != config.Host || account.Config.Port != config.Port || account.Config.Username != config.Username {
+		return "", errors.New("更换服务器或用户名时需要重新输入密码")
+	}
+	return mail.ReadPassword(dir, config.ID)
 }

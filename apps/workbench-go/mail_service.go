@@ -163,24 +163,20 @@ func (m *MailService) connection(dir string) (*sql.DB, error) {
 // 与「到期同步」分开是有原因的：间隔为 0 表示关闭自动同步，不是禁止手动同步。
 // 早期版本把「立即同步」接到到期判定上，结果是关闭自动同步的账号永远同步不了——
 // 真实窗口里点「立即同步」只得到「导入 0 封」，这是本轮实测抓到的。
-func (m *MailService) SyncMailAccountNow(ctx context.Context, accountID string) (mailschedule.Outcome, error) {
+func (m *MailService) SyncMailAccountNow(ctx context.Context, accountID string) (mailsync.Result, error) {
+	return m.syncAccount(ctx, accountID, mailsync.ModeNew)
+}
+
+func (m *MailService) syncAccount(ctx context.Context, accountID string, mode mailsync.Mode) (mailsync.Result, error) {
 	dir, err := m.requireWritable()
 	if err != nil {
-		return mailschedule.Outcome{}, err
+		return mailsync.Result{}, err
 	}
 	db, err := m.connection(dir)
 	if err != nil {
-		return mailschedule.Outcome{}, err
+		return mailsync.Result{}, err
 	}
-	unlock := mailschedule.Lock()
-	defer unlock()
-	syncer := mailrunner.NewAccountSyncer(db, dir, nil, nil)
-	imported, rejected, syncErr := syncer.Sync(ctx, accountID)
-	outcome := mailschedule.Outcome{AccountID: accountID, Imported: imported, Rejected: rejected}
-	if syncErr != nil {
-		outcome.Error = syncErr.Error()
-	}
-	return outcome, nil
+	return mailrunner.SyncAccount(ctx, db, dir, accountID, mode, nil, nil)
 }
 
 // SaveMailAccount 新增或编辑邮箱账号。密码写入 0600 凭据文件，不进 SQLite。
@@ -189,6 +185,8 @@ func (m *MailService) SaveMailAccount(ctx context.Context, config mail.Config, s
 	if err != nil {
 		return mail.Account{}, err
 	}
+	unlock := mailschedule.Lock()
+	defer unlock()
 	if err := ctx.Err(); err != nil {
 		return mail.Account{}, err
 	}
@@ -205,6 +203,8 @@ func (m *MailService) RemoveMailAccount(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	unlock := mailschedule.Lock()
+	defer unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -213,22 +213,6 @@ func (m *MailService) RemoveMailAccount(ctx context.Context, id string) error {
 
 // SyncMailHistoryNow 导入某个账号下一批更早的邮件（mail_sync_history）。
 // 与「立即同步」同锁：两个入口不能同时写同一个游标。
-func (m *MailService) SyncMailHistoryNow(ctx context.Context, accountID string) (mailschedule.Outcome, error) {
-	dir, err := m.requireWritable()
-	if err != nil {
-		return mailschedule.Outcome{}, err
-	}
-	db, err := m.connection(dir)
-	if err != nil {
-		return mailschedule.Outcome{}, err
-	}
-	unlock := mailschedule.Lock()
-	defer unlock()
-	syncer := mailrunner.NewModeAccountSyncer(db, dir, mailsync.ModeHistory, nil, nil)
-	imported, rejected, syncErr := syncer.Sync(ctx, accountID)
-	outcome := mailschedule.Outcome{AccountID: accountID, Imported: imported, Rejected: rejected}
-	if syncErr != nil {
-		outcome.Error = syncErr.Error()
-	}
-	return outcome, nil
+func (m *MailService) SyncMailHistoryNow(ctx context.Context, accountID string) (mailsync.Result, error) {
+	return m.syncAccount(ctx, accountID, mailsync.ModeHistory)
 }

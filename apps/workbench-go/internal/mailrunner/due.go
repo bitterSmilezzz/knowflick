@@ -42,23 +42,28 @@ type dueSyncer struct {
 }
 
 func (s dueSyncer) Sync(ctx context.Context, accountID string) (int, int, error) {
+	result, err := s.syncAccount(ctx, accountID)
+	return result.Imported, result.Rejected, err
+}
+
+func (s dueSyncer) syncAccount(ctx context.Context, accountID string) (mailsync.Result, error) {
 	// 先记下尝试时间，再读密码、再连服务器。
 	// 用「尝试」而不是「成功」：密码缺失或连接失败也要等一个间隔，
 	// 否则下一轮轮询会立刻再撞一次。与 Rust 的 sync_attempt 同序。
 	if _, err := s.db.ExecContext(ctx, "UPDATE mail_sync_state SET last_attempt_at=?1 WHERE account_id=?2", s.now(), accountID); err != nil {
-		return 0, 0, err
+		return mailsync.Result{}, err
 	}
 	var raw string
 	err := s.db.QueryRowContext(ctx, "SELECT config_json FROM mail_accounts WHERE id=?1", accountID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, 0, errors.New("邮箱账号不存在")
+		return mailsync.Result{}, errors.New("邮箱账号不存在")
 	}
 	if err != nil {
-		return 0, 0, err
+		return mailsync.Result{}, err
 	}
 	var stored mail.Config
 	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return 0, 0, errors.New("无法解析已保存的邮箱账号")
+		return mailsync.Result{}, errors.New("无法解析已保存的邮箱账号")
 	}
 	if stored.ID == "" {
 		stored.ID = accountID
@@ -71,9 +76,9 @@ func (s dueSyncer) Sync(ctx context.Context, accountID string) (int, int, error)
 	}
 	password, err := mail.ReadPassword(s.dir, stored.ID)
 	if err != nil {
-		return 0, 0, err
+		return mailsync.Result{}, err
 	}
-	result, err := Run(ctx, Config{
+	return Run(ctx, Config{
 		AccountID: stored.ID,
 		Folder:    stored.Folder,
 		Limit:     stored.SyncLimit,
@@ -87,10 +92,6 @@ func (s dueSyncer) Sync(ctx context.Context, accountID string) (int, int, error)
 		Now:       s.now,
 		Roots:     s.roots,
 	})
-	if err != nil {
-		return 0, 0, err
-	}
-	return result.Imported, result.Rejected, nil
 }
 
 // SyncDueLoop 每隔 interval 跑一轮到期同步，直到 ctx 取消。
@@ -107,17 +108,13 @@ func SyncDueLoop(ctx context.Context, interval time.Duration, db *sql.DB, librar
 	}, nil)
 }
 
-// NewAccountSyncer 返回一个「直接同步这个账号」的能力，不受自动同步间隔限制。
-//
-// 手动同步必须走这条路：间隔为 0 表示关闭自动同步，不是禁止手动同步。
-func NewAccountSyncer(db *sql.DB, libraryDir string, now func() int64, roots *x509.CertPool) mailschedule.Syncer {
-	return NewModeAccountSyncer(db, libraryDir, mailsync.ModeNew, now, roots)
-}
-
-// NewModeAccountSyncer 允许指定同步模式：重试被拒邮件要走 ModeRetry。
-func NewModeAccountSyncer(db *sql.DB, libraryDir string, mode mailsync.Mode, now func() int64, roots *x509.CertPool) mailschedule.Syncer {
+// SyncAccount 跑一次手动同步，保留回执中的重复计数和历史状态。
+func SyncAccount(ctx context.Context, db *sql.DB, dir, accountID string, mode mailsync.Mode, now func() int64, roots *x509.CertPool) (mailsync.Result, error) {
 	if now == nil {
 		now = timeNowMillis
 	}
-	return dueSyncer{db: db, dir: libraryDir, now: now, roots: roots, mode: mode}
+	unlock := mailschedule.Lock()
+	defer unlock()
+	syncer := dueSyncer{db: db, dir: dir, now: now, roots: roots, mode: mode}
+	return syncer.syncAccount(ctx, accountID)
 }
