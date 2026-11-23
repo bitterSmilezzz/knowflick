@@ -46,7 +46,7 @@ import { bytesToBase64 } from "../src/shell/base64";
 import { insertAttachmentRef } from "../src/domain/noteAttachmentInsert";
 import { NoteAttachmentPicker } from "./NoteAttachmentPicker";
 import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
-import { CreateKnowledgeBase, GetStats, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CreateKnowledgeBase, GetStats, ImportAttachment, ListAttachments, PickOpenPath, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 
@@ -106,6 +106,7 @@ function Preview() {
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [notesPreviewOpen, setNotesPreviewOpen] = useState(false);
+  const [attachableMedia, setAttachableMedia] = useState<{ path: string; label: string }[]>([]);
   const autoPollLock = useRef(false);
   const [restorePending, setRestorePending] = useState(false);
   const [webdavURL, setWebdavURL] = useState("");
@@ -434,6 +435,15 @@ function Preview() {
       setNotice("订阅源已删除；抓来的素材保留。");
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
+  useEffect(() => {
+    if (!notesPreviewOpen || !lib) return;
+    let active = true;
+    void ListAttachments(lib.generation)
+      .then((rows: { path: string; label: string }[] | null) => { if (active) setAttachableMedia(rows ?? []); })
+      .catch(() => { if (active) setAttachableMedia([]); });
+    return () => { active = false; };
+  }, [notesPreviewOpen, lib]);
+
   useEffect(() => {
     if (view !== "notes" || settingsOpen || maintenanceOpen || subsOpen || mcpOpen || askOpen || asrOpen || notesPreviewOpen) setStatsOpen(false);
   }, [view, settingsOpen, maintenanceOpen, subsOpen, mcpOpen, askOpen, asrOpen, notesPreviewOpen]);
@@ -768,7 +778,13 @@ function Preview() {
       {statsOpen && <StatsView stats={stats} onBack={() => setStatsOpen(false)} />}
       {notesPreviewOpen && lib && <section className="preview-shared-notes" aria-label="共享笔记预览">
         <button type="button" className="ws-bordered" onClick={() => setNotesPreviewOpen(false)}>返回</button>
-        <NotesView dir={lib.path} attachableMedia={[]} onStateChange={handleNotesChange} openNoteId={selectedId} materials={[]} onOpenMaterial={(id) => { setOpenedMaterialId(id); setView("materials"); setNotesPreviewOpen(false); }} />
+        <NotesView dir={lib.path} attachableMedia={attachableMedia} onStateChange={handleNotesChange} openNoteId={selectedId} materials={[]} onOpenMaterial={(id) => { setOpenedMaterialId(id); setView("materials"); setNotesPreviewOpen(false); }} onAddAttachment={async () => {
+          const chosen = await PickOpenPath("选择图片或录音", "png;jpg;jpeg;webp;gif;heic;wav;m4a;webm;ogg");
+          if (!chosen) return null;
+          const relative = await ImportAttachment(lib.generation, chosen);
+          setAttachableMedia((await ListAttachments(lib.generation)) ?? []);
+          return relative;
+        }} />
       </section>}
       {lib && <div className="preview-workspace" hidden={view !== "notes" || statsOpen || notesPreviewOpen}>
         <section className="preview-list" aria-label="笔记列表">

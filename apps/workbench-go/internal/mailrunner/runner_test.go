@@ -417,11 +417,14 @@ func TestSyncDueLoopRunsRoundsUntilCancelled(t *testing.T) {
 			}
 		})
 	}()
-	time.Sleep(60 * time.Millisecond)
+	deadline := time.Now().Add(time.Second)
+	for atomic.LoadInt32(&rounds) < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	cancel()
 	<-done
-	if atomic.LoadInt32(&rounds) < 2 {
-		t.Fatalf("loop should run several rounds: %d", rounds)
+	if got := atomic.LoadInt32(&rounds); got < 2 {
+		t.Fatalf("loop should run several rounds: %d", got)
 	}
 	var materials int
 	if err := db.QueryRow("SELECT COUNT(*) FROM materials").Scan(&materials); err != nil {

@@ -5,7 +5,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"mime"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,6 +129,7 @@ func (s *PreviewService) ListNotesScoped(ctx context.Context, generation int, sc
 	}
 	return s.current.ListScope(ctx, scope, limit, offset)
 }
+
 // SearchNotes 检索；空查询退回列表。
 func (s *PreviewService) SearchNotes(ctx context.Context, generation int, query string) (library.Page, error) {
 	s.mu.RLock()
@@ -246,6 +250,58 @@ func (s *PreviewService) SaveAttachment(ctx context.Context, generation int, kin
 		return "", errors.New("附件数据无效，无法解码")
 	}
 	return media.Save(filepath.Dir(s.path), kind, mime, bytes)
+}
+
+// ListAttachments 列出库里可插入笔记的附件，路径相对资料库目录。
+func (s *PreviewService) ListAttachments(ctx context.Context, generation int) ([]media.Attachment, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return nil, errors.New("请重新打开资料库")
+	}
+	return media.List(filepath.Dir(s.path))
+}
+
+// ImportAttachment 把用户选中的本地图片或录音复制进 media/，返回可引用的相对路径。
+func (s *PreviewService) ImportAttachment(ctx context.Context, generation int, sourcePath string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	if !s.writable {
+		return "", errors.New("当前是只读模式，请先点「启用编辑」")
+	}
+	sourcePath = strings.TrimSpace(sourcePath)
+	if sourcePath == "" {
+		return "", errors.New("没有选择附件")
+	}
+	info, err := os.Stat(sourcePath)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("附件不是可读取的普通文件")
+	}
+	if info.Size() > 64*1024*1024 {
+		return "", errors.New("附件超过 64 MB 上限")
+	}
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return "", errors.New("附件读取失败")
+	}
+	ext := strings.ToLower(filepath.Ext(sourcePath))
+	kind := ""
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".heif":
+		kind = "image"
+	case ".wav", ".mp3", ".m4a", ".webm", ".ogg":
+		kind = "audio"
+	default:
+		return "", errors.New("只支持图片或录音附件")
+	}
+	mimeType := mime.TypeByExtension(ext)
+	if mimeType == "" {
+		return "", errors.New("无法识别附件类型")
+	}
+	return media.Save(filepath.Dir(s.path), kind, mimeType, data)
 }
 
 // ReadAttachment 读回附件；返回 base64，避免 Vec/u8[] 被 JSON 展开成数字数组。

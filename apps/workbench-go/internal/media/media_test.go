@@ -205,3 +205,21 @@ func TestExportRestoreFixture(t *testing.T) {
 		t.Fatalf("restore export: %q %v", got, err)
 	}
 }
+
+func TestListReturnsReusableAttachments(t *testing.T) {
+	dir := t.TempDir()
+	relative, err := Save(dir, "image", "image/png", []byte{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "media", "image", "notes.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	items, err := List(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Path != relative || !strings.HasPrefix(items[0].Label, "图片 · ") {
+		t.Fatalf("attachments: %+v", items)
+	}
+}

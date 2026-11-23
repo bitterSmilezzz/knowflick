@@ -141,9 +141,11 @@ interface Props {
   /** 素材列表：引用可以指向素材（多来源引用），过期判定也要看素材正文。 */
   materials?: RawMaterial[];
   onOpenMaterial?: (id: string) => void;
+  /** 原生文件选择新增附件；返回 media/ 相对路径后插入引用。 */
+  onAddAttachment?: () => Promise<string | null>;
 }
 
-export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, materials = [], onOpenMaterial }: Props) {
+export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, materials = [], onOpenMaterial, onAddAttachment }: Props) {
   const [state, setState] = useState<NotesState>(emptyNotesState);
   const [loaded, setLoaded] = useState(false);
   const [notesReadFor, setNotesReadFor] = useState<string | null>(null);
@@ -2165,20 +2167,34 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
                 if (target) openNote(target);
               }}
             />
-            {attachableMedia.length > 0 ? (
+            {attachableMedia.length > 0 || onAddAttachment ? (
               <div className="nv-insert-row" aria-label="插入附件引用">
                 <span className="nv-kbs-label">插入附件引用：</span>
-                <select
-                  className="nv-kb-select"
-                  aria-label="选择要引用的附件"
-                  value=""
-                  onChange={(e) => { if (e.target.value) { insertAttachment(e.target.value); } }}
-                >
-                  <option value="">选择素材附件…</option>
-                  {attachableMedia.map((m) => (
-                    <option key={m.path} value={m.path}>{m.label}</option>
-                  ))}
-                </select>
+                {attachableMedia.length > 0 ? (
+                  <select
+                    className="nv-kb-select"
+                    aria-label="选择要引用的附件"
+                    value=""
+                    onChange={(e) => { if (e.target.value) { insertAttachment(e.target.value); } }}
+                  >
+                    <option value="">选择素材附件…</option>
+                    {attachableMedia.map((m) => (
+                      <option key={m.path} value={m.path}>{m.label}</option>
+                    ))}
+                  </select>
+                ) : null}
+                {onAddAttachment ? (
+                  <button
+                    type="button"
+                    className="ws-bordered"
+                    onClick={() => void (async () => {
+                      const added = await onAddAttachment();
+                      if (added) insertAttachment(added);
+                    })()}
+                  >
+                    添加图片或录音
+                  </button>
+                ) : null}
                 <span className="ws-hint">插入后以 `![附件](media/…)` 引用，保存即随笔记全文可搜。</span>
               </div>
             ) : null}

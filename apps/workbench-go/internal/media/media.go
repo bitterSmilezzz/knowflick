@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -362,4 +363,55 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+// Attachment 是库里已有的一个附件；Label 只用于界面选择列表。
+type Attachment struct {
+	Path  string `json:"path"`
+	Label string `json:"label"`
+}
+
+// List 列出 media/ 下可直接引用的图片、录音与笔迹。
+func List(dir string) ([]Attachment, error) {
+	root := filepath.Join(dir, "media")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Attachment{}, nil
+		}
+		return nil, errors.New("无法读取附件目录")
+	}
+	items := make([]Attachment, 0)
+	for _, kindEntry := range entries {
+		kind := kindEntry.Name()
+		if !kindEntry.IsDir() || !validKind(kind) {
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(root, kind))
+		if err != nil {
+			return nil, errors.New("无法读取附件目录")
+		}
+		for _, file := range files {
+			name := file.Name()
+			if !file.Type().IsRegular() || !validFileName(name) || strings.HasPrefix(name, ".") {
+				continue
+			}
+			index := strings.LastIndex(name, ".")
+			if index < 0 || !allowedExt(kind, strings.ToLower(name[index+1:])) {
+				continue
+			}
+			label := name
+			switch kind {
+			case "image":
+				label = "图片 · " + name
+			case "audio":
+				label = "录音 · " + name
+			case "ink":
+				label = "笔迹 · " + name
+			}
+			items = append(items, Attachment{Path: "media/" + kind + "/" + name, Label: label})
+		}
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })
+	return items, nil
 }
