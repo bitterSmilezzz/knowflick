@@ -1700,7 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百四十八轮 · 共享卡片库的真实形状
+## 阶段 2 第一百四十九轮 · 卡片编辑回写
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 版本回写 | PASS（模拟 IPC） | 共享 KnowledgeCard 不带 version；桥层在浏览卡片时记下 Go 版本，编辑保存时带回，避免 Go 的 ON CONFLICT DO NOTHING 静默不更新。 |
+| 嵌套内容 | PASS（模拟 IPC） | 共享卡片编辑提交时转换为 Go 的 EditableCard：content.category/headline/summary/details/tags + source/links；浏览器冒烟改标题后 SaveCardContent 收到 version=1 与 content.headline=新卡片标题。 |
+| 删除版本 | 构建通过 | db_delete_card 也按卡片缓存补 version，避免删除时版本为 0。 |
+| 验证范围 | 记录 | Wails 生产构建、TypeScript 与浏览器冒烟通过。未在真实 Go 资料库上编辑卡片，也未验证并发冲突提示；macOS 真机桌面仍被锁。 |## 阶段 2 第一百四十八轮 · 共享卡片库的真实形状
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |

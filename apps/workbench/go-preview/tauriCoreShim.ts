@@ -8,8 +8,11 @@ type Dispatcher = (fullName: string, ...args: unknown[]) => Promise<unknown>;
 
 let generation = 0;
 let customDispatcher: Dispatcher | null = null;
+// 共享 KnowledgeCard 不带 version；浏览时记下 Go 版本，写回/删除时再带上，避免静默不更新。
+const cardVersions = new Map<string, number>();
 
 export function setBridgeGeneration(value: number): void {
+  if (value !== generation) cardVersions.clear();
   generation = value;
 }
 
@@ -30,6 +33,8 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
   const values = entry.args.map((param) => {
     if (entry.fixed && param in entry.fixed) return entry.fixed[param];
     if (name === "note_upsert" && param === "note") return noteToGo(args.note);
+    if (name === "db_upsert_card" && param === "card") return cardToGo(args.card);
+    if (name === "db_delete_card" && param === "version") return cardVersions.get(String(args.id)) ?? 0;
     const active = (globalThis as unknown as { __kfGeneration?: number }).__kfGeneration ?? generation;
     if (param === "generation") return active;
     if (param === "now") return Date.now();
@@ -64,6 +69,10 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
     return runtime.Call.ByName(fullName, ...rest);
   });
   const result = await dispatch("main." + entry.service + "." + entry.method, ...values);
+  if (name === "db_upsert_card" && args.card && typeof args.card === "object") {
+    const id = String((args.card as Record<string, unknown>).id ?? "");
+    if (id) cardVersions.set(id, (cardVersions.get(id) ?? 0) + 1);
+  }
   return adaptResult(name, result) as T;
 }
 
@@ -88,6 +97,7 @@ function cardFromGo(value: unknown): unknown {
   const card = value as Record<string, unknown>;
   const content = (card.content && typeof card.content === "object" ? card.content : {}) as Record<string, unknown>;
   const tags = Array.isArray(card.tags) ? card.tags : Array.isArray(content.tags) ? content.tags : [];
+  if (typeof card.id === "string" && typeof card.version === "number") cardVersions.set(card.id, card.version);
   return {
     ...card,
     category: card.category ?? content.category ?? "",
@@ -101,6 +111,27 @@ function cardFromGo(value: unknown): unknown {
   };
 }
 
+function cardToGo(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const card = value as Record<string, unknown>;
+  const content = (card.content && typeof card.content === "object" ? card.content : {}) as Record<string, unknown>;
+  const tags = Array.isArray(card.tags) ? card.tags : Array.isArray(content.tags) ? content.tags : [];
+  const id = String(card.id ?? "");
+  return {
+    id,
+    version: cardVersions.get(id) ?? (typeof card.version === "number" ? card.version : 0),
+    content: {
+      category: card.category ?? content.category ?? "",
+      headline: card.headline ?? content.headline ?? "",
+      summary: card.summary ?? content.summary ?? "",
+      details: card.details ?? content.details ?? "",
+      tags,
+    },
+    materialId: card.materialId ?? null,
+    source: card.source ?? "",
+    links: Array.isArray(card.links) ? card.links : [],
+  };
+}
 function adaptResult(name: string, result: unknown): unknown {
   if (name === "note_list" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).notes)) {
     return ((result as Record<string, unknown>).notes as unknown[]).map(noteFromGo);
