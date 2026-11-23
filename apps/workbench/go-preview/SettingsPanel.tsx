@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { parseImportReport, reportLines, summarizeReport } from "../src/domain/importReport";
-import { BackfillMaterialFTS, BrowseCards, CaptureDatabaseSnapshot, CopyBackupToDirectory, GetShortcutStatus, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, LocalEmbedStatus, LocalEmbedWarmUp, ReadAPIKey, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, RequestEmbeddings, SaveCardEmbeddingsBatch, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, ToggleCapsule, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { BackfillMaterialFTS, BrowseCards, CaptureDatabaseSnapshot, CopyBackupToDirectory, GetShortcutStatus, LibrarySignature, ListNoteChunkTexts, ListStaleEmbeddingCardIDs, ListUnembeddedCardIDs, LocalEmbed, LocalEmbedStatus, LocalEmbedWarmUp, ReadAPIKey, PickDirectory, ReadImportReport, ReadSearchHistory, ReadSettings, RebuildHashEmbeddings, RequestEmbeddings, SaveCardEmbeddingsBatch, SaveNoteChunkEmbeddings, SaveSearchHistory, SaveSettings, ToggleCapsule, WriteAPIKey } from "./bindings/knowflick.local/workbench-go/previewservice";
 
 import { HASH_IDENTITY, apiEmbeddingConfig, cardText } from "./embeddingConfig";
 
@@ -184,7 +184,9 @@ export function SettingsPanel({ generation, writable, busy, onBusy, reportRevisi
       const bytes = new TextEncoder().encode(JSON.stringify(snapshot, null, 2));
       let binary = "";
       for (const byte of bytes) binary += String.fromCharCode(byte);
-      const result = await CopyBackupToDirectory(".", btoa(binary));
+      const directory = await PickDirectory("选择备份目录");
+      if (!directory) { setNotice("已取消导出备份快照"); return; }
+      const result = await CopyBackupToDirectory(directory, btoa(binary));
       setNotice("备份快照已落盘：" + result.fileName + "（" + result.bytes + " 字节，SHA-256 " + result.sha256.slice(0, 12) + "…）");
     });
   }

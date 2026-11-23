@@ -1700,7 +1700,13 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百二十八轮 · 后台邮箱同步归 Go 所有
+## 阶段 2 第一百三十轮 · 原生对话框与备份落盘位置
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 原生对话框 | 构建通过 | 新增 PickSavePath、PickOpenPath、PickDirectory 三个 Go 服务方法，使用 Wails 原生对话框选择文件或目录。go-preview 把 @tauri-apps/plugin-dialog 解析到兼容层。 |
+| 备份落盘 | PASS（模拟 IPC） | 设置页「导出备份快照」改为先由用户选择目录，再调用 CopyBackupToDirectory；浏览器冒烟核对目录参数来自选择结果，回执显示文件名与 SHA-256。原先写入进程当前目录的行为已移除。 |
+| 验证范围 | 记录 | Wails 生产构建、TypeScript、前端 941 例、Go 全量与 Rust 195 例通过。原生对话框的 macOS 实际弹出与取消路径未做真机点击验证，本轮仅核对绑定契约与参数传递。 |## 阶段 2 第一百二十八轮 · 后台邮箱同步归 Go 所有
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |
