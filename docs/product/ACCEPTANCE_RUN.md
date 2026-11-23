@@ -1700,7 +1700,13 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百四十五轮 · 共享邮箱页与卡片搜索
+## 阶段 2 第一百四十六轮 · 只读启动与启用编辑
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 只读启动 | PASS（模拟 IPC） | 只读库启动直接进入共享 Workspace：工具条显示库名与「（只读）」，并提供「启用编辑」。 |
+| 启用编辑 | PASS（模拟 IPC） | 点击「启用编辑」调用 Go 的 EnableEditing，按钮随后消失，共享工作台按新 generation 重新挂载。 |
+| 验证范围 | 记录 | Wails 生产构建、TypeScript 与浏览器冒烟通过。macOS 真机桌面仍被锁，未在原生窗口复核只读启动；真实库的快照/写入权限边界未逐项验证。 |## 阶段 2 第一百四十五轮 · 共享邮箱页与卡片搜索
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |

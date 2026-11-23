@@ -677,7 +677,7 @@ function Preview() {
           <button type="button" onClick={() => setSharedWorkspaceOpen(false)}>返回 Go 预览</button>
           <button type="button" disabled={busy} onClick={() => void choose()}>打开资料库</button>
           {lib && !lib.writable ? <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button> : null}
-          <span>{lib ? lib.name : "未打开资料库"}</span>
+          <span>{lib ? lib.name + (lib.writable ? "" : "（只读）") : "未打开资料库"}</span>
         </div>
         {lib ? <WorkspaceBoundary><Workspace key={lib.generation} /></WorkspaceBoundary> : <p className="preview-count">先打开一个资料库。</p>}
       </section>
