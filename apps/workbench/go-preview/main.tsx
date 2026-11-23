@@ -15,6 +15,7 @@ import { SubscriptionsView } from "../src/ui/workspace/SubscriptionsView";
 import { StatsView } from "../src/ui/workspace/StatsView";
 import { NotesView } from "../src/ui/workspace/NotesView";
 import { Workspace } from "../src/ui/workspace/Workspace";
+import { WorkspaceBoundary } from "./WorkspaceBoundary";
 import type { Subscription as SharedSubscription } from "../src/domain/subscription";
 import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
@@ -677,7 +678,7 @@ function Preview() {
           {lib && !lib.writable ? <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button> : null}
           <span>{lib ? lib.name : "未打开资料库"}</span>
         </div>
-        {lib ? <Workspace key={lib.generation} /> : <p className="preview-count">先打开一个资料库。</p>}
+        {lib ? <WorkspaceBoundary><Workspace key={lib.generation} /></WorkspaceBoundary> : <p className="preview-count">先打开一个资料库。</p>}
       </section>
     );
   }

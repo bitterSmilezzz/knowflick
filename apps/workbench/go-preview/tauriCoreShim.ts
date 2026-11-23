@@ -83,13 +83,24 @@ function flattenMailAccount(value: unknown): unknown {
   };
 }
 
+function cardFromGo(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const card = value as Record<string, unknown>;
+  return {
+    ...card,
+    links: Array.isArray(card.links) ? card.links : [],
+    tags: Array.isArray(card.tags) ? card.tags : [],
+    prereq: Array.isArray(card.prereq) ? card.prereq : [],
+    swiped: card.swiped ?? null,
+  };
+}
 function adaptResult(name: string, result: unknown): unknown {
   if (name === "note_list" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).notes)) {
     return ((result as Record<string, unknown>).notes as unknown[]).map(noteFromGo);
   }
   if (name === "note_get") return noteFromGo(result);
   if (name === "db_load_cards" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).cards)) {
-    return (result as Record<string, unknown>).cards;
+    return ((result as Record<string, unknown>).cards as unknown[]).map(cardFromGo);
   }
   if (name === "kb_list" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).knowledgeBases)) {
     return (result as Record<string, unknown>).knowledgeBases;
