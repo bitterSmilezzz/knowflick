@@ -11,6 +11,8 @@ import { DeleteSubscription, FetchSubscriptionPayload, ImportSubscriptionMateria
 import { isDue, itemsToMaterials, parseSubscriptionPayload } from "../src/domain/subscription";
 import { makeMaterial } from "../src/ui/workspace/model";
 import type { Subscription } from "./bindings/knowflick.local/workbench-go/internal/library/models";
+import { SubscriptionsView } from "../src/ui/workspace/SubscriptionsView";
+import type { Subscription as SharedSubscription } from "../src/domain/subscription";
 import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
 import { buildImportReport, serializeImportReport } from "../src/domain/importReport";
@@ -94,9 +96,8 @@ function Preview() {
   const [hits, setHits] = useState<ChunkHit[]>([]);
   const [openedMaterialId, setOpenedMaterialId] = useState("");
   const [subsOpen, setSubsOpen] = useState(false);
-  const [subs, setSubs] = useState<Subscription[]>([]);
-  const [subForm, setSubForm] = useState({ type: "rss", title: "", targetUrl: "", intervalMinutes: 30 });
-  const [subRemoveId, setSubRemoveId] = useState("");
+  const [subs, setSubs] = useState<SharedSubscription[]>([]);
+
   const [importReportRevision, setImportReportRevision] = useState(0);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const autoPollLock = useRef(false);
@@ -154,7 +155,7 @@ function Preview() {
     setDraftBody(note?.body ?? "");
     // 订阅源在打开库时就加载：自动轮询不依赖用户先展开面板。
     if (result.writable) {
-      void ListSubscriptions().then((rows: Subscription[] | null) => setSubs(rows ?? [])).catch((cause: unknown) => console.warn("读取订阅源失败", cause));
+      void ListSubscriptions().then((rows: Subscription[] | null) => setSubs((rows ?? []) as unknown as SharedSubscription[])).catch((cause: unknown) => console.warn("读取订阅源失败", cause));
     }
   }
 
@@ -381,10 +382,10 @@ function Preview() {
     setSubsOpen(next);
     if (!next) return;
     setBusy(true); setError(""); setNotice("");
-    try { setSubs(await ListSubscriptions() ?? []); } catch (cause) { fail(cause); } finally { setBusy(false); }
+    try { setSubs((await ListSubscriptions() ?? []) as unknown as SharedSubscription[]); } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
-  async function pollSubscription(sub: Subscription) {
+  async function pollSubscription(sub: SharedSubscription) {
     setBusy(true); setError(""); setNotice("");
     try {
       const payload = await FetchSubscriptionPayload(sub.id);
@@ -398,25 +399,32 @@ function Preview() {
         return { id: base.id, sourceType: base.sourceType, title: base.title, sourceUrl: base.sourceUrl ?? "", rawText: base.rawText, metadataJson: entry.metadataJson, inboxStatus: base.inboxStatus, createdAt: base.createdAt, updatedAt: base.updatedAt };
       }));
       await MarkSubscriptionPolled(sub.id, Date.now());
-      setSubs(await ListSubscriptions() ?? []);
+      setSubs((await ListSubscriptions() ?? []) as unknown as SharedSubscription[]);
       setNotice(`「${sub.title}」抓取完成：新增 ${added} 条素材` + (skipped > 0 ? `，${skipped} 条已存在或无链接` : ""));
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
-  async function saveSubscription() {
+  async function addSubscription(sub: SharedSubscription) {
     setBusy(true); setError(""); setNotice("");
     try {
-      await SaveSubscription({ id: crypto.randomUUID(), createdAt: Date.now(), isActive: true, lastPolledAt: null, ...subForm } as Subscription);
-      setSubs(await ListSubscriptions() ?? []);
-      setSubForm({ type: "rss", title: "", targetUrl: "", intervalMinutes: 30 });
+      await SaveSubscription(sub as unknown as Subscription);
+      setSubs((await ListSubscriptions() ?? []) as unknown as SharedSubscription[]);
       setNotice("订阅源已保存。");
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
+  async function toggleSubscription(sub: SharedSubscription, active: boolean) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await SaveSubscription({ ...sub, isActive: active } as unknown as Subscription);
+      setSubs((await ListSubscriptions() ?? []) as unknown as SharedSubscription[]);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
   async function removeSubscription(id: string) {
-    setBusy(true); setError(""); setNotice(""); setSubRemoveId("");
+    setBusy(true); setError(""); setNotice("");
     try {
       await DeleteSubscription(id);
-      setSubs(await ListSubscriptions() ?? []);
+      setSubs((await ListSubscriptions() ?? []) as unknown as SharedSubscription[]);
       setNotice("订阅源已删除；抓来的素材保留。");
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
@@ -712,31 +720,9 @@ function Preview() {
       {askOpen && <AskPanel key={"AskPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? 0} busy={busy} onBusy={setBusy} onOpenNote={(id) => { setSelectedId(id); setView("notes"); setAskOpen(false); }} />}
       {asrOpen && <AsrPanel key={"AsrPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
       {mcpOpen && lib && <McpGrantPanel dir={lib.path} enabled={lib.writable} />}
-      {subsOpen && <section className="preview-mail" aria-label="订阅源">
-        <div className="preview-mail-head">
-          <strong>订阅源</strong>
-          <span>{subs.length} 条</span>
-        </div>
-        {subs.length === 0 ? <p className="preview-count">还没有订阅源</p> : (
-          <ul className="preview-mail-list">
-            {subs.map((sub) => (
-              <li key={sub.id}>
-                <span>{sub.title} · {sub.type} · 每 {sub.intervalMinutes} 分钟</span>
-                <small>{sub.lastPolledAt ? `上次抓取 ${new Date(sub.lastPolledAt).toLocaleString()}` : "还没抓取过"}{sub.isActive ? "" : " · 已停用"}</small>
-                <button type="button" disabled={busy || !lib?.writable} onClick={() => void pollSubscription(sub)}>立即抓取</button>
-                <button type="button" disabled={busy || !lib?.writable} onClick={() => setSubRemoveId(sub.id)}>删除</button>
-                {subRemoveId === sub.id && <span className="preview-confirm">确认删除这个订阅源？抓来的素材会保留。<button type="button" disabled={busy} onClick={() => void removeSubscription(sub.id)}>确认</button><button type="button" disabled={busy} onClick={() => setSubRemoveId("")}>取消</button></span>}
-              </li>
-            ))}
-          </ul>
-        )}
-        {lib?.writable && <form className="preview-confirm" onSubmit={(event) => { event.preventDefault(); void saveSubscription(); }} aria-label="新增订阅源">
-          <label>类型 <select aria-label="订阅类型" value={subForm.type} onChange={(event) => setSubForm({ ...subForm, type: event.target.value })}><option value="rss">RSS 地址</option><option value="tech_board">站点板块</option><option value="github_release">GitHub 发布（owner/repo）</option><option value="github_trending">GitHub 趋势（语言名）</option></select></label>
-          <label>标题 <input aria-label="订阅标题" value={subForm.title} onChange={(event) => setSubForm({ ...subForm, title: event.target.value })} /></label>
-          <label>地址 <input aria-label="订阅地址" value={subForm.targetUrl} onChange={(event) => setSubForm({ ...subForm, targetUrl: event.target.value })} /></label>
-          <label>间隔（分钟） <input type="number" min={5} aria-label="抓取间隔" value={subForm.intervalMinutes} onChange={(event) => setSubForm({ ...subForm, intervalMinutes: Number(event.target.value) })} /></label>
-          <button type="submit" disabled={busy}>添加订阅</button>
-        </form>}
+      {subsOpen && <section className="preview-mail" aria-label="订阅源页">
+        <button type="button" className="ws-bordered" onClick={() => setSubsOpen(false)}>返回</button>
+        <SubscriptionsView subscriptions={subs as unknown as SharedSubscription[]} busy={busy} available={Boolean(lib?.writable)} onAdd={addSubscription} onToggle={toggleSubscription} onDelete={async (sub) => { await removeSubscription(sub.id); }} onPoll={pollSubscription} />
       </section>}
       {lib?.writable && <PreviewMailbox key={lib.generation}
         dir={lib.path} generation={lib.generation} open={view === "mail"} settingsOpen={settingsOpen}
