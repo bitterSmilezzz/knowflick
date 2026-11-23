@@ -671,8 +671,13 @@ function Preview() {
   if (sharedWorkspaceOpen) {
     return (
       <section className="preview-shared-shell" aria-label="共享工作台预览">
-        <button type="button" className="preview-shared-back" onClick={() => setSharedWorkspaceOpen(false)}>返回 Go 预览</button>
-        <Workspace />
+        <div className="preview-shared-bar">
+          <button type="button" onClick={() => setSharedWorkspaceOpen(false)}>返回 Go 预览</button>
+          <button type="button" disabled={busy} onClick={() => void choose()}>打开资料库</button>
+          {lib && !lib.writable ? <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button> : null}
+          <span>{lib ? lib.name : "未打开资料库"}</span>
+        </div>
+        {lib ? <Workspace key={lib.generation} /> : <p className="preview-count">先打开一个资料库。</p>}
       </section>
     );
   }

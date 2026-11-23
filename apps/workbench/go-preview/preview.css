@@ -146,3 +146,35 @@ button:disabled { cursor: default; opacity: .65; }
   border-radius: 6px;
   padding: 4px 10px;
 }
+
+.preview-shared-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper, #f7f5f0);
+}
+
+.preview-shared-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #d8d2c4;
+  background: var(--surface, #ffffff);
+  flex: 0 0 auto;
+}
+
+.preview-shared-bar span {
+  margin-left: auto;
+  color: var(--muted, #596168);
+  font-size: 12px;
+}
+
+.preview-shared-shell > :not(.preview-shared-bar) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
