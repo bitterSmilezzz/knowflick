@@ -86,14 +86,21 @@ function flattenMailAccount(value: unknown): unknown {
 function cardFromGo(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   const card = value as Record<string, unknown>;
+  const content = (card.content && typeof card.content === "object" ? card.content : {}) as Record<string, unknown>;
+  const tags = Array.isArray(card.tags) ? card.tags : Array.isArray(content.tags) ? content.tags : [];
   return {
     ...card,
+    category: card.category ?? content.category ?? "",
+    headline: card.headline ?? content.headline ?? "",
+    summary: card.summary ?? content.summary ?? "",
+    details: card.details ?? content.details ?? "",
     links: Array.isArray(card.links) ? card.links : [],
-    tags: Array.isArray(card.tags) ? card.tags : [],
+    tags,
     prereq: Array.isArray(card.prereq) ? card.prereq : [],
     swiped: card.swiped ?? null,
   };
 }
+
 function adaptResult(name: string, result: unknown): unknown {
   if (name === "note_list" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).notes)) {
     return ((result as Record<string, unknown>).notes as unknown[]).map(noteFromGo);

@@ -1700,7 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百四十六轮 · 只读启动与启用编辑
+## 阶段 2 第一百四十八轮 · 共享卡片库的真实形状
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 卡片页面 | PASS（模拟 IPC） | 默认共享外壳的「全部知识」页渲染知识卡：headline、details、分类与来源都来自 Go 卡片数据。 |
+| 嵌套内容 | 修复 | Go BrowseCards 返回 EditableCard，正文放在 content 下；桥层把 content.headline/summary/details/tags 摊平到共享 KnowledgeCard，并继续补 links/prereq/swiped。 |
+| 嵌套回归 | PASS（模拟 IPC） | 浏览器夹具改为 Go 的嵌套 content 形状后，卡片页仍显示「卡片标题 / 卡片正文」，`window.__pageError` 为空。 |
+| 验证范围 | 记录 | Wails 生产构建、TypeScript 与浏览器冒烟通过。卡片编辑保存、复习评分与卡片搜索语义仍未验证；macOS 真机桌面仍被锁。 |## 阶段 2 第一百四十六轮 · 只读启动与启用编辑
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |
