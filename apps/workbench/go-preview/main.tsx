@@ -12,6 +12,7 @@ import { isDue, itemsToMaterials, parseSubscriptionPayload } from "../src/domain
 import { makeMaterial } from "../src/ui/workspace/model";
 import type { Subscription } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { SubscriptionsView } from "../src/ui/workspace/SubscriptionsView";
+import { StatsView } from "../src/ui/workspace/StatsView";
 import type { Subscription as SharedSubscription } from "../src/domain/subscription";
 import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
@@ -100,6 +101,7 @@ function Preview() {
 
   const [importReportRevision, setImportReportRevision] = useState(0);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const autoPollLock = useRef(false);
   const [restorePending, setRestorePending] = useState(false);
   const [webdavURL, setWebdavURL] = useState("");
@@ -429,6 +431,10 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   useEffect(() => {
+    if (view !== "notes" || settingsOpen || maintenanceOpen || subsOpen || mcpOpen || askOpen || asrOpen) setStatsOpen(false);
+  }, [view, settingsOpen, maintenanceOpen, subsOpen, mcpOpen, askOpen, asrOpen]);
+
+  useEffect(() => {
     if (!lib) return;
     let active = true;
     void ReadWebDAVCredential(lib.generation)
@@ -685,6 +691,7 @@ function Preview() {
                 <button type="button" aria-pressed={asrOpen} disabled={busy} onClick={() => { setAsrOpen(!asrOpen); setMoreOpen(false); }}>语音转写</button>
                 <button type="button" aria-pressed={settingsOpen} disabled={busy} onClick={() => { setSettingsOpen(!settingsOpen); setMaintenanceOpen(false); setMoreOpen(false); }}>设置与本地文件</button>
                 <button type="button" aria-pressed={maintenanceOpen} disabled={busy} onClick={() => { setMaintenanceOpen(!maintenanceOpen); setSettingsOpen(false); setMoreOpen(false); }}>向量与维护</button>
+                <button type="button" aria-pressed={statsOpen} disabled={busy} onClick={() => { setStatsOpen(!statsOpen); setMoreOpen(false); }}>统计</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("json"); setMoreOpen(false); }}>导出卡片</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("zip"); setMoreOpen(false); }}>导出卡片与设置（ZIP）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportSystemBackup(); setMoreOpen(false); }}>导出基础备份</button>
@@ -753,7 +760,8 @@ function Preview() {
         onBack={() => setView("notes")}
       />}
       {lib && view === "cards" && <CardLibrary key={"CardLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onEditing={setCardEditing} />}
-      {lib && <div className="preview-workspace" hidden={view !== "notes"}>
+      {statsOpen && <StatsView stats={stats} onBack={() => setStatsOpen(false)} />}
+      {lib && <div className="preview-workspace" hidden={view !== "notes" || statsOpen}>
         <section className="preview-list" aria-label="笔记列表">
           {!trash && <KnowledgeBasePicker key={lib.generation} snapshot={knowledge} error={knowledgeError} scope={scope} busy={busy} dirty={dirty} writable={lib.writable} onScope={changeScope} onCreate={createKnowledgeBase} />}
           {!trash && <form onSubmit={(e) => void search(e)} role="search">
