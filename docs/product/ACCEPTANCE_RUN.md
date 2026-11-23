@@ -1700,7 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百五十四轮 · 认知简报与闪念采集
+## 阶段 2 第一百五十五轮 · 全量回归
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| Go 全量 | PASS | `go test -count=1 -timeout 120s ./...` 带 Rust 模板库、恢复目标 fixture 通过。 |
+| 共享前端 | PASS | TypeScript 无错误；Vitest 938 通过 / 3 跳过（共 941）。 |
+| Rust 基线 | PASS | `cargo test --locked` 195 通过 / 36 忽略。 |
+| 真机 | PARTIAL | macOS 启动共享默认外壳、读真实库 1 素材/1 卡片通过；后台自动订阅抓取能开始并结束。坐标点击未可靠进入深层页面，未计入通过。 |## 阶段 2 第一百五十四轮 · 认知简报与闪念采集
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |
