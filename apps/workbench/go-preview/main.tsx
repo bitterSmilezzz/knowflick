@@ -13,6 +13,7 @@ import { makeMaterial } from "../src/ui/workspace/model";
 import type { Subscription } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 import { SubscriptionsView } from "../src/ui/workspace/SubscriptionsView";
 import { StatsView } from "../src/ui/workspace/StatsView";
+import { NotesView } from "../src/ui/workspace/NotesView";
 import type { Subscription as SharedSubscription } from "../src/domain/subscription";
 import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
@@ -88,6 +89,8 @@ function Preview() {
   const [statsRevision, setStatsRevision] = useState(0);
   // 共享目标页每次读取都会调用此回调；必须是稳定引用，否则其 effect 会反复触发。
   const handleGoalsChange = useCallback(() => {}, []);
+  // 共享笔记页按 onStateChange 恢复读取；回调必须稳定，否则每次渲染都会重新读取。
+  const handleNotesChange = useCallback(() => setStatsRevision((value) => value + 1), []);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentCursor = useRef<{ area: HTMLTextAreaElement; start: number; end: number } | null>(null);
   const [scope, setScope] = useState("");
@@ -102,6 +105,7 @@ function Preview() {
   const [importReportRevision, setImportReportRevision] = useState(0);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [notesPreviewOpen, setNotesPreviewOpen] = useState(false);
   const autoPollLock = useRef(false);
   const [restorePending, setRestorePending] = useState(false);
   const [webdavURL, setWebdavURL] = useState("");
@@ -431,8 +435,8 @@ function Preview() {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   useEffect(() => {
-    if (view !== "notes" || settingsOpen || maintenanceOpen || subsOpen || mcpOpen || askOpen || asrOpen) setStatsOpen(false);
-  }, [view, settingsOpen, maintenanceOpen, subsOpen, mcpOpen, askOpen, asrOpen]);
+    if (view !== "notes" || settingsOpen || maintenanceOpen || subsOpen || mcpOpen || askOpen || asrOpen || notesPreviewOpen) setStatsOpen(false);
+  }, [view, settingsOpen, maintenanceOpen, subsOpen, mcpOpen, askOpen, asrOpen, notesPreviewOpen]);
 
   useEffect(() => {
     if (!lib) return;
@@ -692,6 +696,7 @@ function Preview() {
                 <button type="button" aria-pressed={settingsOpen} disabled={busy} onClick={() => { setSettingsOpen(!settingsOpen); setMaintenanceOpen(false); setMoreOpen(false); }}>设置与本地文件</button>
                 <button type="button" aria-pressed={maintenanceOpen} disabled={busy} onClick={() => { setMaintenanceOpen(!maintenanceOpen); setSettingsOpen(false); setMoreOpen(false); }}>向量与维护</button>
                 <button type="button" aria-pressed={statsOpen} disabled={busy} onClick={() => { setStatsOpen(!statsOpen); setMoreOpen(false); }}>统计</button>
+                <button type="button" aria-pressed={notesPreviewOpen} disabled={busy} onClick={() => { setNotesPreviewOpen(!notesPreviewOpen); setStatsOpen(false); setMoreOpen(false); }}>共享笔记（预览）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("json"); setMoreOpen(false); }}>导出卡片</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("zip"); setMoreOpen(false); }}>导出卡片与设置（ZIP）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportSystemBackup(); setMoreOpen(false); }}>导出基础备份</button>
@@ -761,7 +766,11 @@ function Preview() {
       />}
       {lib && view === "cards" && <CardLibrary key={"CardLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onEditing={setCardEditing} />}
       {statsOpen && <StatsView stats={stats} onBack={() => setStatsOpen(false)} />}
-      {lib && <div className="preview-workspace" hidden={view !== "notes" || statsOpen}>
+      {notesPreviewOpen && lib && <section className="preview-shared-notes" aria-label="共享笔记预览">
+        <button type="button" className="ws-bordered" onClick={() => setNotesPreviewOpen(false)}>返回</button>
+        <NotesView dir={lib.path} attachableMedia={[]} onStateChange={handleNotesChange} openNoteId={selectedId} materials={[]} onOpenMaterial={(id) => { setOpenedMaterialId(id); setView("materials"); setNotesPreviewOpen(false); }} />
+      </section>}
+      {lib && <div className="preview-workspace" hidden={view !== "notes" || statsOpen || notesPreviewOpen}>
         <section className="preview-list" aria-label="笔记列表">
           {!trash && <KnowledgeBasePicker key={lib.generation} snapshot={knowledge} error={knowledgeError} scope={scope} busy={busy} dirty={dirty} writable={lib.writable} onScope={changeScope} onCreate={createKnowledgeBase} />}
           {!trash && <form onSubmit={(e) => void search(e)} role="search">

@@ -1700,7 +1700,15 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百三十三轮 · 共享统计页接管
+## 阶段 2 第一百三十五轮 · 共享笔记页预览接通
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 共享笔记页 | PASS（模拟 IPC） | 预览应用新增「更多 → 共享笔记（预览）」，可打开共享 NotesView：列表、编辑器、知识库、修订历史都来自共享组件。暂与自定义笔记界面并存，作为替换前的验证入口。 |
+| 笔记形状适配 | 构建通过 | Go 的 body / revision / pinned / favorite / deleted 与共享的 bodyMd / currentRevision / isPinned / isFavorite / isDeleted 在桥层互转；note_list 返回的分页对象摊平成笔记数组，知识库快照拆成列表与成员表。 |
+| 读写回执 | PASS（模拟 IPC） | 浏览器冒烟打开共享笔记页，读到 Go 形状的「性能基线」；编辑正文后 SaveNote 收到适配后的 body，内容包含新增行。 |
+| 刷新稳定性 | 修复 | 共享页的 onStateChange 改为稳定回调；此前回调每次渲染都换引用，导致笔记读取反复重启、页面停在「正在读取笔记」。 |
+| 验证范围 | 记录 | Wails 生产构建与 TypeScript 通过。未接通附件插入；回收站/已归档范围、真实 Go 资料库与自动保存冲突路径未在真机验证。 |## 阶段 2 第一百三十三轮 · 共享统计页接管
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |

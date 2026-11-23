@@ -29,6 +29,7 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
   if (entry === null) throw new Error("Go 预览还没有实现命令：" + name);
   const values = entry.args.map((param) => {
     if (entry.fixed && param in entry.fixed) return entry.fixed[param];
+    if (name === "note_upsert" && param === "note") return noteToGo(args.note);
     const active = (globalThis as unknown as { __kfGeneration?: number }).__kfGeneration ?? generation;
     if (param === "generation") return active;
     if (param === "now") return Date.now();
@@ -83,6 +84,16 @@ function flattenMailAccount(value: unknown): unknown {
 }
 
 function adaptResult(name: string, result: unknown): unknown {
+  if (name === "note_list" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).notes)) {
+    return ((result as Record<string, unknown>).notes as unknown[]).map(noteFromGo);
+  }
+  if (name === "note_get") return noteFromGo(result);
+  if (name === "kb_list" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).knowledgeBases)) {
+    return (result as Record<string, unknown>).knowledgeBases;
+  }
+  if (name === "kb_membership" && result && typeof result === "object" && "membership" in (result as Record<string, unknown>)) {
+    return (result as Record<string, unknown>).membership ?? {};
+  }
   if (name === "mail_list_accounts") return Array.isArray(result) ? result.map(flattenMailAccount) : [];
   if (name === "mail_save_account") return flattenMailAccount(result);
   if (name === "mail_list_rejected" || name === "mail_sync_due_accounts") return result ?? [];
@@ -90,4 +101,34 @@ function adaptResult(name: string, result: unknown): unknown {
     return { message: `连接成功：${result.folder}，共 ${result.messageCount} 封邮件` };
   }
   return result;
+}
+
+/** 共享笔记用 bodyMd / currentRevision / isPinned；Go 用 body / revision / pinned。 */
+function noteFromGo(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const item = value as Record<string, unknown>;
+  return {
+    ...item,
+    bodyMd: item.bodyMd ?? item.body ?? "",
+    currentRevision: item.currentRevision ?? item.revision ?? 1,
+    isPinned: item.isPinned ?? item.pinned ?? false,
+    isFavorite: item.isFavorite ?? item.favorite ?? false,
+    isDeleted: item.isDeleted ?? item.deleted ?? false,
+    tagsJson: item.tagsJson ?? "[]",
+  };
+}
+
+function noteToGo(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const item = value as Record<string, unknown>;
+  const tags = Array.isArray(item.tags) ? JSON.stringify(item.tags) : item.tagsJson;
+  return {
+    ...item,
+    body: item.bodyMd ?? item.body ?? "",
+    revision: item.currentRevision ?? item.revision ?? 1,
+    pinned: item.isPinned ?? item.pinned ?? false,
+    favorite: item.isFavorite ?? item.favorite ?? false,
+    deleted: item.isDeleted ?? item.deleted ?? false,
+    tagsJson: tags ?? "[]",
+  };
 }
