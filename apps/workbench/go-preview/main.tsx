@@ -115,6 +115,20 @@ function Preview() {
     return () => { active = false; };
   }, [lib, statsRevision]);
 
+  useEffect(() => {
+    let disposed = false;
+    let off: (() => void) | undefined;
+    // 后台邮箱同步写入库后由原生侧发事件；共享 Workspace 也监听同名 DOM 事件。
+    // @ts-expect-error: Wails 构建时注入的虚拟模块
+    void import("/wails/runtime.js").then(runtime => {
+      if (disposed) return;
+      off = runtime.Events?.On?.("knowflick:library-changed", () => {
+        window.dispatchEvent(new CustomEvent("knowflick:library-changed"));
+        setStatsRevision((value) => value + 1);
+      });
+    }).catch(() => {});
+    return () => { disposed = true; off?.(); };
+  }, []);
   const notes = lib?.page.notes ?? [];
   const selected = notes.find((n) => n.id === selectedId) ?? null;
   const dirty = selected !== null && (draftTitle !== selected.title || draftBody !== selected.body);

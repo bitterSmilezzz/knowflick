@@ -39,6 +39,12 @@ func main() {
 			mailService.StopMailAutoSync()
 		},
 	})
+	service.onMailChanged = func(generation int) {
+		_ = app.Event.Emit("knowflick:library-changed", generation)
+	}
+	// 自动同步按账号间隔在后台检查；库未打开时为空转，不报错。
+	mailService.StartBackgroundSync()
+
 	service.app = app
 	service.window = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "KnowFlick · Go 版只读预览", Width: 1080, Height: 720, MinWidth: 380, MinHeight: 440, URL: "/",

@@ -19,14 +19,16 @@ import (
 // 只在资料库可写时工作：同步要往 materials、mail_imports 等表写数据，
 // 只读打开时拒绝——不是「大概不行」，是明确拒绝并说明原因。
 type MailService struct {
-	preview *PreviewService
+	preview    *PreviewService
+	onAutoSync func(generation int)
 
-	mu      sync.Mutex
-	db      *sql.DB
-	dir     string
-	cancel  context.CancelFunc
-	lastErr string
-	rounds  int
+	mu          sync.Mutex
+	db          *sql.DB
+	path        string
+	cancel      context.CancelFunc
+	loopContext context.Context
+	lastErr     string
+	rounds      int
 }
 
 // MailStatus 是给界面看的自动同步状态。
@@ -34,74 +36,158 @@ type MailStatus struct {
 	Running   bool   `json:"running"`
 	Rounds    int    `json:"rounds"`
 	LastError string `json:"lastError"`
+	Interval  string `json:"interval"`
 }
 
 // ListMailAccounts 列出账号（密码只说有没有）。
 func (m *MailService) ListMailAccounts(ctx context.Context) ([]mail.Account, error) {
-	dir, err := m.requireWritable()
+	path, err := m.requireWritable()
 	if err != nil {
 		return nil, err
 	}
-	return mail.ListAccounts(dir)
+	db, err := m.connection(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return mail.ListAccountsIn(db, filepath.Dir(path))
 }
 
-// SyncMailDueNow 手动跑一轮到期同步。
-//
-// 与自动同步共用同一把锁：两者不会同时推进同一行游标。
+// SyncMailDueNow 手动跑一轮到期同步，与后台轮询共用同步锁。
 func (m *MailService) SyncMailDueNow(ctx context.Context) ([]mailschedule.Outcome, error) {
-	dir, err := m.requireWritable()
+	path, err := m.requireWritable()
 	if err != nil {
 		return nil, err
 	}
-	db, err := m.connection(dir)
-	if err != nil {
-		return nil, err
-	}
-	return mailrunner.SyncDue(ctx, db, dir, nil, nil)
+	return m.syncDue(ctx, path)
 }
 
-// StartMailAutoSync 启动自动同步：立即跑一轮，之后每 interval 分钟一轮。
+func (m *MailService) syncDue(ctx context.Context, path string) ([]mailschedule.Outcome, error) {
+	db, err := m.connection(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return mailrunner.SyncDue(ctx, db, filepath.Dir(path), nil, nil)
+}
+
+// StartMailAutoSync 启动自动同步。应用启动与旧入口共用同一个轮询。
 func (m *MailService) StartMailAutoSync(intervalMinutes int) (MailStatus, error) {
 	if intervalMinutes <= 0 {
 		return MailStatus{}, errors.New("自动同步间隔必须大于 0 分钟")
 	}
-	dir, err := m.requireWritable()
-	if err != nil {
+	if _, err := m.requireWritable(); err != nil {
 		return MailStatus{}, err
 	}
-	db, err := m.connection(dir)
+	return m.startMailLoop(time.Duration(intervalMinutes) * time.Minute), nil
+}
+
+// StartBackgroundSync 应用启动时开始按分钟检查；每个账号仍按自己的间隔决定是否联网。
+func (m *MailService) StartBackgroundSync() {
+	m.startMailLoop(time.Minute)
+}
+
+// StartAutomaticMailSync 读账号里最小的自动同步间隔并启动轮询；全部关闭时不开线程。
+func (m *MailService) StartAutomaticMailSync() MailStatus {
+	m.stopMailLoop()
+	path, err := m.requireWritable()
 	if err != nil {
-		return MailStatus{}, err
+		return MailStatus{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	db, err := m.connection(ctx, path)
+	cancel()
+	if err != nil {
+		m.mu.Lock()
+		m.lastErr = err.Error()
+		m.mu.Unlock()
+		return m.status()
+	}
+	interval, err := mail.MinAutoSyncIntervalIn(db)
+	if err != nil {
+		m.mu.Lock()
+		m.lastErr = err.Error()
+		m.mu.Unlock()
+		return m.status()
+	}
+	return m.startMailLoop(interval)
+}
+
+func (m *MailService) startMailLoop(interval time.Duration) MailStatus {
+	if interval <= 0 {
+		return m.status()
 	}
 	m.mu.Lock()
 	if m.cancel != nil {
 		m.mu.Unlock()
-		return m.status(), nil
+		return m.status()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	m.cancel = cancel
-	m.rounds = 0
-	m.lastErr = ""
+	m.cancel, m.loopContext = cancel, ctx
+	m.rounds, m.lastErr = 0, ""
 	m.mu.Unlock()
+	go func() { _ = mailschedule.Loop(ctx, interval, m.pollMail, nil) }()
+	return m.status()
+}
 
-	go func() {
-		_ = mailrunner.SyncDueLoop(ctx, time.Duration(intervalMinutes)*time.Minute, db, dir, nil, nil,
-			func(outcomes []mailschedule.Outcome, err error) {
-				m.mu.Lock()
-				defer m.mu.Unlock()
-				m.rounds++
-				if err != nil {
-					m.lastErr = err.Error()
-					return
-				}
-				for _, outcome := range outcomes {
-					if outcome.Error != "" {
-						m.lastErr = outcome.AccountID + ": " + outcome.Error
-					}
-				}
-			})
-	}()
-	return m.status(), nil
+func (m *MailService) stopMailLoop() {
+	m.mu.Lock()
+	cancel := m.cancel
+	m.cancel, m.loopContext = nil, nil
+	m.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (m *MailService) pollMail(loop context.Context) error {
+	m.preview.mu.RLock()
+	path, writable, generation, current := m.preview.path, m.preview.writable, m.preview.generation, m.preview.mailContext
+	m.preview.mu.RUnlock()
+	if current != nil && current.Err() != nil {
+		return nil
+	}
+	if path == "" || !writable {
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(loop)
+	defer cancel()
+	if current != nil {
+		stop := context.AfterFunc(current, cancel)
+		defer stop()
+		if current.Err() != nil {
+			return nil
+		}
+	}
+	outcomes, err := m.syncDue(ctx, path)
+	if ctx.Err() != nil || (current != nil && current.Err() != nil) {
+		return nil
+	}
+
+	m.mu.Lock()
+	if m.loopContext != loop {
+		m.mu.Unlock()
+		return nil
+	}
+	m.rounds++
+	m.lastErr = ""
+	if err != nil {
+		m.lastErr = err.Error()
+	}
+	for _, outcome := range outcomes {
+		if outcome.Error != "" {
+			m.lastErr = outcome.AccountID + ": " + outcome.Error
+		}
+	}
+	m.mu.Unlock()
+	if len(outcomes) > 0 {
+		m.preview.mu.RLock()
+		notify := m.preview.onMailChanged
+		m.preview.mu.RUnlock()
+		if notify != nil {
+			notify(generation)
+		}
+	}
+	return err
 }
 
 // StopMailAutoSync 停掉自动同步；没在跑时不算错误。
@@ -109,7 +195,7 @@ func (m *MailService) StopMailAutoSync() MailStatus {
 	m.mu.Lock()
 	if m.cancel != nil {
 		m.cancel()
-		m.cancel = nil
+		m.cancel, m.loopContext = nil, nil
 	}
 	m.mu.Unlock()
 	return m.status()
@@ -121,7 +207,11 @@ func (m *MailService) MailAutoSyncStatus() MailStatus { return m.status() }
 func (m *MailService) status() MailStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return MailStatus{Running: m.cancel != nil, Rounds: m.rounds, LastError: m.lastErr}
+	status := MailStatus{Running: m.cancel != nil, Rounds: m.rounds, LastError: m.lastErr}
+	if m.cancel != nil {
+		status.Interval = "运行中"
+	}
+	return status
 }
 
 // requireWritable 要求资料库已打开且可写，返回它的目录。
@@ -135,26 +225,26 @@ func (m *MailService) requireWritable() (string, error) {
 	if !writable {
 		return "", errors.New("邮箱同步会写入资料库，请先启用编辑")
 	}
-	return filepath.Dir(path), nil
+	return path, nil
 }
 
 // connection 复用同一个库连接：同步是串行的，一个连接足够。
-func (m *MailService) connection(dir string) (*sql.DB, error) {
+func (m *MailService) connection(ctx context.Context, path string) (*sql.DB, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.db != nil && m.dir == dir {
+	if m.db != nil && m.path == path {
 		return m.db, nil
 	}
 	if m.db != nil {
 		_ = m.db.Close()
 		m.db = nil
 	}
-	db, err := mail.Open(dir)
+	db, err := mail.OpenExisting(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 	m.db = db
-	m.dir = dir
+	m.path = path
 	return db, nil
 }
 
@@ -168,20 +258,20 @@ func (m *MailService) SyncMailAccountNow(ctx context.Context, accountID string) 
 }
 
 func (m *MailService) syncAccount(ctx context.Context, accountID string, mode mailsync.Mode) (mailsync.Result, error) {
-	dir, err := m.requireWritable()
+	path, err := m.requireWritable()
 	if err != nil {
 		return mailsync.Result{}, err
 	}
-	db, err := m.connection(dir)
+	db, err := m.connection(ctx, path)
 	if err != nil {
 		return mailsync.Result{}, err
 	}
-	return mailrunner.SyncAccount(ctx, db, dir, accountID, mode, nil, nil)
+	return mailrunner.SyncAccount(ctx, db, filepath.Dir(path), accountID, mode, nil, nil)
 }
 
 // SaveMailAccount 新增或编辑邮箱账号。密码写入 0600 凭据文件，不进 SQLite。
 func (m *MailService) SaveMailAccount(ctx context.Context, config mail.Config, secret string) (mail.Account, error) {
-	dir, err := m.requireWritable()
+	path, err := m.requireWritable()
 	if err != nil {
 		return mail.Account{}, err
 	}
@@ -190,7 +280,11 @@ func (m *MailService) SaveMailAccount(ctx context.Context, config mail.Config, s
 	if err := ctx.Err(); err != nil {
 		return mail.Account{}, err
 	}
-	account, err := mail.SaveAccount(dir, config, secret)
+	db, err := m.connection(ctx, path)
+	if err != nil {
+		return mail.Account{}, err
+	}
+	account, err := mail.SaveAccountIn(db, filepath.Dir(path), config, secret)
 	if err != nil {
 		return mail.Account{}, err
 	}
@@ -199,7 +293,7 @@ func (m *MailService) SaveMailAccount(ctx context.Context, config mail.Config, s
 
 // RemoveMailAccount 删除账号，保留导入台账与去重记录以免重复导入。
 func (m *MailService) RemoveMailAccount(ctx context.Context, id string) error {
-	dir, err := m.requireWritable()
+	path, err := m.requireWritable()
 	if err != nil {
 		return err
 	}
@@ -208,7 +302,11 @@ func (m *MailService) RemoveMailAccount(ctx context.Context, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return mail.RemoveAccount(dir, id)
+	db, err := m.connection(ctx, path)
+	if err != nil {
+		return err
+	}
+	return mail.RemoveAccountIn(db, filepath.Dir(path), id)
 }
 
 // SyncMailHistoryNow 导入某个账号下一批更早的邮件（mail_sync_history）。

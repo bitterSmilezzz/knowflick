@@ -9,26 +9,28 @@ import (
 
 // ListRejectedMail 列出被隔离的邮件；旧 UIDVALIDITY 下的记录不可重试，也不展示。
 func (m *MailService) ListRejectedMail(ctx context.Context, id string) ([]mail.RejectedMail, error) {
-	dir, err := m.requireWritable()
+	path, err := m.requireWritable()
 	if err != nil {
 		return nil, err
 	}
-	if err := ctx.Err(); err != nil {
+	db, err := m.connection(ctx, path)
+	if err != nil {
 		return nil, err
 	}
-	return mail.ListRejected(dir, id)
+	return mail.ListRejectedIn(db, id)
 }
 
 // ListImportedMail 列出某个账号导入的素材，按元数据绑定查找而不是按标题猜测。
 func (m *MailService) ListImportedMail(ctx context.Context, id string) ([]mail.ImportedMail, error) {
-	dir, err := m.requireWritable()
+	path, err := m.requireWritable()
 	if err != nil {
 		return nil, err
 	}
-	if err := ctx.Err(); err != nil {
+	db, err := m.connection(ctx, path)
+	if err != nil {
 		return nil, err
 	}
-	return mail.ListImported(dir, id)
+	return mail.ListImportedIn(db, id)
 }
 
 // RetryRejectedMail 重试被隔离的邮件。和手动同步共用锁，避免双写同一游标。

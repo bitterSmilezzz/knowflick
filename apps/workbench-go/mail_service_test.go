@@ -12,6 +12,9 @@ import (
 func newMailService(t *testing.T) *MailService {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "knowflick.db")
+	if _, err := mail.Open(filepath.Dir(path)); err != nil {
+		t.Fatal(err)
+	}
 	preview := &PreviewService{path: path, writable: true}
 	service := &MailService{preview: preview}
 	t.Cleanup(func() {
@@ -125,5 +128,55 @@ func TestSyncMailHistoryNowReachesAccount(t *testing.T) {
 	account, err := mail.GetAccount(dir, id)
 	if err != nil || account == nil || account.LastAttemptAt == nil {
 		t.Fatalf("sync did not reach the saved account: %+v, %v", account, err)
+	}
+}
+
+func TestStartAutomaticMailSyncUsesSmallestInterval(t *testing.T) {
+	service := newMailService(t)
+	dir := filepath.Dir(service.preview.path)
+	for _, config := range []mail.Config{
+		{ID: "11111111-1111-4111-8111-111111111111", Name: "手动", Email: "a@example.org", Host: "127.0.0.1", Port: 1, Username: "a", Folder: "INBOX", SyncLimit: 10},
+		{ID: "22222222-2222-4222-8222-222222222222", Name: "自动", Email: "b@example.org", Host: "127.0.0.1", Port: 1, Username: "b", Folder: "INBOX", SyncLimit: 10, SyncIntervalMinutes: 30},
+		{ID: "33333333-3333-4333-8333-333333333333", Name: "更勤", Email: "c@example.org", Host: "127.0.0.1", Port: 1, Username: "c", Folder: "INBOX", SyncLimit: 10, SyncIntervalMinutes: 15},
+	} {
+		if _, err := mail.SaveAccount(dir, config, "p"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service.StartAutomaticMailSync()
+	if !service.MailAutoSyncStatus().Running {
+		t.Fatal("automatic sync did not start")
+	}
+	// 最小间隔是 15 分钟；立即跑的第一轮不应连上未开放的端口，但必须记下轮次与错误。
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if status := service.MailAutoSyncStatus(); status.Rounds >= 1 {
+			if status.LastError == "" {
+				t.Fatal("unreachable account should record an error")
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("first automatic round did not run")
+}
+
+func TestServiceShutdownCancelsBackgroundMailContext(t *testing.T) {
+	service := &PreviewService{}
+	service.resetMailContext(true)
+	ctx := service.mailContext
+	if ctx == nil {
+		t.Fatal("writable open should create a mail context")
+	}
+	if err := service.ServiceShutdown(); err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() == nil {
+		t.Fatal("shutdown should cancel in-flight mail work")
+	}
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	if service.writable || service.mailContext != nil {
+		t.Fatal("shutdown should leave the preview closed")
 	}
 }

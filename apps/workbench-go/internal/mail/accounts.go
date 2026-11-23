@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -83,21 +84,46 @@ func Open(dir string) (*sql.DB, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, errors.New("无法创建资料库目录")
 	}
-	uri, err := databaseURI(filepath.Join(dir, "knowflick.db"))
+	return openDatabase(context.Background(), filepath.Join(dir, "knowflick.db"), "rwc")
+}
+
+// OpenExisting 打开选定的资料库文件供自动同步使用。文件必须已存在。
+func OpenExisting(ctx context.Context, path string) (*sql.DB, error) {
+	return openDatabase(ctx, path, "rw")
+}
+
+func openDatabase(ctx context.Context, path, mode string) (*sql.DB, error) {
+	uri, err := databaseURI(path)
 	if err != nil {
 		return nil, err
 	}
-	uri.RawQuery = "mode=rwc&_pragma=busy_timeout(10000)"
+	uri.RawQuery = "mode=" + mode + "&_pragma=busy_timeout(10000)"
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil, errors.New("无法打开资料库")
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.ExecContext(ctx, schema); err != nil {
 		db.Close()
 		return nil, errors.New("邮箱数据表结构初始化失败")
 	}
 	return db, nil
+}
+
+// MinAutoSyncIntervalIn 返回账号里最小的自动同步间隔；全部关闭时为 0。
+func MinAutoSyncIntervalIn(db *sql.DB) (time.Duration, error) {
+	accounts, err := ListAccountsIn(db, "")
+	if err != nil {
+		return 0, err
+	}
+	minutes := 0
+	for _, account := range accounts {
+		value := account.Config.SyncIntervalMinutes
+		if value > 0 && (minutes == 0 || value < minutes) {
+			minutes = value
+		}
+	}
+	return time.Duration(minutes) * time.Minute, nil
 }
 
 // ListAccounts 列出全部账号，按创建时间与 id 排序；密码只说有没有。
@@ -107,6 +133,11 @@ func ListAccounts(dir string) ([]Account, error) {
 		return nil, err
 	}
 	defer db.Close()
+	return ListAccountsIn(db, dir)
+}
+
+func ListAccountsIn(db *sql.DB, dir string) ([]Account, error) {
+
 	rows, err := db.Query(accountColumns + " ORDER BY a.created_at,a.id")
 	if err != nil {
 		return nil, err
@@ -138,15 +169,19 @@ func scanAccount(rows *sql.Rows) (Account, error) {
 }
 
 // GetAccount 读单个账号；不存在时返回 nil, nil。
-func GetAccount(dir, id string) (*Account, error) {
-	if err := ValidID(id); err != nil {
-		return nil, err
-	}
+func GetAccount(dir string, id string) (*Account, error) {
 	db, err := Open(dir)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
+	return GetAccountIn(db, dir, id)
+}
+
+func GetAccountIn(db *sql.DB, dir string, id string) (*Account, error) {
+	if err := ValidID(id); err != nil {
+		return nil, err
+	}
 	rows, err := db.Query(accountColumns+" WHERE a.id=?1", id)
 	if err != nil {
 		return nil, err
@@ -168,15 +203,19 @@ func GetAccount(dir, id string) (*Account, error) {
 // 换了 host/port/username/folder 时清空去重账本与游标——不同邮箱会复用同一对
 // (UIDVALIDITY, UID)，不清会让无关邮件被静默跳过。
 func SaveAccount(dir string, config Config, password string) (*Account, error) {
-	validated, err := Validate(config)
-	if err != nil {
-		return nil, err
-	}
 	db, err := Open(dir)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
+	return SaveAccountIn(db, dir, config, password)
+}
+
+func SaveAccountIn(db *sql.DB, dir string, config Config, password string) (*Account, error) {
+	validated, err := Validate(config)
+	if err != nil {
+		return nil, err
+	}
 
 	var storedRaw string
 	err = db.QueryRow("SELECT config_json FROM mail_accounts WHERE id=?1", validated.ID).Scan(&storedRaw)
@@ -239,20 +278,24 @@ func SaveAccount(dir string, config Config, password string) (*Account, error) {
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return GetAccount(dir, validated.ID)
+	return GetAccountIn(db, dir, validated.ID)
 }
 
 // RemoveAccount 断开账号：删凭据与账号行。
 // 已导入的素材与去重账本保留——重新加回同一账号不会重复导入。
-func RemoveAccount(dir, id string) error {
-	if err := ValidID(id); err != nil {
-		return err
-	}
+func RemoveAccount(dir string, id string) error {
 	db, err := Open(dir)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+	return RemoveAccountIn(db, dir, id)
+}
+
+func RemoveAccountIn(db *sql.DB, dir string, id string) error {
+	if err := ValidID(id); err != nil {
+		return err
+	}
 	path, err := CredentialPath(dir, id)
 	if err != nil {
 		return err

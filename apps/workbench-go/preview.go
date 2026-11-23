@@ -25,6 +25,9 @@ type PreviewService struct {
 	path          string
 	writable      bool
 	generation    int
+	mailContext   context.Context
+	cancelMail    context.CancelFunc
+	onMailChanged func(int)
 
 	asrMu        sync.Mutex
 	asrDownloads map[string]*AsrDownloadState
@@ -94,6 +97,7 @@ func (s *PreviewService) open(ctx context.Context, path string, writable bool) (
 	s.path = path
 	s.writable = writable
 	s.generation++
+	s.resetMailContext(writable)
 	return &LibraryView{Name: filepath.Base(filepath.Dir(path)) + " / " + filepath.Base(path), Path: path, Writable: writable, Generation: s.generation, Page: page}, nil
 }
 
@@ -155,13 +159,28 @@ func (s *PreviewService) DeleteNote(ctx context.Context, generation int, id stri
 	return s.current.Delete(ctx, id, time.Now().UnixMilli())
 }
 
+// resetMailContext 使旧资料库的后台同步失效。调用方持有 s.mu。
+func (s *PreviewService) resetMailContext(writable bool) {
+	if s.cancelMail != nil {
+		s.cancelMail()
+	}
+	s.mailContext, s.cancelMail = nil, nil
+	if writable {
+		s.mailContext, s.cancelMail = context.WithCancel(context.Background())
+	}
+}
+
 func (s *PreviewService) ServiceShutdown() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.current != nil {
-		return s.current.Close()
+	s.resetMailContext(false)
+	s.writable = false
+	if s.current == nil {
+		return nil
 	}
-	return nil
+	current := s.current
+	s.current = nil
+	return current.Close()
 }
 
 // ListDeletedNotes 列出回收站；代号不符直接拒绝。

@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"knowflick.local/workbench-go/internal/imap"
@@ -60,7 +61,7 @@ func (m *MailService) testMailAccount(ctx context.Context, config mail.Config, s
 
 // savedTestPassword 只为与已保存登录身份一致的连接读取凭据。
 func (m *MailService) savedTestPassword(ctx context.Context, config mail.Config) (string, error) {
-	dir, err := m.requireWritable()
+	path, err := m.requireWritable()
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +70,12 @@ func (m *MailService) savedTestPassword(ctx context.Context, config mail.Config)
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	account, err := mail.GetAccount(dir, config.ID)
+	db, err := m.connection(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Dir(path)
+	account, err := mail.GetAccountIn(db, dir, config.ID)
 	if err != nil {
 		return "", err
 	}

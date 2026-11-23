@@ -5,6 +5,8 @@ import { defaultSettings, parseSettings } from "../src/domain/settings";
 import { MailboxView } from "../src/ui/workspace/MailboxView";
 import { userError } from "../src/ui/workspace/userError";
 import { ListEmailMaterials, ReadAPIKey, ReadSettings, SaveMailDigest, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { MailAutoSyncStatus } from "./bindings/knowflick.local/workbench-go/mailservice";
+import type { MailStatus } from "./bindings/knowflick.local/workbench-go/models";
 import { toRawMaterial } from "./sharedAdapters";
 
 type Props = Pick<ComponentProps<typeof MailboxView>, "dir" | "onOpenMaterial" | "onSettings"> & {
@@ -23,6 +25,7 @@ export function PreviewMailbox({ dir, generation, open, settingsOpen, onOpenMate
   const [settingsError, setSettingsError] = useState("");
   const [digest, setDigest] = useState<ComponentProps<typeof MailboxView>["digest"]>(null);
   const [digestTitle, setDigestTitle] = useState("");
+  const lastRounds = useRef<number | null>(null);
 
   async function readMaterials() {
     const rows: Awaited<ReturnType<typeof ListEmailMaterials>> = await ListEmailMaterials(generation);
@@ -67,6 +70,19 @@ export function PreviewMailbox({ dir, generation, open, settingsOpen, onOpenMate
     }
     onChanged();
   }
+
+  useEffect(() => {
+    if (!open) return;
+    let disposed = false;
+    const timer = window.setInterval(() => {
+      void MailAutoSyncStatus().then((status: MailStatus) => {
+        if (disposed) return;
+        if (lastRounds.current !== null && lastRounds.current !== status.rounds) void refresh();
+        lastRounds.current = status.rounds;
+      }).catch(() => {});
+    }, 60_000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [open]);
 
   if (!open) return null;
   return <>

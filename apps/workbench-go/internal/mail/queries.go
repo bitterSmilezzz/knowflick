@@ -29,6 +29,10 @@ func ListRejected(dir, id string) ([]RejectedMail, error) {
 		return nil, err
 	}
 	defer db.Close()
+	return ListRejectedIn(db, id)
+}
+
+func ListRejectedIn(db *sql.DB, id string) ([]RejectedMail, error) {
 	var exists bool
 	if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM mail_accounts WHERE id=?)", id).Scan(&exists); err != nil || !exists {
 		return nil, errors.New("邮箱账号不存在")
@@ -58,6 +62,10 @@ func ListImported(dir, id string) ([]ImportedMail, error) {
 		return nil, err
 	}
 	defer db.Close()
+	return ListImportedIn(db, id)
+}
+
+func ListImportedIn(db *sql.DB, id string) ([]ImportedMail, error) {
 	rows, err := db.Query("SELECT id,title,COALESCE(source_url,''),created_at FROM materials "+
 		"WHERE is_deleted=0 AND json_extract(metadata_json,'$.mailAccountId')=?1 "+
 		"ORDER BY created_at DESC,id", id)
@@ -75,5 +83,3 @@ func ListImported(dir, id string) ([]ImportedMail, error) {
 	}
 	return items, rows.Err()
 }
-
-var _ = sql.ErrNoRows
