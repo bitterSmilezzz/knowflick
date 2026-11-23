@@ -13,6 +13,7 @@ export class WorkspaceBoundary extends Component<{ children: ReactNode }, { mess
       return (
         <div role="alert" className="preview-error" style={{ margin: 16, whiteSpace: "pre-wrap" }}>
           共享工作台加载失败：{this.state.message}
+          <button type="button" style={{ marginLeft: 12 }} onClick={() => this.setState({ message: "" })}>重试</button>
         </div>
       );
     }
