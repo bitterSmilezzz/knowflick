@@ -11,6 +11,7 @@ export default defineConfig({
       "@tauri-apps/api/core": path.resolve(fileURLToPath(new URL("./tauriCoreShim.ts", import.meta.url))),
       "@tauri-apps/api/app": path.resolve(fileURLToPath(new URL("./tauriAppShim.ts", import.meta.url))),
       "@tauri-apps/plugin-dialog": path.resolve(fileURLToPath(new URL("./tauriDialogShim.ts", import.meta.url))),
+      "@tauri-apps/api/event": path.resolve(fileURLToPath(new URL("./tauriEventShim.ts", import.meta.url))),
     },
   },
   plugins: [react()],

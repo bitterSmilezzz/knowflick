@@ -35,6 +35,9 @@ func TestPreviewMcpGrantFlowOnRustLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	empty, err := service.ListMcpGrants(ctx, opened.Generation)
+	if empty == nil {
+		t.Fatal("empty grants must encode as [] not null")
+	}
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("fixture grants: %+v, %v", empty, err)
 	}

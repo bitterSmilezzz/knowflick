@@ -18,7 +18,11 @@ func (s *PreviewService) ListProjects(ctx context.Context, generation int, inclu
 	if s.current == nil || s.generation != generation {
 		return nil, errors.New("请重新打开资料库")
 	}
-	return s.current.Projects(ctx, includeArchived)
+	items, err := s.current.Projects(ctx, includeArchived)
+	if items == nil {
+		items = []projects.Project{}
+	}
+	return items, err
 }
 
 // CreateProject 新建项目；标识由服务端生成。

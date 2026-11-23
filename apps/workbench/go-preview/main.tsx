@@ -34,6 +34,7 @@ import { McpGrantPanel } from "../src/ui/workspace/McpGrantPanel";
 import { AsrPanel } from "./AsrPanel";
 import { AskPanel } from "./AskPanel";
 import { CaptureCapsuleMaterial, ExportArchive, ExportCardsJSONFile, GetShortcutStatus, HideCapsule, LoadStore, ReadImportArchiveFile, ReadTextFile, ReplaceCards, SaveAttachment, SaveImportReport } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { PreviewSettings } from "./PreviewSettings";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAttachments } from "./attachments";
 import { mediaMimeOfExtension, noteMediaPaths } from "../src/domain/mediaMime";
@@ -70,7 +71,6 @@ function Preview() {
   const [draftBody, setDraftBody] = useState("");
   const [busy, setBusy] = useState(true);
   const [savingAttachment, setSavingAttachment] = useState(false);
-  const [importReportRevision, setImportReportRevision] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
@@ -97,6 +97,8 @@ function Preview() {
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [subForm, setSubForm] = useState({ type: "rss", title: "", targetUrl: "", intervalMinutes: 30 });
   const [subRemoveId, setSubRemoveId] = useState("");
+  const [importReportRevision, setImportReportRevision] = useState(0);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const autoPollLock = useRef(false);
   const [restorePending, setRestorePending] = useState(false);
   const [webdavURL, setWebdavURL] = useState("");
@@ -673,7 +675,8 @@ function Preview() {
                 {lib.writable && <button type="button" aria-pressed={view === "mail"} disabled={busy || cardEditing} onClick={() => { setView(view === "mail" ? "notes" : "mail"); setMoreOpen(false); }}>邮箱</button>}
                 <button type="button" aria-pressed={mcpOpen} disabled={busy} onClick={() => { setMcpOpen(!mcpOpen); setMoreOpen(false); }}>外部授权</button>
                 <button type="button" aria-pressed={asrOpen} disabled={busy} onClick={() => { setAsrOpen(!asrOpen); setMoreOpen(false); }}>语音转写</button>
-                <button type="button" aria-pressed={settingsOpen} disabled={busy} onClick={() => { setSettingsOpen(!settingsOpen); setMoreOpen(false); }}>设置与本地文件</button>
+                <button type="button" aria-pressed={settingsOpen} disabled={busy} onClick={() => { setSettingsOpen(!settingsOpen); setMaintenanceOpen(false); setMoreOpen(false); }}>设置与本地文件</button>
+                <button type="button" aria-pressed={maintenanceOpen} disabled={busy} onClick={() => { setMaintenanceOpen(!maintenanceOpen); setSettingsOpen(false); setMoreOpen(false); }}>向量与维护</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("json"); setMoreOpen(false); }}>导出卡片</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("zip"); setMoreOpen(false); }}>导出卡片与设置（ZIP）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportSystemBackup(); setMoreOpen(false); }}>导出基础备份</button>
@@ -704,7 +707,8 @@ function Preview() {
       </section>}
 
 
-      {settingsOpen && lib && <SettingsPanel key={"SettingsPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy}  reportRevision={importReportRevision} />}
+      {settingsOpen && lib && <PreviewSettings key={"PreviewSettings:" + lib.generation} generation={lib.generation} onBack={() => setSettingsOpen(false)} onReload={async () => { const next = await OpenInitialLibrary(); adopt(next ?? null, true); }} />}
+      {maintenanceOpen && lib && <SettingsPanel key={"SettingsPanel:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} reportRevision={importReportRevision} />}
       {askOpen && <AskPanel key={"AskPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? 0} busy={busy} onBusy={setBusy} onOpenNote={(id) => { setSelectedId(id); setView("notes"); setAskOpen(false); }} />}
       {asrOpen && <AsrPanel key={"AsrPanel:" + (lib?.generation ?? 0)} generation={lib?.generation ?? null} writable={lib?.writable ?? false} busy={busy} onBusy={setBusy} />}
       {mcpOpen && lib && <McpGrantPanel dir={lib.path} enabled={lib.writable} />}

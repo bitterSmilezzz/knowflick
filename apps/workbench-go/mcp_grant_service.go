@@ -26,7 +26,11 @@ func (s *PreviewService) ListMcpGrants(ctx context.Context, generation int) ([]m
 	if s.current == nil || s.generation != generation {
 		return nil, errors.New("请重新打开资料库")
 	}
-	return s.current.ListMcpGrants(ctx)
+	items, err := s.current.ListMcpGrants(ctx)
+	if items == nil {
+		items = []mcpgrants.Grant{}
+	}
+	return items, err
 }
 
 func (s *PreviewService) RevokeMcpGrant(ctx context.Context, generation int, id string) (bool, error) {
