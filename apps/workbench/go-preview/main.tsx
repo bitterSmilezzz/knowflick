@@ -108,7 +108,8 @@ function Preview() {
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [notesPreviewOpen, setNotesPreviewOpen] = useState(false);
-  const [sharedWorkspaceOpen, setSharedWorkspaceOpen] = useState(false);
+  // 默认进入共享工作台；迁移验收脚本用 ?shell=legacy 保留旧外壳。
+  const [sharedWorkspaceOpen, setSharedWorkspaceOpen] = useState(() => !new URLSearchParams(window.location.search).has("shell") || new URLSearchParams(window.location.search).get("shell") !== "legacy");
   const [attachableMedia, setAttachableMedia] = useState<{ path: string; label: string }[]>([]);
   const autoPollLock = useRef(false);
   const [restorePending, setRestorePending] = useState(false);
