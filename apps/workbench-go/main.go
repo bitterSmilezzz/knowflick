@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"flag"
 	"io/fs"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"knowflick.local/workbench-go/internal/dataroot"
+	"knowflick.local/workbench-go/internal/library"
 )
 
 //go:embed all:assets
@@ -15,6 +21,22 @@ var assets embed.FS
 func main() {
 	path := flag.String("library", "", "open a KnowFlick SQLite library in read-only mode")
 	flag.Parse()
+	// 首次启动与 Rust 时代同语义：默认库在 <data_root>/store/knowflick.db，
+	// 不存在就先建库再只读打开。Rust 移除后 Go 是唯一建库方（ADR-0042）。
+	initialPath := *path
+	if initialPath == "" {
+		initialPath = filepath.Join(dataroot.Dir(), "store", "knowflick.db")
+		if _, err := os.Stat(initialPath); errors.Is(err, os.ErrNotExist) {
+			created, err := library.Create(context.Background(), initialPath)
+			if err != nil {
+				log.Fatalf("首次启动创建资料库失败：%v", err)
+			}
+			if err := created.Close(); err != nil {
+				log.Printf("创建资料库后关闭失败：%v", err)
+			}
+			log.Printf("已创建资料库：%s", initialPath)
+		}
+	}
 	frontend, err := fs.Sub(assets, "assets/dist")
 	if err != nil {
 		log.Fatal(err)
@@ -22,7 +44,7 @@ func main() {
 	if _, err := fs.Stat(frontend, "index.html"); err != nil {
 		log.Fatal("请先运行 tools/build_workbench_go.sh")
 	}
-	service := &PreviewService{initialPath: *path}
+	service := &PreviewService{initialPath: initialPath}
 	// 邮箱服务单独一个：它要写库，只读预览时自己会拒绝。
 	mailService := &MailService{preview: service}
 	// 订阅服务单独一个：列表只要求库已打开，写操作自己检查可写。

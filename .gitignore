@@ -5,10 +5,8 @@
 # 打包产物
 dist/
 
-# 第一套桌面（apps/workbench，Tauri）
+# 第一套桌面（apps/workbench，Vite + React + Go/Wails）
 node_modules/
-apps/workbench/src-tauri/target/
-apps/workbench/src-tauri/gen/
 
 # macOS
 .DS_Store

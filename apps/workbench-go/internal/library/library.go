@@ -52,25 +52,35 @@ const noteColumns = "n.id, n.title, n.body_md, n.notebook, n.tags_json, n.is_pin
 	" n.exclude_from_profile"
 
 func Open(ctx context.Context, path string) (*Library, error) {
-	return open(ctx, path, "mode=ro&_pragma=busy_timeout(5000)&_pragma=query_only(1)")
+	return openWith(ctx, path, "mode=ro&_pragma=busy_timeout(5000)&_pragma=query_only(1)", false, false)
 }
 
-func open(ctx context.Context, path, query string) (*Library, error) {
+// openWith 是唯一打开入口。migrate 只在可写连接上为真（建表 + 补列）；create 允许文件不存在。
+// 只读打开永远不写库——这是 ADR-0009 立下的边界，不靠调用方自觉。
+func openWith(ctx context.Context, path, query string, migrate, create bool) (*Library, error) {
 	uri, err := databaseURI(path)
 	if err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, errors.New("需要选择 SQLite 资料库文件")
+	if !create {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, errors.New("需要选择 SQLite 资料库文件")
+		}
 	}
 	uri.RawQuery = query
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil, err
+	}
+	if migrate {
+		if err := ensureSchema(ctx, db); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("初始化资料库结构失败: %w", err)
+		}
 	}
 	for _, statement := range []string{
 		"SELECT " + noteColumns + " FROM notes n LIMIT 0",

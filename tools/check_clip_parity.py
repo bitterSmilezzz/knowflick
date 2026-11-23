@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""剪藏规则表的跨端一致性检查：Kotlin 与 TypeScript 两份实现必须逐条相同（字符集窗口含壳里实际生效的 Rust，共三处）。
+"""剪藏规则表的跨端一致性检查：Kotlin 与 TypeScript 两份实现必须逐条相同（字符集嗅探窗口另与 Go 壳里那份解码对齐，共三处）。
 
 为什么需要它：这两份实现语言不同——Kotlin 给 Android 与冻住的 `:desktop`，TypeScript 给第一套桌面
 `apps/workbench`——但**它们服务的是同一篇文章**。同一页进两个 App，抽出来的正文不该不一样，
@@ -29,9 +29,10 @@ from windows_console import emit  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 KOTLIN = ROOT / "apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/WebClipEngine.kt"
 TS = ROOT / "apps/workbench/src/domain/clipEngine.ts"
-# 真正跑在 workbench 上的那份字节解码在壳里（抓取在壳做，绕开浏览器同源策略），
-# 所以窗口值也得一起守——第一版它写 4096，与另两份的 1024 分叉过。
-RUST = ROOT / "apps/workbench/src-tauri/src/http.rs"
+# 真正跑在 workbench 上的那份字节解码在 Go 壳里（抓取在壳做，绕开浏览器同源策略），
+# 所以窗口值也得一起守——Rust 版曾写 4096、与另两份的 1024 分叉过；
+# 迁 Go 后先写成 2048，同样被这条守卫逮到（ADR-0042）。
+GO = ROOT / "apps/workbench-go/internal/httpx/httpx.go"
 
 # (Kotlin 名, TS 名, 语义) —— ordered 表示顺序也有意义（抽取逻辑按序取首个命中）
 TABLE_PAIRS: list[tuple[str, str, str]] = [
@@ -74,8 +75,8 @@ def ts_number(text: str, name: str) -> int | None:
     return int(match.group(1).replace("_", "")) if match else None
 
 
-def rust_number(text: str, name: str) -> int | None:
-    match = re.search(rf"\b{name}\s*:\s*usize\s*=\s*([0-9][0-9_]*)", text)
+def go_number(text: str, name: str) -> int | None:
+    match = re.search(rf"\b{name}\s*=\s*([0-9][0-9_]*)", text)
     return int(match.group(1).replace("_", "")) if match else None
 
 
@@ -85,14 +86,14 @@ def describe(values: list[str], limit: int = 6) -> str:
 
 
 def main() -> int:
-    for path in (KOTLIN, TS, RUST):
+    for path in (KOTLIN, TS, GO):
         if not path.is_file():
             emit(f"::error::找不到规则表文件：{path.relative_to(ROOT)}", file=sys.stderr)
             return 2
 
     kotlin_text = KOTLIN.read_text(encoding="utf-8")
     ts_text = TS.read_text(encoding="utf-8")
-    rust_text = RUST.read_text(encoding="utf-8")
+    go_text = GO.read_text(encoding="utf-8")
     issues: list[str] = []
 
     for k_name, t_name, semantics in TABLE_PAIRS:
@@ -140,23 +141,24 @@ def main() -> int:
         else:
             issues.append(f"{k_name} ↔ {t_name} 不一致：Kotlin={k_value} / TS={t_value}")
 
-    # 字符集嗅探窗口三处一致（含壳里那份实际生效的 Rust）。值本身不写死，只要求三方相同。
+    # 字符集嗅探窗口三处一致（含 Go 壳里那份实际生效的解码）。值本身不写死，只要求三方相同。
     sniff = {
         "Kotlin": kotlin_number(kotlin_text, "META_SNIFF_BYTES"),
         "TypeScript": ts_number(ts_text, "META_SNIFF_BYTES"),
-        "Rust": rust_number(rust_text, "META_SNIFF_BYTES"),
+        "Go": go_number(go_text, "MetaSniffBytes"),
     }
     if None in sniff.values():
         issues.append(
-            "解析不到 META_SNIFF_BYTES：" + " / ".join(f"{k}={v}" for k, v in sniff.items())
+            "解析不到字符集嗅探窗口：" + " / ".join(f"{k}={v}" for k, v in sniff.items())
         )
     elif len(set(sniff.values())) != 1:
         issues.append(
-            "META_SNIFF_BYTES 三处不一致（同一页可能解出不同编码）："
+            "字符集嗅探窗口三处不一致（同一页可能解出不同编码）："
             + " / ".join(f"{k}={v}" for k, v in sniff.items())
+            + "——Go 侧常量名是 MetaSniffBytes，Kotlin/TS 是 META_SNIFF_BYTES"
         )
     else:
-        emit(f"✓ META_SNIFF_BYTES（Kotlin / TypeScript / Rust 三处一致）：{sniff['Kotlin']}")
+        emit(f"✓ 字符集嗅探窗口（Kotlin / TypeScript / Go 三处一致）：{sniff['Kotlin']}")
 
     if issues:
         emit(f"\n发现 {len(issues)} 处跨端不一致：", file=sys.stderr)

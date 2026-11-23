@@ -18,15 +18,15 @@ class SourceLabelGuardTest(unittest.TestCase):
             root = Path(directory)
             src = root / 'apps/workbench/src'
             tools = root / 'tools'
-            rust = root / 'apps/workbench/src-tauri/src'
+            go = root / 'apps/workbench-go'
             icon = src / 'ui/workspace/Icon.tsx'
             icon.parent.mkdir(parents=True)
             tools.mkdir(parents=True)
-            rust.mkdir(parents=True)
+            go.mkdir(parents=True)
             icon.write_text('const META = {\n' + labels + '\n};', encoding='utf-8')
             (src / 'writer.ts').write_text(source, encoding='utf-8')
             output = io.StringIO()
-            with patch.multiple(checker, ROOT=root, SRC=src, TOOLS=tools, RUST=rust, ICON=icon):
+            with patch.multiple(checker, ROOT=root, SRC=src, TOOLS=tools, GO=go, ICON=icon):
                 with contextlib.redirect_stdout(output):
                     result = checker.main()
             return result, output.getvalue()

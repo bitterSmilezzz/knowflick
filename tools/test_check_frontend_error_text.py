@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """回归：前端把错误原样交给用户的地方，都要走中文兜底。
 
-Rust 侧的错误都有中文了（`check_rust_error_messages.py` 盯着），
+Go 侧的错误消息整句是中文了（`check_go_error_messages.py` 盯着），
 但前端有十几处 `setError(String(err))`——一点中文都没有。
 这类点分散在 10 个文件，逐个改总会漏，所以用共享兜底 `userError()`
 + 一条守卫守住。

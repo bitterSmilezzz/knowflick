@@ -4,17 +4,17 @@
 # 用法：
 #   ./tools/verify_workbench.sh           # 全部（本机默认：含 18 套浏览器冒烟）
 #   ./tools/verify_workbench.sh web       # 只前端：单测 + 类型检查 + 全部守卫
-#   ./tools/verify_workbench.sh rust      # 只 Rust：单测 + 代理环境下的回环用例
+#   ./tools/verify_workbench.sh go        # 只 Go 后端：go vet + go test ./...
 #
-# 为什么要能分片：CI 里前端那半几分钟就绿，Rust 那半编译整棵 tauri 依赖树，
-# 两者绑在一个 job 里时，慢的那半会把「门禁是否通过」的信号一直拖住（实测 2.5～20+ 分钟）。
+# 为什么要能分片：CI 里前端那半几分钟就绿，Go 那半要编译 Wails 依赖与整棵服务代码，
+# 两者绑在一个 job 里时，慢的那半会把「门禁是否通过」的信号一直拖住。
 # 拆成两个 job 各跑一段，信号来得快，失败也能一眼看出是哪一半。
 set -euo pipefail
 SCOPE="${1:-all}"
 case "$SCOPE" in
-  all|web|rust) ;;
+  all|web|go) ;;
   *)
-    echo "用法：${0} [all|web|rust]（收到：${SCOPE}）" >&2
+    echo "用法：${0} [all|web|go]（收到：${SCOPE}）" >&2
     exit 2
     ;;
 esac
@@ -57,41 +57,26 @@ run_step() {
   rm -f "$log"
   return 1
 }
-if [ "$SCOPE" != rust ]; then
+if [ "$SCOPE" != go ]; then
   cd "$ROOT/apps/workbench"
   run_step "前端单测" npm test
   run_step "TypeScript 类型检查" npx tsc --noEmit
 fi
 
-# Rust 那半单独成段：CI 上它编整棵 tauri 依赖树，慢得多。
+# Go 那半单独成段：go test ./... 要编译 Wails 依赖与整棵服务代码，慢得多。
 if [ "$SCOPE" != web ]; then
-  cd "$ROOT/apps/workbench/src-tauri"
-  # --locked：默认行为在 Cargo.lock 过期时会静默改写它再继续，CI 上完全看不出来；
-  # 加上之后 lock 与 Cargo.toml 一漂移就红。
-  #
-  # 包进 run_step：cargo test 失败时尾部十行里有「failures:」与失败的用例名——
-  # Windows 那次只看得到「退出码 101」，连是哪条用例都不知道。
-  run_step "Rust 单测" cargo test --locked
-
-  # 同一批 Rust 用例，**在代理环境变量下**再跑一遍。
-  #
-  # 为什么：用户系统里配了 HTTP_PROXY 时，本地模型的请求会被交给代理而不是
-  # 本机服务（这是真实缺陷，见 docs/SMOOTHNESS.md）。CI 环境干净，跑一次
-  # 常规 cargo test 抓不到它——所以这里显式造一个代理环境。
-  # 清空 NO_PROXY 是关键：它本来可能含回环地址，那样问题就被掩盖了。
-  env -u NO_PROXY -u no_proxy \
-    HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 \
-    cargo test --locked --lib http::tests
-
-  # 跨端回环判定对照：Rust 桌面壳与 TypeScript 前端必须给出同一答案。
-  # 回环判定散落三处、各写一套字符串比较，迟早漂；ADR-0002 §3 要求同一份
-  # settings.json 在两端行为相同。安卓那侧由它的镜像用例保证。
-  # 这一步要 cargo 跑 Rust 那半，所以它属于 rust 分片，不在 web job 里跑。
-  node "$ROOT/tools/check_loopback_parity.mjs"
+  cd "$ROOT/apps/workbench-go"
+  # 分片只守后端本身；前端与守卫仍走 web 分片，CI 两 job 并行。
+  run_step "Go 静态检查" go vet ./...
+  run_step "Go 单测" go test ./...
+  # 回环判定要与 TypeScript 逐条对拍：这一条要 Go + 前端 node_modules 两套都在。
+  # 它在 go 分片里，因为主要成本是编译 Go；CI 的 go-checks job 先跑过 npm ci。
+  cd "$ROOT"
+  run_step "回环判定两端对照" node tools/check_loopback_parity.mjs
 fi
 
-  if [ "$SCOPE" != rust ]; then
-    # 守卫与冒烟与 Rust 无关：rust 分片不跑它们。
+  if [ "$SCOPE" != go ]; then
+    # 守卫与冒烟不需要编译 Go：go 分片不跑它们。
   # 脚本里的 bash 陷阱（$VAR 紧跟全角标点会被并进变量名）只在 UTF-8 locale 下复现，
   # 本仓库的脚本里中文很多，顺手在本地门禁里挡一道。
   cd "$ROOT"
@@ -131,15 +116,12 @@ fi
 
 
   # 文档一致性：描述「当前状态」的文档里的数字与命令要和实际相符。
-  # （Rust 那项只提示不报错——三端测试数量因 #[cfg(target_os)] 平台门而不同。）
   # 输出走 UTF-8 字节：Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
   # 这轮手工核对时发现 README / UI_CONSOLIDATION 写的门禁内容已经差了好几轮——
   # 靠人查迟早会再犯，交给脚本。
   python3 -m unittest discover -s tools -p test_check_doc_consistency.py
   python3 -m unittest discover -s tools -p test_workflow_paths.py
   python3 -m unittest discover -s tools -p test_desktop_ci_triggers.py
-  python3 -m unittest discover -s tools -p test_check_tauri_permissions.py
-  python3 -m unittest discover -s tools -p test_check_rust_error_messages.py
   python3 -m unittest discover -s tools -p test_check_frontend_error_text.py
   python3 -m unittest discover -s tools -p test_check_user_facing_content.py
   python3 -m unittest discover -s tools -p test_check_destructive_confirm.py
@@ -149,16 +131,12 @@ fi
   python3 -m unittest discover -s tools -p test_check_source_labels.py
   python3 -m unittest discover -s tools -p test_windows_console.py
   python3 tools/check_doc_consistency.py
-  # Tauri 命令 / build.rs 声明 / capability 授权必须三处一致。
-  # 少一处 → 前端调用被 ACL 拒绝（界面上冒英文的「not allowed by ACL」）。
-  # 浏览器冒烟测不到这个：浏览器模式根本不走 Tauri。
-  python3 tools/check_tauri_permissions.py
-  # 面向用户的错误消息必须是中文——英文的界面等于让用户卡住。
-  python3 tools/check_rust_error_messages.py
   # 前端把错误原样交给用户的地方也要有中文兜底。
   python3 tools/check_frontend_error_text.py
   # 会**落进用户数据**的文案也要中文（收件箱里直接显示的那些）。
   python3 tools/check_user_facing_content.py
+  # 面向用户的错误消息整句英文是同一类问题；扫的是 Go 后端（Rust 壳已随 ADR-0042 删除）。
+  python3 tools/check_go_error_messages.py
   # 不可撤销的删除都要有二次确认——「一点即删」用户救不回来。
   python3 tools/check_destructive_confirm.py
   # 这个守卫真的抓得住缺确认的写法吗？把实现改坏，确认守卫会报红。

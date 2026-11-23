@@ -23,9 +23,13 @@ import (
 )
 
 const (
-	// MaxClipBytes 是剪藏响应的大小上限，与 Rust 的 4 MiB 一致。
+	// MaxClipBytes 是剪藏响应的大小上限，与 Rust 版一致（4 MiB）。
 	MaxClipBytes = 4 * 1024 * 1024
-	userAgent    = "KnowFlick/0.1"
+	// MetaSniffBytes 是 `<meta charset>` 的嗅探窗口，必须与 Kotlin/TS 的
+	// META_SNIFF_BYTES 相同（tools/check_clip_parity.py 三方比对）：
+	// 同一页在桌面与安卓要解出同一编码。迁 Go 初版写的是 2048，被守卫逮到。
+	MetaSniffBytes = 1024
+	userAgent      = "KnowFlick/0.1"
 )
 
 // ClipPage 是一次剪藏抓取的结果。
@@ -59,15 +63,20 @@ func ValidateURL(raw string) (*url.URL, error) {
 // IsLoopbackHost 判断主机是否为本机回环（含 localhost、127.0.0.1、::1 与展开写法）。
 func IsLoopbackHost(host string) bool { return isLoopbackHost(host) }
 
+// 与 TS/Android 同口径：只认 localhost、字面量 127.0.0.1 与 IPv6 的 ::1。
+// `::ffff:127.0.0.1` 这类 IPv4 映射写法**不算**回环——`net.IP.IsLoopback()` 会把它们
+// 判成本机，三端就会对同一份 settings.json 给出不同答案；这条差异是
+// tools/check_loopback_parity.mjs 在迁 Go 时逮到的。
 func isLoopbackHost(host string) bool {
 	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
 	if host == "localhost" || host == "127.0.0.1" {
 		return true
 	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback()
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() != nil {
+		return false
 	}
-	return false
+	return ip.IsLoopback()
 }
 
 // NewClient 按目标地址选客户端：回环直连，其余跟随系统代理。
@@ -289,11 +298,11 @@ func charsetFromHeader(contentType string) string {
 	return ""
 }
 
-// charsetFromMeta 从 HTML 前 2 KiB 里的 meta 标签取 charset。
+// charsetFromMeta 从 HTML 前 MetaSniffBytes 字节里的 meta 标签取 charset。
 func charsetFromMeta(body []byte) string {
 	head := body
-	if len(head) > 2048 {
-		head = head[:2048]
+	if len(head) > MetaSniffBytes {
+		head = head[:MetaSniffBytes]
 	}
 	lower := strings.ToLower(string(head))
 	for _, marker := range []string{"charset=\"", "charset='", "charset="} {

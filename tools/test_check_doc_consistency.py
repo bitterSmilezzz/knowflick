@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Regression tests for the Tauri command check in the verification gate."""
+"""Regression tests for the verification-gate checks.
+
+（原先这里还有 Tauri 命令三处一致的回归；Rust 壳已随 ADR-0042 删除，
+那套检查与它保护的 Tauri ACL 一起移除。）
+"""
 
 from __future__ import annotations
 
@@ -9,81 +13,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import check_doc_consistency as checker
-
-
-class TauriCommandCheckTest(unittest.TestCase):
-    def check_commands(self, registrations: str, callers: dict[str, str]) -> list[str]:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            lib = root / "apps/workbench/src-tauri/src/lib.rs"
-            lib.parent.mkdir(parents=True)
-            lib.write_text(
-                ".invoke_handler(tauri::generate_handler![\n"
-                + registrations
-                + "\n])",
-                encoding="utf-8",
-            )
-            for relative, content in callers.items():
-                path = root / "apps/workbench/src" / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
-            problems: list[str] = []
-            with patch.object(checker, "ROOT", root):
-                checker.check_tauri_commands(problems)
-            return problems
-
-    def test_last_registration_without_trailing_comma_is_valid(self):
-        problems = self.check_commands(
-            "    load_store,\n    db_list_stale_embedding_card_ids",
-            {"shell/store.ts": 'invoke("db_list_stale_embedding_card_ids");'},
-        )
-        self.assertEqual(problems, [])
-
-    def test_registration_with_trailing_comma_is_valid(self):
-        self.assertEqual(
-            self.check_commands("    load_store,", {"shell/store.ts": 'invoke("load_store");'}),
-            [],
-        )
-
-    def test_missing_command_in_ts_is_reported(self):
-        problems = self.check_commands(
-            "    load_store,", {"shell/store.ts": 'invoke("missing_command");'}
-        )
-        self.assertEqual(len(problems), 1)
-        self.assertIn("missing_command", problems[0])
-
-    def test_missing_command_in_tsx_is_reported(self):
-        problems = self.check_commands(
-            "    load_store,", {"ui/Capsule.tsx": 'invoke("hide_capsule");'}
-        )
-        self.assertEqual(len(problems), 1)
-        self.assertIn("hide_capsule", problems[0])
-
-    def test_component_generic_and_single_quoted_call_is_reported(self):
-        problems = self.check_commands(
-            "    load_store,",
-            {"ui/Settings.tsx": "invoke<{ registered: boolean }>('get_shortcut_status');"},
-        )
-        self.assertEqual(len(problems), 1)
-        self.assertIn("get_shortcut_status", problems[0])
-
-    def test_duplicate_registration_is_reported(self):
-        problems = self.check_commands(
-            "    load_store,\n    load_store,",
-            {"shell/store.ts": 'invoke("load_store");'},
-        )
-        self.assertEqual(len(problems), 1)
-        self.assertIn("load_store", problems[0])
-
-    def test_test_files_do_not_add_production_commands(self):
-        problems = self.check_commands(
-            "    load_store,",
-            {
-                "domain/probe.test.ts": 'invoke("fake_from_ts_test");',
-                "ui/Probe.test.tsx": 'invoke("fake_from_tsx_test");',
-            },
-        )
-        self.assertEqual(problems, [])
 
 
 class CISmokeSuiteDiscoveryTest(unittest.TestCase):
@@ -128,7 +57,7 @@ class CISmokeSuiteDiscoveryTest(unittest.TestCase):
 
     def test_unparsable_entry_is_an_error(self):
         with self.assertRaises(ValueError):
-            self.suites_from('SUITES=(\n  "quoted_smoke"\n)\n')
+            self.suites_from('SUITES=(\\n  "quoted_smoke"\\n)\\n')
 
     def test_missing_script_yields_no_suites(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -147,11 +76,11 @@ class EvidenceRegistrationTest(unittest.TestCase):
     凡是登记为「证据」的文件，标识必须**也出现在测试文件里**。
     """
 
-    TEST_SUFFIXES = (".test.ts", ".test.tsx", ".kt", ".mjs")
+    TEST_SUFFIXES = (".test.ts", ".test.tsx", ".kt", ".mjs", "_test.go")
 
     def test_registrations_point_at_executable_evidence(self):
         for label, rel, needle in checker.EVIDENCE_MAP:
-            if not rel.endswith((".test.ts", ".test.tsx", ".kt", ".mjs")):
+            if not rel.endswith((".test.ts", ".test.tsx", ".kt", ".mjs", "_test.go")):
                 continue
             path = checker.ROOT / rel
             self.assertTrue(path.exists(), f"「{label}」的证据文件没了：{rel}")
@@ -159,19 +88,11 @@ class EvidenceRegistrationTest(unittest.TestCase):
             self.assertIn(needle, text, f"「{label}」的标识在 {rel} 里找不到")
 
     def test_no_registration_points_at_a_bare_implementation_file(self):
-        """实现文件当证据 = 守不住任何东西（标识不会出现在测试里）。
-
-        Rust 例外：测试就住在实现文件里（`#[cfg(test)] mod tests`），
-        所以 `.rs` 文件只要**自己带测试模块**且标识落在其中，就算可执行。
-        """
+        """实现文件当证据 = 守不住任何东西（标识不会出现在测试里）。"""
         offenders = []
         for label, rel, needle in checker.EVIDENCE_MAP:
             if rel.endswith(self.TEST_SUFFIXES):
                 continue
-            if rel.endswith(".rs"):
-                text = (checker.ROOT / rel).read_text(encoding="utf-8", errors="ignore")
-                if ("#[cfg(test)]" in text or "mod tests" in text) and needle in text:
-                    continue  # Rust：测试就在这个文件里
             offenders.append((label, rel))
         self.assertEqual(
             offenders,

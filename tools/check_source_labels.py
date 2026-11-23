@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "apps/workbench/src"
 TOOLS = ROOT / "tools"
-RUST = ROOT / "apps/workbench/src-tauri/src"
+GO = ROOT / "apps/workbench-go"
 ICON = SRC / "ui/workspace/Icon.tsx"
 
 sys.path.insert(0, str(ROOT / "tools"))
@@ -38,10 +38,13 @@ from windows_console import emit  # noqa: E402
 # 只认「值是字面量」或「值是字面量组成的三元」，
 # 不能匹配 `m.sourceType==='email'` 这种**比较**——
 # 否则会把整行后面的 `inboxStatus==='processed'` 一并吞进来。
+# IGNORECASE 是为了 Go：结构体字段写成 `SourceType: "email-digest"`，
+# SQL 里写成 `source_type = 'email'`，TS 里写成 `sourceType: "note"`。
 ASSIGN = re.compile(
-    r"""source_?[Tt]ype"?\s*[:,=]\s*"""
+    r"""source_?type"?\s*[:,=]\s*"""
     r"""(?:[a-z_][a-zA-Z0-9_]*\s*\?\s*)?["']([a-z][a-z-]*)["']"""
-    r"""(?:\s*:\s*["']([a-z][a-z-]*)["'])?"""
+    r"""(?:\s*:\s*["']([a-z][a-z-]*)["'])?""",
+    re.IGNORECASE,
 )
 
 # 卡片类型与界面状态不属于素材来源；note 是旧素材类型，需要保留检查。
@@ -52,12 +55,12 @@ NOT_A_SOURCE = {
 
 def written_source_types() -> set[str]:
     found: set[str] = set()
-    roots = [SRC, TOOLS, RUST]
+    roots = [SRC, TOOLS, GO]
     for root in roots:
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue
-            if not re.search(r"\.(ts|tsx|mjs|rs)$", path.name):
+            if not re.search(r"\.(ts|tsx|mjs|go)$", path.name):
                 continue
             if re.search(r"\.test\.|\.spec\.|__probe|test_|_tests", path.name):
                 continue

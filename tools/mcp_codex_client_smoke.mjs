@@ -13,7 +13,8 @@ const server=path.resolve(process.argv[2] ?? path.join(root,'tools/mcp-server.mj
 const scratch=path.join(root,'.scratch/mcp-migration');
 fs.mkdirSync(scratch,{recursive:true});
 const dir=fs.mkdtempSync(path.join(scratch,'client-'));
-const token='a'.repeat(64), source=fs.readFileSync('apps/workbench/src-tauri/src/db.rs','utf8');
+// 迁移 SQL 的权威位置是 Go 的 schema.go（Rust 壳随 ADR-0042 删除）。
+const token='a'.repeat(64), source=fs.readFileSync('apps/workbench-go/internal/library/schema.go','utf8');
 const table=n=>source.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${n} \\([\\s\\S]*?\\n\\s*\\);`))[0];
 fs.writeFileSync(path.join(dir,'settings.json'),'{}');
 const db=new DatabaseSync(path.join(dir,'knowflick.db'));

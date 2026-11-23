@@ -21,7 +21,8 @@ import { browseMap, createLibraryReader, createSearcher, defaultCardsPath, index
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TAXONOMY = path.join(HERE, "..", "..", "shared", "assets", "taxonomy_map.json");
 const TOKEN = "a".repeat(64);
-const SCHEMA = fs.readFileSync(path.join(HERE, "..", "..", "apps", "workbench", "src-tauri", "src", "db.rs"), "utf8");
+// 迁移 SQL 的权威位置是 Go 的 schema.go（Rust 壳随 ADR-0042 删除）。
+const SCHEMA = fs.readFileSync(path.join(HERE, "..", "..", "apps", "workbench-go", "internal", "library", "schema.go"), "utf8");
 function migrationTable(name) {
   const match = SCHEMA.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${name} \\([\\s\\S]*?\\n\\s*\\);`));
   assert.ok(match, `缺少迁移表 ${name}`);

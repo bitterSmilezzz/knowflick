@@ -34,16 +34,14 @@ on:
       - 'shared/icons/**'
       - 'tools/ci_gradle_official_source.sh'
       - 'tools/test_desktop_ci_triggers.py'
-      - 'tools/check_tauri_permissions.py'
-      - 'tools/check_rust_error_messages.py'
+      - 'tools/check_go_error_messages.py'
       - 'tools/test_check_frontend_error_text.py'
       - 'tools/check_frontend_error_text.py'
       - 'tools/test_check_user_facing_content.py'
       - 'tools/check_user_facing_content.py'
       - 'tools/test_windows_console.py'
       - 'tools/windows_console.py'
-      - 'tools/test_check_rust_error_messages.py'
-      - 'tools/test_check_tauri_permissions.py'
+      - 'tools/test_check_go_error_messages.py'
       - 'tools/workflow_paths.py'
       - '.github/workflows/desktop.yml'
   pull_request:
@@ -103,16 +101,9 @@ jobs:
         shell: bash
         run: python3 -m unittest discover -s tools -p test_desktop_ci_triggers.py
 
-      # Tauri 命令 / build.rs 声明 / capability 授权必须三处一致。
-      # 少一处 → 前端调用被 ACL 拒绝，或打包直接失败（Permission xxx not found）。
-      # 浏览器冒烟测不到这个：浏览器模式根本不走 Tauri。
-      - name: 校验 Tauri 命令与权限一致
+      - name: 校验面向用户的错误消息是中文（Go 后端）
         shell: bash
-        run: python3 tools/check_tauri_permissions.py
-
-      - name: 校验面向用户的错误消息是中文
-        shell: bash
-        run: python3 tools/check_rust_error_messages.py
+        run: python3 tools/check_go_error_messages.py
 
       - name: 校验前端错误展示有中文兜底
         shell: bash

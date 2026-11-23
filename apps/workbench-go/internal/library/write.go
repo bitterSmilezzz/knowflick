@@ -27,7 +27,7 @@ type SaveOutcome struct {
 // OpenForWrite 打开可写库（mode=rw：文件必须已存在，不会凭空造库）。
 // 只读的 Open 与它分开，避免调用方顺手把预览变成写手。
 func OpenForWrite(ctx context.Context, path string) (*Library, error) {
-	lib, err := open(ctx, path, "mode=rw")
+	lib, err := openWith(ctx, path, writePragma, true, false)
 	if err != nil {
 		return nil, err
 	}

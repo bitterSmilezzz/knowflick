@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """回归：会打印中文的脚本在 Windows 控制台（cp1252）下不能崩。
 
-我连着**三次**在 Windows CI 上踩这个：
-1. `check_tauri_permissions.py` 直接 print 中文；
-2. `check_rust_error_messages.py` 直接 print 中文；
-3. `destructive_confirm_reverse_test.py` 直接 print 中文。
+我连着**三次**在 Windows CI 上踩这个（当时的三条是 `check_tauri_permissions.py`、
+`check_rust_error_messages.py`、`destructive_confirm_reverse_test.py`；
+前两条已随 ADR-0042 删 Rust 壳时移除，现在名单里是迁到 Go 的后继脚本）。
 
 根因是「每个脚本自己写一份 print 防护」，**新脚本总会忘**——
 第三次的时候，抽出来的共享模块 `tools/windows_console.py` 已经存在，
@@ -76,7 +75,7 @@ class WindowsConsoleTest(unittest.TestCase):
     def test_the_scan_finds_the_known_offenders(self):
         """扫描本身要能认出那些**曾经**在 Windows 上崩过的脚本。"""
         found = scripts_printing_chinese()
-        for name in ("check_tauri_permissions.py", "check_rust_error_messages.py"):
+        for name in ("check_go_error_messages.py", "check_user_facing_content.py"):
             self.assertIn(name, found, f"{name} 打印中文，扫描却没认出来")
 
     def test_the_scan_ignores_modules_that_never_print(self):

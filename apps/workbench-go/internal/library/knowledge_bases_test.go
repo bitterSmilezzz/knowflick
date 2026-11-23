@@ -9,11 +9,12 @@ import (
 func TestKnowledgeBaseMembershipAndScopedSearch(t *testing.T) {
 	lib, path := newWritable(t)
 	ctx := t.Context()
-	execute(t, lib.db, `CREATE TABLE knowledge_bases (
+	// 库结构现在由 SchemaSQL 统一建；这里只补测试需要的表，必须 IF NOT EXISTS。
+	execute(t, lib.db, `CREATE TABLE IF NOT EXISTS knowledge_bases (
 		id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
 		created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 	);
-	CREATE TABLE kb_membership (
+	CREATE TABLE IF NOT EXISTS kb_membership (
 		kb_id TEXT NOT NULL REFERENCES knowledge_bases(id), note_id TEXT NOT NULL REFERENCES notes(id),
 		added_at INTEGER NOT NULL, PRIMARY KEY (kb_id, note_id)
 	);`)

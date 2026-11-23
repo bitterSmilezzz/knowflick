@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * 跨端回环判定对照：Rust 桌面壳、TypeScript 前端、安卓 Kotlin 必须给出同一答案。
+ * 跨端回环判定对照：Go 桌面壳、TypeScript 前端、安卓 Kotlin 必须给出同一答案。
  *
- * 为什么要有这个：回环判定散落在三处（`src-tauri/src/http.rs` 的
- * `is_loopback_host`、`src/domain/ingest.ts` 的 `isLoopbackHost`、
+ * 为什么要有这个：回环判定散落在三处（`internal/httpx` 的
+ * `IsLoopbackHost`、`src/domain/ingest.ts` 的 `isLoopbackHost`、
  * `apps/android/.../LoopbackHost.kt`），每处各写一套字符串比较，迟早会漂。
  * ADR-0002 §3 要求「同一份 settings.json 在两端行为相同」——同一份文件里写着
  * `http://[::1]:11434/v1`，两端对「要不要密钥」的判断就必须一致。
  *
  * 做法：同一批地址跑过两端实现，逐条比对结果，不一致就报出来。
  * 安卓那侧由它的镜像用例 `LoopbackHostTest.kt` 保证（同一批地址），
- * 这里是 Rust 与 TypeScript 的直接对照。
+ * 这里是 Go 与 TypeScript 的直接对照（Rust 壳已随 ADR-0042 删除）。
  *
  * 用法：node tools/check_loopback_parity.mjs
  */
@@ -70,26 +70,25 @@ function parseVerdicts(output, label) {
   return verdicts;
 }
 
-/** Rust 侧：跑**常驻**的对照探针测试，读它打印的判定。 */
-async function rustVerdicts() {
+/** Go 侧：跑只打印判定的探针测试，读它打印的判定。 */
+async function goVerdicts() {
   const { stdout } = await exec(
-    "cargo",
+    "go",
     [
       "test",
-      "--locked",
-      "--lib",
-      "http::tests::prints_loopback_verdicts_for_cross_platform_parity",
-      "--",
-      "--nocapture",
-      "--test-threads=1",
+      "./internal/httpx",
+      "-run",
+      "TestPrintsLoopbackVerdictsForCrossPlatformParity",
+      "-v",
+      "-count=1",
     ],
     {
-      cwd: path.join(ROOT, "apps/workbench/src-tauri"),
+      cwd: path.join(ROOT, "apps/workbench-go"),
       timeout: 900_000,
       maxBuffer: 32 * 1024 * 1024,
     },
   );
-  return parseVerdicts(stdout, "Rust");
+  return parseVerdicts(stdout, "Go");
 }
 
 /**
@@ -135,14 +134,14 @@ it("parity", () => {
   }
 }
 
-const rust = await rustVerdicts();
+const go = await goVerdicts();
 const ts = await typescriptVerdicts();
 
 const mismatches = [];
 for (const host of HOSTS) {
-  const r = rust.get(host);
+  const g = go.get(host);
   const t = ts.get(host);
-  if (r !== t) mismatches.push(`  ${JSON.stringify(host)}：Rust=${r} TypeScript=${t}`);
+  if (g !== t) mismatches.push(`  ${JSON.stringify(host)}：Go=${g} TypeScript=${t}`);
 }
 
 if (mismatches.length) {

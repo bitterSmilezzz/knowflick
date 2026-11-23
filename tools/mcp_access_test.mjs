@@ -8,7 +8,8 @@ import { withMcpGrant, searchProjectNotes, readProjectNote } from "./mcp-access.
 const tokenA = "a".repeat(64), tokenB = "b".repeat(64), tokenLibrary = "c".repeat(64);
 const hash = token => createHash("sha256").update(token).digest("hex");
 // 使用应用自己的迁移 SQL，确保测试与实际表结构没有各写一份后发生漂移。
-const dbSource = readFileSync(new URL("../apps/workbench/src-tauri/src/db.rs", import.meta.url), "utf8");
+// Rust 的 db.rs 已随 ADR-0042 删除；迁移 SQL 逐字移植到 Go 的 schema.go，仍读应用自己那份，避免测试自写表结构漂移。
+const dbSource = readFileSync(new URL("../apps/workbench-go/internal/library/schema.go", import.meta.url), "utf8");
 function table(name) {
   const match = dbSource.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${name} \\([\\s\\S]*?\\n\\s*\\);`));
   assert.ok(match, `缺少迁移表 ${name}`);

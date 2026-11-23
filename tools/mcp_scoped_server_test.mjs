@@ -9,7 +9,8 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const source = readFileSync(join(root, "apps/workbench/src-tauri/src/db.rs"), "utf8");
+// 迁移 SQL 的权威位置已是 Go 的 schema.go（Rust 壳随 ADR-0042 删除）。
+const source = readFileSync(join(root, "apps/workbench-go/internal/library/schema.go"), "utf8");
 function table(name) { const m = source.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${name} \\([\\s\\S]*?\\n\\s*\\);`)); assert.ok(m, name); return m[0]; }
 const tokenA = "a".repeat(64), tokenB = "b".repeat(64), tokenAll = "c".repeat(64);
 const hash = s => createHash("sha256").update(s).digest("hex");

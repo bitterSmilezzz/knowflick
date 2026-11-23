@@ -2,6 +2,7 @@ package httpx
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +28,33 @@ func TestValidateURLRules(t *testing.T) {
 		if _, err := ValidateURL(raw); err == nil {
 			t.Fatalf("accepted unsafe url %q", raw)
 		}
+	}
+}
+
+// TestPrintsLoopbackVerdictsForCrossPlatformParity 不 assert，只打印判定。
+// tools/check_loopback_parity.mjs 用它把 Go 与 TypeScript 两套实现逐条对照；
+// 地址批次必须与那个脚本、Android 的 LoopbackHostTest.kt 三处相同。
+func TestPrintsLoopbackVerdictsForCrossPlatformParity(t *testing.T) {
+	hosts := []string{
+		"127.0.0.1",
+		"localhost",
+		"::1",
+		"[::1]",
+		"0:0:0:0:0:0:0:1",
+		"[0:0:0:0:0:0:0:1]",
+		"::",
+		"[::]",
+		"::ffff:127.0.0.1",
+		"[::ffff:7f00:1]",
+		"[2001:db8::1]",
+		"192.168.1.10",
+		"10.0.0.1",
+		"example.com",
+		"",
+		"not a host",
+	}
+	for _, host := range hosts {
+		fmt.Printf("PARITY\t%s\t%t\n", host, IsLoopbackHost(host))
 	}
 }
 

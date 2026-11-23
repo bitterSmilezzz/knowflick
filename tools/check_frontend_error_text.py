@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """核对前端**把错误原样交给用户**的地方都有中文兜底。
 
-Rust 侧的错误现在都有中文（守卫 `check_rust_error_messages.py` 盯着）。
+Go 侧的错误消息整句是中文（守卫 `check_go_error_messages.py` 盯着；Rust 壳已随 ADR-0042 删除）。
 但前端还有一类漏洞：`setError(String(err))` ——**一点中文都没有**，
 用户看到的就是底层库抛的原始字符串（多半是英文）。
 
