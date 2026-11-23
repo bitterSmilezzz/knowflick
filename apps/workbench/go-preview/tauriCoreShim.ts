@@ -33,6 +33,7 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
   const values = entry.args.map((param) => {
     if (entry.fixed && param in entry.fixed) return entry.fixed[param];
     if (name === "note_upsert" && param === "note") return noteToGo(args.note);
+    if (name === "db_save_material" && param === "text") return (args.material as Record<string, unknown> | undefined)?.rawText ?? args.text ?? null;
     if (name === "db_upsert_card" && param === "card") return cardToGo(args.card);
     if (name === "db_delete_card" && param === "version") return cardVersions.get(String(args.id)) ?? 0;
     const active = (globalThis as unknown as { __kfGeneration?: number }).__kfGeneration ?? generation;

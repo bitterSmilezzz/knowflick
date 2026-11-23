@@ -1700,7 +1700,13 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百五十三轮 · 画像空列表与创作产物页
+## 阶段 2 第一百五十四轮 · 认知简报与闪念采集
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 认知简报 | PASS（模拟 IPC） | 默认共享外壳进入「认知简报」，显示「认知洞察简报 · 第 4 周知识洞察」、三层知识模型说明与空数据统计。 |
+| 闪念采集 | 修复并 PASS（模拟 IPC） | 打开「记录闪念」填写正文并存入收件箱；桥层此前把 material.title 当标题却把正文丢了，SaveMaterial 收到 [5, 测试闪念, null, null]；补 rawText→text 映射后正文正确送达。 |
+| 验证范围 | 记录 | Wails 生产构建、TypeScript 与浏览器冒烟通过。真实简报计算、附件与导入流程未验证；macOS 真机深层页面未逐项点击。 |## 阶段 2 第一百五十三轮 · 画像空列表与创作产物页
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |
