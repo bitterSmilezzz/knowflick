@@ -1700,7 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百四十四轮 · 系统通知接回 Go
+## 阶段 2 第一百四十五轮 · 共享邮箱页与卡片搜索
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 邮箱页 | PASS（模拟 IPC） | 默认共享外壳的「邮箱」页渲染已连接账号、同步间隔、隔离邮件数与导入邮件「跨页邮件」；货件计数与邮件详情来自 Go 桥接。 |
+| 订阅页 | PASS（模拟 IPC） | 同一外壳切换到「订阅源」页，显示新增订阅表单与空列表提示，再返回收件箱。 |
+| 卡片搜索 | 构建通过 | db_search_cards_fts / hybrid / vector 的结果也统一补 links、tags、prereq 数组，避免共享 UI 再触发 m.links[0] 白屏。 |
+| 验证范围 | 记录 | Wails 生产构建、TypeScript 与浏览器冒烟通过。macOS 真机桌面仍被锁；真实邮箱同步、附件解码和卡片搜索语义未逐项验证。 |## 阶段 2 第一百四十四轮 · 系统通知接回 Go
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |
