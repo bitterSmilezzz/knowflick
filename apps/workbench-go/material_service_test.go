@@ -114,3 +114,77 @@ func TestPreviewMaterialFlowOnRustLibrary(t *testing.T) {
 		t.Fatalf("capsule row: %q %q %v", body, statusValue, err)
 	}
 }
+
+func TestMailboxMaterialFlowOnRustLibrary(t *testing.T) {
+	fixture := os.Getenv("KF_GO_RESTORE_TARGET_DIR")
+	if fixture == "" {
+		t.Skip("set KF_GO_RESTORE_TARGET_DIR to an empty Rust-created database fixture")
+	}
+	path := filepath.Join(t.TempDir(), "knowflick.db")
+	fixtureBytes, err := os.ReadFile(filepath.Join(fixture, "knowflick.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, fixtureBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	service := &PreviewService{initialPath: path}
+	t.Cleanup(func() { _ = service.ServiceShutdown() })
+	ctx := t.Context()
+	opened, err := service.OpenInitialLibrary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveMailDigest(ctx, opened.Generation, "标题", "正文", "{}"); !errors.Is(err, library.ErrReadOnly) {
+		t.Fatalf("read-only digest: %v", err)
+	}
+	writable, err := service.EnableEditing(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation := writable.Generation
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=rw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, material := range []library.ImportedMaterial{
+		{ID: "mail-old", SourceType: "email", Title: "原件", RawText: "邮件正文", MetadataJSON: "{}", InboxStatus: "inbox", CreatedAt: 1, UpdatedAt: 1},
+		{ID: "mail-deleted", SourceType: "email", RawText: "已删除邮件", MetadataJSON: "{}", InboxStatus: "inbox"},
+		{ID: "other", SourceType: "manual", RawText: "其他素材", MetadataJSON: "{}", InboxStatus: "inbox"},
+	} {
+		if inserted, err := library.SaveImportedMaterial(ctx, db, material); err != nil || !inserted {
+			t.Fatalf("seed %s: %v", material.ID, err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE materials SET is_deleted = 1 WHERE id = 'mail-deleted'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpdateMaterialStatus(ctx, generation, "mail-old", "processed"); err != nil {
+		t.Fatal(err)
+	}
+	emails, err := service.ListEmailMaterials(ctx, generation)
+	if err != nil || len(emails) != 1 || emails[0].ID != "mail-old" || emails[0].InboxStatus != "processed" || emails[0].RawText != "邮件正文" {
+		t.Fatalf("emails: %+v, %v", emails, err)
+	}
+	if deleted, err := service.GetMaterial(ctx, generation, "mail-deleted"); err != nil || deleted != nil {
+		t.Fatalf("deleted email: %+v, %v", deleted, err)
+	}
+	if _, err := service.GetMaterial(ctx, opened.Generation, "mail-old"); err == nil {
+		t.Fatal("stale library generation accepted")
+	}
+	const markdown = "# 摘要\n\n邮件原件 [邮件 1]"
+	const metadata = "{\"generatedBy\":\"mail-summary\",\"sources\":[{\"materialId\":\"mail-old\",\"subject\":\"原件\",\"from\":\"\",\"date\":\"\"}]}"
+	id, err := service.SaveMailDigest(ctx, generation, "邮件整理", markdown, metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := service.GetMaterial(ctx, generation, id)
+	if err != nil || saved == nil || saved.SourceType != "email-digest" || saved.RawText != markdown || saved.MetadataJSON != metadata {
+		t.Fatalf("digest: %+v, %v", saved, err)
+	}
+	hits, err := service.SearchMaterials(ctx, generation, "邮件整理", 10)
+	if err != nil || len(hits) != 1 || hits[0].ID != id {
+		t.Fatalf("digest search: %+v, %v", hits, err)
+	}
+}

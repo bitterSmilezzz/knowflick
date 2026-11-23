@@ -16,6 +16,7 @@ interface Props {
   settings: AiSettings;
   apiKey: string;
   onRefresh: () => Promise<void>;
+  onArchiveMaterial?: (material: RawMaterial) => Promise<void>;
   onOpenMaterial: (id: string) => void;
   onSettings: () => void;
   onSaveDigest: (title: string, markdown: string, sources: MailDigestSource[]) => Promise<void>;
@@ -165,7 +166,7 @@ function MailRow({ material, checked, busy, onSelect, onOpen }: {
   </article>;
 }
 
-export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpenMaterial, onSettings, onSaveDigest, digest, onDigestChange, digestTitle, onDigestTitleChange, insights, personalizationOn }: Props) {
+export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onArchiveMaterial, onOpenMaterial, onSettings, onSaveDigest, digest, onDigestChange, digestTitle, onDigestTitleChange, insights, personalizationOn }: Props) {
   const available = inShell();
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [loading, setLoading] = useState(available);
@@ -288,7 +289,11 @@ export function MailboxView({ dir, materials, settings, apiKey, onRefresh, onOpe
       } else if (mode === "archive") {
         let completed = 0;
         try {
-          for (const material of chosen) { await storeMaterial({ ...material, inboxStatus: "processed", updatedAt: Date.now() }, dir); completed++; }
+          for (const material of chosen) {
+            if (onArchiveMaterial) await onArchiveMaterial(material);
+            else await storeMaterial({ ...material, inboxStatus: "processed", updatedAt: Date.now() }, dir);
+            completed++;
+          }
         } catch (err) {
           // Keep only the still-unarchived mails selected so a retry does not redo finished work.
           setSelected(previous => new Set([...previous].filter(id => !chosen.slice(0, completed).some(m => m.id === id))));

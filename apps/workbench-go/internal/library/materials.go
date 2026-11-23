@@ -2,6 +2,11 @@ package library
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+
+	"github.com/google/uuid"
 
 	"knowflick.local/workbench-go/internal/archive"
 	"knowflick.local/workbench-go/internal/materials"
@@ -12,6 +17,40 @@ func (l *Library) ListMaterials(ctx context.Context, inboxOnly bool, limit, offs
 		limit = 100
 	}
 	return materials.List(ctx, l.db, inboxOnly, limit, offset)
+}
+
+func (l *Library) ListEmailMaterials(ctx context.Context) ([]materials.Material, error) {
+	return materials.ListEmail(ctx, l.db)
+}
+
+func (l *Library) GetMaterial(ctx context.Context, id string) (*materials.Material, error) {
+	return materials.ByID(ctx, l.db, id)
+}
+
+// SaveMailDigest 保存摘要和生成时的来源顺序，沿用素材与全文索引的事务。
+func (l *Library) SaveMailDigest(ctx context.Context, title, markdown, metadataJSON string, now int64) (string, error) {
+	if !l.writable {
+		return "", ErrReadOnly
+	}
+	title, markdown = strings.TrimSpace(title), strings.TrimSpace(markdown)
+	if title == "" || markdown == "" {
+		return "", errors.New("邮件摘要缺少标题或正文")
+	}
+	if !json.Valid([]byte(metadataJSON)) {
+		return "", errors.New("邮件摘要来源格式无效")
+	}
+	id := uuid.NewString()
+	inserted, err := SaveImportedMaterial(ctx, l.db, ImportedMaterial{
+		ID: id, SourceType: "email-digest", Title: title, RawText: markdown,
+		MetadataJSON: metadataJSON, InboxStatus: "inbox", CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		return "", err
+	}
+	if !inserted {
+		return "", errors.New("素材标识冲突，请重试")
+	}
+	return id, nil
 }
 
 func (l *Library) SearchMaterials(ctx context.Context, query string, limit int) ([]materials.Material, error) {

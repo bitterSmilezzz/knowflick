@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { setBridgeGeneration } from "./tauriCoreShim";
-import { MailboxView } from "../src/ui/workspace/MailboxView";
-import { defaultSettings } from "../src/domain/settings";
+import { PreviewMailbox } from "./PreviewMailbox";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ChooseLibrary, ExportNoteMarkdown, ReadWebDAVCredential, WriteWebDAVCredential, DeleteNote, EnableEditing, ExportCardArchive, ExportCardsJSON, ExportSystemBackup, RestoreSystemBackup, UploadBackupToWebDAV, ListDeletedNotes, ListNotes, OpenInitialLibrary, RestoreNote, RestoreNoteRevision, SaveNote, SearchChunkHits, SearchNotes } from "./bindings/knowflick.local/workbench-go/previewservice";
@@ -75,7 +74,7 @@ function Preview() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [trash, setTrash] = useState(false);
-  const [view, setView] = useState<"notes" | "materials" | "cards" | "artifacts" | "projects" | "goals" | "claims" | "review">("notes");
+  const [view, setView] = useState<"notes" | "materials" | "cards" | "artifacts" | "projects" | "goals" | "claims" | "review" | "mail">("notes");
   const [cardEditing, setCardEditing] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
@@ -93,7 +92,7 @@ function Preview() {
   const [knowledgeError, setKnowledgeError] = useState("");
   const [chunkMode, setChunkMode] = useState(false);
   const [hits, setHits] = useState<ChunkHit[]>([]);
-  const [mailOpen, setMailOpen] = useState(false);
+  const [openedMaterialId, setOpenedMaterialId] = useState("");
   const [subsOpen, setSubsOpen] = useState(false);
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [subForm, setSubForm] = useState({ type: "rss", title: "", targetUrl: "", intervalMinutes: 30 });
@@ -125,6 +124,8 @@ function Preview() {
     setBridgeGeneration(result.generation);
     (window as unknown as { __kfGeneration?: number }).__kfGeneration = result.generation;
     setLib(result);
+    setOpenedMaterialId("");
+    if (!result.writable && view === "mail") setView("notes");
     setScope("");
     setKnowledge(null);
     setKnowledgeError("");
@@ -636,7 +637,7 @@ function Preview() {
             {moreOpen && <div className="preview-more-panel">
               <div className="preview-more-group">
                 <strong>工作台</strong>
-                <button type="button" aria-pressed={view === "materials"} disabled={busy || cardEditing} onClick={() => { setView(view === "materials" ? "notes" : "materials"); setMoreOpen(false); }}>素材</button>
+                <button type="button" aria-pressed={view === "materials"} disabled={busy || cardEditing} onClick={() => { setOpenedMaterialId(""); setView(view === "materials" ? "notes" : "materials"); setMoreOpen(false); }}>素材</button>
                 <button type="button" disabled={busy} onClick={() => void importLegacyArchive()}>导入旧归档</button>
                 <button type="button" disabled={busy} onClick={() => void importTextNote()}>导入文本笔记</button>
                 <button type="button" disabled={busy} onClick={() => void exportLegacyArchive()}>查看旧 JSON 快照</button>
@@ -655,7 +656,7 @@ function Preview() {
               <div className="preview-more-group">
                 <strong>接入与备份</strong>
                 <button type="button" aria-pressed={subsOpen} disabled={busy} onClick={() => { void toggleSubscriptions(); setMoreOpen(false); }}>订阅源</button>
-                {lib.writable && <button type="button" aria-pressed={mailOpen} disabled={busy} onClick={() => { setMailOpen(!mailOpen); setMoreOpen(false); }}>邮箱</button>}
+                {lib.writable && <button type="button" aria-pressed={view === "mail"} disabled={busy || cardEditing} onClick={() => { setView(view === "mail" ? "notes" : "mail"); setMoreOpen(false); }}>邮箱</button>}
                 <button type="button" aria-pressed={mcpOpen} disabled={busy} onClick={() => { setMcpOpen(!mcpOpen); setMoreOpen(false); }}>外部授权</button>
                 <button type="button" aria-pressed={asrOpen} disabled={busy} onClick={() => { setAsrOpen(!asrOpen); setMoreOpen(false); }}>语音转写</button>
                 <button type="button" aria-pressed={settingsOpen} disabled={busy} onClick={() => { setSettingsOpen(!settingsOpen); setMoreOpen(false); }}>设置与本地文件</button>
@@ -719,25 +720,15 @@ function Preview() {
           <button type="submit" disabled={busy}>添加订阅</button>
         </form>}
       </section>}
-      {mailOpen && lib?.writable && <MailboxView
-        dir={lib.path}
-        materials={[]}
-        settings={defaultSettings}
-        apiKey=""
-        onRefresh={async () => { await reload(lib.generation); }}
-        onOpenMaterial={() => setNotice("素材详情请到素材库查看")}
+      {lib?.writable && <PreviewMailbox key={lib.generation}
+        dir={lib.path} generation={lib.generation} open={view === "mail"} settingsOpen={settingsOpen}
+        onOpenMaterial={(id) => { setOpenedMaterialId(id); setView("materials"); }}
         onSettings={() => setSettingsOpen(true)}
-        onSaveDigest={async () => { setNotice("邮件简报暂未接入"); }}
-        digest={null}
-        onDigestChange={() => {}}
-        digestTitle=""
-        onDigestTitleChange={() => {}}
-        insights={[]}
-        personalizationOn={false}
+        onChanged={() => setStatsRevision((value) => value + 1)}
       />}
 
       {lib && view === "review" && <ReviewDeck key={"ReviewDeck:" + lib.generation} generation={lib.generation} writable={lib.writable} onSaving={setBusy} />}
-      {lib && view === "materials" && <MaterialLibrary key={"MaterialLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onChanged={() => setStatsRevision((value) => value + 1)} />}
+      {lib && view === "materials" && <MaterialLibrary key={"MaterialLibrary:" + lib.generation + ":" + openedMaterialId} initialMaterialId={openedMaterialId} onOpenMaterial={setOpenedMaterialId} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onChanged={() => setStatsRevision((value) => value + 1)} />}
       {lib && view === "claims" && <ClaimLibrary key={"ClaimLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} />}
       {lib && view === "goals" && <GoalsView
         dir={lib.path}

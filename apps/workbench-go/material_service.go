@@ -24,6 +24,36 @@ func (s *PreviewService) ListMaterials(ctx context.Context, generation int, inbo
 	return s.current.ListMaterials(ctx, inboxOnly, limit, offset)
 }
 
+// ListEmailMaterials 读取共享邮箱页所需的邮件原件。
+func (s *PreviewService) ListEmailMaterials(ctx context.Context, generation int) ([]materials.Material, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return nil, errors.New("请重新打开资料库")
+	}
+	return s.current.ListEmailMaterials(ctx)
+}
+
+// GetMaterial 按标识打开原件，支持不在素材列表首屏的引用。
+func (s *PreviewService) GetMaterial(ctx context.Context, generation int, id string) (*materials.Material, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return nil, errors.New("请重新打开资料库")
+	}
+	return s.current.GetMaterial(ctx, id)
+}
+
+// SaveMailDigest 将用户确认的邮件摘要保存到素材库。
+func (s *PreviewService) SaveMailDigest(ctx context.Context, generation int, title, markdown, metadataJSON string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	return s.current.SaveMailDigest(ctx, title, markdown, metadataJSON, time.Now().UnixMilli())
+}
+
 // SearchMaterials 检索素材：全文索引优先，连续中文等用子串回退。
 func (s *PreviewService) SearchMaterials(ctx context.Context, generation int, query string, limit int) ([]materials.Material, error) {
 	s.mu.RLock()

@@ -1,3 +1,5 @@
+import type { RawMaterial } from "../src/domain/dto";
+import type { Material } from "./bindings/knowflick.local/workbench-go/internal/materials/models";
 import type { Note as SharedNote } from "../src/domain/note";
 import type { Note as PreviewNote } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 
@@ -27,4 +29,9 @@ export function toSharedNote(item: PreviewNote): SharedNote {
     deletedAt: item.deletedAt,
     excludeFromProfile: item.excludeFromProfile,
   };
+}
+
+export function toRawMaterial(material: Material): RawMaterial {
+  const status = material.inboxStatus;
+  return { ...material, inboxStatus: status === "processed" || status === "dismissed" ? status : "inbox" };
 }

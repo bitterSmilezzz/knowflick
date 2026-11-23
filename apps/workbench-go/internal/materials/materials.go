@@ -40,6 +40,20 @@ func List(ctx context.Context, db *sql.DB, inboxOnly bool, limit, offset int) ([
 	return read(ctx, db, "SELECT "+materialColumns+" FROM materials"+where+" ORDER BY created_at DESC,id LIMIT ? OFFSET ?", limit, offset)
 }
 
+// ListEmail 读取当前库中的邮件原件，供邮箱页按账号、状态和主题筛选。
+func ListEmail(ctx context.Context, db *sql.DB) ([]Material, error) {
+	return read(ctx, db, "SELECT "+materialColumns+" FROM materials WHERE is_deleted = 0 AND source_type = 'email' ORDER BY created_at DESC,id")
+}
+
+// ByID 读取一条未删除素材。找不到时由调用方处理失效的引用。
+func ByID(ctx context.Context, db *sql.DB, id string) (*Material, error) {
+	items, err := read(ctx, db, "SELECT "+materialColumns+" FROM materials WHERE is_deleted = 0 AND id = ?", id)
+	if err != nil || len(items) == 0 {
+		return nil, err
+	}
+	return &items[0], nil
+}
+
 // Search 先走全文索引；连续中文等前缀匹配不到的情况用 LIKE 兜底。
 // 空查询退回全部素材（与 Rust search_materials_fts 同分支）。
 func Search(ctx context.Context, db *sql.DB, query string, limit int) ([]Material, error) {

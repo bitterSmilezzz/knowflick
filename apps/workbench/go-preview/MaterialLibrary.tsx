@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CaptureMaterial, CompleteChat, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportAudioMaterial, ImportImages, ListMaterials, SaveCardContent, SaveInkMaterial, OpenURL, SaveRecordingMaterial, ReadAPIKey, ReadSettings, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
+import { CaptureMaterial, CompleteChat, ConvertMaterialToCard, EnsureNoteFromMaterial, FetchClipPage, ImportAudioMaterial, ImportImages, GetMaterial, ListMaterials, SaveCardContent, SaveInkMaterial, OpenURL, SaveRecordingMaterial, ReadAPIKey, ReadSettings, SearchMaterials, TranscribeRecording, UpdateMaterialStatus } from "./bindings/knowflick.local/workbench-go/previewservice";
 import { digest } from "../src/domain/clipEngine";
 import { cardsFromModelText, completionURL, requiresKey, TRANSFORM_SYSTEM, transformPrompt } from "../src/domain/ingest";
 import { parseSettings } from "../src/domain/settings";
@@ -7,6 +7,8 @@ import { toCardDraftInput } from "../src/domain/cardDraft";
 import { formatDuration, parseInk, type InkDocument } from "../src/domain/ink";
 import { bytesToBase64 } from "../src/shell/base64";
 import { attachmentKindOf } from "../src/domain/attachmentKind";
+import { parseMailDigestSources } from "../src/domain/mail";
+import { toRawMaterial } from "./sharedAdapters";
 import { AttachmentView } from "../src/ui/workspace/AttachmentView";
 import { useAttachments } from "./attachments";
 import { InkPad, VoiceRecorder } from "../src/ui/workspace/NotePads";
@@ -35,15 +37,17 @@ type Props = {
   busy: boolean;
   onBusy: (busy: boolean) => void;
   onChanged: () => void;
+  initialMaterialId: string;
+  onOpenMaterial: (id: string) => void;
 };
 
 const statusLabels: Record<string, string> = { inbox: "待处理", processed: "已处理", dismissed: "已忽略" };
 
-export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged }: Props) {
+export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged, initialMaterialId, onOpenMaterial }: Props) {
   const [items, setItems] = useState<Material[] | null>(null);
-  const [inboxOnly, setInboxOnly] = useState(true);
+  const [inboxOnly, setInboxOnly] = useState(!initialMaterialId);
   const [query, setQuery] = useState("");
-  const [selectedID, setSelectedID] = useState("");
+  const [selectedID, setSelectedID] = useState(initialMaterialId);
   const [confirmConvert, setConfirmConvert] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [capturePad, setCapturePad] = useState<"ink" | "voice" | null>(null);
@@ -54,7 +58,9 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [transcribing, setTranscribing] = useState(false);
-  const selected = items?.find((item) => item.id === selectedID) ?? items?.[0] ?? null;
+  const selected = items?.find((item) => item.id === selectedID)
+    ?? (selectedID && selectedID === initialMaterialId ? null : items?.[0] ?? null);
+  const mailSources = selected ? parseMailDigestSources(toRawMaterial(selected)) : [];
 
 
   const attachmentPath = selected?.mediaPath?.trim() ?? "";
@@ -76,14 +82,19 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
     let active = true;
     void (async () => {
       try {
-        const rows = await ListMaterials(generation, true, 100, 0);
-        if (active) setItems(rows ?? []);
+        const [rows, original]: [Material[] | null, Material | null] = await Promise.all([
+          ListMaterials(generation, !initialMaterialId, 100, 0),
+          initialMaterialId ? GetMaterial(generation, initialMaterialId) : null,
+        ]);
+        if (!active) return;
+        if (initialMaterialId && !original) setError("原素材已不在当前资料库中");
+        setItems(original ? [original, ...(rows ?? []).filter(item => item.id !== original.id)] : rows ?? []);
       } catch (cause) {
         if (active) setError(String(cause));
       }
     })();
     return () => { active = false; };
-  }, [generation]);
+  }, [generation, initialMaterialId]);
 
   async function run(action: () => Promise<void>) {
     onBusy(true);
@@ -382,6 +393,13 @@ export function MaterialLibrary({ generation, writable, busy, onBusy, onChanged 
               <pre className="preview-material-body">{recording.transcript}</pre>
             </details>
           )}
+          {(selected.cleanedMarkdown || selected.rawText) && <pre className="preview-material-body">{selected.cleanedMarkdown || selected.rawText}</pre>}
+          {mailSources.length > 0 && <section aria-label="摘要来源邮件">
+            <h3>来源邮件</h3>
+            <ol>{mailSources.map((source) => <li key={source.materialId}>
+              <button type="button" onClick={() => onOpenMaterial(source.materialId)}>{source.subject || "（无主题）"}</button>
+            </li>)}</ol>
+          </section>}
           {selected.sourceType === "audio" && !recording?.transcribed && <p className="preview-meta">这段录音还没有本地转写。</p>}
           {writable && <div className="preview-actions">
             <button type="button" disabled={busy} onClick={() => void toNote()}>转为笔记</button>
