@@ -2,7 +2,7 @@
 export type BridgeEntry = { service: string; method: string; args: string[]; fixed?: Record<string, unknown> } | null;
 
 export const COMMANDS: Record<string, BridgeEntry> = {
-  "asr_download_model": {"service": "PreviewService","method": "StartAsrDownload","args": ["model"]},
+  "asr_download_model": {"service": "PreviewService","method": "DownloadAsrModelAndWait","args": ["model"]},
   "asr_model_status": {"service": "PreviewService","method": "AsrModelStatus","args": ["model"]},
   "asr_transcribe": {"service": "PreviewService","method": "AsrTranscribe","args": ["model","path"]},
   "backup_capture_database": {"service": "PreviewService","method": "CaptureDatabaseSnapshot","args": ["generation"]},

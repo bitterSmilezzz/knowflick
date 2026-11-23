@@ -1700,7 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百三十七轮 · 共享笔记附件插入
+## 阶段 2 第一百三十八轮 · 语音模型进度事件
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 下载命令 | 构建通过 | asr_download_model 改走 DownloadAsrModelAndWait：IPC 一直等到文件落盘再返回最终状态，共享设置页不会把「刚开始下载」误判成已完成。 |
+| 进度事件 | 构建通过 | Go 在下载回调里发出 knowflick:asr-progress，载荷含 model、downloaded、total、done；启动下载与同步等待两条路径都发送，完成时 done=true。 |
+| 事件桥 | 构建通过 | Tauri event 兼容层同时接受 Wails 事件的 data 与 payload 字段，共享 AsrModelPanel 能更新百分比。 |
+| 验证范围 | 记录 | Wails 生产构建、TypeScript 与 Go 全量通过。没有执行真实模型下载（体积与网络），也没有在原生窗口里点击下载观察事件送达；模拟 IPC 不暴露 Events。旧 AsrPanel 的轮询入口保留。 |## 阶段 2 第一百三十七轮 · 共享笔记附件插入
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |

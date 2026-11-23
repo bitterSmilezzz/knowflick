@@ -3,7 +3,7 @@ export async function listen(name: string, handler: (event: { event: string; id:
   try {
     // @ts-expect-error Wails injects this virtual module at runtime.
     const runtime = await import("/wails/runtime.js");
-    const off = runtime.Events?.On?.(name, (event: { data?: unknown }) => handler({ event: name, id: 1, payload: event?.data }));
+    const off = runtime.Events?.On?.(name, (event: { data?: unknown; payload?: unknown }) => handler({ event: name, id: 1, payload: event?.data ?? event?.payload ?? event }));
     return () => off?.();
   } catch {
     return () => {};

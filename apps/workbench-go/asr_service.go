@@ -70,6 +70,7 @@ func (s *PreviewService) StartAsrDownload(ctx context.Context, model string) err
 				state.Downloaded = done
 				state.Total = total
 				s.asrMu.Unlock()
+				s.emitAsrProgress(model, done, total, false)
 			}
 		})
 		s.asrMu.Lock()
@@ -81,8 +82,22 @@ func (s *PreviewService) StartAsrDownload(ctx context.Context, model string) err
 			state.Downloaded = state.Total
 		}
 		s.asrMu.Unlock()
+		s.emitAsrProgress(model, state.Downloaded, state.Total, true)
 	}()
 	return nil
+}
+
+// emitAsrProgress 把下载进度推给共享设置页；没有界面时静默。
+func (s *PreviewService) emitAsrProgress(model string, downloaded, total int64, done bool) {
+	if s.app == nil {
+		return
+	}
+	s.app.Event.Emit("knowflick:asr-progress", map[string]any{
+		"model":      model,
+		"downloaded": downloaded,
+		"total":      total,
+		"done":       done,
+	})
 }
 
 // AsrDownloadProgress 返回某档模型的下载进度快照。
@@ -152,8 +167,18 @@ func (s *PreviewService) DownloadAsrModelAndWait(ctx context.Context, model stri
 	if err != nil {
 		return asr.Status{}, err
 	}
-	if _, err := asr.Download(ctx, url, target, func(done, total int64) {}); err != nil {
+	var last int64
+	if _, err := asr.Download(ctx, url, target, func(done, total int64) {
+		if done-last >= 2*1024*1024 || (total > 0 && done*100/total != last*100/maxInt64(total, 1)) || done == total {
+			last = done
+			s.emitAsrProgress(model, done, total, false)
+		}
+	}); err != nil {
 		return asr.Status{}, err
 	}
-	return asr.ModelStatus(dataroot.Dir(), model)
+	status, err := asr.ModelStatus(dataroot.Dir(), model)
+	if err == nil {
+		s.emitAsrProgress(model, status.SizeBytes, status.SizeBytes, true)
+	}
+	return status, err
 }
