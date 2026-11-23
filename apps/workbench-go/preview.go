@@ -114,6 +114,18 @@ func (s *PreviewService) ListNotes(ctx context.Context, generation, offset int) 
 	return s.current.List(ctx, offset)
 }
 
+// ListNotesScoped 按 active / deleted / all 分页；共享笔记页用同一入口读回收站。
+func (s *PreviewService) ListNotesScoped(ctx context.Context, generation int, scope string, limit, offset int) (library.Page, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil || s.generation != generation {
+		return library.Page{}, errors.New("请重新打开资料库")
+	}
+	if offset < 0 {
+		return library.Page{}, errors.New("页码无效")
+	}
+	return s.current.ListScope(ctx, scope, limit, offset)
+}
 // SearchNotes 检索；空查询退回列表。
 func (s *PreviewService) SearchNotes(ctx context.Context, generation int, query string) (library.Page, error) {
 	s.mu.RLock()

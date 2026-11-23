@@ -331,3 +331,27 @@ func TestRestoreBringsBackNoteAndIndex(t *testing.T) {
 		t.Fatalf("second restore must be a no-op: %v %v", ok, err)
 	}
 }
+
+func TestListScopeSeparatesActiveDeletedAndAll(t *testing.T) {
+	lib, _ := newWritable(t)
+	ctx := context.Background()
+	if _, err := lib.Upsert(ctx, draftNote("active1", "在库", "正文"), 0, 1000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Upsert(ctx, draftNote("trash1", "待删", "正文"), 0, 1000); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := lib.Delete(ctx, "trash1", 2000); err != nil || !ok {
+		t.Fatalf("delete: %v %v", ok, err)
+	}
+	for scope, want := range map[string]int{"active": 1, "deleted": 1, "all": 2} {
+		page, err := lib.ListScope(ctx, scope, 500, 0)
+		if err != nil || len(page.Notes) != want {
+			t.Fatalf("%s scope: %d notes, %v", scope, len(page.Notes), err)
+		}
+	}
+	page, err := lib.ListScope(ctx, "all", 1, 0)
+	if err != nil || len(page.Notes) != 1 || !page.HasMore {
+		t.Fatalf("limit page: %+v %v", page, err)
+	}
+}

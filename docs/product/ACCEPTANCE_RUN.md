@@ -1700,7 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百三十五轮 · 共享笔记页预览接通
+## 阶段 2 第一百三十六轮 · 笔记范围与分页
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 范围查询 | PASS（Go 单测） | 新增 ListScope：active 只看在库笔记，deleted 只列回收站，all 同时返回两者；limit/offset 由调用方决定，超过上限回落到默认页大小。 |
+| 共享页接线 | PASS（模拟 IPC） | note_list 命令改走 ListNotesScoped，共享笔记页能读到回收站数量；浏览器冒烟显示「回收站（1）」，并继续完成读笔记与保存回执。 |
+| 回归保护 | PASS | 新增 Go 测试核对 active=1、deleted=1、all=2，以及 limit=1 时 HasMore 为真；全量 Go 套件通过。 |
+| 验证范围 | 记录 | Wails 生产构建与 TypeScript 通过。真实资料库的大页翻页、回收站恢复与归档筛选未在浏览器真机链路验证。 |## 阶段 2 第一百三十五轮 · 共享笔记页预览接通
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |

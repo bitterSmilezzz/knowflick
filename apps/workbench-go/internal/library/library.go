@@ -147,7 +147,26 @@ func knowledgeBaseFilter(kbID, noteAlias string) (string, []any) {
 	return " AND " + noteAlias + ".id IN (SELECT note_id FROM kb_membership WHERE kb_id = ?)", []any{kbID}
 }
 
+// ListScope 按 active / deleted / all 列出笔记，limit 由调用方决定（最多 1000）。
+func (l *Library) ListScope(ctx context.Context, scope string, limit, offset int) (Page, error) {
+	if limit < 1 || limit > 1000 {
+		limit = PageSize
+	}
+	where := "n.is_deleted=0"
+	switch scope {
+	case "deleted":
+		where = "n.is_deleted=1"
+	case "all":
+		where = "1=1"
+	}
+	return l.queryLimit(ctx, "SELECT "+noteColumns+" FROM notes n WHERE "+where+
+		" ORDER BY n.is_pinned DESC, n.updated_at DESC, n.id LIMIT ? OFFSET ?", limit, limit+1, offset)
+}
 func (l *Library) query(ctx context.Context, statement string, args ...any) (Page, error) {
+	return l.queryLimit(ctx, statement, PageSize, args...)
+}
+
+func (l *Library) queryLimit(ctx context.Context, statement string, limit int, args ...any) (Page, error) {
 	rows, err := l.db.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return Page{}, err
@@ -164,9 +183,9 @@ func (l *Library) query(ctx context.Context, statement string, args ...any) (Pag
 	if err := rows.Err(); err != nil {
 		return Page{}, err
 	}
-	page.HasMore = len(page.Notes) > PageSize
+	page.HasMore = len(page.Notes) > limit
 	if page.HasMore {
-		page.Notes = page.Notes[:PageSize]
+		page.Notes = page.Notes[:limit]
 	}
 	return page, nil
 }

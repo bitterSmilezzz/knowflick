@@ -88,7 +88,7 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "note_get": {"service": "PreviewService","method": "GetNote","args": ["generation","id"]},
   "note_history_list": {"service": "PreviewService","method": "ListNoteHistory","args": ["generation","id"]},
   "note_history_read": {"service": "PreviewService","method": "ReadNoteHistory","args": ["generation","id","revision"]},
-  "note_list": {"service": "PreviewService","method": "ListNotes","args": ["generation","offset"]},
+  "note_list": {"service": "PreviewService","method": "ListNotesScoped","args": ["generation","scope","limit","offset"]},
   "note_list_chunk_texts": {"service": "PreviewService","method": "ListNoteChunkTexts","args": ["generation","limit","provider","model"]},
   "note_restore": {"service": "PreviewService","method": "RestoreNote","args": ["generation","id"]},
   "note_restore_upsert": {"service": "PreviewService","method": "RestoreNoteSnapshotWithHistory","args": ["generation","note","revision","fingerprint","history"]},
