@@ -1700,7 +1700,13 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百四十三轮 · 默认共享外壳的页面切换
+## 阶段 2 第一百四十四轮 · 系统通知接回 Go
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 通知通道 | 构建通过 | Tauri notification 兼容层改为调用 Go 的 SendSystemNotification，由 macOS 通知中心显示标题与正文；不再固定返回「未授权」。 |
+| 参数安全 | PASS（Go 单测） | 标题为空时在运行 osascript 前拒绝；标题与正文通过 argv 传入 AppleScript，不拼进脚本源码，避免引号/换行注入。 |
+| 验证范围 | 记录 | Wails 生产构建、Go 单测与默认共享外壳浏览器冒烟通过。未在通知中心实际观察一条提醒，macOS 桌面被锁；系统通知权限的首次授权流程仍未验证。 |## 阶段 2 第一百四十三轮 · 默认共享外壳的页面切换
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |
