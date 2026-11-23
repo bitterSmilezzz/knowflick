@@ -1700,7 +1700,14 @@ R4 项目与画像的写入仍未迁移。
 | 绑定面盘点 | 记录 | go-preview 绑定数升至 117（本轮接 ReadImportArchiveFile、SaveCardsJSON、LoadStore、ExportArchive、ExportCardsJSONFile）；余 45 个按能力逐轮接线。 |
 | 验证范围 | 记录 | Wails production、Go、前端与 Rust 回归通过。 |
 
-## 阶段 2 第一百五十二轮 · 复习、测验与问答页
+## 阶段 2 第一百五十三轮 · 画像空列表与创作产物页
+
+| 验收 | 结果 | 证据与范围 |
+| --- | --- | --- |
+| 画像页 | 修复并 PASS（模拟 IPC） | 首次进入「我的记忆」时 ProfileGovernanceView 因 Go 返回 null 触发 claims.filter 崩溃；桥层把 profile_claims_active/all/for_answer 统一为 []，页面恢复并显示「从笔记生成建议」「还没有记忆」。 |
+| 创作台 | PASS（模拟 IPC） | 共享创作台页面打开，无渲染错误。 |
+| 产物库 | PASS（模拟 IPC） | 产物库显示「还没有产物」空状态。 |
+| 验证范围 | 记录 | Wails 生产构建、TypeScript 与浏览器冒烟通过。真实记忆生成、创作与产物持久化仍未验证；macOS 真机深层页面未逐项点击。 |## 阶段 2 第一百五十二轮 · 复习、测验与问答页
 
 | 验收 | 结果 | 证据与范围 |
 | --- | --- | --- |

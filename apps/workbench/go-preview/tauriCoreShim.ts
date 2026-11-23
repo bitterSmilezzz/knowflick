@@ -137,6 +137,7 @@ function adaptResult(name: string, result: unknown): unknown {
     return ((result as Record<string, unknown>).notes as unknown[]).map(noteFromGo);
   }
   if (name === "note_get") return noteFromGo(result);
+  if (name === "profile_claims_active" || name === "profile_claims_all" || name === "profile_claims_for_answer") return result ?? [];
   if ((name === "db_load_cards" || name === "db_search_cards_fts") && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).cards)) {
     return ((result as Record<string, unknown>).cards as unknown[]).map(cardFromGo);
   }
