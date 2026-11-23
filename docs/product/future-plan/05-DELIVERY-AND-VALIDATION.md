@@ -19,7 +19,7 @@
 
 | 验证层 | 命令或入口 | 能说明什么 |
 | --- | --- | --- |
-| 桌面完整门禁 | 从仓库根目录执行 `./tools/verify_workbench.sh`；仅前端可在 `apps/workbench` 执行 `npm test` 与 `npx tsc --noEmit`；仅 Rust 可在 `apps/workbench/src-tauri` 执行 `cargo test --locked` | 领域行为、契约、类型、事务和宿主逻辑；完整门禁另覆盖回环代理、MCP、文案、权限、删除确认和设计令牌等。`ignored`、`SKIP` 与通过数分开 |
+| 桌面完整门禁 | 从仓库根目录执行 `./tools/verify_workbench.sh`；仅前端可在 `apps/workbench` 执行 `npm test` 与 `npx tsc --noEmit`；仅 Go 可在 `apps/workbench-go` 执行 `go vet ./... && go test ./...` | 领域行为、契约、类型、事务和宿主逻辑；完整门禁另覆盖回环代理、MCP、文案、权限、删除确认和设计令牌等。`ignored`、`SKIP` 与通过数分开 |
 | 浏览器与降级体验 | 在 `apps/workbench` 起 Vite，根目录 `./tools/run_all_smokes.sh`；CI 专用入口 `./tools/ci_run_browser_smokes.sh` | 页面导航、输入、检索、文件选择模拟、降级行为、可访问交互与备份往返。依赖真实浏览器；被模拟的 Tauri 命令、模型、麦克风、服务端不能作对应真实环境证据 |
 | 桌面安装态 | 目标系统用 [发布工作流](../../../.github/workflows/workbench-release.yml) 对应产物，临时数据根/隔离账号做验收；以可访问性树、文件/哈希、只读 SQLite 查询、系统日志和用户实际观察相互印证 | 真实窗口、菜单、托盘、快捷键、权限、音频设备、通知、IPC、包内资源、恢复与升级。截图可辅助核对视觉；未确认看到横幅时，只记录系统投递证据 |
 | Android | 根目录 `./tools/build_android.sh`；仅共享 Kotlin 在 `apps/android` 执行 `./gradlew :domain:jvmTest :shared-data:jvmTest :shared-ui:jvmTest :desktop:test`；设备验证另跑 instrumentation 或真机 | 共享模块与 Android 装配分别验证，既有朗读、磨耳朵、学习地图、微件、分享、存储权限需对应设备。仅执行 `:app:testDebugUnitTest` 会漏共享模块 |

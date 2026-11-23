@@ -8,6 +8,18 @@
 
 ## [Unreleased]
 
+- 工作台（ADR-0042）：**删除 Rust/Tauri 壳**——`apps/workbench/src-tauri/`（Cargo 清单、`build.rs`、capabilities、permissions、icons、src）整体移除；第一套桌面现在是 `apps/workbench` 前端 + `apps/workbench-go` Go 壳（Wails v3 单二进制），构建入口只剩 `./tools/build_workbench_go.sh`。
+
+- 工作台（ADR-0042）：**发布通道显式暂停**——`workbench-release.yml` 只留一个会失败的占位 job；`workbench-v*` tag 不再触发构建、也不产出附件（Go 版 DMG/MSI/DEB 打包与校验未就绪）。历史 Release 里的安装包对应已删除的 Rust 实现。
+
+- 工作台（ADR-0042）：**只对 Tauri 有效的检查删除**（`check_tauri_permissions.py` 与其回归）；有跨端价值的检查迁到 Go，而不是删掉——`check_go_error_messages.py` 取代 `check_rust_error_messages.py`、用户数据文案守卫与来源标签扫描改扫 `apps/workbench-go`、剪藏规则表的字符集窗口第三处改 Go `MetaSniffBytes`、回环判定改 Go↔TS 对拍（`go test -run TestPrintsLoopbackVerdictsForCrossPlatformParity`）。`verify_workbench.sh`、`workbench.yml`、`desktop.yml` 同步更新。
+
+- 修复（迁 Go 时被守卫逮到）：**字符集嗅探窗口 2048 ≠ 1024**——Kotlin / TS 都是 `META_SNIFF_BYTES = 1024`，Go 的 `charsetFromMeta` 写成 2048，同一页在桌面与安卓可能解出不同编码。新增 `MetaSniffBytes = 1024` 常量并由 `check_clip_parity.py` 三方比对。
+
+- 修复（迁 Go 时被守卫逮到）：**回环判定把 IPv4 映射地址算成本机**——Go 的 `net.IP.IsLoopback()` 认 `::ffff:127.0.0.1` / `[::ffff:7f00:1]`，而 TS / Android 的口径不认；同一份 `settings.json` 会一端免密钥、一端要密钥。`isLoopbackHost` 改为显式拒绝 `ip.To4() != nil` 的写法，16 个地址逐条对拍通过。
+
+- 文档：README / AGENTS / MULTI_PLATFORM / WINDOWS_ONBOARDING / CONTEXT / `apps/workbench/README` 改成 Go 口径；新增 [ADR-0042](docs/adr/0042-remove-tauri-rust.md)；清掉 `docs/MULTI_PLATFORM.md` 里失效的 `assemble_workbench_release.sh` 引用与 `src-tauri/tauri.conf.json` 版本来源。
+
 - 工作台（R1/B01）：正文编辑支持**撤销 / 重做**（Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z、Ctrl+Y），连续输入按 600ms 合并成一版历史；字数行旁有可见入口。
 
 - 工作台（R1/B01）：表格支持**列对齐**（`:---` / `:---:` / `---:`）——渲染器此前完全忽略分隔行里的冒号，现在按冒号对齐，正文上方可切换。

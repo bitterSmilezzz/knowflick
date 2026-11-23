@@ -1,7 +1,7 @@
 # 笔记软件本体：手写与语音（第一套桌面 / apps/workbench）
 
 > 定位修正：这不只是「收集箱 + 知识卡」。它首先得是**笔记软件**——手写和说话都要能直接记下来。
-> 实现位置：`src/domain/ink.ts`（笔迹模型）+ `src/ui/workspace/NotePads.tsx`（手写板 / 录音）+ `src-tauri/src/media.rs`（附件落盘）。
+> 实现位置：`src/domain/ink.ts`（笔迹模型）+ `src/ui/workspace/NotePads.tsx`（手写板 / 录音）+ `apps/workbench-go` 的 `media_service.go` / `internal/media`（附件落盘）。
 
 ## 一、三种记法并列在「记录」下
 
@@ -47,24 +47,25 @@
 
 1. **手写是笔画，不是文字识别**。没有做手写转文字（OCR），所以手写笔记不可全文检索——它作为附件与正文说明存在。要做 OCR 需要额外的模型与授权，不在这一轮。
 2. **语音转写依赖 Whisper 模型已下载**。没下载时录音仍然保存，界面会说明「录音已保存，转写待模型下载」。
-3. **浏览器体验模式不能录音转写**（没有 Rust 与本地模型）；手写可以用，但笔迹只存在页面存储里，导出备份时随素材一起走。
+3. **浏览器体验模式不能录音转写**（没有 Go 壳与本地模型）；手写可以用，但笔迹只存在页面存储里，导出备份时随素材一起走。
 4. **没有做笔迹橡皮擦、套索、图层**。只有撤销与清空——先保证「能记」，编辑能力留到有真实需求时再加。
 5. **没有手写压感**。`PointerEvent` 的 `pressure` 在触控板/鼠标上不可靠，强行使用会让线条忽粗忽细；线宽由用户选的三档决定。
 6. 录音在 macOS 需要麦克风权限；首次使用系统会弹窗，被拒绝时界面给出「去系统设置允许」的提示。
-7. **麦克风声明是必需的，不是可选的**：Tauri 用 WKWebView，缺少 `NSMicrophoneUsageDescription` 时
-   macOS 不是弹权限框而是**直接终止进程**。声明放在 `src-tauri/Info.plist`（Tauri 会与 CLI 生成的
-   plist 合并），只写补充键。产物已核对：安装包 `Info.plist` 里能看到这条文案。
+7. **麦克风声明是必需的，不是可选的**：Wails 在 macOS 用 WKWebView，缺少 `NSMicrophoneUsageDescription` 时
+   macOS 不是弹权限框而是**直接终止进程**。声明放在 `apps/workbench-go/Info.plist`，由
+   `tools/build_workbench_go.sh` 通过 `-sectcreate __TEXT __info_plist` 链进 Mach-O（Rust 时代那份
+   `src-tauri/Info.plist` 已随 ADR-0042 删除）。
 8. **未在真机上按下录音键做端到端验收**：真机界面已确认（四段侧栏与手写/语音/转写三入口都在），
-   但录音→保存→转写这段只在浏览器与 Rust 单测层面验过。首次真机录音请留意系统权限弹窗。
+   但录音→保存→转写这段只在浏览器与 Go 单测层面验过。首次真机录音请留意系统权限弹窗。
 
 ## 六、验证
 
 | 层 | 命令 | 结果 |
 | --- | --- | --- |
 | 笔迹模型（归一化 / 撤销 / 容错 / 标题 / 时长） | `npx vitest run src/domain/ink.test.ts` | 7 项 |
-| 附件落盘（原子写 / 大小 / 路径穿越 / 类型白名单） | `cargo test --lib media` | 6 项 |
+| 附件落盘（原子写 / 大小 / 路径穿越 / 类型白名单） | `cd apps/workbench-go && go test ./internal/media/...` | 全绿（数量以 `go test` 日志为准） |
 | 界面端到端（手写能画能存、语音面板、空画布校验） | `node tools/notes_ui_smoke.mjs` | 21 项 |
-| 全量门禁 | `./tools/verify_workbench.sh` | 前端 236 项 + Rust 73 项 |
+| 全量门禁 | `./tools/verify_workbench.sh` | 前端 236 项 + Go 测试（数量以门禁日志为准） |
 
 端到端覆盖：三档笔色/笔宽存在、画两笔计数正确、撤销按笔回退、撤销后可继续写、
 保存后笔迹随素材落库（`strokes.length === 2`）、标题含「手写笔记」与笔数、保存有回执、
@@ -72,8 +73,11 @@
 
 ## 七、改动清单
 
+> 下面是那一轮的改动清单，路径是当时的 Rust 壳（已随 ADR-0042 删除）；现在对应
+> `apps/workbench-go/media_service.go` / `internal/media`。
+
 ```
-新增  apps/workbench/src-tauri/src/media.rs                 附件落盘与受限读取
+新增  apps/workbench/src-tauri/src/media.rs                 附件落盘与受限读取（历史）
 新增  apps/workbench/src/domain/ink.ts                      笔迹模型（纯函数）
 新增  apps/workbench/src/domain/ink.test.ts                 7 项
 新增  apps/workbench/src/ui/workspace/NotePads.tsx           手写板 + 录音面板

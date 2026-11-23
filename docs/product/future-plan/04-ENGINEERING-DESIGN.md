@@ -7,7 +7,7 @@
 | 工程边界 | 当前职责 | 新功能落点 |
 | --- | --- | --- |
 | `apps/workbench` | Vite、React、TypeScript；桌面和浏览器共用界面。入口 `src/main.tsx` 在主工作台和闪念胶囊间选路，最外层有错误边界 | 功能先写在一套界面；平台差异通过仓储和宿主能力暴露，桌面与浏览器不复制页面业务 |
-| `apps/workbench/src-tauri` | Tauri 2、Rust、SQLite；系统窗口、托盘、快捷键、通知、网络代理、原子文件读写和本地模型能力 | Windows/macOS/Linux 共用命令与存储语义；与平台绑定的插件初始化、权限、安装与系统交互留在这里 |
+| `apps/workbench-go` | Go 1.27、Wails v3、纯 Go SQLite（modernc.org/sqlite）；系统窗口、托盘、快捷键、通知、网络请求、原子文件读写与 ASR 外部进程 | Windows/macOS/Linux 共用服务与存储语义；与平台绑定的窗口、菜单、安装与系统交互留在这里（Rust 壳已随 ADR-0042 删除） |
 | `apps/android` | 独立 Kotlin/Compose，保留学习、剪藏、朗读、磨耳朵、学习地图、微件等已有场景；`:domain`、`:shared-data`、`:shared-ui` 与 `:app` 各有职责 | 新笔记协议采用先只读保留、再可编辑、再离线队列的顺序；Android 手机上的分享、拍照、录音、系统返回和通知由宿主接入。Android 平板沿用同套代码做布局与输入适配 |
 | `apps/android/desktop` | 冻结的 JVM/Skiko 宿主，保留兼容和既有发布链路 | 不承担新桌面功能；不恢复已删除的 `apps/mac`。iOS/iPadOS 需要独立平台决策 |
 | `shared/assets`、`tools` | 唯一学科映射和卡片底图；跨端校验、验证、产物组装 | 先写跨端数据契约和对照样本，两端各自实现。`cards.json`/`settings.json` 是学习交换基础，不能据此声明 Android 可读桌面 SQLite 或 `.kfbackup` 新数据 |
@@ -33,7 +33,7 @@ flowchart TD
 | 流程和会话 | `ui/workspace/noteSession.ts`、`backupCollect.ts`、`backupRestore.ts`、`notesRestore.ts`、`externalRefresh.ts` | 编排防抖、取消、重试、批次依赖、回执与刷新。交互缓存不是真相源；导出不依赖用户先访问过某个页面。可独立验证的规则优先抽成无 I/O 函数 |
 | 领域与边界类型 | `src/domain/note.ts`、`dto.ts`、`reviewFacts.ts`、`restoreRules.ts`、`profileLearning.ts`、`systemBackup.ts`、`aiChat.ts` | 用判别联合描述结果（例如冲突、已保存、拒绝），在数据进入处校验后再转内部类型。领域规则不依赖 React、浏览器存储或 Tauri；跨层不以宽泛断言替代校验 |
 | 仓储与宿主桥 | `ui/workspace/repository.ts`、`src/shell/store.ts`、`src/shell/mail.ts` | 仓储决定桌面/浏览器路径；宿主桥封装请求、DTO 映射和凭据处理。浏览器以 `localStorage` 等宿主能力提供有限体验，配额或损坏时保留原数据并提示。专属能力缺失时明确降级，不把模拟回执当真机成功 |
-| Rust 宿主与存储 | `src-tauri/src/lib.rs`、`db.rs`、`notes.rs`、`review_history.rs`、`backup_*.rs`、`mcp_grants.rs`、`http.rs`、`mail.rs`、`media.rs` | `lib.rs` 装配命令，校验输入、路由到实际职责模块；事务、约束、范围校验、文件路径边界由实际写入层强制。新增命令需同时维护处理器、`build.rs` 与 capability，按窗口最小授权 |
+| Go 宿主与存储 | `main.go` 装配服务；`internal/library`（建库与迁移）、`internal/mail*`、`internal/httpx`、`internal/mcpgrants`、`internal/media`、`internal/creds` 等 | `main.go` 装配服务，方法校验输入、路由到实际职责模块；事务、约束、范围校验、文件路径边界由实际写入层强制。新增方法要同时维护 Go 服务、bindings 生成与 TS 适配（不再有 `build.rs` / capability 三处对齐） |
 | 外部读写 | `tools/mcp-server.mjs`、`tools/mcp-access.mjs`、`tools/knowflick-mcp/` | 两条入口分别维护兼容，但同样验证令牌、模块、范围和操作权限。前端隐藏按钮不能替代外部进程的授权。保留旧卡片暂存流程与人工确认边界 |
 
 新页面可从 `Workspace.tsx` 装配；当同一个业务规则被两个页面或宿主共享时，再从入口提取纯规则和宿主适配，避免把整个 `Workspace` 或 `lib.rs` 重写作为交付前置。文件、命令、数据字段和版本矩阵详见 [接口与数据](03-INTERFACES-AND-DATA.md)。

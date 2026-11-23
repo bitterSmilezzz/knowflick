@@ -8,7 +8,7 @@
 
 **产品规划更新（2026-10-24）**：新增笔记、知识库、应用、来源接入、个人记忆或前端导航时，先读 [产品重规划](docs/product/README.md)，再按其中链接读取对应能力、界面、数据或路线章节。[ADR-0004](docs/adr/0004-notes-knowledge-applications.md) 记录本次范围扩展：笔记成为一等资产，旧“不做长文编辑”的范围限制已更新；既有功能保留。R0–R5 是新路线，方案不等于已实现。下文 ADR-0002 的平台分工与既有验证规则继续适用。
 
-KnowFlick 是多端学习工作台。**活计划是 [ADR-0002](docs/adr/0002-desktop-web-split-from-android.md)**：Windows / Linux / macOS 与稍后的网页共用一份 Web 界面（Vite + React + TypeScript）加 Tauri 壳；Android 单独留在现有 Kotlin / Compose。iOS 先不做。两套共享 `cards.json` 与 `settings.json` 的结构，不共享界面。
+KnowFlick 是多端学习工作台。**活计划是 [ADR-0002](docs/adr/0002-desktop-web-split-from-android.md)**：Windows / Linux / macOS 与稍后的网页共用一份 Web 界面（Vite + React + TypeScript）加 Go 壳（`apps/workbench-go`，Wails v3 单二进制）；Android 单独留在现有 Kotlin / Compose。iOS 先不做。两套共享 `cards.json` 与 `settings.json` 的结构，不共享界面。
 
 现状里的 Kotlin 共享模块仍然在：`apps/android` 的 `:app`、`:domain`、`:shared-data`、`:shared-ui`，外加已冻住的 `:desktop`（JVM + Skiko）。`:desktop` 不再加功能，第一套闭环跑通之前不删。Swift/SwiftUI 的 `apps/mac` 已删除，不要恢复。`shared/assets` 仍是契约与底图。
 
@@ -29,15 +29,15 @@ KnowFlick 是多端学习工作台。**活计划是 [ADR-0002](docs/adr/0002-des
 
 **两台开发机（macOS / Windows）通过 GitHub 协作，永不同步工作目录。**
 
-1. **同步中枢只有 GitHub。** 禁止用 iCloud / 网盘 / SMB / 局域网盘同步工作树——两个 agent 同时写同一份 `.git` 必然损坏索引；构建目录（`apps/workbench` 的 `node_modules/` 与 `src-tauri/target/`、android 的 `build/`、仓库根的 `dist/`）也完全不该跨机复制。
+1. **同步中枢只有 GitHub。** 禁止用 iCloud / 网盘 / SMB / 局域网盘同步工作树——两个 agent 同时写同一份 `.git` 必然损坏索引；构建目录（`apps/workbench` 的 `node_modules/`、`apps/workbench-go` 的 `bin/` 与 `assets/dist/`、android 的 `build/`、仓库根的 `dist/`）也完全不该跨机复制。
 2. **一个分支同一时刻只在一台机器签出。** 接活前 `git fetch && git log --oneline origin/main -5` 确认起点；开工先推到 origin（哪怕空提交），另一台机器看到的分支就是「已被占」。
-3. **改动的端在能验证它的机器上做。** 三端安装包只能在各系统本地构建（Tauri 与 jpackage 都不支持交叉编译）；Android 装配层（`:app`）要 SDK，其余 Kotlin 模块只要 JDK 17。表：
+3. **改动的端在能验证它的机器上做。** 安装包只能在各系统本地构建（Go/Wails 与 jpackage 都不支持交叉编译）；Android 装配层（`:app`）要 SDK，其余 Kotlin 模块只要 JDK 17。表：
 
    | 改动 | 在哪台机器做 | 验证命令 |
    | --- | --- | --- |
    | 已删除的 `apps/mac/**` | — | 不要恢复 |
    | `:desktop`（JVM + Skiko） | — | 已冻住：不加功能，闭环跑通前不删。新桌面不在这里加 |
-   | `apps/workbench/**`（第一套桌面，Vite + React + Tauri） | 任意机器（Node + Rust） | `./tools/verify_workbench.sh`（`npm test` + `tsc` + `cargo test`，同 `workbench.yml`）；发布另走 [workbench-release.yml](.github/workflows/workbench-release.yml)（tag `workbench-v*`，三台 runner 各出一档） |
+   | `apps/workbench/**` + `apps/workbench-go/**`（第一套桌面，Vite + React 前端 + Go 壳） | 任意机器（Node 22+ 与 Go 1.27+） | `./tools/verify_workbench.sh`（`npm test` + `tsc` + 静态守卫 + `go vet` / `go test` + 回环对拍，同 `workbench.yml`）；发布暂停（[workbench-release.yml](.github/workflows/workbench-release.yml) 目前是占位 job，tag 不触发） |
    | `apps/android/{domain,shared-data,shared-ui,desktop}/**`（共享逻辑 / 持久化 / 界面 + 桌面宿主） | 任意机器，**只需 JDK 17，不要 SDK** | `cd apps/android && ./gradlew :domain:jvmTest :shared-data:jvmTest :shared-ui:jvmTest :desktop:test`（201 项） |
    | 其余 `apps/android/**` | 任意机器（JDK 17 + SDK） | `./tools/build_android.sh` |
    | `shared/**` 契约 | 任意机器，但**两端 CI 都要绿** | `python3 tools/check_taxonomy.py` |
@@ -62,22 +62,21 @@ KnowFlick 是多端学习工作台。**活计划是 [ADR-0002](docs/adr/0002-des
 ./tools/build_android.sh           # android：单测 + Lint + release + 签名校验
 cd apps/android && ./gradlew :domain:jvmTest :shared-data:jvmTest :shared-ui:jvmTest :desktop:test   # 共享逻辑/持久化/界面 + 桌面宿主（只需 JDK 17，无需 SDK）
 cd apps/android && ./gradlew :desktop:packageDmg   # 冻结 JVM 桌面安装包（本系统；三端由 desktop.yml 的 matrix 出）
-./tools/verify_workbench.sh        # 第一套桌面（apps/workbench）：npm test + tsc + cargo test（三端安装包由 workbench-release.yml 出）
+./tools/verify_workbench.sh        # 第一套桌面：npm test + tsc + 静态守卫 + go vet/go test + 回环对拍（安装包发布通道暂停）
 python3 tools/check_taxonomy.py    # 契约 JSON 与共享端学科表一致
 python3 tools/check_clip_parity.py # 剪藏规则表：Kotlin ↔ TypeScript 逐条一致（有序表按序比、集合表按集合比、token 必须全小写）
 ```
 
 发版流程见 [MULTI_PLATFORM.md](docs/MULTI_PLATFORM.md) §提交与发布；产物不入 Git，Release 附件依赖本地上传（android）或 CI workflow（`workbench-v*` 与 `desktop-v*` tag）。
 
-### Rust 编译产物定期清理（存储不会无限膨胀）
+### 本仓已无 Rust；Rust 清理任务只服务其他仓
 
-`apps/workbench/src-tauri/target/` 会随构建无限增长（本轮清理前实测约 15 GB）。本机装了**独立于本仓**的周清理任务：
+第一套桌面的 Rust/Tauri 壳已整体删除（[ADR-0042](docs/adr/0042-remove-tauri-rust.md)），本仓不再有 `Cargo.toml` / `src-tauri/`，
+也不再产生 `target/`。本机那个周清理任务（LaunchAgent `local.agents.rust-clean` → `~/.agents/scripts/rust-clean-sweep.sh`）
+仍在跑，但它扫的是 `~/workspace` 下**别的**仓库（AgentIsland 等在迁 Go 期间仍需 Rust 工具链）——不要因为本仓迁走就把它删掉。
 
-- **调度**：LaunchAgent `local.agents.rust-clean`，每周日 03:00 运行 `~/.agents/scripts/rust-clean-sweep.sh`
-- **策略**：扫 `~/workspace` 下所有 `Cargo.toml`，仅当 `target/` ≥ 5 GiB 时执行 `cargo clean`（debug + release 全清）
-- **护栏**：只要有 `cargo` / `rustc` / `rust-analyzer` / `cargo-tauri` 在跑，整轮跳过——正在构建或调试的产物不动；仓根放 `.rust-clean-skip` 可让本仓永久跳过
-- **手动**：`~/.agents/scripts/rust-clean-sweep.sh --dry-run` 先看会清什么；`--project "$PWD"` 只清本仓。日志在 `~/Library/Logs/rust-clean/sweep.log`
-- **代价**：清理后下一次 `cargo test` / `verify_workbench.sh` 是全量重编（几分钟）
+Go 侧构建产物另有位置：`apps/workbench-go/bin/`（可执行文件）与 `apps/workbench-go/assets/dist/`（嵌入的前端 bundle），
+都在 .gitignore 管辖内、跨机不可复制；需要回收空间时删掉重编即可（`./tools/build_workbench_go.sh`）。
 
 ## 会话工作区与文档纪律
 
@@ -114,11 +113,12 @@ python3 tools/check_clip_parity.py # 剪藏规则表：Kotlin ↔ TypeScript 逐
   （见 `apps/android/desktop/build.gradle.kts` 的 `verifyAppIcons`）。
 - **`paths` 过滤对 tag 推送不生效**（GitHub 官方文档原话："Path filters are not evaluated for pushes of tags"）：
   同一个 `push` 块里同时写 `tags:` 与 `paths:` 是安全的，tag 一定会触发。仓库旧文档曾写反过，别照旧说法去挑提交打 tag。
-- **Tauri 打包别把 Vite `publicDir` 里的静态资源再列一遍 `bundle.resources`**：底图已随 `publicDir` 进 `dist/`，
-  运行时按 `/bg/<key>.webp` 取；再 bundle 一份只会落进产物的 `_up_/` 前缀目录（运行时不经过它），
-  实测让 DMG 从 11.64 涨回 13.96 MiB。改 `tauri.conf.json` 的 `bundle` 前后都该跑一次 `npm run tauri build -- --bundles dmg` 看体积。
-- **`apps/workbench` 的图标是派生物**：源是**唯一一份美术** `shared/icons/AppIcon.iconset/`，
-  用 `npx tauri icon <1024 源>` 生成，产物**入库**；它还会顺带生成 iOS / Android / Windows Store 那一堆用不上的目录，删掉再提交。
+- **静态资源只经 Vite `publicDir` 进 bundle**：底图随 `publicDir` 进 `dist/`，运行时按 `/bg/<key>.webp` 取。
+  Rust 壳时代曾把同一份资源再列一遍 `bundle.resources`，结果落进产物 `_up_/` 前缀目录、DMG 白涨 2.3 MiB——
+  迁 Go 后没有 `tauri.conf.json` 可列，但同一条原则仍适用：**不要在别处再复制一份**。
+- **第一套桌面的图标是派生物**：源是**唯一一份美术** `shared/icons/AppIcon.iconset/`（派生出的
+  `.icns` / `.ico` / `.png` 在 `shared/icons/`）。旧的 `npx tauri icon` 生成流程已随 Rust 壳删除，
+  当前 Go 构建不消费安装包图标；**恢复打包时再补生成步骤**，别把美术源当死代码删掉。
   ⚠️ **美术源本身不入 Git**（`.gitignore` 里忽略，理由见那里的注释）——仓库分发的只有派生出的
   `.icns` / `.ico` / `.png`。新 clone 的机器上没有 iconset，**要改图标得先拿到原始美术**，否则 `generate_app_icons.py` 会因找不到母版直接退出。
   `tools/build_icon.swift`（母版 → iconset，末尾自动调 `iconutil`）与 `tools/verify_icon.swift`（逐像素校验 ICNS 各阶是否与母版一致）
@@ -134,6 +134,6 @@ python3 tools/check_clip_parity.py # 剪藏规则表：Kotlin ↔ TypeScript 逐
   coarse clock，粒度约 1/HZ（4ms）——两次不同的写入可能拿到**同一个** mtime；
   而 macOS 是 ns 精度，本机永远复现不出来，CI（ubuntu）上才偶发。
   `db_library_signature` 因此从 mtime+大小改成内容指纹（SHA-256）。同理：
-  「本地是绿的」不能当作跨平台结论。另一侧的坑：测试里裸 `listener.accept()`
-  会把整个 `cargo test` 挂死（实测 24 分钟）——起本地服务等连接一律用
-  「非阻塞 accept + 截止时间」，`http.rs` 的回环测试是范本。
+  「本地是绿的」不能当作跨平台结论。另一侧的坑：测试里裸 `listener.Accept()`
+  会把整个 `go test` 挂死（Rust 时代实测 24 分钟；Go 侧同理）——起本地服务等连接一律用
+  「非阻塞 accept + 截止时间」，`apps/workbench-go/internal/httpx` 的回环测试是范本。

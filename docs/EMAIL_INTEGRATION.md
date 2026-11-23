@@ -1,7 +1,7 @@
 # 邮箱接入（第一套桌面 / apps/workbench）
 
 > 目标：把邮箱当成一个**收件箱来源**接进工作台——邮件落成素材，按主题归纳，需要时再提炼成知识卡。
-> 实现位置：`src-tauri/src/mail.rs`（IMAP 只读抓取）+ `src/ui/workspace/MailboxView.tsx`（邮箱页）+ `src/domain/mail.ts`（整理与归纳）。
+> 实现位置：`apps/workbench-go` 的 `mail_service.go` + `internal/mail` / `internal/imap` / `internal/mailimport`（IMAP 只读抓取与落库）+ `src/ui/workspace/MailboxView.tsx`（邮箱页）+ `src/domain/mail.ts`（整理与归纳）。
 > 验收记录见文末「验证」。
 
 ## 一、做什么
@@ -34,8 +34,8 @@
   测试断言过：密码字节不出现在 `.db` 文件与导出的 zip 里。
 - **错误不回显密钥**：登录失败只回「检查凭据与文件夹」，不把服务端原文（可能含账号）透给界面。
 - **Windows 差异（如实说明）**：Windows 上凭据文件继承用户配置目录的 ACL，没有额外的显式限制——
-  Rust 标准库没有可移植的 ACL 接口，本项目也没有 Windows 专用依赖。Unix 上是 0600/0700，这一点有测试。
-- 浏览器体验模式（非 Tauri）**不能**测连接、存账号、同步；界面会就地说明原因，已导入的邮件仍可阅读与整理。
+  Go 侧同样没有可移植的 ACL 接口，本项目的凭据统一写 0600（见 `internal/creds`），Unix 上有测试。
+- 浏览器体验模式（非桌面壳）**不能**测连接、存账号、同步；界面会就地说明原因，已导入的邮件仍可阅读与整理。
 
 ## 三、同步语义（几个容易误判的点）
 
@@ -44,8 +44,8 @@
 - **配置改动分两类**：改显示名称、同步批量、自动同步间隔都不会重置游标；
   改服务器 / 用户名 / 端口 / 邮箱文件夹才算换了邮箱身份，才会重置游标与账本
   （画面上的按钮也会因此要求重新填密码）。
-- **默认全部手动**：`syncIntervalMinutes = 0` 时前端仍每秒轮询一次 Rust，
-  但 Rust 侧根本不会连网。前端只负责「问一下有没有到期的」，不做本地判时，
+- **默认全部手动**：`syncIntervalMinutes = 0` 时前端仍每秒轮询一次壳，
+  但 Go 侧根本不会连网。前端只负责「问一下有没有到期的」，不做本地判时，
   避免两端计时逻辑打架。
 ## 三、同步语义（几个容易误判的点）
 
@@ -81,11 +81,11 @@
 
 | 层 | 命令 | 结果 |
 | --- | --- | --- |
-| 后端（IMAP 协议 / 去重 / 隔离 / 凭据） | `cd apps/workbench/src-tauri && cargo test --lib mail` | 20 项邮件测试通过（整套 59 项） |
+| 后端（IMAP 协议 / 去重 / 隔离 / 凭据） | `cd apps/workbench-go && go test ./internal/mail/... ./internal/imap/... ./internal/mailimport/...` | 全绿（数量以 `go test` 日志为准） |
 | 前端域逻辑（筛选 / 归组 / 分类 / 归纳校验） | `npx vitest run src/domain/mail.test.ts` | 9 项通过 |
 | 渲染器加固（各级标题、非网页链接） | `npx vitest run src/ui/workspace/MarkdownRenderer.test.tsx` | 5 项通过 |
 | 界面端到端（隔离浏览器 + 假 AI 响应） | `node tools/mailbox_ui_smoke.mjs` | 33 项检查通过 |
-| 全量门禁 | `./tools/verify_workbench.sh` | 218 项前端 + 67 项 Rust 全绿 |
+| 全量门禁 | `./tools/verify_workbench.sh` | 前端用例声明 923 条 + Go 测试声明 321 条（实际以门禁日志为准） |
 
 界面端到端覆盖：导航入口、三封邮件渲染、回复归组、能力边界说明、密码框、浏览器模式禁止伪造连接成功、
 自动同步默认关闭且可选中、搜索与分类筛选、全选、AI 归纳面板、来源按模型编号标注、从摘要跳回原邮件、
@@ -101,8 +101,11 @@
 
 ## 七、改动清单
 
+> 下面是**加邮箱那一轮**的清单，写的是当时的 Rust 壳文件；Rust 壳已随 ADR-0042 删除，
+> 路径保留作历史参照，**不要照着它去找现在的实现**（现在的入口见文首「实现位置」）。
+
 ```
-新增  apps/workbench/src-tauri/src/mail.rs          IMAP 只读客户端 + 同步 + 隔离
+新增  apps/workbench/src-tauri/src/mail.rs          IMAP 只读客户端 + 同步 + 隔离（历史）
 新增  apps/workbench/src/shell/mail.ts              Tauri 命令封装与类型
 新增  apps/workbench/src/domain/mail.ts             元数据、筛选、主题归组、本地分类、归纳
 新增  apps/workbench/src/domain/mail.test.ts        9 项域逻辑测试

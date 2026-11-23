@@ -18,14 +18,14 @@
 
 | 出口 | 带了什么 | 状态 |
 | --- | --- | --- |
-| **界面错误提示** | 模型/服务端错误（已脱敏） | ✅ `redactSecrets`（前端）+ `redact_secrets`（Rust） |
+| **界面错误提示** | 模型/服务端错误（已脱敏） | ✅ `redactSecrets`（前端）+ `RedactSecrets`（Go `internal/httpx`） |
 | **`.kfbackup` 备份包** | 素材 / 卡片 / 设置 / 产物 / 附件 | ✅ 设置里的密钥字段被 `stripSecrets` 过滤 |
-| **`export_archive`（Rust zip）** | 同上（旧格式） | ✅ `strip_secret_settings` 过滤 |
+| **`export_archive`（Go zip）** | 同上（旧格式） | ✅ `strip_secret_settings` 过滤 |
 | **`cards.json` 导出** | 只有卡片 | ✅ 不含设置，无密钥可带 |
 | **Markdown 导出** | 卡片 / 素材正文 | ✅ 不含设置 |
-| **控制台（前端）** | `console.warn/error` 的 `err` | ✅ 错误源自上而下已脱敏（Rust 层） |
-| **控制台（Rust）** | 两条 `eprintln!`：托盘图标缺失、快捷键注册 | ✅ 无敏感内容 |
-| **日志落盘** | — | ✅ **没有文件日志**（Tauri 未配置 log） |
+| **控制台（前端）** | `console.warn/error` 的 `err` | ✅ 错误源自上而下已脱敏（Go 层） |
+| **控制台（Go 壳）** | `log.Printf` 只在关机失败、快捷键注册失败时打印错误 | ✅ 无敏感内容 |
+| **日志落盘** | — | ✅ **没有文件日志**（Go 壳未配置日志落盘，标准 `log` 写到 stderr） |
 | **剪贴板** | 简报 Markdown / MCP 配置 / 产物 Markdown | ✅ 三处都不含密钥；MCP 片段只有 `command` + `args` |
 | **网络：AI 服务商** | 用户填的 baseURL + 请求体 | ✅ 只发往用户自己配置的地址 |
 | **网络：剪藏目标** | 用户粘贴的链接 | ✅ 匿名只读，不带 Cookie |
@@ -56,10 +56,12 @@
 
 ## 仍未验证的
 
-- ~~**Windows / Linux 上的出口**~~（2026-10-22 已有证据）：脱敏逻辑在 **Rust 侧**
-  （`http::redact_secrets`），三端共用同一份代码与同一套测试；CI 在 Linux /
-  Windows / macOS 三台 runner 上各跑一遍 `cargo test`，脱敏用例三端全绿。
-  前端那部分（`store.redact`）是 TS，同样三端跑。
+- ~~**Windows / Linux 上的出口**~~（2026-10-22 已有证据）：脱敏逻辑原先在 **Rust 侧**
+  （`http::redact_secrets`），Rust 壳已随 ADR-0042 删除；同一份逻辑现在在 **Go 侧**
+  （`internal/httpx.RedactSecrets`）并随 `go test` 一起验。**如实更新**：CI 目前只在 ubuntu
+  上跑 Go 测试（`workbench.yml` 的 go-checks 单 job），没有三平台 `go test` 矩阵；
+  Windows / macOS 上的行为要等打包矩阵恢复后才有跨机证据。
+  前端那部分（`store.redact`）是 TS，仍然三端跑。
   仍未覆盖的是「真实服务商的错误格式」——见下。
 - **真实服务商的错误格式**：脱敏规则是按「常见前缀 + Bearer + 长随机串」写的，
   真实服务商五花八门的错误格式里，会不会有规则覆盖不到的凭据形态——

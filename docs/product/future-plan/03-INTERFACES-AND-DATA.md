@@ -12,7 +12,7 @@
 | Android | Compose → Kotlin 领域和持久化 → App 私有 `filesDir/store`、系统分享/文件选择、旧 LAN 卡片协议 | 同桌面共享卡片、设置和学科契约；不读取桌面 SQLite，也不承诺现有 `.kfbackup` 全量恢复。 |
 | 网络服务 | 桌面 Rust → 用户指定模型 / 网页 / 订阅 / 邮箱 / WebDAV，或下载模型权重；浏览器仅执行它支持的路径 | 每类出口单独说明目的地、字段、凭据和失败。当前无项目方托管知识 API 或帐号前置。 |
 
-代码入口：[工作台仓储](../../../apps/workbench/src/ui/workspace/repository.ts) · [宿主适配](../../../apps/workbench/src/shell/store.ts) · [邮箱适配](../../../apps/workbench/src/shell/mail.ts) · [Rust 命令注册](../../../apps/workbench/src-tauri/src/lib.rs) · [主窗权限](../../../apps/workbench/src-tauri/capabilities/default.json) · [Android 数据与同步](../../../apps/android/README.md)。
+代码入口：[工作台仓储](../../../apps/workbench/src/ui/workspace/repository.ts) · [宿主适配](../../../apps/workbench/src/shell/store.ts) · [邮箱适配](../../../apps/workbench/src/shell/mail.ts) · [Go 壳装配](../../../apps/workbench-go/main.go) · [MCP 授权](../../../apps/workbench-go/internal/mcpgrants) · [Android 数据与同步](../../../apps/android/README.md)。
 
 ## 桌面 IPC 命令清单
 
@@ -86,7 +86,7 @@ const matches = await invoke("note_search", { dir, query: "项目周报", kbId, 
 | 语音与模型下载 | Whisper `tiny/base/small` 可选，权重由 Hugging Face 按需下载，完成前使用临时文件；`asr_transcribe` 在本机把音频转换并转写，返回文本、模型与耗时。FastEmbed E5（384 维）缓存于本地，预热可能下载权重。 | 核实模型安装/故障恢复和许可证；实测跨平台麦克风、降噪/长录音、中文质量和保留原件。下载模型和上传用户数据是不同动作。 |
 | 自选存储 | 指定目录为本地文件写入；WebDAV 以用户提供地址、用户名与应用密码发 Basic 鉴权 PUT，写版本化 `.kfbackup` 和独立 `.sha256`。 | 真实服务兼容性待验。代码只在 409/412 时换名称，未发条件写头；两个对象分开请求。需要在真实服务和故障注入中确认同名不覆盖、第二步失败的回执及可重试。S3 与其他适配未交付。 |
 
-桌面普通抓取、生成和向量请求统一限制 HTTP(S) 与 URL 内凭据，非本机使用 HTTPS，回环直连；WebDAV 目前单独接受 HTTP(S)，不能把普通抓取限制套到它上面。生成/向量上限与超时见 [Rust HTTP](../../../apps/workbench/src-tauri/src/http.rs)；Base URL 组装见 [生成端点](../../../apps/workbench/src/domain/ingest.ts)、[模型预设](../../../apps/workbench/src/domain/aiPresets.ts)及[向量适配](../../../apps/workbench/src/domain/embeddingEngine.ts)；WebDAV 重名和两次写入见 [Rust 命令实现](../../../apps/workbench/src-tauri/src/lib.rs)。上述端点、条件写和自选库问题来自代码检查，本轮没有据此声称任何具体服务请求失败或已覆盖远端数据。
+桌面普通抓取、生成和向量请求统一限制 HTTP(S) 与 URL 内凭据，非本机使用 HTTPS，回环直连；WebDAV 目前单独接受 HTTP(S)，不能把普通抓取限制套到它上面。生成/向量上限与超时见 [Go HTTP](../../../apps/workbench-go/internal/httpx/httpx.go)；Base URL 组装见 [生成端点](../../../apps/workbench/src/domain/ingest.ts)、[模型预设](../../../apps/workbench/src/domain/aiPresets.ts)及[向量适配](../../../apps/workbench/src/domain/embeddingEngine.ts)；WebDAV 重名和两次写入见 [Go 服务实现](../../../apps/workbench-go/internal/webdavbackup)。上述端点、条件写和自选库问题来自代码检查，本轮没有据此声称任何具体服务请求失败或已覆盖远端数据。
 
 有新出口就同步更新[数据出口清单](../../DATA_EGRESS.md)，核对界面错误、日志、剪贴板、导出及请求体；旧清单中的 MCP 配置说明以当前“主动复制一次性配置会携带令牌”为准。备份和静态导出也可能包含私人正文与来源。错误路径优先给结构化、安全的状态与可执行下一步；例如 WebDAV 目前会附带截断的服务端错误正文，接入真实服务前应补响应脱敏与正文回显测试。
 
@@ -134,7 +134,7 @@ const matches = await invoke("note_search", { dir, query: "项目周报", kbId, 
 
 | 开发事项 | 交付检查 |
 | --- | --- |
-| 增改 IPC 或 DTO | 同时更新 `#[tauri::command]`、`generate_handler!`、[构建注册](../../../apps/workbench/src-tauri/build.rs)、主窗权限及 TS 适配；验大小、可空值、大小写、错误、分页、权限和自选库。浏览器模拟不能代替真实 ACL。分块回归覆盖 [Rust 笔记命令](../../../apps/workbench/src-tauri/src/lib.rs)的双库与项目隔离，以及 [TS 适配](../../../apps/workbench/src/shell/store.ts)回传资料库和分块修订。 |
+| 增改 IPC 或 DTO | 同时更新 Go 服务方法、`wails3 generate bindings` 产出的 TS 类型与 TS 适配；验大小、可空值、大小写、错误、分页、权限和自选库。浏览器模拟不能代替真实宿主径。分块回归覆盖 [Go 笔记服务](../../../apps/workbench-go)的双库与项目隔离，以及 [TS 适配](../../../apps/workbench/src/shell/store.ts)回传资料库和分块修订。 |
 | 数据变更与迁移 | 先迁移契约、样本和回退，再加字段/索引；测试旧库、旧包、冲突、软删/恢复、错误中断与真实持久化。共享资产有变更时按仓库规则跑学科和剪藏双端对照。 |
 | 检索与权限 | 构造两个相似但不同范围的项目，验证未授权项在排序前剔除；软删/撤销后下次请求失败，空查询、同 ID、索引过期和权限变化不漏数据。对输出来源 URI 做回读。 |
 | 网络适配 | 先跑可控回环/模拟服务，再验明确的真实服务组合；检查授权头、发送范围、超时、重试、限流、响应过大、错误脱敏和代理环境。真实邮件/模型与恢复用独立合成数据和数据根分开验证。 |

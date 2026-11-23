@@ -48,11 +48,11 @@
 
 | 层 | 在哪跑 | 覆盖什么 |
 | --- | --- | --- |
-| **门禁（每次提交）** | `verify_workbench.sh` | 前端测试 + Rust 测试（通过与忽略分开报告）+ 18 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
+| **门禁（每次提交）** | `verify_workbench.sh` | 前端测试 + tsc + 静态守卫 + Go 测试（`go vet` / `go test`）+ 回环对拍 + 18 套浏览器冒烟 + MCP + 来源矩阵 + taste gate + 文档一致性 |
 | **CI 三端** | 四条 workflow | 同一套门禁在 Linux / Windows / macOS 各跑一遍（含三平台安装包） |
 | **本机真机** | `real_app_pages.mjs` | 真实 macOS 窗口逐页点击与截图（CI 跑不了，只有这台机器能跑） |
 
-> 最近本机 Rust 输出为 **101 passed、3 ignored**，共 104 条测试声明。声明数不能当成通过数；
+> 最近本机 Go 输出以 `go test ./...` 日志为准（声明数不能当成通过数；Rust 时代那份 104 条声明已随壳删除）；
 > 不同平台的实际执行结果以各 runner 日志为准。
 >
 > `workbench.yml` 的 `browser-smokes` job 通过 `tools/ci_run_browser_smokes.sh`
@@ -65,19 +65,19 @@
 
 | ADR 承诺 | 状态 | 证据 |
 | --- | --- | --- |
-| **可持续编辑笔记（R1 切片）** | ✅ | `notes_editor_smoke.mjs`（26 项：新建可写、自动保存、刷新恢复、修订推进、回收站删/恢复、入知识库、搜索命中正文、笔记本与标签的组织与筛选、元数据不追加修订、附件引用进正文且引用可搜）；领域契约 Rust `notes.rs` 5 项 + `note.test.ts` 5 项（修订冲突、库内检索不串库、老库迁移）；备份 v2 往返 `systemBackup.test.ts` |
+| **可持续编辑笔记（R1 切片）** | ✅ | `notes_editor_smoke.mjs`（26 项：新建可写、自动保存、刷新恢复、修订推进、回收站删/恢复、入知识库、搜索命中正文、笔记本与标签的组织与筛选、元数据不追加修订、附件引用进正文且引用可搜）；领域契约 Go `internal/library` 的笔记用例 + `note.test.ts` 5 项（修订冲突、库内检索不串库、老库迁移）；备份 v2 往返 `systemBackup.test.ts` |
 | 剪藏 | ✅ | `clipEngine.test.ts`、`clipEngine.crossend.test.ts`、`fixtures.test.ts`（真实 GBK/UTF-8 页面）、`tools/check_clip_parity.py`（三端一致） |
 | 笔记导入（文件） | ✅ | `import_ui_smoke.mjs`（28 项）、`subscription.test.ts`、`fixtures.test.ts`（真实 DOCX/PPTX/feed） |
 | **手写笔记** | ✅ | `notes_ui_smoke.mjs`（40 项，含「保存后阅读区**真的重绘出笔迹**」——按像素判定非透明像素，以及「清空笔迹要先点两次」）、`ink.test.ts`（7 项：归一化、撤销、损坏数据不崩） |
-| **语音笔记** | **A** | `notes_ui_smoke.mjs`（用 Chrome 合成麦克风跑完「开始 → 计时前进 → 停止 → 可回放 → 可保存」，并用浏览器解码器确认录到的字节**能解出真实时长与采样率**）、`media.rs`（Rust 侧落盘与读回）。**未验**：物理麦克风、系统权限、桌面附件落盘（见下「还没证据的」） |
+| **语音笔记** | **A** | `notes_ui_smoke.mjs`（用 Chrome 合成麦克风跑完「开始 → 计时前进 → 停止 → 可回放 → 可保存」，并用浏览器解码器确认录到的字节**能解出真实时长与采样率**）、`apps/workbench-go` 的 `media_service.go` / `internal/media`（Go 侧落盘与读回）。**未验**：物理麦克风、系统权限、桌面附件落盘（见下「还没证据的」） |
 | AI 出卡 | **A** | `workspace_ui_smoke.mjs` **拦截 fetch 注入假模型响应**，验证整条链路：素材 → 请求 → 预览 → 确认 → 落库 → 回溯 materialId。仍然**没有真实模型的调用证据**（需要 API key），但链路本身是验过的 |
 | 刷卡 | ✅ | `desktop_interaction_smoke.mjs`（键盘划走）、`review_ui_smoke.mjs`（19 项：评分写回、间隔算出、掌握度前进、重载后仍在） |
 | 卡库和详情 | ✅ | `workspace_ui_smoke.mjs`（90 项）、`EntryInspector.test.tsx` |
 | 收藏和历史 | ✅ | `workspace_ui_smoke.mjs`（收藏、归档、移回收件箱）、`model.test.ts` |
 | 测验 | ✅ | `quizSession` / `review.test.ts`、`review_ui_smoke.mjs`；界面入口见 `workspace_ui_smoke.mjs` |
-| 统计 | ✅ | `StatsView` + `workspace_ui_smoke.mjs`（指标块数量与口径）、Rust `db_get_stats` |
+| 统计 | ✅ | `StatsView` + `workspace_ui_smoke.mjs`（指标块数量与口径）、Go `db_get_stats`（`apps/workbench-go`） |
 | 导出 | ✅ | `markdownExport.test.ts`（13 项，含 Anki TSV）、`systemBackup.test.ts`（7 项，无损往返）、`settings_plugins_smoke.mjs`（真实 .kfbackup 导出→恢复） |
-| **邮箱（收信源）** | **A** | `mailbox_ui_smoke.mjs`（45 项，跑在**浏览器模式**）、Rust `mail.rs`（IMAP 解析与落库）、`check_rust_error_messages.py`（24 条校验错误必须是中文）。**桌面端真机已验**：整个邮箱功能曾因 Tauri 权限清单漏项被 ACL 全拒（界面报英文的 `not allowed by ACL`），已修并加了守卫 `check_tauri_permissions.py`。**未验**：真实 IMAP 服务器上的收信（需账号与网络） |
+| **邮箱（收信源）** | **A** | `mailbox_ui_smoke.mjs`（45 项，跑在**浏览器模式**）、Go `internal/mailimport` + `mail_service.go`（IMAP 解析与落库）、`check_go_error_messages.py`（错误消息不能整句英文）。**桌面端真机已验**：邮箱曾因 Tauri 权限清单漏项被 ACL 全拒（界面报英文的 `not allowed by ACL`）——那是 Rust 壳时代的事，壳已随 ADR-0042 删除，该守卫一并移除。**未验**：真实 IMAP 服务器上的收信（需账号与网络） |
 
 > 状态 **A** = 主链路已验，但仍有**依赖外部条件**的一环没验（见文末「还没证据的」）。
 
@@ -95,7 +95,7 @@
 | 规模（4000 条内容） | ✅ | `scale_ui_smoke.mjs`（6 项，页内计时；**时间断言按实测分布定预算**，见 `SMOOTHNESS.md`） |
 | 键盘可达（模态） | ✅ | `taste_usability_gate.mjs`：手写/语音面板打开后焦点进入面板、Tab 在面板内循环、Escape 关闭并归还焦点（此前这些面板键盘完全不可达）。原生 `<dialog>` 的「记录」模态由浏览器提供同样能力 |
 | 界面质感 | ✅ | `taste_usability_gate.mjs`（13 项，**已纳入门禁**）+ 18 套浏览器冒烟（**CI 上也在跑**：`workbench.yml` 的 `browser-smokes` job）；`real_app_pages.mjs` 在**真实 macOS 窗口**上逐页验证（cliclick 点击 + 像素比对确认页面真的切换） |
-| 数据出口（凭据不外流） | ✅ | `dataEgress.test.ts`（5 项，哨兵密钥跑所有导出路径）+ `store.redact.test.ts`（6 项）+ Rust `http.rs` 的 `redact_secrets`（含走真实 401 服务器的路径级测试） |
+| 数据出口（凭据不外流） | ✅ | `dataEgress.test.ts`（5 项，哨兵密钥跑所有导出路径）+ `store.redact.test.ts`（6 项）+ Go `internal/httpx` 的 `RedactSecrets`（含走真实 401 服务器的路径级测试） |
 | 凭据存放 | ✅ | 桌面端 `<data_root>/credentials/apiKey.credential`（`store/` 的**兄弟目录**，导出天然带不走）；浏览器端 sessionStorage。不进 SQLite、不进任何导出格式 |
 | 文档与实现一致 | ✅ | `check_doc_consistency.py`（在门禁里）：当前状态类文档里的数字与命令要跟得上实际 |
 
@@ -106,7 +106,7 @@
    已知边界的回归，不能代表真实模型内容质量或所有输出风格。本机无已配置的
    模型密钥，也未发现运行中的本地模型服务；真实端点验收仍待补。
 2. **真实麦克风与桌面录音保存**——合成媒体输入证明浏览器录音组件可以生成
-   可解码音频，不能代替物理麦克风、系统权限、Tauri WebView 与桌面附件落盘验收。
+   可解码音频，不能代替物理麦克风、系统权限、Go/Wails WebView 与桌面附件落盘验收。
    仍需在桌面客户端录制、保存、重启后回放，确认内容与附件都保留。
 3. **Windows / Linux 安装后首启**——CI 已构建 msi/deb；尚无安装后完成
    导入 → 刷卡 → 测验 → 导出的验收证据。

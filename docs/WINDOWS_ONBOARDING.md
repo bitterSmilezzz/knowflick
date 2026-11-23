@@ -44,7 +44,7 @@
 
 | 任务 | 需要装 | 验证命令（Git Bash / WSL 下执行） |
 | --- | --- | --- |
-| **第一套桌面（Windows / macOS / Linux）** | **Node 22+ 与 Rust 工具链**——不需要 JDK，也不需要 Android SDK | `./tools/verify_workbench.sh`；打本系统那一档：`cd apps/workbench && npm run tauri build -- --bundles msi` |
+| **第一套桌面（Windows / macOS / Linux）** | **Node 22+ 与 Go 1.27+（Wails CLI v3.1.0）**——不需要 JDK，也不需要 Android SDK | `./tools/verify_workbench.sh`；构建本机可执行文件：`./tools/build_workbench_go.sh`（安装包发布暂停，见 ADR-0042） |
 | Android 构建与测试 | JDK 17（Temurin 或 MS OpenJDK）、Android SDK（Platform 35 + Build Tools 35.0.0） | `./tools/build_android.sh`（需先配 `signing.properties`，见下） |
 | Android 单测/Lint（不签名） | 同上，不需要 keystore | `cd apps/android && ./gradlew :app:testDebugUnitTest :app:lintDebug` |
 | 共享 Kotlin 模块（`:domain` / `:shared-data` / `:shared-ui` / 冻结的 `:desktop`） | 只要 JDK 17 | `cd apps/android && ./gradlew :domain:jvmTest :shared-data:jvmTest :shared-ui:jvmTest :desktop:test` |
@@ -90,13 +90,13 @@
 
 - JDK 17 = Homebrew `openjdk@17`（`/opt/homebrew/opt/openjdk@17`）。它**不在全局 PATH 上**，跑 Gradle 前先 `export JAVA_HOME=/opt/homebrew/opt/openjdk@17`。
 - Android SDK 在 `~/Library/Android/sdk`（Platform 35 / Build Tools 35.0.0）。
-- Node 与 Rust 可用：第一套桌面的门禁（`./tools/verify_workbench.sh`）与 DMG 打包都在本机验证过。
+- Node 与 Go 可用：第一套桌面的门禁（`./tools/verify_workbench.sh`）在本机验证过；安装包发布暂停（Rust 壳已删，Go 打包方案未就绪）。
 - Swift/SwiftUI 的 `apps/mac` 已整体删除，**不再需要 Xcode**；不要恢复它。
 
 ## 五、Windows 上的第一套桌面
 
-路线已定（[ADR-0002](adr/0002-desktop-web-split-from-android.md)）：**Windows 不单独成套**，与 macOS / Linux 共用 `apps/workbench` 那一份 Web + Tauri 代码。所以这台机器的接入就是三步——装 Node 22+ 与 Rust → clone → `cd apps/workbench && npm ci` → `./tools/verify_workbench.sh`。**没有 `apps/win/`，也没有 `win-v*` tag**；发布走 `workbench-v*`（[workbench-release.yml](../.github/workflows/workbench-release.yml)），MSI 由 Windows runner 构建。
+路线已定（[ADR-0002](adr/0002-desktop-web-split-from-android.md)）：**Windows 不单独成套**，与 macOS / Linux 共用 `apps/workbench` 前端 + `apps/workbench-go` Go 壳（[ADR-0042](adr/0042-remove-tauri-rust.md) 删除了 Tauri/Rust）。所以这台机器的接入就是三步——装 Node 22+ 与 Go 1.27+ → clone → `cd apps/workbench && npm ci` → `./tools/verify_workbench.sh`。**没有 `apps/win/`，也没有 `win-v*` tag**；`workbench-v*` 发布通道暂停（Go 打包未就绪），不要靠打 tag 产 MSI。
 
-在这台机器上能验的：`npm test` / `tsc` / `cargo test`，以及 `npm run tauri build -- --bundles msi` 出 MSI 后**实际安装并跑一遍**（导入 → 刷卡 → 测验 → 导出）。不能验的：DMG 与 DEB。
+在这台机器上能验的：`npm test` / `tsc` / 静态守卫 / `go vet` / `go test` / 回环对拍，以及 `./tools/build_workbench_go.sh` 出 Windows 可执行文件后**实际跑一遍**（导入 → 刷卡 → 测验 → 导出）。不能验的：DMG 与 DEB（安装包打包本来也暂停了）。
 
 历史路线调研（已归档，不再是待决项）见 [多端现状报告](STATUS_2026-09-14.md) §五。

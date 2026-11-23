@@ -2,6 +2,9 @@
 
 > 目标不是「功能存在」，而是**每一步都不卡、不猜、不等**。
 > 这份文档记录已经量过／修过的地方，以及实测后判定**不需要动**的地方。
+>
+> ⚠️ 文中涉及 `src-tauri` / Rust / Tauri ACL 的段落是**当时的事实记录**：Rust 壳已随
+> [ADR-0042](adr/0042-remove-tauri-rust.md) 删除，对应守卫已迁到 Go（见各段内的迁移说明）。
 
 ### MCP 的写路径经得起查——顺手把五个工具都验了一遍
 
@@ -56,7 +59,7 @@
 （`("name", "账号名称", …)`），消息变成
 「账号名称不能为空，且不能超过 200 个字符，也不能含换行等控制字符」。
 
-**守卫**（`tools/check_rust_error_messages.py`）：扫 `Err("…")` / `anyhow!` /
+**守卫**（当时是 `tools/check_rust_error_messages.py`；Rust 壳删除后同一判据迁到 `tools/check_go_error_messages.py`，扫 Go 的 `errors.New` / `fmt.Errorf`）：扫 `Err("…")` / `anyhow!` /
 `bail!` / `format!` 里**不含中文**的消息。判据是「有没有中文」而不是
 「有没有英文」——`UUID` / `IMAP` / `MIME` 出现在中文句子里没问题。
 
@@ -69,7 +72,7 @@
 > 功能实现了、错误也报出来了，但报的是用户看不懂的英文——
 > 从用户角度看，这跟「没有提示」没区别。
 
-**紧接着又踩了两次同一个坑**：新检查脚本 `check_rust_error_messages.py`
+**紧接着又踩了两次同一个坑**：新检查脚本（今为 `check_go_error_messages.py`）
 在 Windows CI 上直接打红——`UnicodeEncodeError`，跟上一轮
 `check_tauri_permissions.py` 一模一样。
 

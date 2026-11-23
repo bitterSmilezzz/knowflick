@@ -21,7 +21,7 @@ KnowFlick 把「你收藏的内容」变成「你能复习的卡片」。知识�
 
 | 套 | 端 | 技术 | 目录 |
 | --- | --- | --- | --- |
-| 第一套 | Windows / Linux / macOS（以及稍后的网页） | 一份 Web 界面（Vite + React + TypeScript）+ Tauri 壳 | `apps/workbench` |
+| 第一套 | Windows / Linux / macOS（以及稍后的网页） | 一份 Web 界面（Vite + React + TypeScript）+ Go 壳（Wails v3 单二进制） | `apps/workbench` + `apps/workbench-go` |
 | 第二套 | Android | Kotlin + Jetpack Compose | `apps/android` |
 | — | iOS | 未定，先不做 | — |
 
@@ -51,35 +51,35 @@ KnowFlick 把「你收藏的内容」变成「你能复习的卡片」。知识�
 
 第一版**不含**：语音朗读、磨耳朵、知识星图、卡片追问、海报导出、局域网同步、桌面微件、学习地图。
 
-### 下载安装
+### 下载安装（暂停）
 
-从 [Releases](https://github.com/bitterSmilezzz/knowflick/releases) 下载 `KnowFlick-Workbench-<版本>-<系统>.<扩展名>`：macOS 是 `.dmg`、Windows 是 `.msi`、Linux 是 `.deb`。
+安装包发布通道**目前暂停**：Rust/Tauri 壳已整体删除（[ADR-0042](docs/adr/0042-remove-tauri-rust.md)），Go 侧（Wails v3）还没有 DMG / MSI / DEB 的打包与校验方案。`workbench-v*` tag 现在**不会**触发构建，也不会产出 Release 附件；历史 Release 里的安装包对应的是已删除的 Rust 实现。现阶段只能用本机构建（见下节）。
 
 > 未签名应用首次打开可能被系统拦下：macOS 在「系统设置 → 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine /Applications/KnowFlick.app`；Windows 在 SmartScreen 提示里选「更多信息 → 仍要运行」。
 
 ### 构建与运行
 
-需要 Node 22+ 与 Rust 工具链（开发机不必装 Android SDK）：
+需要 Node 22+ 与 Go 1.27+（Wails CLI v3.1.0；开发机不必装 Android SDK）：
 
 ```sh
-cd apps/workbench
-npm install
-npm run tauri dev                       # 开发（起 Tauri 窗口 + 前端 dev server）
-npm run dev                             # 只起前端，http://localhost:1420（无壳能力）
+cd apps/workbench && npm ci          # 前端依赖（go-preview 构建也要用）
 
-cd ../..
-./tools/verify_workbench.sh             # 门禁：npm test + tsc + cargo test + 冒烟套件
-cd apps/workbench && npm run tauri build -- --bundles dmg   # 本系统那一档安装包
+./tools/build_workbench_go.sh        # 一次构建：Wails bindings + 前端 bundle + Go 二进制
+./apps/workbench-go/bin/knowflick-go-preview   # 本机启动
 
+./tools/verify_workbench.sh          # 门禁：npm test + tsc + 静态守卫 + go vet/go test + 回环对拍
+./tools/verify_workbench.sh web      # 只跑前端那半
+./tools/verify_workbench.sh go       # 只跑 Go 那半（含回环对拍，需要前端 node_modules）
+
+# 只改前端时可用浏览器模式（无壳能力）：cd apps/workbench && npm run dev
 # 门禁里还包含 18 套浏览器冒烟（界面级回归）。它们要真实浏览器与运行中的 Vite，
 # 所以开着一个 dev server 时才会跑；缺工具就明确 SKIP，不会让门禁红掉。
-npm run dev &                            # 另开一个终端：前端 dev server
-./tools/run_all_smokes.sh                # 只跑浏览器冒烟
+npm run dev &                        # 另开一个终端：apps/workbench 里起前端 dev server
+./tools/run_all_smokes.sh            # 只跑浏览器冒烟
 ```
 
-三端安装包**不在本机出**：Tauri 与 jpackage 一样不支持交叉编译。打 tag `workbench-v<版本>` 触发
-[workbench-release.yml](.github/workflows/workbench-release.yml)，三台 runner 各构建一档、各过一遍门禁，
-再由 `tools/assemble_workbench_release.sh` 统一命名、附到 Release。
+三平台安装包（DMG / MSI / DEB）**还没有 Go 版打包方案**，发布通道暂停（见上一节与
+[ADR-0042](docs/adr/0042-remove-tauri-rust.md)）。恢复条件满足前，不要打 `workbench-v*` tag 当发版。
 
 ## Android 端
 
@@ -127,10 +127,11 @@ API 密钥不在这些文件里——它在数据目录旁的 `credentials/` 下
 ```
 KnowFlick/
 ├── apps/
-│   ├── workbench/           # 第一套桌面：Vite + React + Tauri（Windows / Linux / macOS）
+│   ├── workbench/           # 第一套桌面前端：Vite + React + TypeScript（Windows / Linux / macOS）
 │   │   ├── src/domain/          # 卡片、卡库、排列、间隔重复、统计、搜索、剪藏抽取、笔记解析（含 Vitest 单测）
 │   │   ├── src/ui/ · src/shell/ # 界面组件与壳能力封装（文件对话框、网络、凭据）
-│   │   └── src-tauri/           # Rust 壳：数据目录、原子写与备份轮转、正文抓取、AI 请求、导出
+│   │   └── go-preview/          # Go 版构建用的 vite 配置与 Tauri 兼容 shim（走 Wails bindings）
+│   ├── workbench-go/        # 第一套桌面 Go 壳：Wails v3 单二进制（数据目录、原子写与备份轮转、抓取、AI 请求、导出）
 │   └── android/             # Android 端（Gradle + Compose）
 │       ├── domain/              # :domain — KMP 领域层（jvm + androidTarget）
 │       ├── shared-data/         # :shared-data — 持久化与归档导入导出
@@ -140,7 +141,7 @@ KnowFlick/
 ├── shared/
 │   ├── assets/              # 跨端共享资产（唯一事实来源）：taxonomy_map.json、bg/*.webp
 │   └── icons/               # 安装包图标：派生的 .icns / .ico / .png（美术源 iconset 不入 Git）
-├── tools/                   # 跨端脚本：verify_workbench.sh / build_android.sh / check_taxonomy.py / assemble_*_release.sh / generate_app_icons.py
+├── tools/                   # 跨端脚本：verify_workbench.sh / build_workbench_go.sh / build_android.sh / check_taxonomy.py / assemble_desktop_release.sh / generate_app_icons.py
 ├── docs/                    # ADR、多端协作规范、发布记录与评审报告
 ├── assets/                  # README 展示资源
 ├── CHANGELOG.md             # 完整版本更新日志
@@ -149,7 +150,7 @@ KnowFlick/
 
 ## 技术说明
 
-- **第一套桌面**：Vite + React + TypeScript 写界面，Tauri 2 的 Rust 壳只做窗口、本机文件、系统菜单与网络代理；卡片规则（抽取、排列、间隔重复、统计）全写在 Web 这一层，Rust 侧只搬字节、管文件。
+- **第一套桌面**：Vite + React + TypeScript 写界面，Go 壳（`apps/workbench-go`，Wails v3 单二进制）只做窗口、本机文件、系统菜单、网络请求与数据落盘；卡片规则（抽取、排列、间隔重复、统计）全写在 Web 这一层，Go 侧只搬字节、管文件。
 - **Android**：原生 Kotlin + Compose。与框架无关的领域逻辑收在 `:domain`（KMP），持久化在 `:shared-data`，界面在 `:shared-ui` 与 `:app`。
 - **契约**：`shared/assets/taxonomy_map.json` 是学科契约的唯一事实来源，`python3 tools/check_taxonomy.py` 在 CI 上校验它与各端内嵌表一致。
 - **共享底图不落副本**：两端都直接读 `shared/assets/bg/`（Android 走 Gradle `assets.srcDirs`，第一套桌面走 Vite `publicDir`），仓库里不留第二份。
