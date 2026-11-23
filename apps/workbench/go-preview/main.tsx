@@ -14,6 +14,7 @@ import type { Subscription } from "./bindings/knowflick.local/workbench-go/inter
 import { SubscriptionsView } from "../src/ui/workspace/SubscriptionsView";
 import { StatsView } from "../src/ui/workspace/StatsView";
 import { NotesView } from "../src/ui/workspace/NotesView";
+import { Workspace } from "../src/ui/workspace/Workspace";
 import type { Subscription as SharedSubscription } from "../src/domain/subscription";
 import { CapsuleWindow } from "../src/ui/workspace/CapsuleWindow";
 import { MarkdownRenderer } from "../src/ui/workspace/MarkdownRenderer";
@@ -106,6 +107,7 @@ function Preview() {
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [notesPreviewOpen, setNotesPreviewOpen] = useState(false);
+  const [sharedWorkspaceOpen, setSharedWorkspaceOpen] = useState(false);
   const [attachableMedia, setAttachableMedia] = useState<{ path: string; label: string }[]>([]);
   const autoPollLock = useRef(false);
   const [restorePending, setRestorePending] = useState(false);
@@ -666,6 +668,14 @@ function Preview() {
     } catch (fail) {} finally { setBusy(false); }
   }
 
+  if (sharedWorkspaceOpen) {
+    return (
+      <section className="preview-shared-shell" aria-label="共享工作台预览">
+        <button type="button" className="preview-shared-back" onClick={() => setSharedWorkspaceOpen(false)}>返回 Go 预览</button>
+        <Workspace />
+      </section>
+    );
+  }
   return (
     <main className="preview-app" aria-busy={busy}>
       <header className="preview-header">
@@ -707,6 +717,7 @@ function Preview() {
                 <button type="button" aria-pressed={maintenanceOpen} disabled={busy} onClick={() => { setMaintenanceOpen(!maintenanceOpen); setSettingsOpen(false); setMoreOpen(false); }}>向量与维护</button>
                 <button type="button" aria-pressed={statsOpen} disabled={busy} onClick={() => { setStatsOpen(!statsOpen); setMoreOpen(false); }}>统计</button>
                 <button type="button" aria-pressed={notesPreviewOpen} disabled={busy} onClick={() => { setNotesPreviewOpen(!notesPreviewOpen); setStatsOpen(false); setMoreOpen(false); }}>共享笔记（预览）</button>
+                <button type="button" aria-pressed={sharedWorkspaceOpen} disabled={busy} onClick={() => { setSharedWorkspaceOpen(!sharedWorkspaceOpen); setMoreOpen(false); }}>共享工作台（预览）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("json"); setMoreOpen(false); }}>导出卡片</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("zip"); setMoreOpen(false); }}>导出卡片与设置（ZIP）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportSystemBackup(); setMoreOpen(false); }}>导出基础备份</button>
@@ -776,6 +787,10 @@ function Preview() {
       />}
       {lib && view === "cards" && <CardLibrary key={"CardLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onEditing={setCardEditing} />}
       {statsOpen && <StatsView stats={stats} onBack={() => setStatsOpen(false)} />}
+      {sharedWorkspaceOpen && <section className="preview-shared-workspace" aria-label="共享工作台预览">
+        <button type="button" className="ws-bordered" onClick={() => setSharedWorkspaceOpen(false)}>返回</button>
+        <Workspace />
+      </section>}
       {notesPreviewOpen && lib && <section className="preview-shared-notes" aria-label="共享笔记预览">
         <button type="button" className="ws-bordered" onClick={() => setNotesPreviewOpen(false)}>返回</button>
         <NotesView dir={lib.path} attachableMedia={attachableMedia} onStateChange={handleNotesChange} openNoteId={selectedId} materials={[]} onOpenMaterial={(id) => { setOpenedMaterialId(id); setView("materials"); setNotesPreviewOpen(false); }} onAddAttachment={async () => {

@@ -127,3 +127,22 @@ button:disabled { cursor: default; opacity: .65; }
 .preview-ask-message.user { background: var(--selected); }
 .preview-ask-message strong { display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); }
 .preview-cite { margin-inline-end: 6px; padding: 2px 8px; min-height: auto; font-size: 12px; }
+
+.preview-shared-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  overflow: auto;
+  background: var(--paper, #f7f5f0);
+}
+
+.preview-shared-back {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 30;
+  background: var(--surface, #ffffff);
+  border: 1px solid #c9c4b8;
+  border-radius: 6px;
+  padding: 4px 10px;
+}

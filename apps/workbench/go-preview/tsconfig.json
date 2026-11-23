@@ -1,1 +1,1 @@
-{"extends":"../tsconfig.json","include":["main.tsx","commandTable.ts","tauriCoreShim.ts","tauriAppShim.ts","tauriDialogShim.ts","tauriEventShim.ts"]}
+{"extends":"../tsconfig.json","include":["main.tsx","commandTable.ts","tauriCoreShim.ts","tauriAppShim.ts","tauriDialogShim.ts","tauriEventShim.ts","tauriNotificationShim.ts"]}
