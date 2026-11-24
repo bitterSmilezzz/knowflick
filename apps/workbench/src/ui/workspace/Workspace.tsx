@@ -170,12 +170,9 @@ const PAGE_TITLES: Record<string, string> = {
   mail: "邮箱",
 };
 
-const PAGE_HINTS: Record<Collection, string> = {
-  inbox: "先收集，再慢慢整理",
-  library: "最近更新的内容",
-  favorites: "留着的，值得再看",
-  archive: "处理过的原始素材",
-};
+function NavCount({ count }: { count: number }) {
+  return count > 0 ? <span className="ws-count">{count}</span> : null;
+}
 
 export function Workspace() {
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
@@ -297,12 +294,43 @@ export function Workspace() {
   // 设分类用界面内输入，不用 window.prompt：原生弹窗样式与整套界面割裂，
   // 还会挡住下面的列表。
   const [batchCategory, setBatchCategory] = useState<string | null>(null);
-  const layout = usePaneLayout();
+  const layout = usePaneLayout(selectedId !== "");
+  const navToggleRef = useRef<HTMLButtonElement>(null);
+  const navRef = useRef<HTMLElement>(null);
   const readerRef = useRef<HTMLElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const closeNavigation = () => {
+    if (layout.navMode !== "overlay") return;
+    layout.closeNavOverlay();
+    navToggleRef.current?.focus();
+  };
+  const toggleNavigation = () => {
+    if (layout.navMode === "overlay") {
+      closeNavigation();
+      return;
+    }
+    if (layout.navShown && navRef.current?.contains(document.activeElement)) {
+      navToggleRef.current?.focus();
+    }
+    layout.toggleNav();
+  };
+  const [searchFocusRequest, setSearchFocusRequest] = useState(0);
+  const focusSearch = () => {
+    closeNavigation();
+    layout.showList();
+    setSearchFocusRequest(request => request + 1);
+  };
+  useEffect(() => {
+    if (searchFocusRequest) searchRef.current?.focus();
+  }, [searchFocusRequest]);
+  useEffect(() => {
+    if (layout.navMode === "overlay") {
+      navRef.current?.focus({ preventScroll: true });
+    }
+  }, [layout.navMode]);
   // 桌面壳里没有「浏览器下载」这回事：Blob 下载在 WebView 里不会落盘。
   // 所以壳内走 Go 的备份导出 + 原生保存框，浏览器体验保留原下载路径。
   const exportBackup = async (detailed: boolean) => {
@@ -445,7 +473,7 @@ export function Workspace() {
   useEffect(() => {
     const row = workspaceRef.current?.querySelector<HTMLElement>('.ws-nav-row[aria-current="page"]');
     row?.scrollIntoView({ block: "nearest" });
-  }, [page]);
+  }, [page, layout.navShown]);
 
   useEffect(() => {
     const changed = () => { void load(true); };
@@ -549,17 +577,17 @@ export function Workspace() {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [dir]);
 
-  // 原生菜单事件以 DOM CustomEvent 形式到达（Rust 时代留下的协议，Go 侧同样使用）。
+  // 桌面宿主将原生菜单动作转为 DOM 事件。
   useEffect(() => {
     const onMenu = (event: Event) => {
       const id = (event as CustomEvent<string>).detail;
       if (id === "capture") {
-        if (!loading && !busy) setCapture(true);
+        if (!loading && !busy) { closeNavigation(); setCapture(true); }
       } else if (id === "find") {
         if (!["inbox", "library", "favorites", "archive"].includes(page)) setPage("library");
-        requestAnimationFrame(() => searchRef.current?.focus());
+        focusSearch();
       } else if (id === "toggle-nav") {
-        layout.toggleNav();
+        toggleNavigation();
       } else if (id === "import") {
         importRef.current?.click();
       } else if (id === "export") {
@@ -580,7 +608,7 @@ export function Workspace() {
     };
     window.addEventListener("knowflick:menu", onMenu);
     return () => window.removeEventListener("knowflick:menu", onMenu);
-  }, [page, loading, busy]);
+  }, [page, loading, busy, layout]);
 
   // 原生拖放（macOS）：Go 侧已把文件内容读出来，这里转成 File 再走同一条导入流程，
   // 保证「拖进来的 .md」和「导入文件选中的 .md」结果完全一样。
@@ -735,34 +763,37 @@ export function Workspace() {
       const typing = !!target?.closest("input, textarea, select, [contenteditable=true]");
       if (document.querySelector("dialog[open]")) return;
       if (e.key === "Escape" && layout.navMode === "overlay") {
-        e.preventDefault(); layout.closeNavOverlay(); return;
+        e.preventDefault(); closeNavigation(); return;
       }
       if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         if (!isCollection) setPage("library");
-        requestAnimationFrame(() => searchRef.current?.focus());
+        focusSearch();
         return;
       }
       if (mod && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        if (!loading && !busy) setCapture(true);
+        if (!loading && !busy) { closeNavigation(); setCapture(true); }
         return;
       }
       if ((e.metaKey && e.ctrlKey && e.key.toLowerCase() === "s") ||
           (mod && e.shiftKey && e.key.toLowerCase() === "s")) {
-        e.preventDefault(); layout.toggleNav(); return;
+        e.preventDefault(); toggleNavigation(); return;
       }
       if (mod && e.key.toLowerCase() === "e" && selected && isCollection && !typing && !busy) {
         e.preventDefault(); window.dispatchEvent(new CustomEvent("knowflick:edit-entry")); return;
       }
       if (typing || mod || e.altKey || !isCollection) return;
-      if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
+      if (e.key === "/") { e.preventDefault(); focusSearch(); return; }
       const inReader = !!target?.closest('[data-workspace-pane="inspector"]');
       if (e.key === "Enter" && selected && !inReader &&
           (!target?.closest("button, a, [role=separator]") || target.closest(".ws-entry"))) {
-        e.preventDefault(); readerRef.current?.focus(); return;
+        e.preventDefault();
+        layout.showCompactReader();
+        requestAnimationFrame(() => readerRef.current?.focus());
+        return;
       }
-      if (inReader || target?.closest("[role=separator]")) return;
+      if (inReader || !layout.listShown || target?.closest(".ws-nav, [role=separator]")) return;
       if (["ArrowDown", "ArrowUp", "j", "k"].includes(e.key) && filtered.length) {
         e.preventDefault();
         const down = e.key === "ArrowDown" || e.key === "j";
@@ -785,6 +816,7 @@ export function Workspace() {
         } else {
           setBatchIds(new Set());
         }
+        if (layout.compact) layout.showList();
         setSelectedId(filtered[index].id);
         requestAnimationFrame(() => {
           const row = workspaceRef.current?.querySelector<HTMLElement>(`.ws-entry[data-entry-id="${CSS.escape(filtered[index].id)}"]`);
@@ -943,7 +975,8 @@ export function Workspace() {
     setQuery("");
     setSelectedId("");
     setSource("all");
-    layout.closeNavOverlay();
+    layout.resetCompactList();
+    closeNavigation();
   };
   const closeCapture = () => {
     setCapture(false);
@@ -1837,7 +1870,11 @@ export function Workspace() {
   const theme = normalizePaperTheme(file.settings.paperTheme);
   const appearance = theme === "SYSTEM" ? systemAppearance : theme === "DARK" ? "dark" : "light";
   const navMode = layout.navMode;
-  const pageTitle = isCollection ? collectionNames[collection] : PAGE_TITLES[page];
+  const pageTitle = isCollection ? tag || collectionNames[collection] : PAGE_TITLES[page];
+  const navAction = layout.navShown ? "收起导航栏" : "展开导航栏";
+  const listName = page === "notes" ? "笔记列表" : "内容列表";
+  const listAction = `${layout.listShown ? "收起" : "展开"}${listName}`;
+  const captureShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘N" : "Ctrl+N";
 
   return (
     <div
@@ -1845,6 +1882,8 @@ export function Workspace() {
       ref={workspaceRef}
       data-appearance={appearance}
       data-nav={navMode}
+      data-list={layout.listShown ? "expanded" : "collapsed"}
+      data-compact={layout.compact ? "" : undefined}
       data-view={isCollection ? "collection" : "page"}
       data-workspace-root=""
       style={{
@@ -1871,108 +1910,113 @@ export function Workspace() {
       data-file-drop-target=""
     >
       <header className="ws-header" data-tauri-drag-region="">
-        <div className="ws-header-side">
-          {/* The desktop shell draws real macOS traffic lights over the overlay
-              title bar; these stand-ins only keep the browser preview honest. */}
-          {inShell() ? null : (
-            <div className="ws-traffic" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </div>
-          )}
-          <span className="ws-app-name">KnowFlick</span>
-        </div>
-        <div className="ws-header-list">
+        <div className="ws-pane-controls">
           <button
+            type="button"
+            ref={navToggleRef}
             className="ws-icon-button"
-            aria-label={layout.navShown ? "收起导航栏" : "展开导航栏"}
+            aria-label={navAction}
+            title={navAction}
+            aria-controls="workspace-nav"
             aria-expanded={layout.navShown}
-            onClick={layout.toggleNav}
+            onClick={toggleNavigation}
           >
             <Icon name="panel" />
           </button>
-          <strong>我的知识库</strong>
-        </div>
-        <div className="ws-header-reader">
-          <span className="ws-crumb">
-            {pageTitle}
-            {selected && isCollection ? ` / ${selected.category}` : ""}
-          </span>
-          {/* 顶栏只留「导出备份」一个全局动作。语音转写与侧栏「记录方式」里的
-              「转写」是同一个动作（transcribeAudio）——四段收敛清理顶栏时侧栏
-              还没有「转写」，后来笔记软件本体把三个记法收进侧栏，这里就成了
-              重复入口（插件关闭时甚至是两个灰按钮各解释一遍）。
-              见 docs/UI_CONSOLIDATION.md「顶栏」一节。 */}
-          <div className="ws-toolbar-actions">
+          {isCollection || page === "notes" ? (
             <button
+              type="button"
               className="ws-icon-button"
-              aria-label="导出备份"
-              title="导出备份包 (.kfbackup)"
-              disabled={loading || busy}
-              onClick={() => {
-                void exportBackup(false).catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
-              }}
+              aria-label={listAction}
+              title={listAction}
+              aria-controls={page === "notes" ? "notes-list" : "workspace-list"}
+              aria-expanded={layout.listShown}
+              onClick={layout.toggleList}
             >
-              <Icon name="download" />
+              <Icon name="list" />
             </button>
-          </div>
+          ) : null}
+        </div>
+        {!isCollection || !layout.listShown ? <span className="ws-crumb">{pageTitle}</span> : null}
+        <div className="ws-toolbar-actions">
+          <button
+            type="button"
+            ref={addRef}
+            className="ws-capture"
+            title={`记录（${captureShortcut}）`}
+            aria-keyshortcuts={captureShortcut === "⌘N" ? "Meta+N" : "Control+N"}
+            disabled={loading || busy}
+            onClick={() => { closeNavigation(); setCapture(true); }}
+          >
+            <Icon name="plus" />
+            记录
+          </button>
+          <button
+            className="ws-icon-button"
+            aria-label="导出备份"
+            title="导出备份包 (.kfbackup)"
+            disabled={loading || busy}
+            onClick={() => {
+              void exportBackup(false).catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
+            }}
+          >
+            <Icon name="download" />
+          </button>
         </div>
       </header>
 
-      <aside className="ws-nav" data-workspace-pane="sidebar" aria-label="知识库导航">
-        <button
-          ref={addRef}
-          className="ws-capture"
-          disabled={loading || busy}
-          onClick={() => setCapture(true)}
-        >
-          <Icon name="plus" />
-          记录
-          <kbd>⌘N</kbd>
-        </button>
-        {/* 笔记软件的三种记法并列：打字、手写、说话。都在同一层，随手就能选。 */}
-        <div className="ws-capture-modes" role="group" aria-label="记录方式">
-          <button type="button" className="ws-capture-mode" aria-label="手写笔记" disabled={loading || busy} onClick={() => setNotePad("ink")}>
-            <Icon name="edit" size={14} /><span>手写</span>
-          </button>
-          <button type="button" className="ws-capture-mode" aria-label="语音笔记" disabled={loading || busy} onClick={() => setNotePad("voice")}>
-            <Icon name="mic" size={14} /><span>语音</span>
-          </button>
-          {/* 插件没开时**不能**用 disabled：禁用按钮不可聚焦、不派发事件，
-              键盘用户 Tab 不到、鼠标点了也没反应，连 title 都看不到——
-              界面上就多出一个没人知道为什么灰掉的入口。
-              改成 aria-disabled：照常可聚焦，点了说明原因与下一步。 */}
-          {asrEnabled ? (
-            <button type="button" className="ws-capture-mode" aria-label="导入音频转写" disabled={loading || busy} title="导入已有音频并转写" onClick={() => void transcribeAudio()}>
-              <Icon name="upload" size={14} /><span>转写</span>
-            </button>
-          ) : (
-            <DisabledEntry
-              className="ws-capture-mode"
-              label="导入音频转写"
-              reason="语音转写插件未启用"
-              hint="到设置 →「功能模块与官方插件」里开启"
-              onExplain={(message) => setNotice(message)}
-            >
-              <Icon name="upload" size={14} /><span>转写</span>
-            </DisabledEntry>
-          )}
-          <button type="button" className="ws-capture-mode" aria-label="笔记转知识卡" disabled={loading || busy} title="把 Markdown 笔记拆成可复习的知识卡" onClick={() => notesRef.current?.click()}>
-            {/* 可见文字带出动作（它不是一种「记法」，是把 Markdown 笔记拆成知识卡）：
-                写成「笔记」会与列表筛选页签的「笔记」同名——同一屏两个「笔记」
-                指两件事，品味门禁的「重复 CTA」判定也会报红。 */}
-            <Icon name="card" size={14} /><span>笔记转卡</span>
-          </button>
-        </div>
+      <aside
+        id="workspace-nav"
+        ref={navRef}
+        tabIndex={-1}
+        className="ws-nav"
+        data-workspace-pane="sidebar"
+        aria-label="知识库导航"
+        onBlur={event => {
+          const next = event.relatedTarget;
+          if (navMode === "overlay" && next && next !== navToggleRef.current && !event.currentTarget.contains(next)) {
+            layout.closeNavOverlay();
+          }
+        }}
+      >
         <div className="ws-nav-scroll">
-          {/* 侧栏只回答一个问题：我在流水线的哪一段。
-              「来源 → 收件箱 → 知识库 → 应用」是产品主线；收藏/归档/分类是
-              库的筛选条件，折叠在知识库下面，不再和主线抢同一层。 */}
-          {/* 三入口导航（R1，UI_SPEC「桌面主导航」+ ADR-0004）：一级目的地只有
-              笔记 / 知识库 / 应用。原「来源」与「收件箱」并入笔记——邮箱、订阅、
-              导入是笔记的采集手段，收件箱是笔记的处理状态，都不是与笔记并列的
-              产品层（旧四段结构的迁移对照见 docs/UI_CONSOLIDATION.md）。 */}
+          <details className="ws-nav-details ws-record-options">
+            <summary className="ws-nav-summary">记录方式</summary>
+            <div className="ws-capture-modes" role="group" aria-label="记录方式">
+              <button type="button" className="ws-capture-mode" aria-label="手写笔记" disabled={loading || busy} onClick={() => setNotePad("ink")}>
+                <Icon name="edit" size={14} /><span>手写</span>
+              </button>
+              <button type="button" className="ws-capture-mode" aria-label="语音笔记" disabled={loading || busy} onClick={() => setNotePad("voice")}>
+                <Icon name="mic" size={14} /><span>语音</span>
+              </button>
+              {/* 插件没开时**不能**用 disabled：禁用按钮不可聚焦、不派发事件，
+                  键盘用户 Tab 不到、鼠标点了也没反应，连 title 都看不到——
+                  界面上就多出一个没人知道为什么灰掉的入口。
+                  改成 aria-disabled：照常可聚焦，点了说明原因与下一步。 */}
+              {asrEnabled ? (
+                <button type="button" className="ws-capture-mode" aria-label="导入音频转写" disabled={loading || busy} title="导入已有音频并转写" onClick={() => void transcribeAudio()}>
+                  <Icon name="upload" size={14} /><span>转写</span>
+                </button>
+              ) : (
+                <DisabledEntry
+                  className="ws-capture-mode"
+                  label="导入音频转写"
+                  reason="语音转写插件未启用"
+                  hint="到设置 →「功能模块与官方插件」里开启"
+                  onExplain={(message) => setNotice(message)}
+                >
+                  <Icon name="upload" size={14} /><span>转写</span>
+                </DisabledEntry>
+              )}
+              <button type="button" className="ws-capture-mode" aria-label="笔记转知识卡" disabled={loading || busy} title="把 Markdown 笔记拆成可复习的知识卡" onClick={() => notesRef.current?.click()}>
+                {/* 可见文字带出动作（它不是一种「记法」，是把 Markdown 笔记拆成知识卡）：
+                    写成「笔记」会与列表筛选页签的「笔记」同名——同一屏两个「笔记」
+                    指两件事，品味门禁的「重复 CTA」判定也会报红。 */}
+                <Icon name="card" size={14} /><span>笔记转卡</span>
+              </button>
+            </div>
+          </details>
+
           <nav className="ws-nav-group" aria-label="笔记">
             <p className="ws-group-label">笔记</p>
             <button
@@ -1982,7 +2026,7 @@ export function Workspace() {
             >
               <Icon name="edit" /><span>全部笔记</span>
               {/* 徽标数要与列表一致：归档的笔记不显示在列表里，就不该算进这个数。 */}
-              <span className="ws-count">{notesState.notes.filter(n => !n.isDeleted && n.archivedAt === null).length}</span>
+              <NavCount count={notesState.notes.filter(n => !n.isDeleted && n.archivedAt === null).length} />
             </button>
             <button
               className="ws-nav-row"
@@ -1990,15 +2034,15 @@ export function Workspace() {
               onClick={() => navigate("inbox")}
             >
               <Icon name="inbox" /><span>收件箱</span>
-              <span className="ws-count">{counts.inbox}</span>
+              <NavCount count={counts.inbox} />
             </button>
             <button className="ws-nav-row" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigate("mail")}>
               <Icon name="mail" /><span>邮箱</span>
-              <span className="ws-count">{materials.filter(m => m.sourceType === "email" && m.inboxStatus === "inbox").length}</span>
+              <NavCount count={materials.filter(m => m.sourceType === "email" && m.inboxStatus === "inbox").length} />
             </button>
             <button className="ws-nav-row" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => navigate("subscriptions")}>
               <Icon name="inbox" /><span>订阅源</span>
-              <span className="ws-count">{subscriptions.length}</span>
+              <NavCount count={subscriptions.length} />
             </button>
             {/* 导入是动作不是目的地；样式区别于导航行。 */}
             <button className="ws-nav-action" onClick={() => importRef.current?.click()} disabled={loading || busy}>
@@ -2006,7 +2050,7 @@ export function Workspace() {
             </button>
             {lastImportReport ? (
               <details className="ws-nav-details nv-import-report">
-                <summary className="ws-nav-summary">上次导入报告<span className="ws-count">{lastImportReport.ok.length + lastImportReport.skipped.length + lastImportReport.failed.length}</span></summary>
+                <summary className="ws-nav-summary">上次导入报告<NavCount count={lastImportReport.ok.length + lastImportReport.skipped.length + lastImportReport.failed.length} /></summary>
                 {reportLines(lastImportReport).map((line, i) => (
                   <p key={i} className={`nv-report-line nv-report-${line.kind}`}>{line.text}</p>
                 ))}
@@ -2023,13 +2067,13 @@ export function Workspace() {
               onClick={() => navigate("library")}
             >
               <Icon name="library" /><span>全部知识</span>
-              <span className="ws-count">{counts.library}</span>
+              <NavCount count={counts.library} />
             </button>
             {/* 收藏与归档是「库」的筛选，不是并列的一级目的地。 */}
             <details className="ws-nav-details" open={page === "favorites" || page === "archive"}>
               <summary className="ws-nav-summary">
                 筛选
-                <span className="ws-count">{counts.favorites + counts.archive}</span>
+                <NavCount count={counts.favorites + counts.archive} />
               </summary>
               <button
                 className="ws-nav-row"
@@ -2037,7 +2081,7 @@ export function Workspace() {
                 onClick={() => navigate("favorites")}
               >
                 <Icon name="star" /><span>收藏</span>
-                <span className="ws-count">{counts.favorites}</span>
+                <NavCount count={counts.favorites} />
               </button>
               <button
                 className="ws-nav-row"
@@ -2045,12 +2089,12 @@ export function Workspace() {
                 onClick={() => navigate("archive")}
               >
                 <Icon name="archive" /><span>已归档</span>
-                <span className="ws-count">{counts.archive}</span>
+                <NavCount count={counts.archive} />
               </button>
             </details>
             {tags.length ? (
               <details className="ws-nav-details">
-                <summary className="ws-nav-summary">分类<span className="ws-count">{tags.length}</span></summary>
+                <summary className="ws-nav-summary">分类<NavCount count={tags.length} /></summary>
                 {tags.slice(0, 8).map((t) => (
                   <button
                     key={t}
@@ -2065,7 +2109,7 @@ export function Workspace() {
                   >
                     <Icon name="folder" size={14} />
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t}</span>
-                    <span className="ws-count">{tagCounts.get(t) ?? 0}</span>
+                    <NavCount count={tagCounts.get(t) ?? 0} />
                   </button>
                 ))}
               </details>
@@ -2190,10 +2234,6 @@ export function Workspace() {
             <Icon name="settings" />
             <span>设置</span>
           </button>
-          <p className="ws-storage">
-            <i />
-            {inShell() ? "本地知识库" : "浏览器体验"}
-          </p>
         </div>
         <div
           className="ws-resizer ws-resizer-nav"
@@ -2220,7 +2260,8 @@ export function Workspace() {
         <button
           className="ws-nav-backdrop"
           aria-label="关闭导航栏"
-          onClick={layout.closeNavOverlay}
+          tabIndex={-1}
+          onClick={closeNavigation}
         />
       ) : null}
 
@@ -2260,13 +2301,12 @@ export function Workspace() {
       </div>
       {isCollection ? (
         <>
-          <section className="ws-list" data-workspace-pane="stream" aria-label="内容列表">
+          <section id="workspace-list" className="ws-list" data-workspace-pane="stream" aria-label="内容列表">
             <div className="ws-list-head">
               <div className="ws-list-title">
                 <h1>{tag || collectionNames[collection]}</h1>
                 <span>{filtered.length} 条</span>
               </div>
-              <p className="ws-list-sub">{PAGE_HINTS[collection]}</p>
               <div
                 className="ws-search-wrap"
                 onBlur={(event) => {
@@ -2496,7 +2536,7 @@ export function Workspace() {
                   <p>
                     {query
                       ? "试试更短的关键词，或清除筛选。"
-                      : "记一段想法，或导入一份笔记。侧栏的「记录」随时可以写一条。"}
+                      : "点击「记录」添加内容。"}
                   </p>
                   {/* 有筛选时给「清除筛选」；没有筛选时**不放**「记录第一条」——
                       侧栏的「记录 ⌘N」常驻可见，再放一个做同一件事的按钮只会
@@ -2541,8 +2581,10 @@ export function Workspace() {
                           }
                           setBatchIds(new Set());
                           setSelectedId(e.id);
+                          layout.showCompactReader();
                           // T13（G01）：笔记命中直接打开那篇笔记（搜原文 → 打开笔记）
                           if (e.kind === "note") openNoteById(e.id);
+                          else if (layout.compact) requestAnimationFrame(() => readerRef.current?.focus());
                         }}
                       >
                         <span className="ws-entry-top">
@@ -2577,12 +2619,6 @@ export function Workspace() {
                 </>
               )}
             </div>
-
-            <footer className="ws-list-foot">
-              <span>
-                {cards.length} 张知识卡 · {materials.length} 份素材
-              </span>
-            </footer>
             <div
               className="ws-resizer ws-resizer-list"
               role="separator"
@@ -2679,7 +2715,7 @@ export function Workspace() {
                   <div className="ws-empty-guide">
                     <Icon name="library" size={28} style={{ opacity: 0.35, marginBottom: 8 }} />
                     <p style={{ fontWeight: 500, color: "var(--ink)" }}>选择一条内容，开始阅读</p>
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>点击左侧条目查看正文，或使用快捷键浏览</span>
+
                   </div>
                 ) : (
                   /* 空列表时右栏不能是一片空白：首次打开应用的用户会不知道下一步做什么。
@@ -2692,10 +2728,8 @@ export function Workspace() {
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>
                       {query.trim() || tag
                         ? "换个关键词，或清空筛选看看全部内容"
-                        : "按 ⌘N 记一条闪念，拖入文件，粘贴链接自动抓取，或用订阅源定期收集"}
+                        : "点击「记录」、拖入文件或粘贴链接"}
                     </span>
-                    {/* 不再放「记录」按钮：侧栏的「记录 ⌘N」常驻可见，
-                        同一动作同一屏出现两次是重复 CTA。这里补的是用户还没看到的入口。 */}
                     {query.trim() || tag ? (
                       // 文案里写着「清空筛选看看全部内容」，那就得有个能点的入口——
                       // 否则用户要自己回到搜索框手动删词，还得记得把标签也点掉。
@@ -2805,6 +2839,8 @@ export function Workspace() {
               {page === "notes" ? (
                 <NotesView
                   dir={dir}
+                  listShown={layout.listShown}
+                  onOpenEditor={layout.showCompactReader}
                   attachableMedia={materials
                     .filter((m) => m.mediaPath)
                     .map((m) => ({ path: m.mediaPath as string, label: m.title }))}
@@ -2968,9 +3004,6 @@ export function Workspace() {
         <span>
           <Icon name="check" size={13} />
           {loading ? "正在读取…" : busy ? busyLabel : inShell() ? "已保存到本机" : "浏览器体验 · 内容存在本机"}
-        </span>
-        <span>
-          {selected && isCollection ? "已选中 1 条" : "未选中内容"}　{cards.length + materials.length} 条
         </span>
       </footer>
 

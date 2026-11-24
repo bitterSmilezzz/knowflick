@@ -35,7 +35,7 @@ try {
   await b("open", url);
   await check("!!document.querySelector('.ws')", "工作台就绪");
 
-  // 三种记法并列在记录入口下
+  await b("click", ".ws-record-options > summary");
   // 记录入口并列多种记法：手写、语音、转写、笔记转卡。
   // 这里查「包含」而不是相等——以后再加一种记法，不该让这条断言失效。
   const captureLabels = await ev("[...document.querySelectorAll('.ws-capture-mode')].map(e=>e.getAttribute('aria-label')).join(',')");

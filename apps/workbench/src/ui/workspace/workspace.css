@@ -41,6 +41,7 @@ select {
   /* `body` paints light-theme text; every control inside .ws inherits instead of
      declaring its own colour, so the themed ink must be re-established here. */
   color: var(--ink);
+  position: relative;
   height: 100dvh;
   display: grid;
   grid-template-rows: var(--toolbar-h) minmax(0, 1fr) var(--status-h);
@@ -51,10 +52,36 @@ select {
     "status status status";
   overflow: hidden;
   background: var(--surface);
+
+  /* 每一栏都能单独收起：收起的栏位宽度归零，其余栏位自动占满。
+     用显式组合而不是中间变量——中间变量不在 tokens.css 里，
+     设计令牌门禁会把它当成未定义令牌。 */
 }
 
-.ws[data-nav="collapsed"] {
+.ws:not([data-nav="expanded"]) {
   grid-template-columns: 0 var(--list-w, 320px) minmax(0, 1fr);
+}
+
+.ws[data-list="collapsed"],
+.ws[data-view="page"] {
+  grid-template-columns: var(--nav-w, 200px) 0 minmax(0, 1fr);
+}
+
+.ws:not([data-nav="expanded"])[data-list="collapsed"],
+.ws:not([data-nav="expanded"])[data-view="page"] {
+  grid-template-columns: 0 0 minmax(0, 1fr);
+}
+
+/* 窄到放不下「列表 + 正文」时一次只显示一栏，另一栏由顶栏按钮切换。 */
+.ws[data-compact][data-view="collection"][data-list="expanded"] {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+.ws[data-list="collapsed"] .ws-list,
+.ws[data-compact][data-view="collection"][data-list="expanded"] .ws-reader,
+.ws[data-compact] .ws-resizer-list {
+  display: none;
+  display: none;
 }
 
 /* ---------- collapsible nav sections ---------- */
@@ -109,10 +136,10 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 .ws-nav-details[open] > .ws-nav-summary::before { transform: rotate(90deg); }
 .ws-nav-summary:hover { background: var(--hover); color: var(--ink); }
 .ws-nav-summary .ws-count { margin-left: auto; }
-.ws-nav-details > .ws-nav-row { padding-left: 22px; }
+.ws .ws-nav-details > .ws-nav-row { padding-left: 22px; }
 
 /* 来源段内的动作（导入文件）：与导航行区分开，一级入口只数目的地。 */
-.ws-nav-action {
+.ws .ws-nav-action {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -171,10 +198,11 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 .ws-header {
   grid-area: header;
   position: relative;
-  display: grid;
-  grid-template-columns: subgrid;
-  grid-column: 1 / -1;
+  display: flex;
   align-items: center;
+  gap: 12px;
+  padding-inline: 10px;
+  min-width: 0;
   height: var(--toolbar-h);
   border-bottom: 1px solid var(--line);
   background: var(--bg);
@@ -190,87 +218,30 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   app-region: no-drag;
 }
 
-.ws-traffic {
-  position: absolute;
-  left: 14px;
-  top: calc((var(--toolbar-h) - 12px) / 2);
+.ws-pane-controls {
   display: flex;
-  gap: 8px;
-  pointer-events: none;
+  gap: 2px;
+  flex: none;
 }
 
-.ws-traffic i {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1px solid rgb(0 0 0 / 12%);
-}
-
-.ws-traffic i:nth-child(1) { background: #ff5f57; }
-.ws-traffic i:nth-child(2) { background: #febc2e; }
-.ws-traffic i:nth-child(3) { background: #28c840; }
-
-.ws-header-side {
-  grid-column: 1;
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px 0 78px;
-  border-right: 1px solid var(--line);
-  min-width: 0;
-}
-
-.ws-app-name {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-header-list {
-  grid-column: 2;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-right: 1px solid var(--line);
-  min-width: 0;
-}
-
-.ws-header-list strong {
-  font-size: 13px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-header-reader {
-  grid-column: 3;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 0 12px;
-  min-width: 0;
+.ws .ws-pane-controls button[aria-expanded="true"] {
+  background: var(--hover);
 }
 
 .ws-crumb {
-  font-size: var(--text-meta);
-  color: var(--muted);
+  font-size: var(--text-body);
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ws-toolbar-actions {
+  margin-inline-start: auto;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 2px;
-  flex: none;
 }
 
 /* ---------- buttons ---------- */
@@ -314,6 +285,7 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 }
 
 .ws button:focus-visible,
+.ws summary:focus-visible,
 .ws input:focus-visible,
 .ws textarea:focus-visible,
 .ws select:focus-visible {
@@ -362,19 +334,12 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   border: 0;
 }
 
-.ws-capture {
-  width: 100%;
-  justify-content: flex-start;
-  height: var(--control-h-lg);
-  margin-bottom: 14px;
-  border-color: var(--control);
-  background: var(--surface);
+.ws .ws-capture {
+  gap: 5px;
   font-weight: 500;
 }
 
-.ws-capture kbd {
-  margin-left: auto;
-}
+.ws-record-options { margin-bottom: 4px; }
 
 .ws-nav-group {
   display: flex;
@@ -382,7 +347,7 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   gap: 1px;
 }
 
-.ws-nav-row {
+.ws .ws-nav-row {
   width: 100%;
   justify-content: flex-start;
   padding: 0 9px;
@@ -439,23 +404,6 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 
 .ws-nav-bottom .ws-nav-row {
   color: var(--muted);
-}
-
-.ws-storage {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 9px 2px;
-  color: var(--muted);
-  font-size: var(--text-meta);
-}
-
-.ws-storage i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3a9d63;
-  flex: none;
 }
 
 /* ---------- list column ---------- */
@@ -519,12 +467,6 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   color: var(--muted);
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
-}
-
-.ws-list-sub {
-  margin: 3px 0 0;
-  color: var(--muted);
-  font-size: var(--text-meta);
 }
 
 .ws-search-wrap {
@@ -663,6 +605,8 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   min-height: 0;
   overflow-y: auto;
   border-top: 1px solid var(--line);
+  /* 键盘走到最后一行时别把它顶在边线上：scrollIntoView(nearest) 会尊重这里。 */
+  scroll-padding-block: 4px;
   scrollbar-width: thin;
 }
 
@@ -774,17 +718,6 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 
 .ws-list-empty p {
   margin: 0 0 14px;
-  font-size: var(--text-meta);
-}
-
-.ws-list-foot {
-  flex: none;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 16px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
   font-size: var(--text-meta);
 }
 
@@ -1376,36 +1309,16 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   color: #f2b8b5;
 }
 
-/* Pane visibility is resolved from window width and the user's toggle. */
-.ws[data-nav="collapsed"] .ws-header-side,
-.ws[data-nav="overlay"] .ws-header-side {
-  display: none;
-}
-.ws[data-nav="collapsed"] .ws-header-list,
-.ws[data-nav="overlay"] .ws-header-list {
-  padding-left: 78px;
-}
-.ws[data-nav="overlay"] {
-  grid-template-columns: 0 var(--list-w, 320px) minmax(0, 1fr);
-}
-.ws[data-nav="collapsed"] .ws-nav {
-  visibility: hidden;
-  padding: 0;
-  border: 0;
-}
+/* Narrow windows show navigation above the content. */
 .ws[data-nav="overlay"] .ws-nav {
   position: absolute;
   top: var(--toolbar-h);
   bottom: var(--status-h);
   left: 0;
-  width: 240px;
+  width: min(240px, 85vw);
   z-index: 20;
-  background: var(--bg);
-  box-shadow: 8px 0 24px rgb(0 0 0 / 12%);
 }
-.ws-nav-backdrop { display: none; }
-.ws[data-nav="overlay"] .ws-nav-backdrop {
-  display: block;
+.ws .ws-nav-backdrop {
   position: absolute;
   inset: var(--toolbar-h) 0 var(--status-h) 0;
   z-index: 19;
@@ -1500,11 +1413,15 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
   box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
 }
 
-@media (max-width: 980px) {
-  .ws-feedback-host {
-    left: calc(var(--list-w, 300px) + 16px);
-    right: 16px;
-  }
+.ws:not([data-nav="expanded"]) .ws-feedback-host {
+  left: clamp(24px, calc(var(--list-w, 320px) + 24px), calc(100% - 300px));
+}
+
+.ws[data-list="collapsed"] .ws-feedback-host,
+.ws[data-compact][data-view="collection"][data-list="expanded"] .ws-feedback-host,
+.ws[data-view="page"] .ws-feedback-host {
+  left: 24px;
+  right: 16px;
 }
 
 /* Settings keeps its save action on a footer that is always in view,
@@ -1518,18 +1435,8 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 }
 
 /* Sub-pages have one content pane and the same navigation behavior. */
-.ws[data-view="page"] {
-  grid-template-columns: var(--nav-w, 200px) 44px minmax(0, 1fr);
-}
-.ws[data-view="page"][data-nav="collapsed"],
-.ws[data-view="page"][data-nav="overlay"] {
-  grid-template-columns: 0 122px minmax(0, 1fr);
-}
-.ws[data-view="page"] .ws-header-list { border-right: 0; padding-right: 0; }
-.ws[data-view="page"] .ws-header-list strong { display: none; }
 .ws[data-view="page"] .ws-page { grid-column: 2 / -1; }
 .ws-page .ws-reader-scroll { padding: 26px 40px 32px; }
-.ws[data-view="page"] .ws-feedback-host { left: 24px; }
 
 /* ---------- review (QuizView) ---------- */
 
@@ -2169,7 +2076,7 @@ summary.ws-group-label::-webkit-details-marker { display: none; }
 
 .ws-capture-modes {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 0 2px 8px;
 }
@@ -2843,10 +2750,18 @@ body.capsule-window { overflow: hidden; background: transparent; }
 
 .nv-root {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   gap: 0;
   height: 100%;
   min-height: 0;
+}
+.nv-root[data-notes-list="collapsed"],
+.ws[data-compact] .nv-root {
+  grid-template-columns: minmax(0, 1fr);
+}
+.nv-root[data-notes-list="collapsed"] .nv-list,
+.ws[data-compact] .nv-root[data-notes-list="expanded"] .nv-editor {
+  display: none;
 }
 .nv-list {
   border-right: 1px solid var(--line);
