@@ -14,7 +14,7 @@ func TestSaveReadRoundTripAndPathSafety(t *testing.T) {
 	for i := 0; i < 256; i++ {
 		payload = append(payload, byte(i))
 	}
-	relative, err := Save(dir, "audio", "audio/webm", payload)
+	relative, err := Save(dir, "audio", `audio/webm; codecs="opus"`, payload)
 	if err != nil {
 		t.Fatal(err)
 	}

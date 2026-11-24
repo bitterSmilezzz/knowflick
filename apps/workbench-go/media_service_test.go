@@ -36,6 +36,10 @@ func TestSaveMediaCaptureAndReadBack(t *testing.T) {
 	if err != nil || string(decoded) != "PNGDATA-STUB" {
 		t.Fatalf("read back: %q %v", decoded, err)
 	}
+	audioPath, err := service.SaveMediaCapture(ctx, opened.Generation, "audio", `audio/mp4; codecs="mp4a.40.2"`, encoded)
+	if err != nil || !strings.HasSuffix(audioPath, ".m4a") {
+		t.Fatalf("parameterized MP4 recording: %q, %v", audioPath, err)
+	}
 	// 逃逸路径被拒绝。
 	if _, err := service.ReadMediaBytes(ctx, opened.Generation, "../cards.json"); err == nil {
 		t.Fatal("path escape accepted")

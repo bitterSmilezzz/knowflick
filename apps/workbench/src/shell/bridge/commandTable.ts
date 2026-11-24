@@ -40,7 +40,7 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "db_save_artifact": {"service": "PreviewService","method": "SaveArtifact","args": ["generation","artifact"]},
   "db_save_card_embedding": {"service": "PreviewService","method": "SaveCardEmbedding","args": ["generation","cardID","vector","provider","model"]},
   "db_save_card_embeddings_batch": {"service": "PreviewService","method": "SaveCardEmbeddingsBatch","args": ["generation","items","provider","model"]},
-  "db_save_material": {"service": "PreviewService","method": "SaveMaterial","args": ["generation","title","text","sourceURL"]},
+  "db_save_material": {"service": "PreviewService","method": "SaveMaterialDTO","args": ["generation","material"]},
   "db_save_subscription": {"service": "SubscriptionService","method": "SaveSubscription","args": ["item"]},
   "db_search_cards_fts": {"service": "PreviewService","method": "BrowseCards","args": ["generation","query","offset"]},
   "db_search_cards_hybrid": {"service": "PreviewService","method": "SearchCardsHybrid","args": ["generation","query","queryEmbedding","provider","model","limit"]},
