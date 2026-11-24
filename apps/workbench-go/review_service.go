@@ -54,26 +54,15 @@ func (s *PreviewService) ReadReviewHistoryPeriod(generation int, from, to int64)
 	return s.current.ReviewHistoryPeriod(from, to)
 }
 
-// RecordReview 接收**评分后的整张卡片**（前端持的就是它）并映射成学习字段。
+// RecordReview 保存一次评分：state 是评分后的学习字段，event 是这条历史。
 //
-// 线上参数名是 card：共享工作台在评分后把 next 列表里的那张卡连同事件一起发来，
-// 它已经带了新的 review_count/last_reviewed_at/间隔等字段。早先这里只声明 state，
-// 前端发来的 card 被丢弃、state 为空 → 真机上卡片评分数永远不落库。
-func (s *PreviewService) RecordReview(ctx context.Context, generation int, card cards.Card, event reviewhistory.Event) (bool, error) {
+// 共享工作台在评分后把那张卡的学习字段映射成 state 再发来（见 store.ts 的 reviewRecord）；
+// 早先前端直接把整张卡当 card 发出去，state 为空——真机上评分永远不落库。
+func (s *PreviewService) RecordReview(ctx context.Context, generation int, state reviewhistory.CardState, event reviewhistory.Event) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current == nil || s.generation != generation {
 		return false, errors.New("请重新打开资料库")
 	}
-	return s.current.RecordReview(ctx, reviewhistory.CardState{
-		ID:             card.ID,
-		ReviewCount:    card.ReviewCount,
-		MasteryLevel:   card.MasteryLevel,
-		LastReviewedAt: card.LastReviewedAt,
-		Repetition:     card.Repetition,
-		IntervalDays:   card.IntervalDays,
-		EaseFactor:     card.EaseFactor,
-		Stability:      card.Stability,
-		Difficulty:     card.Difficulty,
-	}, event)
+	return s.current.RecordReview(ctx, state, event)
 }

@@ -46,11 +46,17 @@ func TestRecordReviewAcceptsRatedCardFromShell(t *testing.T) {
 	}`), &payload); err != nil {
 		t.Fatal(err)
 	}
+	state := reviewhistory.CardState{
+		ID: payload.ID, ReviewCount: payload.ReviewCount, MasteryLevel: payload.MasteryLevel,
+		LastReviewedAt: payload.LastReviewedAt, Repetition: payload.Repetition, IntervalDays: payload.IntervalDays,
+		EaseFactor: payload.EaseFactor, Stability: payload.Stability, Difficulty: payload.Difficulty,
+	}
 	event := reviewhistory.Event{ID: "55555555-5555-4555-8555-555555555555", CardID: "rated-card", ReviewedAt: 2000, Rating: reviewhistory.RatingGood, Algorithm: reviewhistory.AlgorithmFsrs}
-	if ok, err := service.RecordReview(ctx, 7, payload, event); err != nil || !ok {
+	// 共享工作台发的是 state（由评分后的卡片映射而来），不是整张卡。
+	if ok, err := service.RecordReview(ctx, 7, state, event); err != nil || !ok {
 		t.Fatalf("record review: %v, %v", ok, err)
 	}
-	if ok, err := service.RecordReview(ctx, 7, payload, event); err != nil || ok {
+	if ok, err := service.RecordReview(ctx, 7, state, event); err != nil || ok {
 		t.Fatalf("duplicate review must be a no-op: %v, %v", ok, err)
 	}
 	// 直接读库：EditableCard 不暴露学习字段，读回才是真证据。
