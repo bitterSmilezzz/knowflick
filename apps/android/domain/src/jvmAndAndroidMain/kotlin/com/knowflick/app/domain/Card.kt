@@ -95,6 +95,14 @@ data class KnowledgeCard(
     val orderKey: String? = null,
     /** 前置卡片 id：学习路径的边 */
     val prereq: List<String> = emptyList(),
+    /**
+     * 自由标签。
+     *
+     * 桌面端一直有这个字段并且参与搜索；安卓端此前**没有**，于是桌面端打的标签
+     * 导出到安卓会静默丢失——「拷过去就能打开」成立，但数据不全。
+     * 默认空列表：旧 JSON 缺这个键时行为与升级前一致。
+     */
+    val tags: List<String> = emptyList(),
 ) {
     /** 解析正文为段落（macOS 端以双换行分段） */
     val paragraphs: List<String> get() = details.split("\n\n").filter { it.isNotBlank() }

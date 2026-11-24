@@ -1,0 +1,118 @@
+/*
+ * KnowFlick design tokens — single source of truth.
+ * Spec: docs/UI_DESIGN_SPEC_2026-10-19.md
+ * Rules: body text 14px/1.6, minimum 12px, controls 28–32px,
+ *        radii only 4px (controls) / 8px (panels), neutral cool-grey base.
+ */
+:root,
+.ws,
+.ws-capsule-backdrop {
+  color-scheme: light dark;
+
+  /* Neutral cool-grey surfaces */
+  --bg: #f5f6f7;
+  --surface: #ffffff;
+  --sunken: #eef0f2;
+  --line: #dce0e4;          /* decorative separators only */
+  --control: #7b848d;       /* control boundaries, >=3:1 */
+  --ink: #1c1e20;
+  --muted: #596168;         /* >=4.5:1 on all surfaces above */
+  --selected: #e9eef4;
+  --hover: #eceff2;
+
+  /* Accent follows the platform (AccentColor) with fallback cool blue. */
+  --accent: AccentColor;
+  --accent-ink: AccentColorText;
+
+  @supports not (color: AccentColor) {
+    --accent: #315e8b;
+    --accent-ink: #ffffff;
+  }
+
+  /* 实心按钮的底色。系统 AccentColor 在浅色模式下常常是亮蓝
+     （实测 macOS 默认 #0075FF），白字压上去只有 4.21:1，低于 WCAG AA 的 4.5。
+     用户还能自选更浅的强调色，所以按钮不用裸 accent，而是把 accent 混向 ink
+     压深一档；文字仍用 accent-ink，对比度稳定在 6:1 以上。 */
+  --accent-solid: color-mix(in srgb, var(--accent) 78%, #000 22%);
+  @supports not (color: color-mix(in srgb, red, blue)) {
+    --accent-solid: var(--accent);
+  }
+
+  /* 强调色**当文字色**用时的取值。裸 --accent 在浅色模式下只有约 3.4:1
+     （14px 正文不达 WCAG AA 4.5），所以文字链接用这个压深一档的版本
+     （实测约 6.6:1）。深色模式的 accent 本身已经很浅，直接用即可。 */
+  --accent-text: color-mix(in srgb, var(--accent) 78%, #000 22%);
+  @supports not (color: color-mix(in srgb, red, blue)) {
+    --accent-text: #2f5c8f;
+  }
+
+  /* 危险/错误色。规格 §4 之前没有定义它，CSS 里散落着写死的 #b3261e
+     与无 fallback 的 var(--danger)——后者等于颜色失效。 */
+  --danger: #b3261e;
+
+  /* Geometry */
+  --radius-control: 4px;
+  --radius-panel: 8px;
+  --control-h: 30px;
+  --control-h-lg: 32px;
+  --toolbar-h: 42px;
+  --status-h: 28px;
+
+  /* Type */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI",
+    "PingFang SC", "Microsoft Yahei", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-body: 14px;
+  --text-meta: 12px;
+  --text-title: 17px;
+
+  --duration: 120ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.ws[data-appearance="dark"],
+.ws-capsule-backdrop[data-appearance="dark"],
+:root[data-appearance="dark"] {
+  --bg: #1b1d1f;
+  --surface: #232629;
+  --sunken: #1f2225;
+  --line: #33383d;
+  --control: #6e777f;
+  --ink: #e6e8ea;
+  --muted: #a3aab3;
+  --selected: #2b3136;
+  --hover: #2e3338;
+  --accent: AccentColor;
+  --accent-ink: AccentColorText;
+
+  @supports not (color: AccentColor) {
+    --accent: #7aa7dc;
+    --accent-ink: #15181a;
+  }
+
+  /* 深色模式下 accent-ink 实测同样是白字（macOS 的 AccentColorText），
+     所以这里必须和浅色一样往黑压；先前写成往白提亮，白字压在浅蓝上只有 3.55:1。 */
+  --accent-solid: color-mix(in srgb, var(--accent) 78%, #000 22%);
+  @supports not (color: color-mix(in srgb, red, blue)) {
+    --accent-solid: var(--accent);
+  }
+
+  /* 深色底上强调色已经很浅（#7aa7dc on #232629 约 6.1:1），文字直接用 accent。 */
+  --accent-text: var(--accent);
+
+  /* 深色下的错误色要提亮，否则深底上不够醒目。 */
+  --danger: #f2b8b5;
+}
+
+/*
+ * SYSTEM is resolved in JS (useSystemAppearance) and written to data-appearance,
+ * so there is no prefers-color-scheme block here: a media query would fight the
+ * explicit attribute and make "Light" impossible to pin on a dark OS.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  .ws {
+    --duration: 0ms;
+  }
+}

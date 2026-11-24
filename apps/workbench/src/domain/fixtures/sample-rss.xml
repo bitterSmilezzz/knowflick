@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example Blog</title>
+    <link>https://example.com/</link>
+    <description><![CDATA[A blog about & things <b>like</b> this]]></description>
+    <atom:link href="https://example.com/feed.xml" rel="self" type="application/rss+xml"/>
+    <item>
+      <title>Post with CDATA &amp; entities</title>
+      <link>https://example.com/posts/1?utm_source=rss</link>
+      <guid isPermaLink="false">tag:example.com,2026:post-1</guid>
+      <description><![CDATA[<p>Body with <a href="https://example.com">a link</a> &amp; entities</p>]]></description>
+      <content:encoded><![CDATA[<p>Full content here</p><ul><li>one</li><li>two</li></ul>]]></content:encoded>
+      <pubDate>Tue, 21 Oct 2026 08:00:00 +0800</pubDate>
+    </item>
+    <item>
+      <title>Post with relative link</title>
+      <link>/posts/2</link>
+      <description>Plain description with &lt;escaped&gt; markup</description>
+      <pubDate>Mon, 20 Oct 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>ISO date post</title>
+      <link>https://example.com/posts/3</link>
+      <description>Third post</description>
+      <pubDate>2026-10-19T12:00:00Z</pubDate>
+    </item>
+    <item>
+      <title>Broken item without link</title>
+      <description>Should be skipped</description>
+    </item>
+  </channel>
+</rss>

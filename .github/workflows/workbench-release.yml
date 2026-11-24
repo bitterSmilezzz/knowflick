@@ -1,0 +1,153 @@
+name: Workbench Release (Go)
+
+# 第一套桌面（apps/workbench 前端 + apps/workbench-go）的三平台安装包与 Release 附件。
+# 替代原来的 Tauri 打包矩阵（Rust 壳已随 ADR-0042 删除）。
+#
+# 为什么必须是三台机器：cgo + 平台框架不支持交叉编译，DMG 只能在 macOS 出、
+# DEB 只能在 Linux 出、NSIS 安装器只能在 Windows 出。
+#
+# 触发面：workbench-v* tag（path 过滤对 tag 不生效，tag 一定会跑）+ 手动 dispatch。
+# 产物命名与组装逻辑在 tools/package_workbench_go.sh 与 tools/assemble_workbench_release.sh 里，
+# 都能在本机用占位产物空跑；YAML 只负责三平台并行构建与上传。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "只演练组装：填一个 workbench-v 标签（如 workbench-v0.1.0）。留空则只跑三平台打包"
+        required: false
+        type: string
+  push:
+    tags:
+      - workbench-v*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS DMG
+            artifact: workbench-dmg
+          - os: ubuntu-latest
+            label: Linux DEB
+            artifact: workbench-deb
+          - os: windows-latest
+            label: Windows 安装器
+            artifact: workbench-exe
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.x"
+          cache: true
+          cache-dependency-path: apps/workbench-go/go.sum
+
+      - name: npm ci
+        working-directory: apps/workbench
+        run: npm ci
+
+      - name: Linux 系统依赖（GTK3 + WebKitGTK + dpkg）
+        if: runner.os == 'Linux'
+        run: |
+          for attempt in 1 2 3; do
+            if sudo DEBIAN_FRONTEND=noninteractive timeout 300 apt-get \
+                 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=1 update \
+               && sudo DEBIAN_FRONTEND=noninteractive timeout 420 apt-get \
+                 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=1 install -y libgtk-3-dev libgtk-4-dev \
+                 libwebkit2gtk-4.1-dev libwebkitgtk-6.0-dev \
+                 libappindicator3-dev librsvg2-dev patchelf xdg-utils dpkg-dev; then
+              exit 0
+            fi
+            echo "第 $attempt 次安装失败，等 15 秒重试" >&2
+            sleep 15
+          done
+          echo "::error::Linux 系统依赖安装失败" >&2
+          exit 1
+
+      - name: 安装 Wails v3 CLI
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Windows 工具链（NSIS + MinGW）
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install nsis mingw -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
+          echo "C:\ProgramData\mingw64\mingw64\bin" >> "$GITHUB_PATH"
+          echo "C:\ProgramData\chocolatey\bin" >> "$GITHUB_PATH"
+
+      - name: 工具链自检
+        shell: bash
+        run: |
+          go version
+          wails3 version
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            gcc --version | head -1 || true
+            which makensis || true
+          fi
+
+      - name: 构建并打包
+        shell: bash
+        run: ./tools/package_workbench_go.sh --out dist/workbench
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            dist/workbench/*.dmg
+            dist/workbench/*.deb
+            dist/workbench/*.exe
+
+  release:
+    name: 组装并上传 Release 附件
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/workbench-v') || inputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 校验命名并生成 SHA256SUMS
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: ./tools/assemble_workbench_release.sh --tag "$TAG" --artifacts-dir artifacts --out out
+
+      - name: 上传到 Release
+        if: startsWith(github.ref, 'refs/tags/workbench-v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" out/* --clobber || {
+            gh release create "$GITHUB_REF_NAME" --title "KnowFlick Workbench ${{ github.ref_name }}" --generate-notes;
+            gh release upload "$GITHUB_REF_NAME" out/* --clobber;
+          }

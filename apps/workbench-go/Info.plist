@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>app.knowflick.go-preview</string>
+  <key>CFBundleName</key>
+  <string>KnowFlick Go Preview</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>用于录制语音笔记。录音保存在本机资料库。</string>
+</dict>
+</plist>

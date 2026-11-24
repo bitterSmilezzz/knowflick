@@ -11,15 +11,29 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 
-export const DEFAULT_APP_DIR = path.join(
-  process.env.HOME ?? "",
-  "Library",
-  "Application Support",
-  "KnowFlick",
-);
+const home = homedir();
+export const DEFAULT_APP_DIR = process.platform === "darwin"
+  ? path.join(home, "Library", "Application Support", "KnowFlick")
+  : process.platform === "win32"
+    ? path.join(process.env.APPDATA || path.join(home, "AppData", "Roaming"), "KnowFlick")
+    : path.join(process.env.XDG_DATA_HOME || path.join(home, ".local", "share"), "KnowFlick");
 
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
+
+/**
+ * 默认卡库位置：两套 App（第一套桌面与 Android）都读写 `<数据根>/store/cards.json`
+ * （ADR-0002 §3「拷过去就能打开」）；已删除的 mac 端把 `cards.json` 直接放在数据根下，
+ * 所以那里也看一眼。两处都没有时按**现行**布局返回——错误信息里的那个路径才是用户该去的地方。
+ */
+export function defaultCardsPath(appDir = DEFAULT_APP_DIR) {
+  const inStore = path.join(appDir, "store", "cards.json");
+  if (fs.existsSync(inStore)) return inStore;
+  const legacy = path.join(appDir, "cards.json");
+  if (fs.existsSync(legacy)) return legacy;
+  return inStore;
+}
 
 // ---------------------------------------------------------------- 读取
 
@@ -34,7 +48,7 @@ function readJsonArray(file) {
 }
 
 export function loadLibrary({ appDir = DEFAULT_APP_DIR, cardsFile, taxonomyFile } = {}) {
-  const cardsPath = cardsFile ?? path.join(appDir, "cards.json");
+  const cardsPath = cardsFile ?? defaultCardsPath(appDir);
   if (!fs.existsSync(cardsPath)) {
     throw new Error(`找不到卡片库：${cardsPath}。请先在 KnowFlick 里生成/导入内容，或用 --cards 指定路径。`);
   }
@@ -368,7 +382,11 @@ export function stageCard(library, input, index = indexTaxonomy(library.taxonomy
       lock = fs.openSync(lockPath, "wx", 0o600);
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
-      if (Date.now() >= deadline) throw new Error(`暂存队列正被占用，请重试；若写入进程已异常退出，请确认所有写入进程停止后移除锁：${lockPath}`);
+      if (Date.now() >= deadline) {
+        const locked = new Error(`暂存队列正被占用，请重试；若写入进程已异常退出，请确认所有写入进程停止后移除锁：${lockPath}`);
+        locked.code = "KF_STAGE_LOCKED";
+        throw locked;
+      }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     }
   }

@@ -25,6 +25,10 @@ from pathlib import Path
 
 import taxonomy
 
+# Windows 控制台默认 cp1252，直接 print 中文会 UnicodeEncodeError。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows_console import emit  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # 学科文件前缀 → 学科坐标 + 展示用叶子分类。
@@ -272,16 +276,16 @@ def main() -> int:
 
     stats = Counter(c["category"] for c in existing)
     per_source = {p.name: len(load_lessons(p, p.name.split("-")[0])) for p in sources}
-    print(f"原有种子卡: {original_count}")
-    print(f"新增卡片:   {len(new_cards)}")
-    print(f"总数:       {len(existing)}")
-    print("分学科:", {k: v for k, v in sorted(per_source.items())})
-    print("分类分布:", dict(stats))
+    emit(f"原有种子卡: {original_count}")
+    emit(f"新增卡片:   {len(new_cards)}")
+    emit(f"总数:       {len(existing)}")
+    emit("分学科:", {k: v for k, v in sorted(per_source.items())})
+    emit("分类分布:", dict(stats))
 
     # 确认原有 30 张未被改动
     reloaded = json.loads(output.read_text(encoding="utf-8"))
     assert reloaded[:original_count] == existing[:original_count]
-    print(f"校验通过：headline≤{MAX_HEADLINE_LEN} 字、summary/details 均非空、原有 {original_count} 张原样保留。")
+    emit(f"校验通过：headline≤{MAX_HEADLINE_LEN} 字、summary/details 均非空、原有 {original_count} 张原样保留。")
     return 0
 
 

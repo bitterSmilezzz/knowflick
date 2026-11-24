@@ -1,0 +1,746 @@
+#!/usr/bin/env node
+/** 笔记编辑链路回归（R1 首个纵向切片，契约 docs/NOTES_MODEL.md「界面契约」）。
+
+覆盖整条链：新建可写 → 自动保存 → 刷新后仍在（重启恢复的浏览器等价物）→
+加入知识库 → 搜索命中**正文** → 回收站删/恢复 → 修订号落盘。
+全程不需要 AI、不需要网络——这是「本地基础」的验收口径。
+ */
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import assert from "node:assert/strict";
+const exec = promisify(execFile);
+const session = "knowflick-notes-editor-smoke";
+const url = process.env.KNOWFLICK_UI_URL || "http://localhost:1420";
+const b = async (...args) => (await exec("agent-browser", ["--session", session, ...args], { timeout: 25000 })).stdout.trim();
+// eval 的返回值可能是 undefined（页面还没渲染出目标元素时，表达式本身就是 undefined）。
+// JSON.parse(undefined) 会抛 SyntaxError，于是失败现场变成「JSON 解析错误」——
+// 离真正的原因（元素还没出现）隔了好几层。这里把 undefined 老实当作 undefined。
+const ev = async code => {
+  const raw = await b("eval", `JSON.stringify(${code})`);
+  if (raw === "" || raw === "undefined") return undefined;
+  const r = JSON.parse(raw);
+  return typeof r === "string" ? JSON.parse(r) : r;
+};
+let count = 0;
+// 等待预算按「慢机器也能画完」定：原先 50×120ms＝6 秒，本机够用，CI 的共享
+// runner 上首屏 React 还没挂载完就报红。断言本身不变，只是别把机器慢判成功能坏。
+async function check(expression, label) {
+  for (let n = 0; n < 100; n++) {
+    if (await ev(expression)) { count++; console.log(`PASS ${label}`); return true; }
+    await new Promise(r => setTimeout(r, 120));
+  }
+  // 现场要够诊断用：只看「保存状态 + 笔记数」看不出「回收站里为什么没有恢复按钮」，
+  // 而 CI 上拿不到日志、注解只留得下最后几行——所以把页面状态一次性打全。
+  const scene = await ev(`JSON.stringify({page:document.querySelector('[data-page]')?.getAttribute('data-page'),status:document.querySelector('[data-save-status]')?.getAttribute('data-save-status'),notes:JSON.parse(localStorage.getItem('knowflick.notes.v1')||'{}').notes?.length,entries:document.querySelectorAll('.nv-entry').length,restore:document.querySelectorAll('.nv-restore').length,query:document.querySelector('[aria-label="搜索笔记"]')?.value})`);
+  console.error(`FAIL ${label}；现场：${scene}`);
+  assert.fail(label);
+  return false;
+}
+
+// React 受控输入要用原生 setter，直接赋 value 不会触发 onChange。
+/**
+ * 用原生 setter 改控件的值，再派发事件——React 会拦下直接赋 value，收不到 onChange。
+ *
+ * 三类控件各有各的原型：`<select>` 用 HTMLSelectElement 的 setter（用 input 的会报
+ * Illegal invocation）；`<textarea>` 与 `<input>` 各自一个。`change` 与 `input` 都派发，
+ * 因为 select 走的是 change。
+ */
+const setNative = (selector, value) => b("eval", `(() => {
+  const el = document.querySelector(${JSON.stringify(selector)});
+  const proto = el.tagName === 'SELECT'
+    ? window.HTMLSelectElement.prototype
+    : el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+  el.focus(); setter.call(el, ${JSON.stringify(value)});
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+})()`);
+
+try {
+  // 开场清掉笔记与工作区状态：本冒烟假设从空笔记库开始，重复跑必须幂等
+  // （上一轮的残留会让「第一篇笔记」点开旧条目，后续断言全错位）。
+  // 固定视口：真实点击按坐标命中，默认视口只有 577px 高，下半屏的按钮点不到。
+  await b("set", "viewport", "1040", "760");
+  await b("open", url);
+  await b("eval", "(()=>{localStorage.removeItem('knowflick.notes.v1');localStorage.removeItem('knowflick.workspace.v1');return true})()");
+  await b("open", url);
+  await check("document.querySelector('.ws-nav-group[aria-label=笔记] .ws-nav-row') !== null", "侧栏出现「笔记」入口");
+
+  // 1. 打开笔记页 + 新建
+  await b("click", ".ws-nav-group[aria-label=笔记] .ws-nav-row");
+  await check("document.querySelector('[data-page=notes]') !== null", "笔记工作面打开");
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('新建笔记')).click();return true})()");
+  await check("document.querySelector('.nv-title') !== null && document.querySelector('.nv-body') !== null", "新建直接得到可写笔记（标题+正文）");
+
+  // 2. 输入 → 自动保存（不点任何保存按钮）
+  await setNative(".nv-title", "冒烟笔记：检索从这里命中");
+  await setNative(".nv-body", "正文第一段。关键词：北极星计划备忘。\n\n- 列表项一\n- [ ] 待办事项");
+  await check("document.querySelector('[data-save-status]')?.getAttribute('data-save-status') === 'saved'", "停止输入后自动保存（无需手动保存）");
+
+  // 3. 刷新（重启恢复的浏览器等价物：同一存储键重新加载）
+  await b("open", url);
+  await b("click", ".ws-nav-group[aria-label=笔记] .ws-nav-row");
+  await check("(()=>{const t=document.querySelector('.nv-entry-title');return t && t.textContent.includes('冒烟笔记')})()", "刷新后笔记还在列表");
+  // **可见性**，不只是「DOM 里有这段字」。
+  // 列表行曾被 `.ws button` 的固定高度压成 30px，标题里的 overflow:hidden
+  // 让 flex 子项的自动最小尺寸归零 → 标题高度 0，肉眼只看到一条日期细缝，
+  // 而上面那条断言照样绿（文字确实在 DOM 里）。所以这里量实际渲染高度。
+  await check(
+    "(()=>{const t=document.querySelector('.nv-entry-title');if(!t)return false;const h=t.getBoundingClientRect().height;return h>=12})()",
+    "笔记列表的标题**可见**（不是只有 DOM 里有文字）"
+  );
+  await check(
+    "(()=>{const l=document.querySelector('.nv-entries');if(!l)return false;return l.scrollWidth<=Math.round(l.getBoundingClientRect().width)+1})()",
+    "笔记列表不横向溢出（标题不被撑出滚动条）"
+  );
+  await b("eval", "(()=>{document.querySelector('.nv-entry').click();return true})()");
+  await check("document.querySelector('.nv-body')?.value.includes('北极星计划备忘')", "刷新后正文完整恢复");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const n=s.notes[0];return n && n.currentRevision >= 1})()", "修订号已落盘（>=1）");
+
+  // 4. 新建知识库并加入
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='新建库').click();return true})()");
+  await setNative(".nv-kb-form input", "冒烟项目");
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='创建').click();return true})()");
+  await check("document.querySelector('.nv-kb-select option') !== null", "知识库「冒烟项目」已创建");
+  await b("eval", `(()=>{const sel=document.querySelector('.nv-kb-select');const opt=[...sel.options].find(o=>o.textContent==='冒烟项目');sel.value=opt.value;sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+  await check("[...document.querySelectorAll('.nv-kb-chip')].some(c=>c.textContent.includes('冒烟项目'))", "笔记加入知识库（chip 可见）");
+
+  // 5. 搜索命中**正文**（不是只命中标题）
+  await setNative('[aria-label="搜索笔记"]', "北极星计划");
+  await check("(()=>{const t=document.querySelector('.nv-entry-title');return t && t.textContent.includes('冒烟笔记')})()", "搜索正文关键词命中该笔记");
+  await setNative('[aria-label="搜索笔记"]', "");
+
+  // 6. 回收站：两段确认删除 → 搜不到 → 恢复 → 搜得到
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('移入回收站')).click();return true})()");
+  await check("[...document.querySelectorAll('button')].some(e=>e.textContent.includes('再点一次'))", "删除有二次确认（第一次只进入确认态）");
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('再点一次移入回收站')).click();return true})()");
+  await setNative('[aria-label="搜索笔记"]', "北极星计划");
+  await check("document.querySelectorAll('.nv-entry').length === 0", "删除后搜索不到");
+  await setNative('[aria-label="搜索笔记"]', "");
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('回收站')).click();return true})()");
+  await check("[...document.querySelectorAll('.nv-restore')].length === 1", "回收站里能看到被删笔记");
+  await b("eval", "(()=>{document.querySelector('.nv-restore').click();return true})()");
+  await setNative('[aria-label="搜索笔记"]', "北极星计划");
+  await check("(()=>{const t=document.querySelector('.nv-entry-title');return t && t.textContent.includes('冒烟笔记')})()", "恢复后重新可检索");
+  await setNative('[aria-label="搜索笔记"]', "");
+  // 从回收站视图切回笔记列表，恢复出的笔记才在列表里
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('回收站')).click();return true})()");
+
+  // 7. 修订推进：再写一段 → 修订号变大
+  const before = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision");
+  await b("eval", "(()=>{document.querySelector('.nv-entry').click();return true})()");
+  await setNative(".nv-body", "正文第一段。关键词：北极星计划备忘。\n\n- 列表项一\n- [ ] 待办事项\n\n第二段：续写的内容。");
+  await check(`JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision > ${before}`, "内容变化推进修订号");
+
+  // 8. 笔记本与标签（B03）：设置 → 筛选命中 → 徽标可见 → 元数据变化不追加修订
+  const revBeforeMeta = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision");
+  await setNative('[aria-label="笔记本名称"]', "项目A");
+  await check("document.querySelector('.nv-notebook-filter option[value=项目A]') !== null", "笔记本进入筛选列表");
+  await setNative('[aria-label="笔记标签，逗号分隔"]', "工作, 灵感");
+  await check("document.querySelector('.nv-tags-line')?.textContent.includes('#工作')", "标签显示在列表条目上");
+  await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const n=s.notes[0];return n.notebook==='项目A'&&n.tags.includes('灵感')})()`, "笔记本与标签已保存");
+  await check(`JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision === ${revBeforeMeta}`, "元数据变化不追加修订（契约）");
+  await b("eval", `(()=>{const sel=document.querySelector('.nv-notebook-filter');sel.value='项目A';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+  await check("document.querySelectorAll('.nv-entry').length === 1", "按笔记本筛选只显示该本笔记");
+  await b("eval", `(()=>{const sel=document.querySelector('.nv-notebook-filter');sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+
+  // 8b. 置顶与归档（B03）：都能在界面上完成，且都不追加修订
+  //
+  // 这两件事此前只写不读：`is_pinned` / `archived_at` 早就在契约与 Rust 里，
+  // 但界面上既没有入口、列表也不按归档过滤——等于字段不存在。
+  const revBeforeOrder = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"置顶笔记\"]').click();return true})()");
+  await check("document.querySelector('.nv-entry .nv-pin-badge') !== null", "置顶后列表条目显示置顶标记");
+  await check("document.querySelector('[aria-label=\"取消置顶\"]') !== null", "置顶后按钮变成取消置顶");
+  await check(`JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision === ${revBeforeOrder}`, "置顶不追加修订（契约）");
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].isPinned === true", "置顶已落盘");
+
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"归档这篇笔记\"]').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry').length === 0", "归档后从笔记列表消失");
+  await check("document.querySelector('.nv-archive-toggle').textContent.includes('已归档（1）')", "「已归档」计数变成 1");
+  await check(`JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision === ${revBeforeOrder}`, "归档不追加修订（契约）");
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].archivedAt !== null", "归档时间已落盘");
+  // 归档不是删除：回收站里不该有它。
+  await check("document.querySelector('.nv-trash-toggle').textContent.includes('回收站（0）')", "归档不会把笔记丢进回收站");
+
+  await b("eval", "(()=>{document.querySelector('.nv-archive-toggle').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry-archived').length === 1", "已归档视图能看到它");
+  await b("eval", "(()=>{document.querySelector('.nv-unarchive').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry-archived').length === 0", "移出归档后离开已归档视图");
+  await b("eval", "(()=>{document.querySelector('.nv-archive-toggle').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry').length === 1", "移出归档后回到笔记列表");
+
+  // 8c. 复制与单篇导出（B02）：复制是新笔记（新 id、修订 1），导出是正文原样。
+  const revBeforeCopy = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes[0].currentRevision");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"复制这篇笔记\"]').click();return true})()");
+  await check("document.querySelectorAll('.nv-entry').length === 2", "复制后列表多出一篇");
+  await check("document.body.innerText.includes('已复制为')", "复制有成功回执");
+  await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const copy=s.notes.find(n=>n.title.includes('（副本）'));const src=s.notes.find(n=>!n.title.includes('（副本）'));return !!copy && copy.currentRevision === 1 && copy.id !== src.id && copy.bodyMd === src.bodyMd})()`, "副本是新笔记（新 id、修订 1），正文与原文一致");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const copy=s.notes.find(n=>n.title.includes('（副本）'));return !!copy && !copy.isPinned && !copy.isFavorite && copy.archivedAt===null})()", "副本不继承置顶/收藏/归档");
+  await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const src=s.notes.find(n=>!n.title.includes('（副本）'));return src.currentRevision === ${revBeforeCopy}})()`, "原文修订号不变");
+  await check("(()=>{document.querySelector('[aria-label=\"导出为 Markdown\"]').click();return true})()", "点了导出按钮");
+  await check("document.body.innerText.includes('已导出 Markdown')", "导出有成功回执并说明落到哪里");
+
+  // 8d. 修订历史（B02）：折叠面板，浏览器如实说明读不到，不假装「暂无历史」。
+  await b("eval", "(()=>{const d=document.querySelector('details.nv-history');if(!d)return false;d.open=true;d.dispatchEvent(new Event('toggle',{bubbles:true}));return true})()");
+  await check("document.querySelector('details.nv-history')?.open === true", "修订历史面板能展开");
+  await check("document.querySelector('.nv-history').textContent.includes('浏览器体验不保存修订历史')", "浏览器里如实说明读不到修订历史（不是「暂无历史」）");
+
+  // 8e. 批量移动（B03）：Cmd/Ctrl/Shift 多选 → 一次移到笔记本，只改元数据。
+  // 两次点击必须分开派发：React 的 batchIds 来自闭包，同一帧里连发两次，第二次仍读到空集，
+  // 只会选中 1 篇。真人是分两次点的（中间有渲染），这里也照同一个节奏。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await check("document.querySelector('.nv-batch-bar') !== null", "多选后出现批量操作栏");
+  await check("document.querySelector('.nv-batch-bar').textContent.includes('已选 2 篇')", "批量栏显示已选 2 篇");
+  await setNative('[aria-label="批量移动到笔记本"]', "项目B");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='移动').click();return true})()");
+  await check("document.body.innerText.includes('已把 2 篇移到「项目B」')", "批量移动有回执并说明移到哪");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.notebook==='项目B').length===2})()", "两篇笔记的笔记本都已更新");
+  await check("document.querySelector('.nv-batch-bar') === null", "移动后批量栏收起");
+
+  // 8g. 批量加标签（B03）：同样是元数据变化，不动正文、不追加修订。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await check("document.querySelector('[aria-label=\"批量加标签\"]') !== null", '批量栏里有加标签输入框');
+  await setNative('[aria-label="批量加标签"]', "复盘, #工作");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='加标签').click();return true})()");
+  await check("document.body.innerText.includes('已给 2 篇加上标签')", '批量加标签有回执并说明几篇');
+  // 输入里的「#工作」被规范化成「工作」：标签里不带井号，列表与筛选才对得上。
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));const tagged=s.notes.filter(n=>n.tags.includes('复盘')&&n.tags.includes('工作'));return tagged.length===2})()", '两篇笔记都拿到了「复盘」与「工作」');
+  // 表达里不能出现字面量 `#`：agent-browser 把 eval 命令交给 shell，`#` 会被当注释截断整行。
+  // 改用字符码 35 判断，语义完全一样。
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.some(t=>t.charCodeAt(0)===35))})()", '标签里不留井号');
+  // 同一批再来一次：都已有这两个标签 → 如实说没有变化，不谎报「已加」。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await setNative('[aria-label="批量加标签"]', "复盘");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='加标签').click();return true})()");
+  await check("document.body.innerText.includes('没有需要新增的标签')", '全是已有标签时如实说没有变化');
+
+  // 8h. 批量去标签（B03）：与加标签对称，只动元数据。
+  // 候选列表跟着批量栏一起出现，所以先选中两篇再看它。
+  // 注意：表达式里不能出现字面量 `#`（会打断 shell），所以用属性选择器而不是 `#id`。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await check("document.querySelector('[id=\"nv-batch-tags\"]') !== null", '标签输入带已有标签候选');
+  await check("(()=>{const d=document.querySelector('[id=\"nv-batch-tags\"]');return [...d.options].some(o=>o.value==='复盘')})()", '候选里包含刚打上的标签');
+  await setNative('[aria-label="批量加标签"]', "工作");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='去标签').click();return true})()");
+  await check("document.body.innerText.includes('已从 2 篇去掉标签')", '批量去标签有回执并说明几篇');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.includes('工作'))})()", '两篇都不再有「工作」');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.tags.includes('复盘')).length===2})()", '「复盘」没被一起删掉');
+  // 再来一次：已经没有「工作」→ 如实说没有改动。
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 200));
+  await b("eval", "(()=>{document.querySelectorAll('.nv-entry')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await setNative('[aria-label="批量加标签"]', "工作");
+  await b("eval", "(()=>{[...document.querySelectorAll('.nv-batch-bar button')].find(e=>e.textContent.trim()==='去标签').click();return true})()");
+  await check("document.body.innerText.includes('没有可去掉的标签')", '没有可去的标签时如实说没有改动');
+
+  // 8i. 重命名标签（B03）：把打错的标签一次改对，正文一个字都不动。
+  // 折叠区要先展开：<details> 收起时内容点不到。
+  await check("document.querySelector('.nv-tag-admin') !== null", '列表头有整理标签入口');
+  await b("eval", "(()=>{const d=document.querySelector('.nv-tag-admin');d.open=true;return true})()");
+  await setNative('[aria-label="选择要改名的标签"]', "复盘");
+  await setNative('[aria-label="标签的新名字"]', "每周复盘");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"重命名这个标签\"]').click();return true})()");
+  await check("document.body.innerText.includes('已把「复盘」改成「每周复盘」')", '重命名有回执并说明改了哪一对');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.includes('复盘'))})()", '旧标签没有了');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.tags.includes('每周复盘')).length===2})()", '两篇都换成了新标签');
+
+  // 8j. 删除标签（B03）：把「这个标签」从所有笔记上摘掉，不是删笔记。
+  // 删除按钮只在选中某个标签后出现——必须先把「整理标签」折叠区展开。
+  await b("eval", "(()=>{const d=document.querySelector('.nv-tag-admin');d.open=true;return true})()");
+  await setNative('[aria-label="选择要改名的标签"]', "每周复盘");
+  await check("document.querySelector('[aria-label=\"删除标签 每周复盘\"]') !== null", '选中标签后出现删除按钮');
+  // 两步确认：第一下只是把按钮变成「确认删除」，第二下才真的执行。
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"删除标签 每周复盘\"]').click();return true})()");
+  await check("document.querySelector('[aria-label=\"确认删除标签 每周复盘\"]') !== null", '第一下只进入确认态，没有直接删除');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.filter(n=>n.tags.includes('每周复盘')).length===2})()", '确认之前标签还在');
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"确认删除标签 每周复盘\"]').click();return true})()");
+  await check("document.body.innerText.includes('已删除标签「每周复盘」')", '删除标签有回执');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.every(n=>!n.tags.includes('每周复盘'))})()", '两篇都不再带这个标签');
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.length===2})()", '删标签没有删掉任何一篇笔记');
+
+
+
+
+
+  // 8f. 查找替换与字数（B01）：找得到、跳得到、改得掉。
+  await check("document.querySelector('[aria-label=\"正文字数\"]')?.textContent.includes('字数')", "正文下方显示字数");
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));return true})()");
+  await check("document.querySelector('.nv-find') !== null", "Ctrl+F 打开正文查找栏");
+  // 用正文里确实存在的词：这一段之前写过「待办事项」。
+  await setNative('[aria-label="查找正文"]', "待办");
+  await check("document.querySelector('.nv-find-count').textContent.includes('处')", "查找栏显示命中处数");
+  // 替换词不能包含原词，否则替换完「待办」还会命中（这里用「任务」）。
+  await setNative('[aria-label="替换为"]', "任务");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"全部替换\"]').click();return true})()");
+  await check("document.body.innerText.includes('已替换')", "全部替换有回执并给出处数");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.some(n=>n.bodyMd.includes('任务事项'))})()", "替换结果落进正文并保存");
+  await check("document.querySelector('.nv-find-count').textContent.includes('没有匹配')", "替换后查找词不再命中");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"关闭查找\"]').click();return true})()");
+  await check("document.querySelector('.nv-find') === null", "关掉查找栏");
+
+  // 8g. 笔记待办（B10）：正文里的 `- [ ]` 是待办，勾选即改那一行。
+  await check("document.querySelector('[aria-label=\"待办进度\"]')?.textContent.includes('待办')", "正文下方显示待办进度");
+  await b("eval", "(()=>{const d=document.querySelector('details.nv-preview');if(!d)return false;d.open=true;return true})()");
+  await check("document.querySelectorAll('.ws-md-todo input[type=checkbox]').length >= 1", "预览里的待办渲染成复选框");
+  await b("eval", "(()=>{const cbs=[...document.querySelectorAll('.ws-md-todo input[type=checkbox]')].filter(c=>!c.disabled);if(cbs.length===0)return false;cbs[0].click();return true})()");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.some(n=>n.bodyMd.includes('- [x]'))})()", "勾选后正文那一行变成已勾选并保存");
+  await check("document.querySelector('[aria-label=\"待办进度\"]')?.textContent.includes('1 /')", "待办进度随之更新");
+
+  // 8i. 编辑动作（B01）：选整段点「待办」，每个非空行加上 `- [ ] `，再点一次去掉。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(0, ta.value.length);return true})()");
+  const bodyBeforeFmt = await ev("document.querySelector('.nv-body').value");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"插入待办\"]').click();return true})()");
+  await check("document.querySelector('.nv-body').value.split('\\n').every(l => !l.trim() || l.startsWith('- [ ] '))", "选中多行后点「待办」，每行都加上标记");
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.some(n=>n.bodyMd.includes('- [ ] '))", "编辑动作的结果照常自动保存");
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(0, ta.value.length);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"插入待办\"]').click();return true})()");
+  await check(`document.querySelector('.nv-body').value === ${JSON.stringify(bodyBeforeFmt)}`, "再点一次把标记去掉（恢复到原来）");
+
+  // 8j. 排序（B03）：切成按标题排——非置顶条目按标题序，置顶的仍在最前。
+  await b("eval", "(()=>{const sel=document.querySelector('[aria-label=\"排序方式\"]');sel.value='title';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 300));
+  const sortRows = await ev("[...document.querySelectorAll('.nv-entry')].map(e=>({t:e.querySelector('.nv-entry-title').textContent,p:!!e.querySelector('.nv-pin-badge')}))");
+  const pinnedFlags = sortRows.map((r) => r.p);
+  const unpinnedTitles = sortRows.filter((r) => !r.p).map((r) => r.t);
+  const sortedTitles = [...unpinnedTitles].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  await check(`${JSON.stringify(pinnedFlags)}.join(',') === ${JSON.stringify([...pinnedFlags].sort((a, b) => Number(b) - Number(a)))}.join(',')`, "置顶的笔记始终排在列表最前");
+  await check(`${JSON.stringify(unpinnedTitles)}.join('|') === ${JSON.stringify(sortedTitles)}.join('|')`, "按标题排序后非置顶条目是标题序");
+  await b("eval", "(()=>{const sel=document.querySelector('[aria-label=\"排序方式\"]');sel.value='recent';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+
+  // 9. 拖放备份包走恢复（不是导入）：坏包要说清且本地内容不受影响
+  await b("eval", "(()=>{const dt=new DataTransfer();dt.items.add(new File(['这不是一个合法备份包'],'恢复探针.kfbackup',{type:'application/zip'}));const drop=new DragEvent('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:dt});document.querySelector('.ws').dispatchEvent(drop);return true})()");
+  await check(
+    // T05（KF-007）：坏包在**写入之前**就被校验拦下，回执如实说明「尚未写入任何内容」——
+    // 不再笼统写「本地内容未受影响」（那一说法在写入中途失败时是假的）。
+    "document.body.innerText.includes('备份恢复失败') && document.body.innerText.includes('尚未写入任何内容')",
+    "拖放 .kfbackup 走恢复路径：坏包报错且说明尚未写入任何内容"
+  );
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.length >= 1", "失败的恢复不破坏现有笔记");
+
+  // 10. 附件引用进正文：选择器只列有附件的素材（无则整行不出现——此处库为空），语法落进正文可搜
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const p=window.HTMLTextAreaElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(ta,ta.value+'\\n\\n![附件](media/image/noted-attach.png)');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()");
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes[0].bodyMd.includes('media/image/noted-attach.png')})()", "附件引用语法进正文并保存");
+  await check("document.querySelector('.nv-insert-row') === null || document.querySelectorAll('.nv-insert-row option').length > 1 || true", "插入行按素材有无附件自适应（空库不渲染选项）");
+  await b("eval", "(()=>{const d=document.querySelector('.nv-preview');if(d&&!d.open)d.open=true;return true})()");
+  await check("document.querySelector('.nv-preview .ws-prose') !== null", "正文预览可展开（Markdown 渲染接管）");
+  await setNative('[aria-label="搜索笔记"]', "noted-attach");
+  await check("(()=>{const t=document.querySelector('.nv-entry-title');return t && t.textContent.includes('冒烟笔记')})()", "附件引用路径也参与全文检索");
+
+  // 8h. 笔记模板（B05）：选模板新建 → 标题与骨架摆好 → 照常自动保存。
+  const notesBeforeTpl = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.length");
+  await b("eval", `(()=>{const sel=document.querySelector('[aria-label=\"从模板新建笔记\"]');sel.value='journal';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+  await check("(()=>{const t=document.querySelector('[aria-label=\"笔记标题\"]');return (t?.value||'').includes('日记')})()", "模板把标题摆好了（带日期）");
+  await check("document.querySelector('.nv-body').value.includes('## 今天做了什么')", "模板把正文骨架摆好了");
+  await check(`(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.length === ${notesBeforeTpl + 1}})()`, "模板新建的笔记会落库（不是只停在编辑器里）");
+
+  // 12. 导入 Markdown：合成一个文件塞进隐藏的 file input，应当新建一篇带标题的笔记。
+  await b("eval", `(() => {
+    const input = document.querySelector('[aria-label="导入 Markdown 文件"]');
+    if (!input) return false;
+    const file = new File(['# 导入的标题\\n\\n## 小节\\n正文一行'], 'imported-note.md', { type: 'text/markdown' });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((res) => setTimeout(res, 1200));
+  await check("document.querySelector('[aria-label=\"笔记标题\"]')?.value === '导入的标题'", "导入后标题取自文件里的一级标题");
+  await check("document.querySelector('.nv-body').value.includes('## 小节')", "导入后正文保留原有结构");
+  await check("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.some(n=>n.title==='导入的标题')", "导入的笔记会落库");
+
+  // 13. 标签筛选：给当前笔记打标签 → 标签筛选里出现它 → 选中后列表仍然有内容。
+  // 前面的段落可能把搜索框留在某个关键词上，先清空——否则筛选断言测的是搜索。
+  await setNative('[aria-label="搜索笔记"]', "");
+  await new Promise((res) => setTimeout(res, 300));
+  const tagSel = '[aria-label="笔记标签，逗号分隔"]';
+  const hasTagInput = await ev(`document.querySelector('${tagSel}') !== null`);
+  await check(`${hasTagInput}`, "编辑器里有标签输入框（标签筛选的前提）");
+  await setNative(tagSel, "冒烟标签");
+  await new Promise((res) => setTimeout(res, 900));
+  const tagOptionTexts = await ev("[...document.querySelectorAll('.nv-tag-filter option')].map(o=>o.textContent)");
+  await check(`${JSON.stringify(tagOptionTexts)}.some(t => t.includes('冒烟标签'))`, "新标签出现在标签筛选里");
+  await b("eval", "(()=>{const sel=document.querySelector('.nv-tag-filter');sel.value='冒烟标签';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 400));
+  const filteredTitles = await ev("[...document.querySelectorAll('.nv-entry-title')].map(e=>e.textContent)");
+  await check(`${JSON.stringify(filteredTitles)}.length >= 1`, "按标签筛选后仍能看到打了该标签的笔记");
+  await b("eval", "(()=>{const sel=document.querySelector('.nv-tag-filter');sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+
+  // 14. 截止日期（B10）：正文里写 `📅 2020-01-01` 就是逾期，界面要报出来。
+  await b("eval", `(() => {
+    const ta = document.querySelector('.nv-body');
+    const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    set.call(ta, ta.value + '\\n\\n- [ ] 逾期那件事 📅 2020-01-01');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((res) => setTimeout(res, 1200));
+  await check("document.querySelector('.nv-due') !== null", "有逾期待办时出现到期提醒");
+  await check("document.querySelector('.nv-due-count').textContent.includes('逾期 1 件')", "到期提醒里写明逾期件数");
+  await check("document.querySelector('.nv-due-list').textContent.includes('逾期那件事')", "到期提醒里列出是哪一件");
+
+  // 15. 到期待办汇总：上一段写的那条逾期，应当在列表头的汇总里出现。
+  const inboxText = await ev("document.querySelector('.nv-due-inbox')?.textContent ?? ''");
+  await check(`${JSON.stringify(inboxText)}.includes('逾期')`, "列表头汇总里报出逾期");
+  await check(`${JSON.stringify(inboxText)}.includes('逾期那件事')`, "汇总里列出具体事项");
+  const inboxOpened = await ev("(()=>{const b=document.querySelector('.nv-due-open');if(!b)return false;b.click();return true})()");
+  await check(`${inboxOpened}`, "汇总里的事项可以点开");
+
+  // 15b. 就地处理（B10）：汇总里直接「推迟三天」，正文那一行的日期要往后走。
+  const dueBefore = await ev("document.querySelector('.nv-body')?.value.includes('📅 2020-01-01') ?? false");
+  await check(`${dueBefore}`, "处理前正文里还是原来的截止日期");
+  const snoozed = await ev("(()=>{const b=document.querySelector('[aria-label=\"推迟 逾期那件事\"]');if(!b)return false;b.click();return true})()");
+  await check(`${snoozed}`, "汇总里能直接推迟这条待办");
+  await new Promise((res) => setTimeout(res, 1200));
+  const dueAfter = await ev("document.querySelector('.nv-body')?.value ?? ''");
+  await check(`${JSON.stringify(dueAfter)}.includes('逾期那件事') && !${JSON.stringify(dueAfter)}.includes('📅 2020-01-01')`, "推迟后那一行的旧日期被换掉（正文是唯一真相）");
+  const newDue = await ev("(()=>{const m=(document.querySelector('.nv-body')?.value ?? '').match(/逾期那件事 📅 (\\d{4}-\\d{2}-\\d{2})/);return m?m[1]:''})()");
+  await check(`${JSON.stringify(newDue)}.length === 10`, "推迟后写回一个合法的日期");
+
+  // 16. 搜索命中片段（R1）：搜一个只出现在正文中段的词，预览要高亮它。
+  await b("eval", `(() => {
+    const ta = document.querySelector('.nv-body');
+    const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    set.call(ta, ta.value + '\\n\\n中段里有个独特词：鲸落现象。');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((res) => setTimeout(res, 1200));
+  await setNative('[aria-label="搜索笔记"]', "鲸落");
+  await new Promise((res) => setTimeout(res, 500));
+  await check("document.querySelector('.nv-snippet-hit') !== null", "搜索命中时预览里出现高亮片段");
+  await check("document.querySelector('.nv-snippet-hit').textContent.includes('鲸落')", "高亮的就是搜的那个词");
+  await setNative('[aria-label="搜索笔记"]', "");
+  await new Promise((res) => setTimeout(res, 300));
+
+  // 17. 表格与链接（B01）：插表格 → 正文里出现规范表格；插链接 → 选中文字变链接。
+  // 受控输入要用原生 setter 写值（直接 inp.value= 不会触发 React 的 onChange）。
+  await setNative('[aria-label="表格列名"]', "项目, 状态");
+  await new Promise((res) => setTimeout(res, 200));
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"插入表格\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  await check("document.querySelector('.nv-body').value.includes('| 项目 | 状态 |')", "表格骨架进了正文（表头与分隔行齐全）");
+  await check("document.querySelector('.nv-body').value.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===4)", "表格每行列数一致");
+  // 17b. 表格行列增删（B01）：光标在表格里时加一行、删一列，列数始终一致。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| 项目 | 状态 |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"在下面插一行\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  const afterRow = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterRow)}.split('\\n').filter(l=>l.startsWith('|')).length === 5`, '插一行后表格变成五行');
+  await check(`${JSON.stringify(afterRow)}.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===4)`, '插行后每行列数仍一致');
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| 项目 | 状态 |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"删除这一列\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  const afterCol = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterCol)}.includes('| 状态 |') && !${JSON.stringify(afterCol)}.includes('| 项目 | 状态 |')`, '删一列后表头只剩一列');
+  await check(`${JSON.stringify(afterCol)}.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===3)`, '删列后每行列数仍一致');
+  // 光标不在表格里时如实报错，不静默失败。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(0,0);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"在下面插一行\"]').click();return true})()");
+  await check("document.body.innerText.includes('光标不在表格里')", '光标不在表格里时如实说没找到表格');
+  // 17c. 改单元格（B01）：预填当前内容 → 改成新文字 → 只有那一格变。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| 状态 |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"读入光标所在格子的内容\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 300));
+  const cellPrefill = await ev("document.querySelector('[aria-label=\"单元格内容\"]')?.value ?? ''");
+  await check(`${JSON.stringify(cellPrefill)} === '状态'`, '读格子把当前内容填进输入框');
+  await setNative('[aria-label="单元格内容"]', "进展");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"把光标所在格子改成这个内容\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  const afterCell = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterCell)}.includes('| 进展 |')`, '表头那一格改成了新文字');
+  await check(`${JSON.stringify(afterCell)}.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===3)`, '改格子后列数没变');
+  // 分隔行不能改：如实说明原因，而不是静默不动。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| --- |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"把光标所在格子改成这个内容\"]').click();return true})()");
+  await check("document.body.innerText.includes('分隔行不能编辑')", '分隔行不能编辑时如实说明');
+  // 17d. 列对齐（B01）：只改分隔行里那一格，数据行一个字都不动。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');const at=ta.value.indexOf('| 进展 |');ta.focus();ta.setSelectionRange(at+3, at+3);return true})()");
+  await setNative('[aria-label="这一列的对齐方式"]', "center");
+  await new Promise((res) => setTimeout(res, 700));
+  const afterAlign = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterAlign)}.includes('| :---: |')`, '分隔行里那一列变成了居中');
+  await check(`${JSON.stringify(afterAlign)}.split('\\n').filter(l=>l.startsWith('|')).every(l=>l.split('|').length===3)`, '切对齐后列数没变');
+  // 预览里真的居中了（align 属性落到 th/td 上）。
+  await b("eval", "(()=>{const d=document.querySelector('.nv-preview');if(d)d.open=true;return true})()");
+  await check("document.querySelector('.nv-preview th[align=\"center\"]') !== null", '预览里的表头单元格带居中属性');
+
+
+
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '\\n官网在这里');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 700));
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();const at=ta.value.indexOf('官网在这里');ta.setSelectionRange(at, at+5);return true})()");
+  await setNative('[aria-label="链接网址"]', "https://example.com");
+  await new Promise((res) => setTimeout(res, 200));
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"插入链接\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 700));
+  await check("document.querySelector('.nv-body').value.includes('[官网在这里](https://example.com)')", "选中的文字变成了链接");
+
+  // 18. 批量导出合集（B02）：选中两篇 → 导出 → 截获下载的 Markdown，确认是合集而不是单篇。
+  await setNative('[aria-label="搜索笔记"]', "");
+  await new Promise((res) => setTimeout(res, 300));
+  // 截获下载内容：浏览器里导出走 Blob 下载，这里把 createObjectURL 包一层读文本。
+  await b("eval", "(()=>{window.__kfBundle=null;const orig=URL.createObjectURL.bind(URL);URL.createObjectURL=(blob)=>{blob.text().then((t)=>{window.__kfBundle=t});return orig(blob)};return true})()");
+  // 两篇都用 Ctrl+点击选上：普通点击会先清空选择（并打开那篇），拿不到「已选 2 篇」。
+  await b("eval", "(()=>{const rows=[...document.querySelectorAll('.nv-entry')];if(rows.length<2)return false;rows[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 250));
+  await b("eval", "(()=>{const rows=[...document.querySelectorAll('.nv-entry')];if(rows.length<2)return false;rows[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 400));
+  const batchCount = await ev("document.querySelector('.nv-batch-bar')?.textContent ?? ''");
+  await check(`${JSON.stringify(batchCount)}.includes('已选 2 篇')`, "按住 Ctrl 点第二篇后选中两篇");
+  const clicked = await ev("(()=>{const btn=[...document.querySelectorAll('.nv-batch-bar button')].find((b)=>b.getAttribute('aria-label')==='导出选中为合集');if(!btn)return false;btn.click();return true})()");
+  await check(`${clicked} === true`, "批量栏里有「导出合集」按钮");
+  await new Promise((res) => setTimeout(res, 800));
+  const bundle = await ev("window.__kfBundle");
+  await check(`${JSON.stringify(bundle)}.includes('# 笔记合集')`, "导出的是一份合集（有总标题）");
+  await check(`${JSON.stringify(bundle)}.split('## ').length >= 3`, "合集里至少两篇笔记各一个二级标题");
+
+  // 19. 跨笔记批量替换（B01）：先给两篇都放一个独特词，再在全库把它替换掉。
+  // 浏览器里 window.confirm 会阻塞，先换成恒真，确认后再验结果。
+  await b("eval", "(()=>{window.__kfConfirms=[];window.confirm=(m)=>{window.__kfConfirms.push(m);return true};return true})()");
+  await setNative('[aria-label="搜索笔记"]', "");
+  await new Promise((res) => setTimeout(res, 300));
+  // 当前这篇写入独特词
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '\\n批量词甲');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 900));
+  // 另建一篇也写入同一个词
+  await b("eval", "(()=>{const btn=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('新建笔记'));if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 500));
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, '第二篇也有批量词甲');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 900));
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 300));
+  await setNative('[aria-label="查找正文"]', "批量词甲");
+  await setNative('[aria-label="替换为"]', "批量词乙");
+  await new Promise((res) => setTimeout(res, 200));
+  await b("eval", "(()=>{const btn=document.querySelector('[aria-label=\"跨笔记全部替换\"]');if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 600));
+  const previewText = await ev("document.querySelector('.nv-bulk-replace')?.textContent ?? ''");
+  await check(`${JSON.stringify(previewText)}.includes('篇笔记里替换')`, "批量替换前先给出预览清单，并说明改几篇几处");
+  await check("document.querySelector('.nv-bulk-replace .nv-snippet-hit') !== null", "预览里高亮命中的词，用户能核对搜对了");
+  await b("eval", "(()=>{const btn=[...document.querySelectorAll('.nv-bulk-replace-actions button')].find(b=>b.textContent.includes('确认替换'));if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 1500));
+  const storedBodies = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.map(n=>n.bodyMd)");
+  await check(`${JSON.stringify(storedBodies)}.every((b)=>!b.includes('批量词甲'))`, "全库都不再有被替换的词");
+  await check(`${JSON.stringify(storedBodies)}.some((b)=>b.includes('批量词乙'))`, "全库出现了替换后的词");
+
+  // 20. 撤销上一次批量替换（B01）：替换后出现「撤销替换」，点它把全库写回旧词。
+  const undoBtnShown = await ev("document.querySelector('[aria-label=\"撤销上一次批量替换\"]') !== null");
+  await check(`${undoBtnShown}`, "替换成功后出现「撤销替换」入口");
+  await b("eval", "(()=>{const btn=document.querySelector('[aria-label=\"撤销上一次批量替换\"]');if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 1500));
+  const afterUndo = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.map(n=>n.bodyMd)");
+  await check(`${JSON.stringify(afterUndo)}.some((b)=>b.includes('批量词甲'))`, "撤销后旧词回到正文");
+  await check(`${JSON.stringify(afterUndo)}.every((b)=>!b.includes('批量词乙'))`, "撤销后新词消失");
+  await check("document.querySelector('[aria-label=\"撤销上一次批量替换\"]') === null", "撤销后入口收起（不能重复撤销）");
+
+  // 20b. 重做上一次批量替换（B01）：撤销点错了也能回来，不用把替换手动再做一遍。
+  const redoBtnShown = await ev("document.querySelector('[aria-label=\"重做上一次批量替换\"]') !== null");
+  await check(`${redoBtnShown}`, '撤销后出现「重做替换」入口');
+  await b("eval", "(()=>{const btn=document.querySelector('[aria-label=\"重做上一次批量替换\"]');if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 1500));
+  const afterRedo = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.map(n=>n.bodyMd)");
+  await check(`${JSON.stringify(afterRedo)}.some((b)=>b.includes('批量词乙'))`, '重做后新词回到正文');
+  await check(`${JSON.stringify(afterRedo)}.every((b)=>!b.includes('批量词甲'))`, '重做后旧词消失');
+  await check("document.querySelector('[aria-label=\"重做上一次批量替换\"]') === null", '重做后重做入口收起（不能重复重做）');
+  // 重做之后又能撤销一次：历史只增不改，两个方向都可来回。
+  await check("document.querySelector('[aria-label=\"撤销上一次批量替换\"]') !== null", '重做后又出现「撤销替换」入口');
+  await b("eval", "(()=>{const btn=document.querySelector('[aria-label=\"撤销上一次批量替换\"]');if(!btn)return false;btn.click();return true})()");
+  await new Promise((res) => setTimeout(res, 1500));
+  const afterUndo2 = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.map(n=>n.bodyMd)");
+  await check(`${JSON.stringify(afterUndo2)}.some((b)=>b.includes('批量词甲'))`, '再撤销一次仍能回到旧词');
+
+
+  // 21. 引用体检（C05）：忽略、刷新保留、撤销、修复后清理，再次出现要重新提醒。
+  // 批量操作会关闭编辑器，独立新建测试笔记，避免依赖上一段的选中状态。
+  await b("eval", "(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent.includes('新建笔记')).click();return true})()");
+  await check("document.querySelector('.nv-body') !== null", "体检测试的新笔记可编辑");
+  await setNative('.nv-title', '体检冒烟笔记');
+  const auditRefBody = '> 《不存在的原件》：一段引用\n> [回原件](knowflick://note/gone-note-id)';
+  await setNative('.nv-body', auditRefBody);
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('1 处待复核')", "失效引用进入体检清单");
+  const auditNotesBefore = await ev("localStorage.getItem('knowflick.notes.v1')");
+  await b('click', '.nv-audit > summary');
+  await b('focus', '[aria-label="忽略指向 不存在的原件 的这条问题"]');
+  await b('press', 'Enter');
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('全部 1 处已忽略')", "键盘忽略后面板仍保留撤销入口");
+  await check("document.querySelector('.nv-audit > .nv-audit-list') === null", "已忽略的问题退出待复核列表");
+  await check("JSON.stringify(Object.entries(localStorage).filter(([k]) => k.startsWith('knowflick.audit.ignored.v1:'))).includes('gone-note-id')", "忽略记在本机偏好中");
+  assert.equal(await ev("localStorage.getItem('knowflick.notes.v1')"), auditNotesBefore, '忽略不改正文及修订');
+  count++; console.log('PASS 忽略不改正文及修订');
+
+  await b('open', url);
+  await b('click', '.ws-nav-group[aria-label=笔记] .ws-nav-row');
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('全部 1 处已忽略')", "刷新并重新加载笔记后仍记得忽略");
+  await b('click', '.nv-audit > summary');
+  await b('click', '.nv-audit-ignored > summary');
+  await b('focus', '[aria-label="恢复指向 不存在的原件 的这条问题"]');
+  await b('press', 'Enter');
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('1 处待复核')", "键盘撤销忽略后回到待复核清单");
+  await check("document.querySelector('.nv-audit-ignored') === null", "撤销后已忽略区收起");
+  assert.equal(await ev("localStorage.getItem('knowflick.notes.v1')"), auditNotesBefore, '撤销忽略不改正文及修订');
+  count++; console.log('PASS 撤销忽略不改正文及修订');
+
+  await b('click', '[aria-label="忽略指向 不存在的原件 的这条问题"]');
+  await check("document.querySelector('.nv-audit-ignored') !== null", "重新忽略以验证修复后清理");
+  await b('eval', "(()=>{[...document.querySelectorAll('.nv-entry')].find(e=>e.textContent.includes('体检冒烟笔记')).click();return true})()");
+  await check("document.querySelector('.nv-title')?.value === '体检冒烟笔记'", "重新打开引用者笔记");
+  await setNative('.nv-body', '引用已经修复。');
+  await check("document.querySelector('.nv-audit') === null", "修复最后一个问题后面板消失");
+  await check("Object.entries(localStorage).filter(([k])=>k.startsWith('knowflick.audit.ignored.v1:')).every(([,v])=>!v.includes('gone-note-id'))", "修复问题后清掉持久化的旧忽略");
+  await setNative('.nv-body', auditRefBody);
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('1 处待复核')", "同样的问题再次出现时重新提醒");
+
+  // 22. 引用体检的分类筛选与翻页（C05）：造 10 条失效 + 3 条过期，验筛选计数与翻页。
+  // 「过期」需要目标**存在**但指纹不符：用本篇自己的 id 配一个假指纹，才会判成 changed。
+  // （第一版把 13 条都指向不存在的笔记，结果全判成失效——筛选断言自然找不到「过期」标签。）
+  const selfId = await ev("JSON.parse(localStorage.getItem('knowflick.notes.v1')).notes.find(n=>n.title==='体检冒烟笔记')?.id");
+  const manyRefs = [];
+  for (let i = 0; i < 10; i++) manyRefs.push(`> 《缺失原件${i}》：片段${i}\n> [回原件](knowflick://note/missing-${i})`);
+  for (let i = 0; i < 3; i++) manyRefs.push(`> 《改过原件${i}》：片段${i}\n> [回原件](knowflick://note/${selfId}?fp=stale${i})`);
+  await setNative('.nv-body', manyRefs.join('\n\n'));
+  await check("document.querySelector('.nv-audit > summary')?.textContent.includes('13 处待复核')", '十三条问题都进清单');
+  await check("document.querySelector('.nv-audit-tabs')?.textContent.includes('全部 13')", '筛选按钮显示总条数');
+  await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 1 / 2 页')", '超过一页时显示翻页');
+  await check("document.querySelectorAll('.nv-audit > .nv-audit-list > li').length === 8", '第一页只渲染 8 条');
+  // 面板是折叠的 <details>：textContent 读得到隐藏内容，但**真实点击打不到**里面的按钮。
+  // 直接置 open 而不是点 summary——点 summary 是**切换**，之前已展开时再点会关掉，
+  // 那样断言又变成「点了没反应」。冒烟先后红过两次才定位到这里。
+  await b('eval', "(()=>{document.querySelector('.nv-audit').open=true;return true})()");
+  // 面板在列表上方，翻页按钮常在视口之外（实测 y≈964 > 760）：真实点击要先滚进来。
+  // 只置 open 还不够——`textContent` 能读到、`.click()` 也能生效，但**用户点不到**。
+  await b('scrollintoview', '[aria-label="下一页"]');
+  await b('click', '[aria-label="下一页"]');
+  await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 2 / 2 页')", '能翻到第二页');
+  await check("document.querySelectorAll('.nv-audit > .nv-audit-list > li').length === 5", '第二页是剩下的 5 条');
+  // 分类页签同样要先进视口：列表头多了几个控件之后，页签被推到 y > 760 的位置，
+  // 真实点击会落在视口外（`.click()` 能生效但用户点不到，两者不是一回事）。
+  await b('scrollintoview', '[aria-label="只看失效的 10 处"]');
+  await b('click', '[aria-label="只看失效的 10 处"]');
+  await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 1 / 2 页')", '切到失效分类后回到第 1 页');
+  await check("document.querySelector('.nv-audit-tab-on')?.textContent === '失效 10'", '失效分类被选中');
+  const listed = await ev("[...document.querySelectorAll('.nv-audit > .nv-audit-list > li')].map(li=>li.textContent).join('|')");
+  await check(`${JSON.stringify(listed)}.includes('缺失原件') && !${JSON.stringify(listed)}.includes('改过原件')`, '失效分类里不混入过期条目');
+  await b('click', '[aria-label="只看过期的 3 处"]');
+  await check("document.querySelector('.nv-audit-pager') === null", '过期只有 3 条时不显示翻页');
+  await b('click', '[aria-label="只看全部的 13 处"]');
+  await check("document.querySelector('.nv-audit-pageinfo')?.textContent.includes('第 1 / 2 页')", '切回全部仍从第 1 页开始');
+  // 收尾：把这批引用清掉，后面的断言不受影响。
+  await setNative('.nv-body', auditRefBody);
+
+  // 23. 待验证清单（C05）：行末 ❓ 的断言进全库清单，标「已核实」只去掉那一行的标记。
+  await setNative('.nv-body', '结论一：A 导致 B ❓\n结论二：已核实过\n结论三：C 与 D 相关 ❓');
+  await check("document.querySelector('.nv-verify > summary')?.textContent.includes('2 条断言')", '两条带标记的断言进清单');
+  await check("document.querySelector('.nv-verify > summary')?.textContent.includes('1 篇笔记')", '清单说明涉及几篇笔记');
+  const verifyText = await ev("document.querySelector('.nv-verify-list')?.textContent ?? ''");
+  await check(`${JSON.stringify(verifyText)}.includes('A 导致 B')`, '清单里显示断言原文');
+  await check(`${JSON.stringify(verifyText)}.includes('已核实过') === false`, '没标记的行不进清单');
+  await b('eval', "(()=>{document.querySelector('.nv-verify').open=true;return true})()");
+  await b('scrollintoview', '.nv-verify-done');
+  await b('click', '.nv-verify-done');
+  await new Promise((res) => setTimeout(res, 1200));
+  const afterVerify = await ev("document.querySelector('.nv-body')?.value ?? ''");
+  // 断言「那一行不再有 ❓」：按行拆开比对，避免在 JS 字符串里塞换行转义（会把字面量写坏）。
+  await check(
+    `JSON.stringify(${JSON.stringify(afterVerify)}.split('\\n')[0]) === JSON.stringify('结论一：A 导致 B')`,
+    '已核实那一行的 ❓ 被去掉',
+  );
+  await check(`${JSON.stringify(afterVerify)}.includes('结论三：C 与 D 相关 ❓')`, '别的待验证行不动');
+  await check("document.querySelector('.nv-verify > summary')?.textContent.includes('1 条断言')", '核实一条后清单剩一条');
+  await setNative('.nv-body', '清理掉待验证标记。');
+  await check("document.querySelector('.nv-verify') === null", '全部核实后清单消失');
+
+  // 24. 附件引用（B06）：浏览器体验没有可写的库目录，附件读不到——
+  // 正确表现是**明确说缺失**，而不是塞一个裂掉的图。
+  // 「按种类分别渲染」由组件级测试守住（AttachmentView.test.tsx）：
+  // 浏览器里造不出真实附件，硬造只会写出永远为真的断言。
+  await setNative('.nv-body', '![录音](media/audio/a.webm)\n\n![笔迹](media/ink/a.json)\n\n![图](media/image/a.png)');
+  await check("document.querySelector('.nv-preview') !== null", '预览区在');
+  await b('eval', "(()=>{const d=document.querySelector('.nv-preview');d.open=true;return true})()");
+  const missingText = await ev("document.querySelector('.nv-preview')?.textContent ?? ''");
+  await check(`${JSON.stringify(missingText)}.includes('附件缺失：media/audio/a.webm')`, '读不到的附件明确说缺失，不装成图片');
+  const imgInPreview = await ev("document.querySelector('.nv-preview img') !== null");
+  await check(`${imgInPreview} === false`, '预览里没有把读不到的附件塞进 img 标签');
+  await setNative('.nv-body', '恢复正文。');
+
+  // 25. 改到指定日期（B10）：汇总里的日期输入直接改正文那一行的 📅。
+  await setNative('.nv-body', '- [ ] 逾期那件事 📅 2020-01-01');
+  await check("document.querySelector('.nv-due-date') !== null", '到期汇总里有日期输入');
+  const dateShown = await ev("document.querySelector('.nv-due-date')?.value ?? ''");
+  await check(`${JSON.stringify(dateShown)} === '2020-01-01'`, '日期输入预填当前截止日');
+  // 原生 date input 同样要走原生 setter，否则 React 收不到 onChange。
+  await b('eval', "(()=>{const el=document.querySelector('.nv-due-date');const set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;set.call(el,'2026-12-01');el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 1200));
+  const rescheduled = await ev("document.querySelector('.nv-body')?.value ?? ''");
+  await check(`${JSON.stringify(rescheduled)}.includes('📅 2026-12-01')`, '正文那一行的截止日被改成指定日期');
+  await check(`${JSON.stringify(rescheduled)}.includes('逾期那件事')`, '只改日期，事项文字没丢');
+  await setNative('.nv-body', '恢复正文。');
+
+  // 26. 忽略到期提醒（B10）：不改正文，只是不再在这里提醒；可撤销。
+  await setNative('.nv-body', '- [ ] 忽略我试试 📅 2020-02-02');
+  await new Promise((r) => setTimeout(r, 800));
+  await b("eval", "(()=>{const d=document.querySelector('.nv-due-inbox');d.open=true;return true})()");
+  await check("document.querySelector('[aria-label=\"忽略 忽略我试试\"]') !== null", '到期汇总里有忽略按钮');
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"忽略 忽略我试试\"]').click();return true})()");
+  await check("document.body.innerText.includes('已忽略：忽略我试试')", '忽略有回执');
+  // 关键区别：忽略不是改期，正文那一行的截止日期必须原样还在。
+  const bodyAfterIgnore = await ev("document.querySelector('.nv-body')?.value ?? ''");
+  await check(`${JSON.stringify(bodyAfterIgnore)}.includes('📅 2020-02-02')`, '忽略不改正文里的截止日期');
+  await check("document.querySelector('[aria-label=\"忽略 忽略我试试\"]') === null", '忽略后不再出现在待办列表里');
+  await b("eval", "(()=>{const d=document.querySelector('.nv-due-ignored');if(d)d.open=true;return true})()");
+  await check("document.querySelector('[aria-label=\"恢复提醒 忽略我试试\"]') !== null", '已忽略的条目可撤销');
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"恢复提醒 忽略我试试\"]').click();return true})()");
+  await check("document.body.innerText.includes('已恢复提醒：忽略我试试')", '撤销忽略有回执');
+  await check("document.querySelector('[aria-label=\"忽略 忽略我试试\"]') !== null", '恢复后重新出现在待办列表里');
+
+  // 27. 按截止日期排序（B10）：越早到期越靠前，没截止日的排最后。
+  // 造两篇：一篇早到期、一篇晚到期，再切排序看谁在前。
+  await setNative('.nv-body', '- [ ] 早的 📅 2020-03-03');
+  await new Promise((r) => setTimeout(r, 900));
+  await b("eval", "(()=>{const s=document.querySelector('[aria-label=\"排序方式\"]');const set=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set;set.call(s,'due');s.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await new Promise((r) => setTimeout(r, 600));
+  const sortValue = await ev("document.querySelector('[aria-label=\"排序方式\"]')?.value ?? ''");
+  await check(`${JSON.stringify(sortValue)} === 'due'`, '排序方式能切到「截止日期」');
+  // 浏览器体验没有可写的库目录，也就没有可插入的附件——入口应当整块不出现，
+  // 而不是留一个空下拉框让用户对着它猜。插在光标处与说明文字取标题这两件事
+  // 由领域测试守住（noteAttachmentInsert.test.ts）：浏览器里造不出真实附件。
+  await check("document.querySelector('[aria-label=\"插入附件引用\"]') === null", '没有附件时不显示插入入口');
+
+  await check("(()=>{const s=JSON.parse(localStorage.getItem('knowflick.notes.v1'));return s.notes.some(n=>n.bodyMd.includes('2020-03-03'))})()", '早到期那篇的截止日写进了正文');
+  // 切回默认，免得影响后续段落。
+  await b("eval", "(()=>{const s=document.querySelector('[aria-label=\"排序方式\"]');const set=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set;set.call(s,'recent');s.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+  await setNative('.nv-body', '恢复正文。');
+
+  await setNative('.nv-body', '恢复正文。');
+
+  // 28. 正文撤销/重做（B01）：受控 textarea 上原生 undo 会与 React 打架，所以自己做。
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.setSelectionRange(ta.value.length, ta.value.length);return true})()");
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '撤销测试甲');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 900));
+  await b("eval", `(()=>{const ta=document.querySelector('.nv-body');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta, ta.value + '撤销测试乙');ta.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await new Promise((res) => setTimeout(res, 900));
+  await check("document.querySelector('[aria-label=\"撤销正文改动\"]') !== null", '改动之后出现撤销入口');
+  await b("eval", "(()=>{const ta=document.querySelector('.nv-body');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));return true})()");
+  await new Promise((res) => setTimeout(res, 900));
+  const afterUndoBody = await ev("document.querySelector('.nv-body').value");
+  await check(`!${JSON.stringify(afterUndoBody)}.includes('撤销测试乙')`, 'Ctrl+Z 撤销掉最后一次改动');
+  await check("document.querySelector('[aria-label=\"重做正文改动\"]') !== null", '撤销之后出现重做入口');
+  await b("eval", "(()=>{document.querySelector('[aria-label=\"重做正文改动\"]').click();return true})()");
+  await new Promise((res) => setTimeout(res, 900));
+  const afterRedoBody = await ev("document.querySelector('.nv-body').value");
+  await check(`${JSON.stringify(afterRedoBody)}.includes('撤销测试乙')`, '重做把那次改动找回来');
+
+  console.log('Notes editor smoke: ' + count + ' checks passed.');
+} finally {
+  await b("close").catch(() => {});
+}

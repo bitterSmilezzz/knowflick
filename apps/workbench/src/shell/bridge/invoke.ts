@@ -1,0 +1,202 @@
+/** 原生调用桥：共享前端用 invoke(命令名, 参数) 调壳，这里按命令表转成 Wails 的 Call.ByName。
+ *
+ * 浏览器模式下没有 Wails 运行时，调用会 reject；桌面入口（go-preview）会设置
+ * __TAURI_INTERNALS__ 标记供 inShell 判定。测试若仍注入 __TAURI_INTERNALS__.invoke，
+ * 优先走它，保持既有 mock 行为。 */
+import { COMMANDS } from "./commandTable.ts";
+
+const WAILS_RUNTIME = "/wails/runtime.js";
+
+type BridgeArgs = Record<string, unknown>;
+type Dispatcher = (fullName: string, ...args: unknown[]) => Promise<unknown>;
+
+let generation = 0;
+let customDispatcher: Dispatcher | null = null;
+// 共享 KnowledgeCard 不带 version；浏览时记下 Go 版本，写回/删除时再带上，避免静默不更新。
+const cardVersions = new Map<string, number>();
+
+export function setBridgeGeneration(value: number): void {
+  if (value !== generation) cardVersions.clear();
+  generation = value;
+}
+
+/** 仅用于测试注入；生产环境直接走 Wails runtime。 */
+export function setBridgeDispatcher(fn: Dispatcher | null): void {
+  customDispatcher = fn;
+}
+
+function snakeToCamel(value: string): string {
+  const parts = value.split("_");
+  return parts[0] + parts.slice(1).map((part) => part[0].toUpperCase() + part.slice(1)).join("");
+}
+
+export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): Promise<T> {
+  // 测试与旧注入方式：window.__TAURI_INTERNALS__.invoke(name, args)。
+  // 生产环境 Go 构建只设标记对象（没有 invoke），因此会落到下面的 Wails 调度。
+  const legacy = typeof window === "undefined"
+    ? undefined
+    : (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (n: string, a: BridgeArgs, options?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+  // 第三个参数是 Tauri internals 的 options；测试按旧接口断言过它，传 undefined 保持形状一致。
+  if (typeof legacy?.invoke === "function") return legacy.invoke(name, args, undefined) as Promise<T>;
+  const entry = COMMANDS[name];
+  if (!(name in COMMANDS)) throw new Error("未知的原生命令：" + name);
+  if (entry === null) throw new Error("Go 预览还没有实现命令：" + name);
+  const values = entry.args.map((param) => {
+    if (entry.fixed && param in entry.fixed) return entry.fixed[param];
+    if (name === "note_upsert" && param === "note") return noteToGo(args.note);
+    if (name === "db_save_material" && param === "text") return (args.material as Record<string, unknown> | undefined)?.rawText ?? args.text ?? null;
+    if (name === "db_upsert_card" && param === "card") return cardToGo(args.card);
+    if (name === "db_delete_card" && param === "version") return cardVersions.get(String(args.id)) ?? 0;
+    const active = (globalThis as unknown as { __kfGeneration?: number }).__kfGeneration ?? generation;
+    if (param === "generation") return active;
+    if (param === "now") return Date.now();
+    if (name === "db_search_cards_fts" && param === "offset") return args.limit ?? 0;
+    if (name === "db_load_cards" && param === "query") return "";
+    if (param.toLowerCase() === "accountid") {
+      if ("id" in args) return args.id;
+      if ("accountId" in args) return args.accountId;
+    }
+    if (param === "secret" && "password" in args) return args.password;
+    if (name === "goal_create_cmd" && param === "criteria") {
+      const nested = args.goal as Record<string, unknown> | undefined;
+      return nested?.doneCriteria ?? null;
+    }
+    const sources: Record<string, unknown>[] = [args];
+    for (const nested of ["goal", "material", "request"]) {
+      const value = args[nested];
+      if (value && typeof value === "object") sources.push(value as Record<string, unknown>);
+    }
+    for (const key of [param, snakeToCamel(param)]) {
+      for (const source of sources) {
+        if (key in source) return source[key];
+        const insensitive = Object.keys(source).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+        if (insensitive) return source[insensitive];
+      }
+    }
+    return null;
+  });
+  const dispatch: Dispatcher = customDispatcher ?? (async (fullName, ...rest) => {
+    // 必须经变量再 import：字面量会被 Vite 静态分析并在浏览器模式报解析失败。
+    const runtime = await import(/* @vite-ignore */ WAILS_RUNTIME);
+    return runtime.Call.ByName(fullName, ...rest);
+  });
+  const result = await dispatch("main." + entry.service + "." + entry.method, ...values);
+  if (name === "db_upsert_card" && args.card && typeof args.card === "object") {
+    const id = String((args.card as Record<string, unknown>).id ?? "");
+    if (id) cardVersions.set(id, (cardVersions.get(id) ?? 0) + 1);
+  }
+  return adaptResult(name, result) as T;
+}
+
+/** Wails 返回的嵌套账号结构与共享前端的平铺类型不同，逐字段摊平。 */
+function flattenMailAccount(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const item = value as Record<string, unknown>;
+  const config = (item.config ?? {}) as Record<string, unknown>;
+  return {
+    ...config,
+    lastSyncAt: item.lastSyncAt ?? null,
+    lastError: item.lastError ?? null,
+    hasPassword: item.hasPassword ?? false,
+    historyComplete: item.historyComplete ?? false,
+    rejectedCount: item.rejectedCount ?? 0,
+    lastAttemptAt: item.lastAttemptAt ?? null,
+  };
+}
+
+function cardFromGo(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const card = value as Record<string, unknown>;
+  const content = (card.content && typeof card.content === "object" ? card.content : {}) as Record<string, unknown>;
+  const tags = Array.isArray(card.tags) ? card.tags : Array.isArray(content.tags) ? content.tags : [];
+  if (typeof card.id === "string" && typeof card.version === "number") cardVersions.set(card.id, card.version);
+  return {
+    ...card,
+    category: card.category ?? content.category ?? "",
+    headline: card.headline ?? content.headline ?? "",
+    summary: card.summary ?? content.summary ?? "",
+    details: card.details ?? content.details ?? "",
+    links: Array.isArray(card.links) ? card.links : [],
+    tags,
+    prereq: Array.isArray(card.prereq) ? card.prereq : [],
+    swiped: card.swiped ?? null,
+  };
+}
+
+function cardToGo(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const card = value as Record<string, unknown>;
+  const content = (card.content && typeof card.content === "object" ? card.content : {}) as Record<string, unknown>;
+  const tags = Array.isArray(card.tags) ? card.tags : Array.isArray(content.tags) ? content.tags : [];
+  const id = String(card.id ?? "");
+  return {
+    id,
+    version: cardVersions.get(id) ?? (typeof card.version === "number" ? card.version : 0),
+    content: {
+      category: card.category ?? content.category ?? "",
+      headline: card.headline ?? content.headline ?? "",
+      summary: card.summary ?? content.summary ?? "",
+      details: card.details ?? content.details ?? "",
+      tags,
+    },
+    materialId: card.materialId ?? null,
+    source: card.source ?? "",
+    links: Array.isArray(card.links) ? card.links : [],
+  };
+}
+function adaptResult(name: string, result: unknown): unknown {
+  if (name === "note_list" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).notes)) {
+    return ((result as Record<string, unknown>).notes as unknown[]).map(noteFromGo);
+  }
+  if (name === "note_get") return noteFromGo(result);
+  if (name === "profile_claims_active" || name === "profile_claims_all" || name === "profile_claims_for_answer") return result ?? [];
+  if ((name === "db_load_cards" || name === "db_search_cards_fts") && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).cards)) {
+    return ((result as Record<string, unknown>).cards as unknown[]).map(cardFromGo);
+  }
+  if ((name === "db_search_cards_hybrid" || name === "db_search_cards_vector") && Array.isArray(result)) {
+    return (result as unknown[]).map(cardFromGo);
+  }
+  if (name === "kb_list" && result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).knowledgeBases)) {
+    return (result as Record<string, unknown>).knowledgeBases;
+  }
+  if (name === "kb_membership" && result && typeof result === "object" && "membership" in (result as Record<string, unknown>)) {
+    return (result as Record<string, unknown>).membership ?? {};
+  }
+  if (name === "mail_list_accounts") return Array.isArray(result) ? result.map(flattenMailAccount) : [];
+  if (name === "mail_save_account") return flattenMailAccount(result);
+  if (name === "mail_list_rejected" || name === "mail_sync_due_accounts") return result ?? [];
+  if (name === "mail_test_account" && result && typeof result === "object" && "folder" in result && "messageCount" in result) {
+    return { message: `连接成功：${result.folder}，共 ${result.messageCount} 封邮件` };
+  }
+  return result;
+}
+
+/** 共享笔记用 bodyMd / currentRevision / isPinned；Go 用 body / revision / pinned。 */
+function noteFromGo(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const item = value as Record<string, unknown>;
+  return {
+    ...item,
+    bodyMd: item.bodyMd ?? item.body ?? "",
+    currentRevision: item.currentRevision ?? item.revision ?? 1,
+    isPinned: item.isPinned ?? item.pinned ?? false,
+    isFavorite: item.isFavorite ?? item.favorite ?? false,
+    isDeleted: item.isDeleted ?? item.deleted ?? false,
+    tagsJson: item.tagsJson ?? "[]",
+  };
+}
+
+function noteToGo(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const item = value as Record<string, unknown>;
+  const tags = Array.isArray(item.tags) ? JSON.stringify(item.tags) : item.tagsJson;
+  return {
+    ...item,
+    body: item.bodyMd ?? item.body ?? "",
+    revision: item.currentRevision ?? item.revision ?? 1,
+    pinned: item.isPinned ?? item.pinned ?? false,
+    favorite: item.isFavorite ?? item.favorite ?? false,
+    deleted: item.isDeleted ?? item.deleted ?? false,
+    tagsJson: tags ?? "[]",
+  };
+}

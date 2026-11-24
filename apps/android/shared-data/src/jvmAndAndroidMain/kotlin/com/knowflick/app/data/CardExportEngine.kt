@@ -87,7 +87,9 @@ object CardExportEngine {
         lines += "front\tback\tcategory"
         cards.forEach { card ->
             val front = card.headline.replace("\t", " ").replace("\n", " ")
-            val back = card.details.replace("\t", " ")
+            // 背面也要换掉换行：多行正文会把 TSV 撑成多行，Anki 导入就会错位。
+            // 桌面端的 exportAnkiTsv 现在也是这个规则，两端产出一致。
+            val back = card.details.replace("\t", " ").replace("\n", " ")
             lines += "$front\t$back\t${card.category}"
         }
         return lines.joinToString("\n")

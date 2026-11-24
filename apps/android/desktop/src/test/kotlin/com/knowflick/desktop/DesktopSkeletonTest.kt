@@ -6,10 +6,18 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
+import com.knowflick.app.data.ChatSessionStorage
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
+import com.knowflick.app.domain.ArchiveExportFormat
+import com.knowflick.app.domain.ArchiveExportScope
 import com.knowflick.app.ui.DesktopBackgroundImageCache
 import com.knowflick.app.ui.KnowFlickTheme
 import com.knowflick.app.ui.PaperTheme
+import com.knowflick.app.ui.common.ArchiveExportCancelled
+import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import java.nio.file.attribute.PosixFilePermission
 import kotlin.test.assertEquals
@@ -30,7 +38,12 @@ class DesktopSkeletonTest {
      * 测试若用它就会把本机密钥写坏。
      */
     private fun hostState(model: AppModel, dir: java.io.File): DesktopHostState =
-        DesktopHostState(model, DesktopCredentialStore(java.io.File(dir, "credentials")))
+        DesktopHostState(
+            model = model,
+            credentials = DesktopCredentialStore(java.io.File(dir, "credentials")),
+            // 会话存储也要隔离：默认值指向开发机真实数据目录
+            chatStorage = ChatSessionStorage(java.io.File(dir, "store")),
+        )
 
     /** 领域层复用：卡库状态机 / JSON 往返 / 学科聚合在桌面 JVM 上跑通。 */
     @Test
@@ -108,6 +121,57 @@ class DesktopSkeletonTest {
 
         // 注意：学习范围**目前不落盘**——Android 侧同样如此（`:shared-data` 没有序列化它），
         // 属既有产品行为，不是迁移引入的回归；已在 CHANGELOG 记为待决项，未擅自改动语义。
+    }
+
+    /**
+     * **桌面端现在有 AI 追问**：会话状态用与 Android 同一份 `ChatStateHolder`（`:shared-data`），
+     * 流式走同一份 `AiService.streamCardChat`，会话文件也是同一个 `chat_sessions.json`。
+     * 用假服务器跑全链路，不碰真实网络。
+     */
+    @Test
+    fun chatStreamsThroughSharedHolderAndPersistsSession() {
+        val (model, dir) = tempModel("kf-desktop-chat")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = hostState(model, dir)
+
+        val server = okhttp3.mockwebserver.MockWebServer()
+        server.start()
+        try {
+            // 与 :domain 的 AI 测试同一套 SSE 形状：每个 delta.content 是一小段正文
+            fun delta(text: String) = "data: {\"choices\":[{\"delta\":{\"content\":\"$text\"}}]}\n\n"
+            val sse = delta("先看") + delta("叠加态。") + "data: [DONE]\n\n"
+            server.enqueue(okhttp3.mockwebserver.MockResponse().setBody(sse))
+            state.saveAiSettings(
+                state.aiSettings.copy(baseURL = server.url("/v1").toString(), model = "chat-model"),
+                "sk-chat-key",
+            )
+
+            val card = model.store.cards.first()
+            state.openChat(card)
+            assertEquals(card.id, state.activeChatCard?.id, "应打开该卡的追问会话")
+
+            state.sendChatMessage("这张卡在讲什么？")
+
+            val deadline = System.currentTimeMillis() + 5_000
+            while (state.isChatStreaming && System.currentTimeMillis() < deadline) Thread.sleep(20)
+
+            assertFalse(state.isChatStreaming, "流式应已结束（errorMessage=${state.chatErrorMessage}，messages=${state.chatSession?.messages?.size}）")
+            val session = assertNotNull(state.chatSession)
+            assertTrue(session.messages.size >= 2, "应有一条提问与一条回答")
+            val reply = session.messages.last()
+            assertTrue(reply.content.contains("叠加态"), "流式增量应拼进回答：${reply.content}")
+
+            // 导出 Markdown 走共享 CardChatInsightDeriver（与 Android 同一份格式）
+            val markdown = assertNotNull(state.exportCurrentChatMarkdown())
+            assertTrue(markdown.contains(card.headline), "导出内容应包含母卡标题")
+
+            // 会话经共享 ChatSessionStorage 落盘：换一个存储实例能读回
+            val reopened = ChatSessionStorage(java.io.File(dir, "store"))
+            assertNotNull(reopened.loadSession(card.id), "会话应落进共享存储")
+        } finally {
+            server.shutdown()
+        }
     }
 
     /**
@@ -448,5 +512,51 @@ class DesktopSkeletonTest {
 
         onNodeWithText("收藏 1").assertExists()
         onNodeWithText("桌面宿主已接上共享领域层").assertExists()
+    }
+
+    /** 桌面导出写的是共享引擎的字节；用户取消另存为时不报失败。 */
+    @Test
+    fun desktopExportWritesSharedEngineBytesAndCancelStaysQuiet() = runBlocking {
+        val cards = DomainBridge.sampleCards()
+        val dir = Files.createTempDirectory("kf-desktop-export").toFile()
+        val exporter = DesktopArchiveExporter(pickSaveFile = { _, name -> File(dir, name) })
+
+        val saved = exporter.export(
+            scope = ArchiveExportScope.ALL,
+            format = ArchiveExportFormat.JSON_ARCHIVE,
+            cards = cards,
+            settingsJson = null,
+        )
+
+        val path = saved.getOrThrow()
+        val text = File(path).readText()
+        assertTrue(path.contains("knowflick_cards_"), path)
+        assertTrue(text.contains("桌面宿主已接上共享领域层"), text.take(200))
+        assertFalse(exporter.canShare)
+        assertEquals("另存为", exporter.saveLabel)
+
+        val cancelled = DesktopArchiveExporter(pickSaveFile = { _, _ -> null }).export(
+            scope = ArchiveExportScope.FAVORITES,
+            format = ArchiveExportFormat.JSON_ARCHIVE,
+            cards = cards,
+            settingsJson = null,
+        )
+        assertTrue(cancelled.exceptionOrNull() is ArchiveExportCancelled)
+    }
+
+    /** 刷卡页打开的就是共享导出面板：另存为在，系统分享不在。 */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun backupExportSheetOnDesktopHidesShare() = runComposeUiTest {
+        val (model, dir) = tempModel("kf-desktop-export-ui")
+        model.storage.saveCards(DomainBridge.sampleCards())
+        model.bootstrap()
+        val state = hostState(model, dir)
+
+        setContent { KnowFlickTheme(paperTheme = PaperTheme.RICE_PAPER) { DesktopHost(state) } }
+        state.openBackupExport()
+        onNodeWithText("数据归档与全量备份").assertExists()
+        onNodeWithText("另存为").assertExists()
+        onAllNodesWithText("系统分享").assertCountEquals(0)
     }
 }

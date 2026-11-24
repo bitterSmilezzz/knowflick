@@ -2,7 +2,7 @@
 
 > 新机器（Windows）接入 KnowFlick 双机协作的完整清单。项目级 agent 约定见根目录 [AGENTS.md](../AGENTS.md)；
 > 多端分支/提交/tag 规范见 [MULTI_PLATFORM.md](MULTI_PLATFORM.md)。
-> 本文件描述**环境事实**，随机器状态更新；最后核对：2026-10-10。
+> 本文件描述**环境事实**，随机器状态更新；最后核对：2026-10-14（[ADR-0002](adr/0002-desktop-web-split-from-android.md) 之后：桌面第一套是 `apps/workbench`，`apps/mac` 已删除）。
 
 ## 一、开工前必读
 
@@ -18,16 +18,38 @@
 
 3. **一个分支同一时刻只在一台机器签出**（铁律见 AGENTS.md）。开工前 `git fetch && git pull --ff-only`。
 
+4. **SSH 推送若卡在「Connection to … port 22 timed out」，换掉密钥交换算法。**
+
+   GitHub 现在默认协商后量子算法 `mlkem768x25519-sha256`（握手包明显更大）。在链路质量差、
+   MTU 受限或中间设备干扰时，表现为 **TCP 连得上、`ssh -T` 却在 `expecting SSH2_MSG_KEX_ECDH_REPLY` 处卡死到超时**：
+
+   ```sh
+   # 判定：指定经典算法后同一台机器立刻通 → 问题就在协商，不在网络或权限
+   ssh -o KexAlgorithms=curve25519-sha256 -T git@github.com
+
+   # 固定下来（写进 ~/.ssh/config，对本机所有 github 操作生效）
+   cat >> ~/.ssh/config <<'EOF'
+   Host github.com
+     KexAlgorithms curve25519-sha256
+   EOF
+   ```
+
+   实测 2026-11-19 本机（macOS）一次完整复现：默认算法下 `git push` 连续超时四次（每次约 100 秒），
+   `nc -z github.com 22` 与 `nc -z ssh.github.com 443` 都显示「连得上」，`ssh -vvv` 停在 `expecting SSH2_MSG_KEX_ECDH_REPLY`；
+   加 `-o KexAlgorithms=curve25519-sha256` 后立刻推送成功。
+   **别先怀疑权限或仓库地址**——`Hi <user>! You've successfully authenticated` 会把你引向错误方向。
+
+
 ## 二、按「这台机器要干什么」装环境
 
 | 任务 | 需要装 | 验证命令（Git Bash / WSL 下执行） |
 | --- | --- | --- |
-| 只改 mac 端 Core / 文档 / 契约 | 无（纯文本改动，推给对端或 CI 验证） | — |
+| **第一套桌面（Windows / macOS / Linux）** | **Node 22+ 与 Go 1.27+（Wails CLI v3.1.0）**——不需要 JDK，也不需要 Android SDK | `./tools/verify_workbench.sh`；构建本机可执行文件：`./tools/build_workbench_go.sh`（本机安装包：`./tools/package_workbench_go.sh`，Windows 上出 NSIS `.exe`） |
 | Android 构建与测试 | JDK 17（Temurin 或 MS OpenJDK）、Android SDK（Platform 35 + Build Tools 35.0.0） | `./tools/build_android.sh`（需先配 `signing.properties`，见下） |
 | Android 单测/Lint（不签名） | 同上，不需要 keystore | `cd apps/android && ./gradlew :app:testDebugUnitTest :app:lintDebug` |
-| Windows 端开发（路线待定） | 视路线而定：CMP 需 JDK；Avalonia 需 .NET 8 SDK；Web+常驻需 Node 20+ | 待路线定版后补 |
-| 契约校验 | Python 3 | `python3 tools/check_taxonomy.py` |
-| mac 端任何验证 | **不能**（无 Xcode）——推 PR 交给 CI | 云端 macOS workflow |
+| 共享 Kotlin 模块（`:domain` / `:shared-data` / `:shared-ui` / 冻结的 `:desktop`） | 只要 JDK 17 | `cd apps/android && ./gradlew :domain:jvmTest :shared-data:jvmTest :shared-ui:jvmTest :desktop:test` |
+| 契约校验 | Python 3 | `python3 tools/check_taxonomy.py`、`python3 tools/check_clip_parity.py` |
+| 只改文档 / 契约 | 无（纯文本改动，推给对端或 CI 验证） | — |
 
 ### Android 环境细节（Windows）
 
@@ -60,16 +82,21 @@
 
 **并行避让**：
 
-- 两台机器同时开工时，按端分活（mac / android / windows 互不碰），或按文件域分（见 AGENTS.md 验证矩阵）。
+- 两台机器同时开工时，按**套**分活（第一套 `apps/workbench` / 第二套 `apps/android` 互不碰），或按文件域分（见 AGENTS.md 验证矩阵）。Windows 上的桌面开发就落在 `apps/workbench`——**不再新建 `apps/win/`**（[ADR-0002](adr/0002-desktop-web-split-from-android.md)）。
 - `CHANGELOG.md`、`CONTEXT.md`、`docs/` 是共享文件，最容易撞。习惯：先把自己的段落写在分支上，PR 里解决冲突；不要「两边同时改同一节」。
 - `shared/**` 改动触发两端 CI——这是有意设计（契约漂移必须两端同抓），但意味着**改 shared 前先与对端打招呼**。
 
 ## 四、这台 mac 的现状（对端参考）
 
-- 完整 Xcode 已装（`/Applications/Xcode.app`，Swift 6.4）：mac UI 层可在本机编译验证，不再只靠 CI。
-- JDK 17 = Homebrew `openjdk@17`；Android SDK 在 `~/Library/Android/sdk`（Platform 35 / Build Tools 35.0.0）。
-- 本轮新引入：根目录 `.gitattributes`（LF 归一）、`AGENTS.md`（agent 手册）、本文件。
+- JDK 17 = Homebrew `openjdk@17`（`/opt/homebrew/opt/openjdk@17`）。它**不在全局 PATH 上**，跑 Gradle 前先 `export JAVA_HOME=/opt/homebrew/opt/openjdk@17`。
+- Android SDK 在 `~/Library/Android/sdk`（Platform 35 / Build Tools 35.0.0）。
+- Node 与 Go 可用：第一套桌面的门禁（`./tools/verify_workbench.sh`）在本机验证过；打 `workbench-v*` tag 由 CI 三平台矩阵出 DMG / DEB / NSIS EXE。
+- Swift/SwiftUI 的 `apps/mac` 已整体删除，**不再需要 Xcode**；不要恢复它。
 
-## 五、Windows 端启动（路线定版后补充）
+## 五、Windows 上的第一套桌面
 
-技术栈调研历史结论见 [多端现状报告](STATUS_2026-09-14.md) §五；路线拍板与开工顺序待定，定版后在此补：新建 `apps/win/`（或按选定路线命名）、CI workflow、tag 规则（`win-v*`）。
+路线已定（[ADR-0002](adr/0002-desktop-web-split-from-android.md)）：**Windows 不单独成套**，与 macOS / Linux 共用 `apps/workbench` 前端 + `apps/workbench-go` Go 壳（[ADR-0042](adr/0042-remove-tauri-rust.md) 删除了 Tauri/Rust）。所以这台机器的接入就是三步——装 Node 22+ 与 Go 1.27+ → clone → `cd apps/workbench && npm ci` → `./tools/verify_workbench.sh`。**没有 `apps/win/`，也没有 `win-v*` tag**；`workbench-v*` 由 CI 矩阵产 DMG / DEB / NSIS EXE（Go 版没有 MSI）。
+
+在这台机器上能验的：`npm test` / `tsc` / 静态守卫 / `go vet` / `go test` / 回环对拍，以及 `./tools/build_workbench_go.sh` 出 Windows 可执行文件后**实际跑一遍**（导入 → 刷卡 → 测验 → 导出）。不能验的：DMG 与 DEB（由对应系统的 CI 矩阵覆盖）。
+
+历史路线调研（已归档，不再是待决项）见 [多端现状报告](STATUS_2026-09-14.md) §五。

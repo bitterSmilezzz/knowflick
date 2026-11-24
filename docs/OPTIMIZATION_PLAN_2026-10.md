@@ -66,7 +66,8 @@
 
 ### macOS 端
 > **进展（2026-10-03，PR #54 已合并，main CI 绿）**：① 测验选题 → `QuizBuilder` 纯函数已下沉（选题语义测试 7 项补齐）；② SettingsView → `SettingsEditBuffer`（Core 纯类型）已落地——18 个设置 @State 收敛为一处字段清单，字段漂移有守卫测试；③ DetailView `store` 收紧必传（5 处 nil 路径消除）；④「够数即停」不再丢弃已扫描完整对象（红→绿：前几张过筛失败时误报 noUsableCards 的场景修复）。测试 400→412 全绿。
-> **用户拍板：Android 端暂停，等 mac 完善后再恢复；三巨档 de-nesting 与 i18n 待另一会话的 mac 交互简化 WIP（InsightMainView/InsightShell/LearningWorkspaceView）落地后再做。**
+> **用户拍板（2026-10-03，已被取代）：** Android 端暂停，等 mac 完善后再恢复；三巨档 de-nesting 与 i18n 待另一会话的 mac 交互简化 WIP（InsightMainView/InsightShell/LearningWorkspaceView）落地后再做。
+> **2026-10-13 取代：** 这条与 [ADR-0001](adr/0001-desktop-tri-platform-shared-kotlin.md) 冲突，不再执行。活计划是共享 Kotlin 对等后删除 Swift，见 [MAC_CONVERGENCE.md](MAC_CONVERGENCE.md) §3。Android 不暂停。Swift 只当移植参照，不再为它发版，也不再等它「完善」。
 > **C2 已销账（2026-10-03，PR #58 合并，main CI 绿，CI 全量 443 项）**：GenerationCoordinator 下沉 + bootstrap 拆段 + RetryPolicy 统一（生成/追问两路逐条等价）；重排 >256 张才下沉后台（216 现状同步不变）；背景图未命中改后台解码 + 主线程回填（**已知残留**：PosterExportManager 冷缓存离屏渲染可能少背景图，正常流程经预览预热）；聊天会话内存态表（每条消息不再全量 decode）；**app 层测试 target `KnowFlickAppTests` 起步**（ActiveSheet 路由 3 项 + 背景图缓存 5 项，本地与 CI 均可跑）。
 > 剩余项（mac）：AI 生成编排已完成；三巨档 de-nesting 待 WIP；视图层测试继续扩面；`arrangeWithMinDistance` 的 ≤256 同步路径保持现状（实测 216 张无害）。
 1. **AppStore 域下沉**（634 行）：测验选题算法（`generateQuizCards`，AppStore.swift:396-432，0 测试）→ `QuizBuilder` 纯函数 + 补齐选题/混池/打乱语义测试 ✅ 已做；AI 生成编排（445-485）→ `GenerationCoordinator`；bootstrap 84 行四件事（三级回退/种子合并/钥匙串迁移/自动补卡）拆阶段函数。
