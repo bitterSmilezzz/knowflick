@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,21 @@ type DroppedFile struct {
 	Size int64 `json:"size"`
 	// Mime 是按扩展名推断的 MIME（前端拿不到真实类型）。
 	Mime string `json:"mime"`
+}
+
+// collectDroppedFiles 读一批拖入的文件；读不了的跳过并记录，不让一个坏文件
+// 拖掉整批（用户拖了 5 个文件，1 个是无权限的目录，其余仍应导入）。
+func (s *PreviewService) collectDroppedFiles(paths []string) []DroppedFile {
+	out := make([]DroppedFile, 0, len(paths))
+	for _, path := range paths {
+		item, err := s.ReadDroppedFile(context.Background(), path)
+		if err != nil {
+			log.Printf("读取拖入的文件失败：%v", err)
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 // ReadDroppedFile 按路径读一个被拖进窗口的文件。

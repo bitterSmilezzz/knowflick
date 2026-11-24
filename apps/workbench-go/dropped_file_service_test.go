@@ -37,6 +37,20 @@ func TestReadDroppedFileReadsTextAndBinary(t *testing.T) {
 	}
 }
 
+// 一批文件里有一个读不了时，其余仍要导入：拖 5 个文件不该被 1 个坏文件拖掉。
+func TestCollectDroppedFilesSkipsUnreadableEntries(t *testing.T) {
+	dir := t.TempDir()
+	good := filepath.Join(dir, "good.md")
+	if err := os.WriteFile(good, []byte("正文"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := &PreviewService{}
+	dropped := service.collectDroppedFiles([]string{good, filepath.Join(dir, "missing.md"), dir})
+	if len(dropped) != 1 || dropped[0].Name != "good.md" {
+		t.Fatalf("collect: %+v", dropped)
+	}
+}
+
 func TestReadDroppedFileRejectsIrregularPaths(t *testing.T) {
 	service := &PreviewService{}
 	for _, path := range []string{"", "   ", "/no/such/file.md"} {

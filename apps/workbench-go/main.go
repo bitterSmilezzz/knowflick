@@ -89,15 +89,7 @@ func main() {
 		if len(files) == 0 {
 			return
 		}
-		dropped := make([]DroppedFile, 0, len(files))
-		for _, path := range files {
-			item, err := service.ReadDroppedFile(context.Background(), path)
-			if err != nil {
-				log.Printf("读取拖入的文件失败：%v", err)
-				continue
-			}
-			dropped = append(dropped, item)
-		}
+		dropped := service.collectDroppedFiles(files)
 		if len(dropped) == 0 {
 			return
 		}
