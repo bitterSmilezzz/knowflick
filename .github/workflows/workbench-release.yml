@@ -1,41 +1,142 @@
-name: Workbench Release
+name: Workbench Release (Go)
 
-# ⛔ 这里**故意**只剩一个占位 job：Go 打包（DMG/MSI/DEB）尚未就绪。
+# 第一套桌面（apps/workbench 前端 + apps/workbench-go）的三平台安装包与 Release 附件。
+# 替代原来的 Tauri 打包矩阵（Rust 壳已随 ADR-0042 删除）。
 #
-# 为什么暂停：
-#   - Tauri 三平台打包已不可用——Rust 壳已随 ADR-0042（移除 Tauri/Rust）从工作树删除，
-#     三台 runner 各出一个安装包的那套矩阵也失去了依据；
-#   - Go 后端（apps/workbench-go，Wails v3 单一二进制）目前只有 tools/build_workbench_go.sh 产**本机可执行文件**，
-#     还没有 DMG / MSI / DEB 的打包与校验方案；
-#   - 与其留着一条注定红或静默产出残缺附件的打包线，不如显式停掉（红得清楚，比假绿安全）。
+# 为什么必须是三台机器：cgo + 平台框架不支持交叉编译，DMG 只能在 macOS 出、
+# DEB 只能在 Linux 出、NSIS 安装器只能在 Windows 出。
 #
-# 恢复条件（三条都满足才把真实的 package/release job 加回来）：
-#   1. Wails v3（或等价方案）能在 macOS / Windows / Linux 各产出一个确定的安装包格式，
-#      且 tools/build_workbench_go.sh 或后继脚本在 CI 上可复现；
-#   2. 三平台 runner 上能实际跑通「构建 → 产物存在性/最低系统版本校验 → 留档」；
-#   3. docs/adr/0042-remove-tauri-rust.md 记录新发布口径（产物命名、tag 规则、Release 附件清单）。
-#
-# ⚠️ 触发面只有 workflow_dispatch：**打 `workbench-v*` tag 不会触发这条 workflow，也不会产出任何附件**。
-# 旧版本的自动发版靠 tag 推送；现在 tag 一律不触发，避免「打了 tag、界面静默、以为在打包」的误解。
-# 需要发版时先满足上面的恢复条件，再把 tag 触发（连同 paths 说明）加回来。
-#
-# 需要本机可执行文件时：`./tools/build_workbench_go.sh`（Wails v3 单二进制，不做安装包）。
+# 触发面：workbench-v* tag（path 过滤对 tag 不生效，tag 一定会跑）+ 手动 dispatch。
+# 产物命名与组装逻辑在 tools/package_workbench_go.sh 与 tools/assemble_workbench_release.sh 里，
+# 都能在本机用占位产物空跑；YAML 只负责三平台并行构建与上传。
+
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - workbench-v*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  not-ready:
-    name: 打包方案未就绪（占位）
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  package:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS DMG
+            artifact: workbench-dmg
+          - os: ubuntu-latest
+            label: Linux DEB
+            artifact: workbench-deb
+          - os: windows-latest
+            label: Windows 安装器
+            artifact: workbench-exe
     steps:
-      - name: 说明并失败（占位 job，不是可用的发布通道）
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.x"
+          cache: true
+          cache-dependency-path: apps/workbench-go/go.sum
+
+      - name: npm ci
+        working-directory: apps/workbench
+        run: npm ci
+
+      - name: 安装 Wails v3 CLI
+        shell: bash
         run: |
-          message='Go 打包（DMG/MSI/DEB）尚未就绪，见 docs/adr/0042-remove-tauri-rust.md；本轮请用 tools/build_workbench_go.sh 构建本机可执行文件'
-          # 注解让失败原因直接出现在 Actions 的报错摘要里；公开仓库读不到 job 日志，只能靠注解。
-          echo "::error::$message"
-          echo "$message" >&2
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Linux 系统依赖（GTK3 + WebKitGTK + dpkg）
+        if: runner.os == 'Linux'
+        run: |
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 update \
+               && sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev \
+                 librsvg2-dev patchelf xdg-utils dpkg-dev; then
+              exit 0
+            fi
+            echo "第 ${{ attempt }} 次安装失败，等 15 秒重试" >&2
+            sleep 15
+          done
+          echo "::error::Linux 系统依赖安装失败" >&2
           exit 1
+
+      - name: Windows 工具链（NSIS + MinGW）
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install nsis mingw -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
+          echo "C:\ProgramData\mingw64\mingw64\bin" >> "$GITHUB_PATH"
+          echo "C:\ProgramData\chocolatey\bin" >> "$GITHUB_PATH"
+
+      - name: 工具链自检
+        shell: bash
+        run: |
+          go version
+          wails3 version
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            gcc --version | head -1 || true
+            which makensis || true
+          fi
+
+      - name: 构建并打包
+        shell: bash
+        run: ./tools/package_workbench_go.sh --out dist/workbench
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            dist/workbench/*.dmg
+            dist/workbench/*.deb
+            dist/workbench/*.exe
+
+  release:
+    name: 组装并上传 Release 附件
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/workbench-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 校验命名并生成 SHA256SUMS
+        run: ./tools/assemble_workbench_release.sh --tag "$GITHUB_REF_NAME" --artifacts-dir artifacts --out out
+
+      - name: 上传到 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" out/* --clobber || {
+            gh release create "$GITHUB_REF_NAME" --title "KnowFlick Workbench ${{ github.ref_name }}" --generate-notes;
+            gh release upload "$GITHUB_REF_NAME" out/* --clobber;
+          }
