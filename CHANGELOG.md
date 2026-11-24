@@ -12,6 +12,16 @@
 
 - 工作台（ADR-0042）：**发布通道显式暂停**——`workbench-release.yml` 只留一个会失败的占位 job；`workbench-v*` tag 不再触发构建、也不产出附件（Go 版 DMG/MSI/DEB 打包与校验未就绪）。历史 Release 里的安装包对应已删除的 Rust 实现。
 
+- 工作台（ADR-0042）：**发布通道恢复**——`workbench-release.yml` 改成三平台矩阵：macOS DMG、Linux DEB、Windows NSIS 安装器；tag `workbench-v*` 触发，产物命名 `KnowFlick-Workbench-<版本>-<系统>-<架构>.<扩展名>`，由 `tools/assemble_workbench_release.sh` 校验命名与版本、生成 `SHA256SUMS.txt` 并上传 Release。CI 实测 run 45304074590 三 job 全绿（6.9 MB DEB / 10.8 MB DMG / 8.1 MB EXE）；本机 DMG 已挂载并启动。Go 版没有 MSI（Wails v3 只支持 deb/rpm/archlinux/dmg）。
+
+- 工作台：**前端不再依赖 `@tauri-apps/*`**——桥接层收进 `src/shell/bridge/`（`invoke` + 命令表、对话框、事件、通知、版本信息、Wails 运行时）；桌面走 `Call.ByName` / `Events.On`，浏览器模式安全降级。`package.json` 去掉 3 个 Tauri 依赖与 CLI。
+
+- 修复（用户可见错误半中半英）：新增 `apps/workbench-go/internal/errtext`——`Explain` 给中文原因 + 下一步（超时/连接被拒/DNS/证书/权限/磁盘/资料库占用/唯一约束/编码等），`Wrap` 保留中文前缀、原始英文放括号里并保住 `errors.Is` 链；116 处 `fmt.Errorf("…：%w", err)` 改走它，`check_go_error_messages.py` 增加「`%w` 未走 errtext」判据。
+
+- 修复（浏览器模式白屏）：`invoke`/`events` 里的 Wails 运行时 import 改为「先存变量再 import」——字面量即使加 `@vite-ignore` 仍会被 Vite 静态分析，`npm run dev` 直接白屏。taste gate 因此重新通过。
+
+- 工作台：**安装包图标**接入三种产物（DMG 用 `AppIcon.icns`、NSIS 用 `.ico`、DEB 用 `.png`），不再依赖 `npx tauri icon`。
+
 - 工作台（ADR-0042）：**只对 Tauri 有效的检查删除**（`check_tauri_permissions.py` 与其回归）；有跨端价值的检查迁到 Go，而不是删掉——`check_go_error_messages.py` 取代 `check_rust_error_messages.py`、用户数据文案守卫与来源标签扫描改扫 `apps/workbench-go`、剪藏规则表的字符集窗口第三处改 Go `MetaSniffBytes`、回环判定改 Go↔TS 对拍（`go test -run TestPrintsLoopbackVerdictsForCrossPlatformParity`）。`verify_workbench.sh`、`workbench.yml`、`desktop.yml` 同步更新。
 
 - 修复（迁 Go 时被守卫逮到）：**字符集嗅探窗口 2048 ≠ 1024**——Kotlin / TS 都是 `META_SNIFF_BYTES = 1024`，Go 的 `charsetFromMeta` 写成 2048，同一页在桌面与安卓可能解出不同编码。新增 `MetaSniffBytes = 1024` 常量并由 `check_clip_parity.py` 三方比对。

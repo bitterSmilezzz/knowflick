@@ -172,7 +172,7 @@ chore(release): 三端安装包图标 + 发布附件组装可本地空跑
 
 | 端 | tag 格式 | 版本来源 |
 | --- | --- | --- |
-| 第一套桌面（`apps/workbench`） | `workbench-v<版本>` | `apps/workbench/package.json` 的 `version`（发布通道暂停，见 ADR-0042） |
+| 第一套桌面（`apps/workbench`） | `workbench-v<版本>` | `apps/workbench/package.json` 的 `version`（`assemble_workbench_release.sh` 校验 tag 与它一致） |
 | android | `android-v<版本>` | `apps/android/app/build.gradle.kts` 的 `versionName` / `versionCode` |
 | 已冻住的 JVM 桌面（`:desktop`） | `desktop-v<版本>` | `apps/android/desktop/build.gradle.kts` 的 `packageVersion` |
 
@@ -204,10 +204,10 @@ mac 端（**已删除**）历史上用**无前缀的 `v*`**（40 余个 Release�
 2. 在 `docs/` 写发布记录（android 是 `ANDROID_RELEASE_<版本>.md`；mac 序列已终止，历史 `MAC_RELEASE_*.md` 保留）。
 3. 合回 `main` 并推送。
 4. 打 tag 并推送；打之前核对 tag 名与版本来源一致：android ↔ `apps/android/app/build.gradle.kts` 的
-   `versionCode` / `versionName`，第一套桌面 ↔ `apps/workbench/package.json`（发布通道暂停，tag 不触发），
+   `versionCode` / `versionName`，第一套桌面 ↔ `apps/workbench/package.json`（不再有 `src-tauri/tauri.conf.json`），
    已冻住的 `:desktop` ↔ `apps/android/desktop/build.gradle.kts` 的 `packageVersion`。
 5. 用 `gh release create` 发 Release，**把构建产物作为附件上传**：`dist/` 不入 Git，不传附件则用户无法下载安装包
-   （`desktop-v*` 的附件由 workflow 自动组装上传；`workbench-v*` 暂停，附件要等 Go 打包方案就绪）。
+   （`desktop-v*` 与 `workbench-v*` 的附件都由各自 workflow 自动组装上传）。
 
 ### 发版检查清单
 
@@ -221,7 +221,7 @@ cd apps/android && ./gradlew :desktop:test :desktop:packageDmg   # 冻结的 JVM
 
 # 2. 核对版本号与 tag 一致
 grep -E 'versionCode|versionName' apps/android/app/build.gradle.kts
-grep -m1 '"version"' apps/workbench/package.json   # 第一套桌面发布暂停：不再有 src-tauri/tauri.conf.json
+grep -m1 '"version"' apps/workbench/package.json   # 第一套桌面的唯一版本来源（不再有 src-tauri/tauri.conf.json）
 # 冻结 JVM 桌面（:desktop）的版本号来自 apps/android/desktop/build.gradle.kts 的 packageVersion（workflow 会校验 tag 与它一致）
 
 # 3. 提交、推送、打 tag（注解 tag，与 mac 的 v4.2.0 风格一致）
@@ -238,9 +238,9 @@ gh release create android-v0.8.5 --title "..." --notes-file <正文> \
 
 tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是轻量 tag，自 `android-v0.8.5` 起统一为注解 tag（与 mac 的 `v4.2.0` 一致），以便把发布说明随 tag 保存；`git describe` 默认也只认注解 tag。
 
-**哪条 tag 会自己产出云端产物**：`workbench-v*` **不产出**——Rust 壳删除后 Go 打包方案未就绪，
-[workbench-release.yml](../.github/workflows/workbench-release.yml) 只剩一个显式失败的占位 job
-（[ADR-0042](adr/0042-remove-tauri-rust.md)），打 tag 只会「什么都没发生」，不要当发版；
+**哪条 tag 会自己产出云端产物**：`workbench-v*` → [workbench-release.yml](../.github/workflows/workbench-release.yml)
+（三平台 matrix 各出一档：macOS DMG / Linux DEB / Windows NSIS EXE；成功后由
+`tools/assemble_workbench_release.sh` 校验命名与版本、生成 `SHA256SUMS.txt` 并上传 Release）；
 `desktop-v*` → [desktop.yml](../.github/workflows/desktop.yml)（三系统 matrix 各出一个安装包，统一命名后附到同一个
 Release，并附 `SHA256SUMS.txt`）；`android-v*` 不触发任何 workflow，签名 APK 必须本地 `./tools/build_android.sh`
 产出、本地上传附件。
@@ -250,8 +250,8 @@ Release，并附 `SHA256SUMS.txt`）；`android-v*` 不触发任何 workflow，�
 
 > 桌面端 tag 有两个纪律：① tag 里的版本必须等于产物里声明的版本——`desktop-v*` 对
 > `apps/android/desktop/build.gradle.kts` 的 `packageVersion`，`workbench-v*` 对
-> `apps/workbench/package.json`（第一套桌面发布暂停：不再有 `src-tauri/tauri.conf.json`，也没有发布组装脚本；
-> 恢复打包前不要在它上面走 tag 纪律）；
+> `apps/workbench/package.json`（不再有 `src-tauri/tauri.conf.json`；本地可用
+> `tools/assemble_workbench_release.sh --tag …` 空跑验证）；
 > ② **`paths` 过滤对 tag 推送不生效**——GitHub 官方文档原话是 "Path filters are not evaluated for
 > pushes of tags"（[workflow syntax, `on.<push>.paths`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore)），
 > 所以 tag 打在只改文档的提交上**同样会**触发三系统构建与发布。
@@ -290,9 +290,15 @@ bash tools/assemble_desktop_release.sh --tag desktop-v0.1.0 --artifacts-dir dryr
 macOS 的 MAJOR>0 别名）统一成产品版本名 → 生成 `SHA256SUMS.txt` → （加 `--publish` 时）附到 Release。
 放在脚本里的理由很直接：这条通道打 tag 才会走，而在 YAML 里的一坨 shell 没法本地空跑。
 
-第一套桌面原来的对应实现是 `tools/assemble_workbench_release.sh`，它已随 Rust 壳一起**删除**（[ADR-0042](adr/0042-remove-tauri-rust.md)）。
-Go 版打包方案就绪后要**重新**定义产物命名（`KnowFlick-Workbench-<版本>-<系统>.<扩展名>`）、版本校验（只剩
-`apps/workbench/package.json` 一处）与附件清单，再写新的组装脚本——不要把旧脚本当成还能用的通道。
+第一套桌面的对应实现是 `tools/assemble_workbench_release.sh`（tag `workbench-v*`，产物
+`KnowFlick-Workbench-<版本>-<系统>-<架构>.<扩展名>`）。同一条纪律：校验 tag 与
+`apps/workbench/package.json` 一致 → 校验 dmg / deb / exe 三类产物命名 → 生成 `SHA256SUMS.txt` →
+（`--publish` 时）上传 Release：
+
+```sh
+mkdir -p dryrun/workbench-{dmg,deb,exe} && cp … dmg deb exe 各一份
+bash tools/assemble_workbench_release.sh --tag workbench-v0.1.0 --artifacts-dir dryrun --out dryrun-out
+```
 
 ## 环境要求
 
@@ -301,7 +307,7 @@ Go 版打包方案就绪后要**重新**定义产物命名（`KnowFlick-Workbenc
 | android（`:app`） | JDK 17、Android SDK（`compileSdk 36`，target SDK 保持 35） | ✅ 已装（Homebrew `openjdk@17` + `~/Library/Android/sdk`，其中有 platforms;android-35/36 与 build-tools 36.1.0） |
 | 共享 Kotlin 模块（`:domain` / `:shared-data` / `:shared-ui`） | **只需 JDK 17**——不需要 Android SDK | ✅ 可用（实测：移走 `local.properties` 且 `ANDROID_HOME` 指向不存在路径，`./gradlew :domain:jvmTest` 仍全绿；见 [KMP 探针结果](windows-route/KMP_PROBE_RESULT.md)） |
 | 已冻住的 JVM 桌面宿主（`:desktop`） | **只需 JDK 17**——不需要 Android SDK；**打安装包要在目标系统上**（jpackage 不支持交叉编译） | ✅ 可用（`:shared-ui:jvmTest` / `:desktop:test` 本机全绿；`:desktop:packageDmg` 实测出 65 MB DMG。MSI/DEB 由 [desktop.yml](../.github/workflows/desktop.yml) 的三系统 matrix 覆盖） |
-| 第一套桌面（`apps/workbench` + `apps/workbench-go`） | **Node 22+**（CI 固定 22）与 **Go 1.27+ / Wails CLI v3.1.0**——**不需要 JDK，也不需要 Android SDK** | ✅ 本机 node v24.18.0 / npm 11.16.0 / go1.27.4 可用；安装包发布暂停（见 ADR-0042），现阶段只出本机可执行文件 |
+| 第一套桌面（`apps/workbench` + `apps/workbench-go`） | **Node 22+**（CI 固定 22）与 **Go 1.27+ / Wails CLI v3.1.0**——**不需要 JDK，也不需要 Android SDK** | ✅ 本机 node v24.18.0 / npm 11.16.0 / go1.27.4 可用；打 `workbench-v*` tag 由 CI 矩阵出 DMG / DEB / NSIS EXE，本机可先跑 `tools/package_workbench_go.sh` |
 
 #### mac 端退役后残留的两个脚本
 

@@ -37,7 +37,7 @@ KnowFlick 是多端学习工作台。**活计划是 [ADR-0002](docs/adr/0002-des
    | --- | --- | --- |
    | 已删除的 `apps/mac/**` | — | 不要恢复 |
    | `:desktop`（JVM + Skiko） | — | 已冻住：不加功能，闭环跑通前不删。新桌面不在这里加 |
-   | `apps/workbench/**` + `apps/workbench-go/**`（第一套桌面，Vite + React 前端 + Go 壳） | 任意机器（Node 22+ 与 Go 1.27+） | `./tools/verify_workbench.sh`（`npm test` + `tsc` + 静态守卫 + `go vet` / `go test` + 回环对拍，同 `workbench.yml`）；发布暂停（[workbench-release.yml](.github/workflows/workbench-release.yml) 目前是占位 job，tag 不触发） |
+   | `apps/workbench/**` + `apps/workbench-go/**`（第一套桌面，Vite + React 前端 + Go 壳） | 任意机器（Node 22+ 与 Go 1.27+） | `./tools/verify_workbench.sh`（`npm test` + `tsc` + 静态守卫 + `go vet` / `go test` + 回环对拍，同 `workbench.yml`）；发布走 `workbench-v*` tag（[workbench-release.yml](.github/workflows/workbench-release.yml)：三平台 DMG / DEB / NSIS EXE） |
    | `apps/android/{domain,shared-data,shared-ui,desktop}/**`（共享逻辑 / 持久化 / 界面 + 桌面宿主） | 任意机器，**只需 JDK 17，不要 SDK** | `cd apps/android && ./gradlew :domain:jvmTest :shared-data:jvmTest :shared-ui:jvmTest :desktop:test`（201 项） |
    | 其余 `apps/android/**` | 任意机器（JDK 17 + SDK） | `./tools/build_android.sh` |
    | `shared/**` 契约 | 任意机器，但**两端 CI 都要绿** | `python3 tools/check_taxonomy.py` |
@@ -62,7 +62,8 @@ KnowFlick 是多端学习工作台。**活计划是 [ADR-0002](docs/adr/0002-des
 ./tools/build_android.sh           # android：单测 + Lint + release + 签名校验
 cd apps/android && ./gradlew :domain:jvmTest :shared-data:jvmTest :shared-ui:jvmTest :desktop:test   # 共享逻辑/持久化/界面 + 桌面宿主（只需 JDK 17，无需 SDK）
 cd apps/android && ./gradlew :desktop:packageDmg   # 冻结 JVM 桌面安装包（本系统；三端由 desktop.yml 的 matrix 出）
-./tools/verify_workbench.sh        # 第一套桌面：npm test + tsc + 静态守卫 + go vet/go test + 回环对拍（安装包发布通道暂停）
+./tools/verify_workbench.sh        # 第一套桌面：npm test + tsc + 静态守卫 + go vet/go test + 回环对拍
+./tools/package_workbench_go.sh    # 第一套桌面安装包：本机出 DMG / DEB / NSIS EXE（版本只认 package.json）
 python3 tools/check_taxonomy.py    # 契约 JSON 与共享端学科表一致
 python3 tools/check_clip_parity.py # 剪藏规则表：Kotlin ↔ TypeScript 逐条一致（有序表按序比、集合表按集合比、token 必须全小写）
 ```
@@ -118,7 +119,7 @@ Go 侧构建产物另有位置：`apps/workbench-go/bin/`（可执行文件）�
   迁 Go 后没有 `tauri.conf.json` 可列，但同一条原则仍适用：**不要在别处再复制一份**。
 - **第一套桌面的图标是派生物**：源是**唯一一份美术** `shared/icons/AppIcon.iconset/`（派生出的
   `.icns` / `.ico` / `.png` 在 `shared/icons/`）。旧的 `npx tauri icon` 生成流程已随 Rust 壳删除，
-  当前 Go 构建不消费安装包图标；**恢复打包时再补生成步骤**，别把美术源当死代码删掉。
+  现在 Go 打包直接消费它们（macOS 用 `.icns`、NSIS 用 `.ico`、DEB 用 `.png`）；要改图标得先拿到美术源重跑生成脚本。
   ⚠️ **美术源本身不入 Git**（`.gitignore` 里忽略，理由见那里的注释）——仓库分发的只有派生出的
   `.icns` / `.ico` / `.png`。新 clone 的机器上没有 iconset，**要改图标得先拿到原始美术**，否则 `generate_app_icons.py` 会因找不到母版直接退出。
   `tools/build_icon.swift`（母版 → iconset，末尾自动调 `iconutil`）与 `tools/verify_icon.swift`（逐像素校验 ICNS 各阶是否与母版一致）

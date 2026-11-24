@@ -114,7 +114,7 @@ OpenAI 兼容端点客户端。**只连用户自己的端点**：不做 KnowFlic
 ## 应用图标（AppIcon）
 **美术只有一份**：`shared/icons/AppIcon.iconset/`。各打包器各取所需，产物随仓库分发：
 - `tools/generate_app_icons.py` 派生 `shared/icons/AppIcon.{icns,ico,png}`（`.icns` 要 macOS 的 `iconutil`，非 macOS 跳过），服务冻住的 JVM 桌面打包；
-- 第一套桌面原先用自己的 `apps/workbench/src-tauri/icons/`（`npx tauri icon` 派生，含 `.icns` / `.ico` / 各档 PNG）；Rust 壳已随 ADR-0042 删除，当前 Go 构建不消费安装包图标（恢复打包时再补生成步骤）；
+- 第一套桌面原先用自己的 `apps/workbench/src-tauri/icons/`（`npx tauri icon` 派生，含 `.icns` / `.ico` / 各档 PNG）；Rust 壳已随 ADR-0042 删除，Go 打包直接消费这份派生图标（DMG 用 `.icns`、NSIS 用 `.ico`、DEB 用 `.png`）；
 - Android 用矢量 drawable，不用 `.icns`。
 
 圆角与投影由美术决定（生成脚本只做 26% 圆角掩码）；「Sonoma 超椭圆规范」那类描述属美术说明，不是代码契约。

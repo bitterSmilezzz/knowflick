@@ -23,9 +23,10 @@ Go 的 0.069 s、136 处前后端手工对齐、两套工具链与两套测试�
    不在工作树里保留副本。
 2. **第一套桌面 = `apps/workbench`（前端）+ `apps/workbench-go`（Go 壳）**。构建入口只有
    `tools/build_workbench_go.sh`（Wails v3 单二进制），它同时产出 `apps/workbench-go/bin/` 与嵌入的前端 bundle。
-3. **发布通道暂停**。`workbench-release.yml` 保留一个显式的失败占位 job：Go 侧的 DMG / MSI / DEB 打包
-   与校验方案尚未就绪，打 `workbench-v*` tag 不再触发任何构建、也不产出附件。与其留一条注定红或
-   静默产出残缺附件的线，不如显式停掉。
+3. **发布通道先暂停，再于 2026-11-24 由 Go 打包矩阵恢复**。暂停期只留一个显式失败的占位 job；
+   恢复后：`workbench-v*` tag 触发 macOS / Linux / Windows 三平台构建（DMG / DEB / NSIS 安装器），
+   组装脚本校验命名与版本、生成 `SHA256SUMS.txt` 并上传 Release。**没有沿用 MSI**：Wails v3 的
+   `wails3 package` 只支持 deb / rpm / archlinux / dmg，Windows 侧改用 NSIS 出 `.exe` 安装器。
 4. **只保护 Tauri 的检查一并删除**：`tools/check_tauri_permissions.py`（命令 / `build.rs` / capability
    三处一致）与它的回归测试。Tauri ACL 已不存在，这条检查没有可守的对象。
 5. **有跨端价值的检查迁到 Go，而不是删掉**：
@@ -54,21 +55,34 @@ Go 的 0.069 s、136 处前后端手工对齐、两套工具链与两套测试�
 - 门禁（`tools/verify_workbench.sh`）现在是：前端 `npm test` + `tsc` + 静态守卫（含新的 Go 错误文案与
   来源标签）→ `go vet` + `go test ./...` → 回环判定 Go↔TS 对拍 → 本机浏览器冒烟。CI 对应
   `workbench.yml` 的 web-checks / go-checks / browser-smokes 三个 job。
-- **发布能力是净损失**：在 Go 打包方案就绪前，第一套桌面只能在本机构建可执行文件，用户拿不到 DMG / MSI / DEB。
-  这是有意接受的代价（工作树里没有任何一条 Rust 路径能继续产出）。
+- **发布能力暂停后又恢复（2026-11-24）**：`tools/package_workbench_go.sh` 在本机产出
+  macOS DMG；`workbench-release.yml` 的三平台矩阵在 CI 各产一个安装包（DMG / DEB / NSIS `.exe`），
+  组装脚本再统一校验命名与版本并生成 `SHA256SUMS.txt`。实测证据见下节「后续落地」。
 
-## 遗留（明确未做，不要当成已完成）
+## 后续落地（2026-11-24）：四项遗留的处理结果
 
-1. **前端仍 import `@tauri-apps/api` 等 JS 包**。Go 构建通过 `apps/workbench/go-preview/vite.config.mts`
-   的 alias 把它们换成 `tauri*Shim.ts`（走 Wails bindings），因此运行时已无 Tauri；但这套命名与依赖
-   仍是历史包袱，后续应改名（如 `shell/*`）并移除 `@tauri-apps/*` 依赖。
-2. **「半中半英」错误消息没有守卫**。Rust 版还有一条检查：不允许把底层错误直接拼进中文句子
-   （`{e}`）。Go 侧对应写法是 `fmt.Errorf("前缀：%w", err)`，现有 121 处。要治理得先有
-   `error_text.explain(...)` 的等价层，本轮只在 `check_go_error_messages.py` 守「整句英文」这一类。
-3. **安装包图标生成流程缺失**。`npx tauri icon` 随 Rust 壳删除；`shared/icons/AppIcon.iconset/` 美术源与
-   派生图标仍在，恢复打包时补生成步骤。
-4. **打包/发布矩阵未重建**。三平台安装包格式、产物命名、tag 规则与附件清单要在 Go 打包方案里重新定义，
-   然后把 `workbench-release.yml` 的占位 job 换回真实矩阵。
+1. **前端 `@tauri-apps/*` 依赖已移除**。桥接层收进 `apps/workbench/src/shell/bridge/`（`invoke` +
+   `commandTable`、`dialog`、`events`、`notifications`、`app`、`wails`）；桌面走 Wails
+   `Call.ByName` / `Events.On`，浏览器模式安全降级（对话框返回 null、事件空退订）。
+   `package.json` 删掉三个 Tauri 依赖与 CLI，lockfile 同步。
+2. **半中半英错误已治理并加守卫**。新增 `apps/workbench-go/internal/errtext`：`Explain` 给出中文原因 +
+   下一步，`Wrap` 保留中文前缀、把原始英文放括号里并保住 `errors.Is` 链。116 处 `%w` / `%v`
+   改走 `errtext.Wrap`；`check_go_error_messages.py` 除「整句英文」外，新增「`%w` 未走 errtext」判据。
+3. **安装包图标已接入**。打包直接消费 `shared/icons/AppIcon.icns`（macOS）、`AppIcon.ico`（NSIS）、
+   `AppIcon.png`（DEB 的 hicolor 图标）；美术源与派生流程不变，不再依赖 `npx tauri icon`。
+4. **打包/发布矩阵已重建**。三平台由 `workbench-release.yml` 矩阵产出，命名统一为
+   `KnowFlick-Workbench-<版本>-<系统>-<架构>.<扩展名>`，版本只校验 `apps/workbench/package.json`；
+   `tools/assemble_workbench_release.sh` 生成 `SHA256SUMS.txt` 并（tag 时）上传 Release。
+   CI 实测（run 45304074590）三 job 全绿，产物 6.9 MB DEB / 10.8 MB DMG / 8.1 MB EXE；
+   DMG 在本机挂载并启动成功，DEB 结构/control/文件清单与 EXE 的 Nullsoft 结构均已核对。
+
+### 仍未覆盖
+- **Intel Mac 未出包**：本机与 `macos-latest` 都是 arm64，x64 任务未接入矩阵。
+- **未做代码签名 / 公证 / Windows 签名**：macOS 是 ad-hoc 签名，首次打开会被 Gatekeeper 拦；
+  Windows 安装器未签名，SmartScreen 会提示。需要证书后另行接入。
+- **Windows 安装/卸载未在真机走过**：CI 只验证了打包与产物结构。
+- **真实 tag 发布的上传步骤**：dispatch 演练已验证「下载产物 → 校验命名/版本 → SHA256SUMS」，
+  `gh release upload` 这一跳要等第一次真实 `workbench-v*` tag 才实跑（逻辑同演练，差异只在权限与 token）。
 
 ## 复现与回滚
 

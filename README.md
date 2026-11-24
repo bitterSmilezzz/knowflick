@@ -51,9 +51,9 @@ KnowFlick 把「你收藏的内容」变成「你能复习的卡片」。知识�
 
 第一版**不含**：语音朗读、磨耳朵、知识星图、卡片追问、海报导出、局域网同步、桌面微件、学习地图。
 
-### 下载安装（暂停）
+### 下载安装
 
-安装包发布通道**目前暂停**：Rust/Tauri 壳已整体删除（[ADR-0042](docs/adr/0042-remove-tauri-rust.md)），Go 侧（Wails v3）还没有 DMG / MSI / DEB 的打包与校验方案。`workbench-v*` tag 现在**不会**触发构建，也不会产出 Release 附件；历史 Release 里的安装包对应的是已删除的 Rust 实现。现阶段只能用本机构建（见下节）。
+`workbench-v*` tag 会触发三平台构建并附到 Release：macOS `.dmg`、Linux `.deb`、Windows `.exe`（NSIS 安装器）。产物名 `KnowFlick-Workbench-<版本>-<系统>-<架构>.<扩展名>`，Release 同时附 `SHA256SUMS.txt`。Go 版**没有 MSI**：Wails v3 的打包命令只支持 deb / rpm / archlinux / dmg，Windows 安装器用 NSIS 生成。
 
 > 未签名应用首次打开可能被系统拦下：macOS 在「系统设置 → 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine /Applications/KnowFlick.app`；Windows 在 SmartScreen 提示里选「更多信息 → 仍要运行」。
 
@@ -70,6 +70,7 @@ cd apps/workbench && npm ci          # 前端依赖（go-preview 构建也要用
 ./tools/verify_workbench.sh          # 门禁：npm test + tsc + 静态守卫 + go vet/go test + 回环对拍
 ./tools/verify_workbench.sh web      # 只跑前端那半
 ./tools/verify_workbench.sh go       # 只跑 Go 那半（含回环对拍，需要前端 node_modules）
+./tools/package_workbench_go.sh      # 本机安装包：macOS .app + .dmg / Linux .deb / Windows NSIS .exe
 
 # 只改前端时可用浏览器模式（无壳能力）：cd apps/workbench && npm run dev
 # 门禁里还包含 18 套浏览器冒烟（界面级回归）。它们要真实浏览器与运行中的 Vite，
@@ -78,8 +79,9 @@ npm run dev &                        # 另开一个终端：apps/workbench 里�
 ./tools/run_all_smokes.sh            # 只跑浏览器冒烟
 ```
 
-三平台安装包（DMG / MSI / DEB）**还没有 Go 版打包方案**，发布通道暂停（见上一节与
-[ADR-0042](docs/adr/0042-remove-tauri-rust.md)）。恢复条件满足前，不要打 `workbench-v*` tag 当发版。
+三平台安装包由 [workbench-release.yml](.github/workflows/workbench-release.yml) 的矩阵产出（DMG / DEB / NSIS EXE），
+打注解 tag `workbench-v<版本>` 触发；版本校验只认 `apps/workbench/package.json`。当前未做代码签名与 macOS 公证，
+未签名首启会被系统拦（见上节提示）。
 
 ## Android 端
 
