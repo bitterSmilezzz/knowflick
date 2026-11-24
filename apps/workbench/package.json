@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run --maxWorkers=4",
-    "gate:taste": "node ../../tools/taste_usability_gate.mjs && node ../../tools/usability_journey_smoke.mjs"
+    "gate:taste": "node ../../tools/browser_resource_guard.mjs run node ../../tools/taste_usability_gate.mjs && node ../../tools/browser_resource_guard.mjs run node ../../tools/usability_journey_smoke.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

@@ -72,15 +72,11 @@ echo "前端已就绪：$URL"
 # 而那段一次性代价算在第一套套件的等待预算里，看起来就像「界面没渲染出来」。
 # 预热用真实浏览器打开一次页面并等到工作台出现，等价于把这段代价挪出套件预算；
 # 它不改任何断言——预热失败也不影响后续判断，各套自己还会再等。
-agent-browser --session kf-ci-warmup open "$URL" >/dev/null 2>&1 || true
-for _ in $(seq 1 60); do
-  if [ "$(agent-browser --session kf-ci-warmup eval 'JSON.stringify(!!document.querySelector(".ws"))' 2>/dev/null | tail -1)" = "true" ]; then
+node tools/browser_resource_guard.mjs run bash -c '
+  agent-browser --session kf-ci-warmup open "$1" >/dev/null &&
+    agent-browser --session kf-ci-warmup wait --fn "!!document.getElementsByClassName(\"ws\").length" &&
     echo "首屏预热完成"
-    break
-  fi
-  sleep 2
-done
-agent-browser --session kf-ci-warmup close >/dev/null 2>&1 || true
+' _ "$URL" || echo "预热未完成，继续执行冒烟套件" >&2
 
 # 逐套跑，不用 run_all_smokes.sh：那个脚本在缺 agent-browser 时 exit 0，
 # 在 CI 上会变成「什么都没跑也算成功」。这里自己遍历，缺任何一套都算失败。
@@ -112,7 +108,7 @@ for suite in "${SUITES[@]}"; do
   # 全推给「本机复现一下」——而 CI 与本机的差异（更慢的机器、更小的视口）
   # 恰恰是这些套件失败的原因。这里把尾部输出打进注解，一眼能看出卡在哪条断言。
   suite_log="$(mktemp -t "knowflick-$suite.XXXXXX.log")"
-  if node "tools/$suite.mjs" 2>&1 | tee "$suite_log"; then
+  if node tools/browser_resource_guard.mjs run node "tools/$suite.mjs" 2>&1 | tee "$suite_log"; then
     echo "OK $suite"
   else
     echo "::error::$suite 失败" >&2
@@ -128,8 +124,6 @@ for suite in "${SUITES[@]}"; do
     failed="$failed $suite"
   fi
   rm -f "$suite_log"
-  # 浏览器会话异步关闭，给下一套留出与本机门禁相同的清理时间。
-  sleep 1
 done
 
 if [ -n "$failed" ]; then

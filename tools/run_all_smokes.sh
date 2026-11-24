@@ -32,20 +32,6 @@ if [ "$vite_up" -ne 1 ]; then
   exit 0
 fi
 
-# 资源闸门：18 套冒烟每套都拉一个 Chromium。并行跑或上一轮没关干净时，
-# 浏览器会堆到十几个、吃掉数 GB 内存——症状是 CDP 通道被关、断言假红。
-# 这里取单飞锁并做进程/内存预检；无论成功失败都在退出时放锁并收掉浏览器。
-node tools/browser_resource_guard.mjs acquire
-guard_held=1
-cleanup_browser() {
-  if [ "$guard_held" = 1 ]; then
-    agent-browser close --all >/dev/null 2>&1 || true
-    node tools/browser_resource_guard.mjs release || true
-    guard_held=0
-  fi
-}
-trap cleanup_browser EXIT INT TERM
-
 # 顺序有意：先跑便宜的（界面级），最后跑重的（桌面交互）。
 SUITES=(
   taste_usability_gate
@@ -81,16 +67,13 @@ for suite in "${SUITES[@]}"; do
   [ -f "$script" ] || { echo "缺少 ${script}，跳过" >&2; continue; }
   printf '%-30s ' "$suite"
   # 单套超时：卡死的套件不该一直占着浏览器与内存（默认 300s，KF_SMOKE_TIMEOUT 可调）。
-  if out="$(timeout "${KF_SMOKE_TIMEOUT:-300}" node "$script" 2>&1)"; then
-    echo "$out" | tail -1
+  if out="$(node tools/browser_resource_guard.mjs run node "$script" 2>&1)"; then
+    echo "$out" | tail -2
   else
     echo "失败"
     echo "$out" | tail -20
     failed=1
   fi
-  # 每套结束都收掉它自己的浏览器会话：进程数不累积（不关时连跑会抢服务）。
-  agent-browser close --all >/dev/null 2>&1 || true
-  sleep 1
 done
 
 # 真机专有那几套：需要已安装并运行的桌面客户端。
@@ -99,14 +82,13 @@ for suite in "${DESKTOP_ONLY_SUITES[@]}"; do
   script="tools/${suite}.mjs"
   [ -f "$script" ] || { echo "缺少 ${script}，跳过" >&2; continue; }
   printf '%-30s ' "$suite"
-  if out="$(timeout "${KF_SMOKE_TIMEOUT:-300}" node "$script" 2>&1)"; then
-    echo "$out" | tail -1
+  if out="$(node tools/browser_resource_guard.mjs run node "$script" 2>&1)"; then
+    echo "$out" | tail -2
   else
     echo "失败"
     echo "$out" | tail -20
     failed=1
   fi
-  agent-browser close --all >/dev/null 2>&1 || true
 done
 
 if [ "$failed" -ne 0 ]; then
