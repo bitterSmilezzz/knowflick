@@ -124,9 +124,10 @@ jobs:
         run: |
           version=$(node -p "require('./apps/workbench/package.json').version")
           deb="./dist/workbench/KnowFlick-Workbench-$version-linux-amd64.deb"
-          sudo apt-get install -y "$deb"
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$deb" dbus-x11
           export KNOWFLICK_DEBUG_DATA_ROOT="$RUNNER_TEMP/knowflick-smoke"
-          GDK_BACKEND=x11 xvfb-run -a bash -e -c '
+          # WebKitGTK 在无头 CI 上需要会话总线；否则 dbus-proxy 起不来，应用直接 abort。
+          dbus-run-session -- xvfb-run -a env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 GDK_BACKEND=x11 bash -e -c '
             knowflick &
             pid=$!
             trap "kill $pid 2>/dev/null || true" EXIT
