@@ -6,6 +6,10 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [Workbench 0.1.0] - 2026-11-24
+
+首个 Go 版第一套桌面正式版：Rust/Tauri 壳已删除，三平台安装包（macOS DMG / Linux DEB / Windows NSIS EXE）与发布矩阵落地；前端去掉 `@tauri-apps/*` 依赖，用户可见错误改为中文原因 + 下一步。产物与验证证据见 [发布记录](docs/workbench_RELEASE_0.1.0.md)。
+
 ## [Unreleased]
 
 - 工作台（ADR-0042）：**删除 Rust/Tauri 壳**——`apps/workbench/src-tauri/`（Cargo 清单、`build.rs`、capabilities、permissions、icons、src）整体移除；第一套桌面现在是 `apps/workbench` 前端 + `apps/workbench-go` Go 壳（Wails v3 单二进制），构建入口只剩 `./tools/build_workbench_go.sh`。
