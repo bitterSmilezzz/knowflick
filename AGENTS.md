@@ -79,6 +79,23 @@ python3 tools/check_clip_parity.py # 剪藏规则表：Kotlin ↔ TypeScript 逐
 Go 侧构建产物另有位置：`apps/workbench-go/bin/`（可执行文件）与 `apps/workbench-go/assets/dist/`（嵌入的前端 bundle），
 都在 .gitignore 管辖内、跨机不可复制；需要回收空间时删掉重编即可（`./tools/build_workbench_go.sh`）。
 
+## 资源纪律（测试与构建）
+
+本机的浏览器冒烟每套都会拉起一个 Chromium。并行跑、或上一轮崩了没关干净时，进程会堆到十几个、
+吃掉数 GB 内存——症状不是报错，而是 CDP 通道被关、断言莫名其妙变红。所以：
+
+- **同一时刻只跑一套浏览器冒烟**：`tools/run_all_smokes.sh` 是串行的，开跑前用
+  `tools/browser_resource_guard.mjs acquire` 取单飞锁（`.scratch/locks/browser-smoke.lock`），
+  退出时 `close --all` 并放锁。手工跑单套冒烟也先取锁，别两套并行。
+- **上限可调、有默认值**：`KF_BROWSER_MAX_PROCS`（浏览器进程上限，默认 6）、
+  `KF_BROWSER_MIN_FREE_MB`（可用内存下限，默认 256）、`KF_SMOKE_TIMEOUT`（单套超时，默认 300s）。
+  预检不过时闸门会说明原因并退出，不带着满内存硬跑。
+- **单测与 Go 测试限并发**：`npm test` 走 `vitest run --maxWorkers=4`（改在 package.json），
+  Go 测试用 `-p "${KF_GO_PARALLEL:-2}"`（在 `tools/verify_workbench.sh` 里）。
+  想加速可以显式调高，但两台机器同时跑门禁时不要一起调高。
+- **收尾**：一次冒烟跑完先 `agent-browser close --all`；异常中断留下的会话阻塞下一轮时，
+  用 `node tools/browser_resource_guard.mjs status` 看锁与进程数，确认后删掉锁目录。
+
 ## 会话工作区与文档纪律
 
 - **临时产物写 `.scratch/<主题>/`**（已 gitignore），不要散落在仓库根目录；不要提交 `.scratch/` 内容。

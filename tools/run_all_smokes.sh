@@ -32,6 +32,20 @@ if [ "$vite_up" -ne 1 ]; then
   exit 0
 fi
 
+# 资源闸门：18 套冒烟每套都拉一个 Chromium。并行跑或上一轮没关干净时，
+# 浏览器会堆到十几个、吃掉数 GB 内存——症状是 CDP 通道被关、断言假红。
+# 这里取单飞锁并做进程/内存预检；无论成功失败都在退出时放锁并收掉浏览器。
+node tools/browser_resource_guard.mjs acquire
+guard_held=1
+cleanup_browser() {
+  if [ "$guard_held" = 1 ]; then
+    agent-browser close --all >/dev/null 2>&1 || true
+    node tools/browser_resource_guard.mjs release || true
+    guard_held=0
+  fi
+}
+trap cleanup_browser EXIT INT TERM
+
 # 顺序有意：先跑便宜的（界面级），最后跑重的（桌面交互）。
 SUITES=(
   taste_usability_gate
@@ -66,16 +80,16 @@ for suite in "${SUITES[@]}"; do
   script="tools/${suite}.mjs"
   [ -f "$script" ] || { echo "缺少 ${script}，跳过" >&2; continue; }
   printf '%-30s ' "$suite"
-  if out="$(node "$script" 2>&1)"; then
+  # 单套超时：卡死的套件不该一直占着浏览器与内存（默认 300s，KF_SMOKE_TIMEOUT 可调）。
+  if out="$(timeout "${KF_SMOKE_TIMEOUT:-300}" node "$script" 2>&1)"; then
     echo "$out" | tail -1
   else
     echo "失败"
     echo "$out" | tail -20
     failed=1
   fi
-  # 每套结束时关掉自己的浏览器会话，但那是**异步**的——不等它关完就起下一套，
-  # 两套会抢同一个 agent-browser 服务。实测这样会让 scale 冒烟在连跑时
-  # 偶发超时（单跑时最慢 51-76ms，连跑时可能超预算）。给一点间隔。
+  # 每套结束都收掉它自己的浏览器会话：进程数不累积（不关时连跑会抢服务）。
+  agent-browser close --all >/dev/null 2>&1 || true
   sleep 1
 done
 
@@ -85,17 +99,18 @@ for suite in "${DESKTOP_ONLY_SUITES[@]}"; do
   script="tools/${suite}.mjs"
   [ -f "$script" ] || { echo "缺少 ${script}，跳过" >&2; continue; }
   printf '%-30s ' "$suite"
-  if out="$(node "$script" 2>&1)"; then
+  if out="$(timeout "${KF_SMOKE_TIMEOUT:-300}" node "$script" 2>&1)"; then
     echo "$out" | tail -1
   else
     echo "失败"
     echo "$out" | tail -20
     failed=1
   fi
+  agent-browser close --all >/dev/null 2>&1 || true
 done
 
 if [ "$failed" -ne 0 ]; then
   echo "有冒烟套件失败" >&2
   exit 1
 fi
-echo "全部浏览器冒烟通过（${#SUITES[@]} 套）"
+echo "全部浏览器冒烟通过（${#SUITES[@]} 套；串行、单套超时 ${KF_SMOKE_TIMEOUT:-300}s）"
