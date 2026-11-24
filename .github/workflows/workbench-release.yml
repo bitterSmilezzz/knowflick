@@ -31,7 +31,7 @@ jobs:
   package:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -78,8 +78,9 @@ jobs:
                  -o Acquire::Retries=3 update \
                && sudo DEBIAN_FRONTEND=noninteractive timeout 1500 apt-get \
                  -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 \
-                 -o Acquire::Retries=3 install -y libgtk-4-dev libwebkitgtk-6.0-dev \
-                 libappindicator3-dev librsvg2-dev patchelf xdg-utils dpkg-dev xvfb xauth; then
+                 -o Acquire::Retries=3 install -y --no-install-recommends \
+                 libgtk-4-dev libwebkitgtk-6.0-dev libappindicator3-dev librsvg2-dev \
+                 patchelf xdg-utils dpkg-dev xvfb xauth; then
               exit 0
             fi
             echo "第 $attempt 次安装失败，等 30 秒重试" >&2
