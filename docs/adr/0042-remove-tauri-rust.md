@@ -81,8 +81,10 @@ Go 的 0.069 s、136 处前后端手工对齐、两套工具链与两套测试�
 - **未做代码签名 / 公证 / Windows 签名**：macOS 是 ad-hoc 签名，首次打开会被 Gatekeeper 拦；
   Windows 安装器未签名，SmartScreen 会提示。需要证书后另行接入。
 - **Windows 安装/卸载未在真机走过**：CI 只验证了打包与产物结构。
-- **真实 tag 发布的上传步骤**：dispatch 演练已验证「下载产物 → 校验命名/版本 → SHA256SUMS」，
-  `gh release upload` 这一跳要等第一次真实 `workbench-v*` tag 才实跑（逻辑同演练，差异只在权限与 token）。
+- **真实发版仍是所有者的决定**：上传路径已用一次**草稿 Release** 实跑验证（run 45309459222：
+  tag 触发三平台构建 → 组装 → `gh release upload`，草稿里出现 3 个安装包 + `SHA256SUMS.txt`，
+  验证后草稿与 tag 均已删除）。正式发布只需对目标提交打 `workbench-v*` tag（当前版本 0.1.0），
+  不再需要改代码。
 
 ## 复现与回滚
 
