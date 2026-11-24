@@ -124,7 +124,7 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "read_webdav_credential": {"service": "PreviewService","method": "ReadWebDAVCredential","args": ["generation"]},
   "request_embeddings": {"service": "PreviewService","method": "RequestEmbeddings","args": ["endpoint","apiKey","model","input"]},
   "review_history_period": {"service": "PreviewService","method": "ReadReviewHistoryPeriod","args": ["generation","to"]},
-  "review_record": {"service": "PreviewService","method": "RecordReview","args": ["generation","state","event"]},
+  "review_record": {"service": "PreviewService","method": "RecordReview","args": ["generation","card","event"]},
   "save_cards": {"service": "PreviewService","method": "SaveCardsJSON","args": ["generation","text"]},
   "save_import_report": {"service": "PreviewService","method": "SaveImportReport","args": ["generation","text"]},
   "save_media": {"service": "PreviewService","method": "SaveMediaCapture","args": ["generation","kind","mime","dataB64"]},

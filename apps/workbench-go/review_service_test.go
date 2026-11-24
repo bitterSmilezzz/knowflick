@@ -44,26 +44,31 @@ func TestPreviewReviewOnRustLibrary(t *testing.T) {
 		ID: "33333333-3333-4333-8333-333333333333", CardID: card.ID, ReviewedAt: 1700000000200,
 		Rating: reviewhistory.RatingGood, Algorithm: reviewhistory.AlgorithmFsrs, ProjectIDs: []string{},
 	}
-	state := reviewhistory.CardState{
-		ID: card.ID, ReviewCount: card.ReviewCount + 1, MasteryLevel: 1, LastReviewedAt: &event.ReviewedAt,
-		Repetition: 1, IntervalDays: 3, EaseFactor: 2.46, Stability: 3.1, Difficulty: 4,
-	}
-	if _, err := service.RecordReview(ctx, opened.Generation, state, event); !errors.Is(err, library.ErrReadOnly) {
+	// 线上契约是「评分后的整张卡」：这里按前端会发出的样子改学习字段。
+	card.ReviewCount++
+	card.MasteryLevel = 1
+	card.LastReviewedAt = &event.ReviewedAt
+	card.Repetition = 1
+	card.IntervalDays = 3
+	card.EaseFactor = 2.46
+	card.Stability = 3.1
+	card.Difficulty = 4
+	if _, err := service.RecordReview(ctx, opened.Generation, card, event); !errors.Is(err, library.ErrReadOnly) {
 		t.Fatalf("read-only review: %v", err)
 	}
 	writable, err := service.EnableEditing(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.RecordReview(ctx, opened.Generation, state, event); err == nil {
+	if _, err := service.RecordReview(ctx, opened.Generation, card, event); err == nil {
 		t.Fatal("accepted a stale library generation")
 	}
-	if inserted, err := service.RecordReview(ctx, writable.Generation, state, event); err != nil || !inserted {
+	if inserted, err := service.RecordReview(ctx, writable.Generation, card, event); err != nil || !inserted {
 		t.Fatalf("review: %v, %v", inserted, err)
 	}
 	deck, err = service.LoadReviewDeck(ctx, writable.Generation)
-	if err != nil || len(deck.Cards) != 1 || deck.Cards[0].ReviewCount != state.ReviewCount || deck.Cards[0].Stability != state.Stability {
-		t.Fatalf("review state: %+v, %v", deck, err)
+	if err != nil || len(deck.Cards) != 1 || deck.Cards[0].ReviewCount != card.ReviewCount || deck.Cards[0].Stability != card.Stability {
+		t.Fatalf("review card: %+v, %v", deck, err)
 	}
 	history, err := service.ReadReviewHistoryPeriod(writable.Generation, event.ReviewedAt, event.ReviewedAt)
 	if err != nil || len(history.Events) != 1 || history.Events[0].ID != event.ID || history.Events[0].ProjectAttributionComplete {
