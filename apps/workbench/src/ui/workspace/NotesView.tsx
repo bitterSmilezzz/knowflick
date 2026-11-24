@@ -143,9 +143,11 @@ interface Props {
   onOpenMaterial?: (id: string) => void;
   /** 原生文件选择新增附件；返回 media/ 相对路径后插入引用。 */
   onAddAttachment?: () => Promise<string | null>;
+  listShown?: boolean;
+  onOpenEditor?: () => void;
 }
 
-export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, materials = [], onOpenMaterial, onAddAttachment }: Props) {
+export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, materials = [], onOpenMaterial, onAddAttachment, listShown = true, onOpenEditor }: Props) {
   const [state, setState] = useState<NotesState>(emptyNotesState);
   const [loaded, setLoaded] = useState(false);
   const [notesReadFor, setNotesReadFor] = useState<string | null>(null);
@@ -361,6 +363,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
 
   const openNote = useCallback(
     (note: Note) => {
+      onOpenEditor?.();
       // 点的是正打开的这篇：什么都不动——重置会把未保存的草稿盖回旧内容。
       if (note.id === selectedIdRef.current) return;
       // 切走前冲掉上一篇的脏草稿（后台冲刷；结果与冲突都留在那个会话里）。
@@ -400,7 +403,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       if (restoredHint) setStatusNote(restoredHint);
       setViewError("");
     },
-    [attachSession, currentSession, syncFromSession]
+    [attachSession, currentSession, onOpenEditor, syncFromSession]
   );
 
   // T13/G01：全局搜索命中笔记后跳到笔记页——按 id 定位并打开那篇。
@@ -426,6 +429,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const createNote = useCallback((templateId: NoteTemplateId = "blank", preset?: { title: string; body: string }) => {
     const prev = currentSession();
     if (prev && prev.isDirty && prev.snapshot().phase !== "conflict") void prev.flush();
+    onOpenEditor?.();
     const draft = createNoteDraft();
     const s = new NoteSession(draft, ioRef.current);
     sessionsRef.current.set(draft.id, s);
@@ -449,7 +453,7 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
       setViewNotice(preset ? "已导入文件" : `已按「${findNoteTemplate(templateId).label}」模板新建`);
     }
     // 空笔记先不落库：等第一段内容进来再保存，避免堆积空笔记。
-  }, [attachSession, currentSession]);
+  }, [attachSession, currentSession, onOpenEditor]);
 
   /** 导入 Markdown：读文件 → 变成「标题 + 正文」→ 走新建笔记的同一条路径（自动保存）。 */
   const importMarkdown = useCallback(async (file: File) => {
@@ -1454,8 +1458,8 @@ export function NotesView({ dir, attachableMedia, onStateChange, openNoteId, mat
   const notInKbs = state.knowledgeBases.filter((k) => !selectedKbIds.includes(k.id));
 
   return (
-    <div className="nv-root" data-page="notes">
-      <section className="nv-list" aria-label="笔记列表">
+    <div className="nv-root" data-page="notes" data-notes-list={listShown ? "expanded" : "collapsed"}>
+      <section id="notes-list" className="nv-list" aria-label="笔记列表">
         <div className="nv-list-head">
           <h1>笔记</h1>
           <button className="ws-primary" type="button" onClick={() => createNote()} disabled={!loaded}>

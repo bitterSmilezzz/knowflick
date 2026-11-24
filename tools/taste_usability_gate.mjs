@@ -320,6 +320,7 @@ try {
   // 这两个面板是手写的 div（不是原生 <dialog>），没有浏览器自带的焦点陷阱。
   // 实测修之前：打开面板后连按 12 次 Tab，焦点始终在侧栏——面板里的
   // 「开始录音」「取消」「保存」全部键盘不可达，Escape 也关不掉。
+  await browser("click", ".ws-record-options > summary");
   await browser("click", '[aria-label="语音笔记"]');
   await new Promise((r) => setTimeout(r, 400));
   const panelFocus = await evaluate(`(() => {

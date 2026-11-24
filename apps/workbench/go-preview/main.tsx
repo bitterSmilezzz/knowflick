@@ -54,26 +54,24 @@ import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/sta
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 
 /** 版本与隐私折叠区：应用内唯一的「关于」入口（原生菜单的「关于 KnowFlick」也指向它）。 */
-function WorkbenchAbout({ openKey }: { openKey?: string }) {
-  const ref = useRef<HTMLDetailsElement | null>(null);
-  const [opened, setOpened] = useState(false);
+function WorkbenchAbout({ openRequest = 0 }: { openRequest?: number }) {
+  const ref = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
-    if (!openKey || opened) return;
-    setOpened(true);
-    const node = ref.current;
-    if (!node) return;
-    node.open = true;
-    node.scrollIntoView({ block: "nearest" });
-  }, [openKey, opened]);
+    if (!openRequest || !ref.current) return;
+    ref.current.open = true;
+    ref.current.querySelector("summary")?.focus();
+  }, [openRequest]);
   return (
-    <details className="preview-confirm" ref={ref}>
+    <details className="preview-about" ref={ref}>
       <summary>版本与隐私</summary>
-      <p>KnowFlick Workbench {appVersion}</p>
-      <p>
-        <a href="https://github.com/bitterSmilezzz/knowflick/blob/main/docs/PRIVACY.md" target="_blank" rel="noreferrer">隐私与数据说明</a>
-        {" · "}
-        <a href="https://github.com/bitterSmilezzz/knowflick/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noreferrer">第三方组件与许可</a>
-      </p>
+      <div className="preview-about-content">
+        <p>KnowFlick Workbench {appVersion}</p>
+        <p>
+          <a href="https://github.com/bitterSmilezzz/knowflick/blob/main/docs/PRIVACY.md" target="_blank" rel="noreferrer">隐私与数据说明</a>
+          {" · "}
+          <a href="https://github.com/bitterSmilezzz/knowflick/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noreferrer">第三方组件与许可</a>
+        </p>
+      </div>
     </details>
   );
 }
@@ -144,7 +142,7 @@ function Preview() {
   const [webdavSecret, setWebdavSecret] = useState("");
   const [webdavRemember, setWebdavRemember] = useState(false);
   // 原生菜单的「关于/隐私/许可」通过 knowflick:menu 事件过来，这里转成折叠区的展开键。
-  const [aboutOpenKey, setAboutOpenKey] = useState("");
+  const [aboutOpenRequest, setAboutOpenRequest] = useState(0);
 
   useEffect(() => {
     setBridgeGeneration(lib?.generation ?? 0);
@@ -160,7 +158,9 @@ function Preview() {
   useEffect(() => {
     const onAbout = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail;
-      if (detail === "about" || detail === "privacy" || detail === "licenses") setAboutOpenKey(detail);
+      if (detail === "about" || detail === "privacy" || detail === "licenses") {
+        setAboutOpenRequest(value => value + 1);
+      }
     };
     window.addEventListener("knowflick:open-about", onAbout);
     return () => window.removeEventListener("knowflick:open-about", onAbout);
@@ -723,12 +723,22 @@ function Preview() {
     return (
       <section className="preview-shared-shell" aria-label="共享工作台">
         <div className="preview-shared-bar">
-          <button type="button" onClick={() => setSharedWorkspaceOpen(false)}>返回</button>
-          <button type="button" disabled={busy} onClick={() => void choose()}>打开资料库</button>
-          {lib && !lib.writable ? <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button> : null}
-          <span>{lib ? lib.name + (lib.writable ? "" : "（只读）") : "未打开资料库"}</span>
+          <details className="preview-library">
+            <summary>{lib ? lib.name + (lib.writable ? "" : "（只读）") : "未打开资料库"}</summary>
+            <div className="preview-library-actions" onClick={(event) => {
+              const trigger = event.target instanceof Element ? event.target.closest("button") : null;
+              if (trigger && !trigger.disabled) {
+                const disclosure = event.currentTarget.closest("details");
+                if (disclosure) disclosure.open = false;
+              }
+            }}>
+              <button type="button" disabled={busy} onClick={() => void choose()}>打开资料库</button>
+              {lib && !lib.writable ? <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button> : null}
+              <button type="button" onClick={() => setSharedWorkspaceOpen(false)}>旧版界面</button>
+            </div>
+          </details>
+          <WorkbenchAbout openRequest={aboutOpenRequest} />
         </div>
-        <WorkbenchAbout openKey={aboutOpenKey} />
         {lib ? <WorkspaceBoundary><Workspace key={lib.generation} /></WorkspaceBoundary> : <p className="preview-count">先打开一个资料库。</p>}
       </section>
     );

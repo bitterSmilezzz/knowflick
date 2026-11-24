@@ -16,6 +16,7 @@ const paths: Record<string, string> = {
   down: "m6 9 6 6 6-6",
   filter: "M4 6h16 M7 12h10 M10 18h4",
   panel: "M3 4h18v16H3z M10 4v16",
+  list: "M4 6h16 M4 12h16 M4 18h16",
   edit: "m4 16 12-12 4 4L8 20H4z M13 7l4 4",
   more: "M5 12h.01 M12 12h.01 M19 12h.01",
   ask: "M4 4h16v13H9l-5 4z M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4 M12 15v.1",

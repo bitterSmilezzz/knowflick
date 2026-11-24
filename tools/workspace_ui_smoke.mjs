@@ -39,6 +39,13 @@ async function check(expression, label) {
   }
   assert.fail(label);
 }
+async function setViewport(width, height) {
+  await browser("set", "viewport", String(width), String(height));
+  // 无头浏览器在页面被判为 hidden 时只改 innerWidth、不发 resize；React 的订阅
+  // 就收不到。补一次事件（真机上系统自己会发），否则断言测的是上一帧。
+  await browser("eval", 'window.dispatchEvent(new Event("resize")); true');
+}
+
 async function clickButton(text) {
   await browser(
     "eval",
@@ -97,7 +104,7 @@ try {
   // 只有 ~577px：列表与阅读区被折叠线切开，真实点击按坐标命中的就落到父容器上
   // （报的是「.ws-entry 被 <ul> 盖住」——不是元素没了，是它有一部分在视口外）。
   // 后面的窄窗用例自己会把视口调到 900 再调回来，不受影响。
-  await browser("set", "viewport", "1040", "760");
+  await setViewport(1040, 760);
   await browser("open", url);
   await browser("eval", "localStorage.clear();sessionStorage.clear()");
   await browser("open", url);
@@ -142,6 +149,9 @@ try {
     'document.querySelector(\'[aria-label="导入音频转写"]\').getAttribute("aria-disabled") === "true" && document.querySelector(\'[aria-label="导入音频转写"]\').title.includes("插件未启用")',
     "speech entry is unavailable while its plugin is off"
   );
+  await check('!document.querySelector(".ws-record-options").open', "secondary record modes start collapsed");
+  await browser("click", ".ws-record-options > summary");
+
   // 不可用也要能被键盘发现：Tab 能走到它（禁用按钮就做不到）
   await check(
     '(()=>{const el=document.querySelector(\'[aria-label="导入音频转写"]\');el.focus();return document.activeElement===el})()',
@@ -257,8 +267,38 @@ try {
   await browser("press", "Escape");
   await check('!document.querySelector("dialog[open]")', "Escape closes capture");
 
+  await browser("click", '[aria-label="收起导航栏"]');
+  await browser("click", '[aria-label="收起内容列表"]');
+  await check('getComputedStyle(document.querySelector(".ws-list")).display === "none" && getComputedStyle(document.querySelector(".ws-nav")).visibility === "hidden"', "both panes can collapse independently");
+  await browser("open", url);
+  await check('document.querySelector(".ws")?.dataset.nav === "collapsed" && document.querySelector(".ws").dataset.list === "collapsed"', "both collapse preferences survive reload");
+  await browser("focus", '[aria-label="展开内容列表"]');
+  await browser("press", "Control+k");
+  await check('document.querySelector(".ws").dataset.list === "expanded" && document.activeElement?.getAttribute("aria-label") === "搜索知识库"', "search reveals the collapsed list and focuses the input");
+  await browser("click", '[aria-label="展开导航栏"]');
+  await setViewport(560, 760);
+  // 视口切换与 React 的 resize 订阅是异步的：先等紧凑布局真的生效再断言，
+  // 否则拿到的是上一帧的三栏状态（这一条曾经因此假红过）。
+  await check('document.querySelector(".ws").dataset.compact === ""', "narrow window switches to the single-pane layout");
+  await check(
+    `(() => { const list = getComputedStyle(document.querySelector(".ws-list")).display !== "none"; const reader = getComputedStyle(document.querySelector(".ws-reader")).display !== "none"; return list !== reader; })()`,
+    "compact windows show exactly one of list or reader"
+  );
+  await browser("eval", `(() => {
+    window.__compactPrev = getComputedStyle(document.querySelector(".ws-list")).display !== "none" ? "list" : "reader";
+    document.querySelector(".ws-pane-controls button:nth-child(2)").click();
+    return true;
+  })()`);
+  await check(
+    `(() => { const now = getComputedStyle(document.querySelector(".ws-list")).display !== "none" ? "list" : "reader"; return now !== window.__compactPrev; })()`,
+    "compact windows can switch between list and reader"
+  );
   // Narrow window collapses the nav instead of squeezing three panes
-  await browser("set", "viewport", "900", "760");
+  await setViewport(900, 760);
+  // 回到「导航收起」的基线，交给下面原有的窄窗断言（它假设导航是收起的）。
+  await browser("click", '[aria-label="收起导航栏"]');
+  await check('document.querySelector(".ws").dataset.nav === "collapsed"', "navigation returns to collapsed before the narrow-window check");
+
   await browser("screenshot");
   await check(
     'getComputedStyle(document.querySelector(".ws-nav")).visibility === "hidden"',
@@ -267,7 +307,9 @@ try {
   await browser("click", '[aria-label="展开导航栏"]');
   await check('document.querySelector(".ws").dataset.nav === "overlay"', "navigation can be reopened on narrow windows");
   await browser("press", "Escape");
-  await browser("set", "viewport", "1040", "760");
+  await check('document.querySelector(".ws").dataset.nav === "collapsed" && document.activeElement?.getAttribute("aria-label") === "展开导航栏"', "Escape closes the overlay and returns focus to its toggle");
+  await setViewport(1040, 760);
+  await check('document.querySelector(".ws").dataset.nav === "expanded" && document.querySelector(".ws").dataset.list === "expanded"', "compact controls leave the wide-window preferences intact");
 
   // 归档的语义：处理完了 ≠ 讨厌这个来源。
   // 归档曾被写成 dismissed，而来源洞察把 dismissed 当负面信号降权——
@@ -657,7 +699,7 @@ try {
   );
   // 主线入口不能被滚动藏起来：侧栏空间不够时，「应用」段被挤出去，
   // 用户根本看不到「知识测验」这个功能。桌面窗口只有 728px 高。
-  await browser("set", "viewport", "1040", "640");
+  await setViewport(1040, 640);
   await new Promise((r) => setTimeout(r, 700));
   // 库里已经有卡（前几步转的），测验会抽卡——所以要专门清空库才验得到空态。
   await browser("eval", "(() => { const raw = JSON.parse(localStorage.getItem('knowflick.workspace.v1') || '{}'); raw.cards = []; localStorage.setItem('knowflick.workspace.v1', JSON.stringify(raw)); return true; })()");
@@ -679,17 +721,17 @@ try {
     !quizText.includes("今天没有到期的卡片"),
     "测验页空态不显示复习的措辞",
   );
-  await browser("set", "viewport", "1040", "640");
+  await setViewport(1040, 640);
   await new Promise((r) => setTimeout(r, 700));
   await check(
     "(() => { const q = [...document.querySelectorAll('.ws-nav-row')].find(r => r.textContent.includes('知识测验')); if (!q) return false; const b = q.getBoundingClientRect(); return b.bottom <= innerHeight && b.top >= 0; })()",
     "小窗口下「知识测验」仍然可见（主线入口不被滚动藏起来）"
   );
-  await browser("set", "viewport", "1040", "760");
+  await setViewport(1040, 760);
   await new Promise((r) => setTimeout(r, 500));
   // 测验的空态不能说「今天没有到期的卡片」——那是复习的语义。
   // 库里明明有卡，测验页这么写，用户会以为卡库是空的。
-  await browser("set", "viewport", "1040", "760");
+  await setViewport(1040, 760);
   await new Promise((r) => setTimeout(r, 500));
 
   // AI 出卡：ADR 第一版交付物里的「AI 出卡」此前只有「代码在那儿」的证据
