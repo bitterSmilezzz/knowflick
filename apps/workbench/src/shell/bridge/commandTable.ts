@@ -121,6 +121,7 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "read_archive": {"service": "PreviewService","method": "ReadImportArchiveFile","args": ["path"]},
   "read_import_report": {"service": "PreviewService","method": "ReadImportReport","args": ["generation"]},
   "read_media": {"service": "PreviewService","method": "ReadAttachment","args": ["generation","relative"]},
+  "read_dropped_file": {"service": "PreviewService","method": "ReadDroppedFile","args": ["path"]},
   "read_text_file": {"service": "PreviewService","method": "ReadTextFile","args": ["path"]},
   "read_webdav_credential": {"service": "PreviewService","method": "ReadWebDAVCredential","args": ["generation"]},
   "request_embeddings": {"service": "PreviewService","method": "RequestEmbeddings","args": ["endpoint","apiKey","model","input"]},

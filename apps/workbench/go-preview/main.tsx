@@ -53,9 +53,20 @@ import { CreateKnowledgeBase, GetStats, ImportAttachment, ListAttachments, PickO
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
 
-function WorkbenchAbout() {
+/** 版本与隐私折叠区：应用内唯一的「关于」入口（原生菜单的「关于 KnowFlick」也指向它）。 */
+function WorkbenchAbout({ openKey }: { openKey?: string }) {
+  const ref = useRef<HTMLDetailsElement | null>(null);
+  const [opened, setOpened] = useState(false);
+  useEffect(() => {
+    if (!openKey || opened) return;
+    setOpened(true);
+    const node = ref.current;
+    if (!node) return;
+    node.open = true;
+    node.scrollIntoView({ block: "nearest" });
+  }, [openKey, opened]);
   return (
-    <details className="preview-confirm">
+    <details className="preview-confirm" ref={ref}>
       <summary>版本与隐私</summary>
       <p>KnowFlick Workbench {appVersion}</p>
       <p>
@@ -132,6 +143,8 @@ function Preview() {
   const [webdavUser, setWebdavUser] = useState("");
   const [webdavSecret, setWebdavSecret] = useState("");
   const [webdavRemember, setWebdavRemember] = useState(false);
+  // 原生菜单的「关于/隐私/许可」通过 knowflick:menu 事件过来，这里转成折叠区的展开键。
+  const [aboutOpenKey, setAboutOpenKey] = useState("");
 
   useEffect(() => {
     setBridgeGeneration(lib?.generation ?? 0);
@@ -145,8 +158,19 @@ function Preview() {
   }, [lib, statsRevision]);
 
   useEffect(() => {
+    const onAbout = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail === "about" || detail === "privacy" || detail === "licenses") setAboutOpenKey(detail);
+    };
+    window.addEventListener("knowflick:open-about", onAbout);
+    return () => window.removeEventListener("knowflick:open-about", onAbout);
+  }, []);
+
+  useEffect(() => {
     let disposed = false;
     let off: (() => void) | undefined;
+    let offMenu: (() => void) | undefined;
+    let offDrop: (() => void) | undefined;
     // 后台邮箱同步写入库后由原生侧发事件；共享 Workspace 也监听同名 DOM 事件。
     // @ts-expect-error: Wails 构建时注入的虚拟模块
     void import("/wails/runtime.js").then(runtime => {
@@ -155,8 +179,18 @@ function Preview() {
         window.dispatchEvent(new CustomEvent("knowflick:library-changed"));
         setStatsRevision((value) => value + 1);
       });
+      // 原生菜单点击：Go 侧发 knowflick:menu，共享前端监听同名 DOM 事件。
+      offMenu = runtime.Events?.On?.("knowflick:menu", (event: { data?: unknown }) => {
+        const action = typeof event?.data === "string" ? event.data : "";
+        if (action) window.dispatchEvent(new CustomEvent("knowflick:menu", { detail: action }));
+      });
+      // 原生拖放：Go 侧读出文件内容后发过来，共享前端复用同一条导入流程。
+      offDrop = runtime.Events?.On?.("knowflick:dropped-files", (event: { data?: unknown }) => {
+        const files = Array.isArray(event?.data) ? event.data : [];
+        if (files.length) window.dispatchEvent(new CustomEvent("knowflick:dropped-files", { detail: files }));
+      });
     }).catch(() => {});
-    return () => { disposed = true; off?.(); };
+    return () => { disposed = true; off?.(); offMenu?.(); offDrop?.(); };
   }, []);
   const notes = lib?.page.notes ?? [];
   const selected = notes.find((n) => n.id === selectedId) ?? null;
@@ -694,7 +728,7 @@ function Preview() {
           {lib && !lib.writable ? <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button> : null}
           <span>{lib ? lib.name + (lib.writable ? "" : "（只读）") : "未打开资料库"}</span>
         </div>
-        <WorkbenchAbout />
+        <WorkbenchAbout openKey={aboutOpenKey} />
         {lib ? <WorkspaceBoundary><Workspace key={lib.generation} /></WorkspaceBoundary> : <p className="preview-count">先打开一个资料库。</p>}
       </section>
     );

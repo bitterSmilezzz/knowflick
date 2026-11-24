@@ -72,6 +72,19 @@ export function writeApiKey(dir: string, value: string): Promise<void> {
   return invoke("write_api_key", { dir, value });
 }
 
+/** 原生拖放进窗口的文件：macOS 给的是路径，WebView 里的 File 拿不到路径，所以读回内容。 */
+export interface DroppedFile {
+  name: string;
+  text: string;
+  dataB64: string;
+  size: number;
+  mime: string;
+}
+
+export function readDroppedFile(path: string): Promise<DroppedFile> {
+  return invoke("read_dropped_file", { path });
+}
+
 export function readTextFile(path: string): Promise<string> {
   return invoke("read_text_file", { path });
 }

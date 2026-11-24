@@ -85,6 +85,7 @@ import { SubscriptionsView } from "./SubscriptionsView";
 import { NotesView } from "./NotesView";
 import type { NotesState } from "../../domain/note";
 import type { Goal } from "../../shell/store";
+import type { DroppedFile } from "../../shell/store";
 import { executeRestore, restoreFailuresToMarkdown, summarizeRestore } from "./backupRestore";
 import { backupCopyToDirectory, webdavUploadBackup } from "../../shell/store";
 import { createKfBackupArchive } from "../../domain/systemBackup";
@@ -562,9 +563,17 @@ export function Workspace() {
       } else if (id === "import") {
         importRef.current?.click();
       } else if (id === "export") {
-        downloadMarkdownVault(materials, cards);
+        // 原生菜单的「导出备份…」要走备份包（.kfbackup），不是 Markdown 导出：
+        // 菜单里的措辞是「导出备份…」，行为必须与文字一致。
+        void exportBackup(false).catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
       } else if (id === "settings") {
         navigate("settings");
+      } else if (id === "quiz") {
+        navigate("quiz");
+      } else if (id === "privacy" || id === "licenses" || id === "about") {
+        // 关于与许可在页面顶部的「版本与隐私」折叠区里（宿主渲染）。
+        // 共享工作台不知道它长什么样，只负责发事件让宿主展开对应条目。
+        window.dispatchEvent(new CustomEvent("knowflick:open-about", { detail: id }));
       } else if (["inbox", "library", "favorites", "archive"].includes(id)) {
         navigate(id as Page);
       }
@@ -572,6 +581,29 @@ export function Workspace() {
     window.addEventListener("knowflick:menu", onMenu);
     return () => window.removeEventListener("knowflick:menu", onMenu);
   }, [page, loading, busy]);
+
+  // 原生拖放（macOS）：Go 侧已把文件内容读出来，这里转成 File 再走同一条导入流程，
+  // 保证「拖进来的 .md」和「导入文件选中的 .md」结果完全一样。
+  useEffect(() => {
+    const onDropped = (event: Event) => {
+      const detail = (event as CustomEvent<DroppedFile[] | undefined>).detail;
+      if (!detail?.length || busy || loading) return;
+      const files = detail.map((item) => {
+        const bytes = item.dataB64
+          ? Uint8Array.from(atob(item.dataB64), (char) => char.charCodeAt(0))
+          : new TextEncoder().encode(item.text);
+        return new File([bytes], item.name, { type: item.mime });
+      });
+      const backups = files.filter((file) => /\.kfbackup$/i.test(file.name));
+      if (backups.length) {
+        void restoreFromBackup(backups);
+        return;
+      }
+      void importFiles(files);
+    };
+    window.addEventListener("knowflick:dropped-files", onDropped);
+    return () => window.removeEventListener("knowflick:dropped-files", onDropped);
+  }, [busy, loading]);
 
   const collection: Collection = ["inbox", "library", "favorites", "archive"].includes(page)
     ? (page as Collection)
@@ -1834,6 +1866,9 @@ export function Workspace() {
         }
         void importFiles(e.dataTransfer.files);
       }}
+      // 原生拖放（macOS 的 NSDraggingDestination）走的是路径，不是 File 对象：
+      // WebView 里拿不到真实路径，所以由原生侧读出内容再交给同一条导入流程。
+      data-file-drop-target=""
     >
       <header className="ws-header" data-tauri-drag-region="">
         <div className="ws-header-side">
