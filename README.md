@@ -55,7 +55,7 @@ KnowFlick 把「你收藏的内容」变成「你能复习的卡片」。知识�
 
 `workbench-v*` tag 会触发三平台构建并附到 Release：macOS `.dmg`、Linux `.deb`、Windows `.exe`（NSIS 安装器）。产物名 `KnowFlick-Workbench-<版本>-<系统>-<架构>.<扩展名>`，Release 同时附 `SHA256SUMS.txt`。Go 版**没有 MSI**：Wails v3 的打包命令只支持 deb / rpm / archlinux / dmg，Windows 安装器用 NSIS 生成。
 
-> 未签名应用首次打开可能被系统拦下：macOS 在「系统设置 → 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine /Applications/KnowFlick.app`；Windows 在 SmartScreen 提示里选「更多信息 → 仍要运行」。
+> 未签名应用首次打开可能被系统拦下：macOS 在「系统设置 → 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine /Applications/KnowFlick.app`；Windows 在 SmartScreen 提示里选「更多信息 → 仍要运行」。完整步骤与校验方法见 [无签名安装指南](docs/INSTALL_UNSIGNED.md)。
 
 ### 构建与运行
 
