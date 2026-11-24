@@ -73,8 +73,8 @@ jobs:
             if sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
                  update \
                && sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
-                 install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev \
-                 librsvg2-dev patchelf xdg-utils dpkg-dev; then
+                 install -y libgtk-3-dev libgtk-4-dev libwebkit2gtk-4.1-dev libwebkitgtk-6.0-dev \
+                 libappindicator3-dev librsvg2-dev patchelf xdg-utils dpkg-dev; then
               exit 0
             fi
             echo "第 $attempt 次安装失败，等 15 秒重试" >&2

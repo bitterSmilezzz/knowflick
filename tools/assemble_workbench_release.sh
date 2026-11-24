@@ -53,7 +53,7 @@ copy_one() {
   local src
   src="$(ls "$ARTIFACTS_DIR/workbench-$kind"/$pattern 2>/dev/null | head -1 || true)"
   if [ -z "$src" ]; then
-    echo "::error::没找到 $kind 产物（$ARTIFACTS_DIR/workbench-$kind/$pattern）" >&2
+    echo "::error::没找到 $kind 产物（$ARTIFACTS_DIR/workbench-$kind/${pattern}）" >&2
     exit 1
   fi
   cp "$src" "$OUT_DIR/$(basename "$src")"

@@ -30,12 +30,14 @@ fi
 
 if [ -z "$OUT" ]; then OUT="$ROOT/dist/workbench"; fi
 mkdir -p "$OUT"
+# 统一成绝对路径：CI 里 --out 传的是相对路径，NSIS 的 File 会按脚本目录解析相对路径而找不到产物。
+OUT="$(cd "$OUT" && pwd)"
 
 if [ "$SKIP_BUILD" = 0 ]; then
   "$ROOT/tools/build_workbench_go.sh"
 fi
 BIN="$ROOT/apps/workbench-go/bin/knowflick-go-preview"
-if [ ! -x "$BIN" ]; then echo "::error::没有可执行文件：$BIN（先跑 tools/build_workbench_go.sh）" >&2; exit 1; fi
+if [ ! -x "$BIN" ]; then echo "::error::没有可执行文件：${BIN}（先跑 tools/build_workbench_go.sh）" >&2; exit 1; fi
 
 OS="$(go env GOOS)"
 ARCH_RAW="$(go env GOARCH)"
