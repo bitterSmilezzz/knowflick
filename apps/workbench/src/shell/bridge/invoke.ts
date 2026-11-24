@@ -5,6 +5,8 @@
  * 优先走它，保持既有 mock 行为。 */
 import { COMMANDS } from "./commandTable.ts";
 
+const WAILS_RUNTIME = "/wails/runtime.js";
+
 type BridgeArgs = Record<string, unknown>;
 type Dispatcher = (fullName: string, ...args: unknown[]) => Promise<unknown>;
 
@@ -75,7 +77,8 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
   });
   const dispatch: Dispatcher = customDispatcher ?? (async (fullName, ...rest) => {
     // @ts-expect-error: Wails 构建时注入的虚拟模块，类型只存在于运行时
-    const runtime = await import(/* @vite-ignore */ "/wails/runtime.js");
+    // 必须经变量再 import：字面量会被 Vite 静态分析并在浏览器模式报解析失败。
+    const runtime = await import(/* @vite-ignore */ WAILS_RUNTIME);
     return runtime.Call.ByName(fullName, ...rest);
   });
   const result = await dispatch("main." + entry.service + "." + entry.method, ...values);

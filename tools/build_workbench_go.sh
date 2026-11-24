@@ -21,14 +21,15 @@ fi
 )
 (
   cd "$root/apps/workbench-go"
-  # 与 packaging/macos/Info.plist 的 LSMinimumSystemVersion 对齐：Wails 的依赖对象
-  # 按 macOS 13 构建，链接目标写 11 会得到「built for newer macOS」警告且最低系统版本不实。
-  export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
-  # 只设 MACOSX_DEPLOYMENT_TARGET 不改变最终链接的 minos（实测仍是 11.0）；
-  # cgo 的外部链接要显式 -mmacosx-version-min，才能让 LC_BUILD_VERSION 与 Info.plist 一致。
-  export CGO_LDFLAGS="-mmacosx-version-min=13.0 ${CGO_LDFLAGS:-}"
   link_flags='-s -w'
   if [[ "$(go env GOOS)" == darwin ]]; then
+    # 与 packaging/macos/Info.plist 的 LSMinimumSystemVersion 对齐：Wails 的依赖对象
+    # 按 macOS 13 构建，链接目标写 11 会得到「built for newer macOS」警告且最低系统版本不实。
+    export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
+    # 只设 MACOSX_DEPLOYMENT_TARGET 不改变最终链接的 minos（实测仍是 11.0）；
+    # cgo 的外部链接要显式 -mmacosx-version-min。**只能放在 darwin 分支里**——
+    # 放到公共段会让 Linux 的 gcc 收到不认识的 -mmacosx-version-min 而链接失败（CI 实测）。
+    export CGO_LDFLAGS="-mmacosx-version-min=13.0 ${CGO_LDFLAGS:-}"
     link_flags+=' -extldflags=-Wl,-sectcreate,__TEXT,__info_plist,Info.plist'
   fi
   go build -tags production -trimpath -ldflags="$link_flags" -o bin/knowflick-go-preview .

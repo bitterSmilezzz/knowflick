@@ -4,9 +4,12 @@
  * 浏览器模式里不存在；静态 import 会让 `npm run build` 解析失败，所以统一走这里。
  * 浏览器模式下调用会 reject，调用方按「仅桌面可用」处理。
  */
+const WAILS_RUNTIME = "/wails/runtime.js";
+
 export async function call<T = unknown>(fullName: string, ...args: unknown[]): Promise<T> {
   // @ts-expect-error Wails 只在原生窗口里注入这个模块
-  const runtime = await import(/* @vite-ignore */ "/wails/runtime.js");
+  // 经变量再 import：字面量会被 Vite 静态分析，浏览器模式下直接报解析失败。
+  const runtime = await import(/* @vite-ignore */ WAILS_RUNTIME);
   return (await runtime.Call.ByName(fullName, ...args)) as T;
 }
 
