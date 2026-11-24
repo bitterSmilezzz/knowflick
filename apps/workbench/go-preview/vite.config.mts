@@ -1,5 +1,4 @@
 import { fileURLToPath } from "node:url";
-import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -10,6 +9,14 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL("../../workbench-go/assets/dist", import.meta.url)),
     emptyOutDir: true,
-    rollupOptions: { external: ["/wails/runtime.js"] },
+    rollupOptions: {
+      external: ["/wails/runtime.js"],
+      // 把 node_modules 单独成块：主包过大时让依赖部分可长期缓存（WP10 基线对比用）。
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) return "vendor";
+        },
+      },
+    },
   },
 });

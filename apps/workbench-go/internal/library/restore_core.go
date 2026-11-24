@@ -126,6 +126,16 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		}
 		if inserted {
 			counts.Notes++
+			// 恢复的笔记必须重建索引：整篇 FTS 与分块（含分块 FTS）都是派生数据，
+			// 不重建的话分块检索会落空——正文能浏览、能被 LIKE 兜底搜到，
+			// 但「按片段召回」拿不到任何命中。逐条恢复入口走的是 SaveNote（会重建），
+			// 这里必须显式补上，否则两条恢复入口行为不一致。
+			if err := rebuildNoteChunks(ctx, tx, note.ID, note.BodyMD, note.CurrentRevision); err != nil {
+				return counts, errtext.Wrap("恢复笔记分块失败", err)
+			}
+			if err := syncNoteFTS(ctx, tx, note.ID, note.Title, note.BodyMD, favoriteValue(note.IsDeleted) != 0); err != nil {
+				return counts, errtext.Wrap("恢复笔记索引失败", err)
+			}
 		} else {
 			counts.Skipped++
 		}

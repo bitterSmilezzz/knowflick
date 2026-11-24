@@ -6,6 +6,11 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [Workbench 0.9.0-rc1]
+
+- 桌面标题统一为 KnowFlick，「版本与隐私」与发布元数据使用同一版本来源。
+- 新增 Intel Mac 安装包，修正 Linux 运行依赖。四档安装包提供 SHA256 校验、GitHub 构建证明及随包依赖许可。详见[候选版发布记录](docs/workbench_RELEASE_0.9.0-rc1.md)。
+
 ## [Workbench 0.1.0] - 2026-11-24
 
 首个 Go 版第一套桌面正式版：Rust/Tauri 壳已删除，三平台安装包（macOS DMG / Linux DEB / Windows NSIS EXE）与发布矩阵落地；前端去掉 `@tauri-apps/*` 依赖，用户可见错误改为中文原因 + 下一步。产物与验证证据见 [发布记录](docs/workbench_RELEASE_0.1.0.md)。

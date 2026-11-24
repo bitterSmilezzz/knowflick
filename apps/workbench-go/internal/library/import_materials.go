@@ -104,6 +104,19 @@ func nullableText(value string) any {
 	return value
 }
 
+// SaveAttachmentBytes 写一个库内附件并返回相对路径（不建素材行）。
+//
+// 共享前端先用它落附件、再用 UpsertMaterial 写素材行——两步都要成功才算保存完成。
+func (l *Library) SaveAttachmentBytes(dir, kind, mime string, data []byte) (string, error) {
+	if !l.writable {
+		return "", ErrReadOnly
+	}
+	if len(data) == 0 {
+		return "", errors.New("附件内容为空")
+	}
+	return media.Save(dir, kind, mime, data)
+}
+
 // saveMaterialAttachment 新建素材、全文索引及库内附件。
 func (l *Library) saveMaterialAttachment(ctx context.Context, material ImportedMaterial, dir, kind, mime string, data []byte) (string, error) {
 	tx, err := l.db.BeginTx(ctx, nil)

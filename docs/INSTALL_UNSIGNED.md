@@ -57,10 +57,10 @@ DEB 未做 GPG 签名；用 `dpkg-deb -I` 查看 control 字段，用上面的 S
 ## 回滚
 
 - 安装包回滚：卸载当前版本，装回上一版（Release 历史里保留 0.1.0 与 0.9.0）。
-- **用户数据不受安装包回滚影响**：资料库在
+- 回退应用时使用升级前的资料库副本，并单独保留升级后的库。资料库默认在
   - macOS：`~/Library/Application Support/KnowFlick`
   - Windows：`%APPDATA%\KnowFlick`（以应用内「打开资料库」显示的路径为准）
-  - Linux：`~/.config/KnowFlick`（同上）
+  - Linux：`$XDG_DATA_HOME/KnowFlick`，默认 `~/.local/share/KnowFlick`
 - 升级前建议在应用内做一次「导出/备份」，备份包会排除凭据文件。
 
 ## 出问题时怎么报

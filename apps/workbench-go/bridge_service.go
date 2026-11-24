@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"knowflick.local/workbench-go/internal/library"
+	"knowflick.local/workbench-go/internal/materials"
 )
 
 // GetNote 按标识读单篇笔记（共享前端 note_get 的等价入口）。
@@ -52,6 +53,19 @@ func (s *PreviewService) SaveMaterial(ctx context.Context, generation int, title
 		return "", errors.New("请重新打开资料库")
 	}
 	return s.current.Capture(ctx, library.CaptureInput{Title: title, Text: text, URL: sourceURL}, time.Now().UnixMilli())
+}
+
+// SaveMaterialDTO 按共享前端的素材形状落库：附件相对路径、字节数与元数据一起写入。
+//
+// 只传标题正文的入口（SaveMaterial）无法承载录音与图片——附件字段会丢，
+// 音频文件落盘了却挂不到素材行上。共享工作台的素材一律走这条。
+func (s *PreviewService) SaveMaterialDTO(ctx context.Context, generation int, material materials.Material) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil || s.generation != generation {
+		return "", errors.New("请重新打开资料库")
+	}
+	return s.current.UpsertMaterial(ctx, material)
 }
 
 // RestoreKnowledgeBaseMembership 批量恢复知识库成员关系（共享前端 kb_restore_membership）。

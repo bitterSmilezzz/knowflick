@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"knowflick.local/workbench-go/internal/errtext"
+	"mime"
 	"os"
 	"path/filepath"
 	"sort"
@@ -202,8 +203,13 @@ func limitOf(kind string) int {
 	}
 }
 
-func extension(kind, mime string) (string, error) {
-	switch kind + "|" + mime {
+func extension(kind, contentType string) (string, error) {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", errors.New("附件类型无效")
+	}
+	// WebKit 和 Chromium 的 MediaRecorder 会在媒体类型后带上 codecs。
+	switch kind + "|" + mediaType {
 	case "audio|audio/webm":
 		return "webm", nil
 	case "audio|audio/ogg":

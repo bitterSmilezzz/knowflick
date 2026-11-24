@@ -3,8 +3,7 @@ name: Workbench Release (Go)
 # 第一套桌面（apps/workbench 前端 + apps/workbench-go）的三平台安装包与 Release 附件。
 # 替代原来的 Tauri 打包矩阵（Rust 壳已随 ADR-0042 删除）。
 #
-# 为什么必须是三台机器：cgo + 平台框架不支持交叉编译，DMG 只能在 macOS 出、
-# DEB 只能在 Linux 出、NSIS 安装器只能在 Windows 出。
+# 各平台原生构建。macOS 分 Apple Silicon 和 Intel 两档，Linux 与 Windows 各一档。
 #
 # 触发面：workbench-v* tag（path 过滤对 tag 不生效，tag 一定会跑）+ 手动 dispatch。
 # 产物命名与组装逻辑在 tools/package_workbench_go.sh 与 tools/assemble_workbench_release.sh 里，
@@ -38,9 +37,12 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            label: macOS DMG
+            label: macOS DMG (Apple Silicon)
             artifact: workbench-dmg
-          - os: ubuntu-latest
+          - os: macos-15-intel
+            label: macOS DMG (Intel)
+            artifact: workbench-dmg-x64
+          - os: ubuntu-24.04
             label: Linux DEB
             artifact: workbench-deb
           - os: windows-latest
@@ -65,22 +67,23 @@ jobs:
         working-directory: apps/workbench
         run: npm ci
 
-      - name: Linux 系统依赖（GTK3 + WebKitGTK + dpkg）
+      - name: Linux 系统依赖（GTK4 + WebKitGTK 6 + dpkg）
         if: runner.os == 'Linux'
         run: |
+          # 只装 Go 壳真正链接的库：Wails v3 默认走 GTK4 + WebKitGTK 6。
+          # 之前还装 GTK3/WebKitGTK-4.1，镜像下载慢时会把 45 分钟的 job 拖死。
           for attempt in 1 2 3; do
             if sudo DEBIAN_FRONTEND=noninteractive timeout 300 apt-get \
-                 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
-                 -o Acquire::Retries=1 update \
-               && sudo DEBIAN_FRONTEND=noninteractive timeout 420 apt-get \
-                 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
-                 -o Acquire::Retries=1 install -y libgtk-3-dev libgtk-4-dev \
-                 libwebkit2gtk-4.1-dev libwebkitgtk-6.0-dev \
-                 libappindicator3-dev librsvg2-dev patchelf xdg-utils dpkg-dev; then
+                 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 \
+                 -o Acquire::Retries=3 update \
+               && sudo DEBIAN_FRONTEND=noninteractive timeout 1500 apt-get \
+                 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 \
+                 -o Acquire::Retries=3 install -y libgtk-4-dev libwebkitgtk-6.0-dev \
+                 libappindicator3-dev librsvg2-dev patchelf xdg-utils dpkg-dev xvfb xauth; then
               exit 0
             fi
-            echo "第 $attempt 次安装失败，等 15 秒重试" >&2
-            sleep 15
+            echo "第 $attempt 次安装失败，等 30 秒重试" >&2
+            sleep 30
           done
           echo "::error::Linux 系统依赖安装失败" >&2
           exit 1
@@ -114,6 +117,61 @@ jobs:
         shell: bash
         run: ./tools/package_workbench_go.sh --out dist/workbench
 
+      - name: Linux 安装、首启与卸载
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/workbench/package.json').version")
+          deb="./dist/workbench/KnowFlick-Workbench-$version-linux-amd64.deb"
+          sudo apt-get install -y "$deb"
+          export KNOWFLICK_DEBUG_DATA_ROOT="$RUNNER_TEMP/knowflick-smoke"
+          GDK_BACKEND=x11 xvfb-run -a bash -e -c '
+            knowflick &
+            pid=$!
+            trap "kill $pid 2>/dev/null || true" EXIT
+            for attempt in {1..30}; do
+              kill -0 "$pid"
+              if [ -s "$KNOWFLICK_DEBUG_DATA_ROOT/store/knowflick.db" ]; then
+                sleep 2
+                kill -0 "$pid"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "::error::安装后的应用未创建资料库"
+            exit 1
+          '
+          sudo dpkg -r knowflick
+          test ! -e /usr/bin/knowflick
+          test -s "$KNOWFLICK_DEBUG_DATA_ROOT/store/knowflick.db"
+
+      - name: Windows 安装、首启与卸载
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/workbench/package.json -Raw | ConvertFrom-Json).version
+          $installer = "dist/workbench/KnowFlick-Workbench-$version-windows-x64.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP 'KnowFlickSmoke'
+          $env:KNOWFLICK_DEBUG_DATA_ROOT = Join-Path $env:RUNNER_TEMP 'knowflick-smoke-data'
+          $db = Join-Path $env:KNOWFLICK_DEBUG_DATA_ROOT 'store/knowflick.db'
+          $install = Start-Process (Resolve-Path $installer) -ArgumentList '/S', "/D=$installDir" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "安装器退出码 $($install.ExitCode)" }
+          $app = Start-Process (Join-Path $installDir 'KnowFlick.exe') -PassThru
+          try {
+            for ($i = 0; $i -lt 30 -and !(Test-Path $db); $i++) {
+              if ($app.HasExited) { throw "应用提前退出：$($app.ExitCode)" }
+              Start-Sleep -Seconds 1
+            }
+            Start-Sleep -Seconds 2
+            if ($app.HasExited -or !(Test-Path $db) -or (Get-Item $db).Length -eq 0) { throw '应用未能首启并创建资料库' }
+          } finally {
+            if (!$app.HasExited) { Stop-Process -Id $app.Id }
+          }
+          $uninstall = Start-Process (Join-Path $installDir 'uninstall.exe') -ArgumentList '/S' -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0 -or (Test-Path (Join-Path $installDir 'KnowFlick.exe')) -or !(Test-Path $db)) {
+            throw '卸载未移除程序或资料库未保留'
+          }
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -131,6 +189,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
 
@@ -143,11 +203,14 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: ./tools/assemble_workbench_release.sh --tag "$TAG" --artifacts-dir artifacts --out out
 
+      # 无证书阶段的信任来源：让用户能用 `gh attestation verify` 核对产物确实由本仓 CI 构建。
+      - name: 生成构建 provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: out/*
+
       - name: 上传到 Release
         if: startsWith(github.ref, 'refs/tags/workbench-v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" out/* --clobber || {
-            gh release create "$GITHUB_REF_NAME" --title "KnowFlick Workbench ${{ github.ref_name }}" --generate-notes;
-            gh release upload "$GITHUB_REF_NAME" out/* --clobber;
-          }
+        run: ./tools/assemble_workbench_release.sh --tag "$GITHUB_REF_NAME" --artifacts-dir artifacts --out out --publish

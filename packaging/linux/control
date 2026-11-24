@@ -5,7 +5,7 @@ Priority: optional
 Architecture: __ARCH__
 Maintainer: KnowFlick <noreply@knowflick.local>
 Installed-Size: __SIZE__
-Depends: libgtk-3-0 | libgtk-3-0t64, libwebkit2gtk-4.1-0
+Depends: libgtk-4-1, libwebkitgtk-6.0-4
 Description: KnowFlick 多端学习工作台
  剪藏、笔记导入、AI 出卡与间隔重复复习。
  本包只含第一套桌面的 Go 壳与前端产物，数据保存在用户自己的资料库目录。

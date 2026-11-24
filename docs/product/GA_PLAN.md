@@ -85,7 +85,7 @@
 
 ### WP5 平台矩阵补全（0.5–1 天）
 
-- macOS x64：加 `macos-13`（或 x64 runner）出 `macos-x64` DMG；arm64 保持。
+- macOS x64：加 `macos-15-intel`出 `macos-x64` DMG；arm64 保持。
 - Linux：amd64 已有；如要 arm64 另加 runner，非 1.0 必需。
 - **验收**：四档产物（mac arm64 / mac x64 / win x64 / linux amd64）都能装、都能启动。
 
@@ -102,19 +102,35 @@
 - WebDAV 凭据文件与 mail 凭据的权限（目录 0700 / 文件 0600）；备份包必须排除凭据（已有实现，补回归）。
 - **验收**：以上每项有命令与结果；不通过就修，不能只写「已知问题」。
 
+> 0.9.0-rc1 已完成并留证：0.1.0 建的库升级后笔记/卡片/复习/订阅/全文索引一致
+> （`PRAGMA integrity_check` ok、无外键违例）；备份包往返内容一致且不含 `credentials/`；
+> 两个写者并发时第二个被修订号拒绝；提交前 `kill -9` 后库完整、正文保持已提交版本。
+> **已修**：整库恢复入口（旧版外壳「恢复备份」）此前不重建笔记索引，分块检索会落空到全文检索；
+> 本轮已补上重建（`restore_core.go` 恢复笔记时同步 `fts_notes` 与 `note_chunks`/ `fts_note_chunks`），
+> 并加了回归测试。逐条恢复入口原本就会重建，两条入口现在行为一致。
+
 ### WP8 真实依赖验收（1–2 天，需账号/设备）
 
 - 真实模型：一个 OpenAI 兼容端点或本地 Ollama/vLLM，验出卡、问答、引用。
+
+> 0.9.0-rc1 已用本地 llama.cpp（Qwen2.5-1.5B-Instruct）跑通出卡与问答。
+> **仍待补**：真实商用端点的密钥与内容质量对比——本地小模型不代表服务商质量。
 - 真实 IMAP：QQ（授权码+TLS）、163；Gmail/Microsoft 若 LOGIN 不适用标 OAuth 待接。
 - 物理麦克风：桌面录音 → 保存 → 重启 → 回放 → 导出。
 - **验收**：每条都有等级（可用/有限可用/待验/失败）与证据链接，不回填「支持」二字。
 
 ### WP9 法务、隐私与可访问性（0.5–1 天）
 
-- `THIRD_PARTY_NOTICES.md`：Wails、React、Vite、字体与图标来源的许可清单；`PRIVACY.md`：本地数据位置、联网场景
+- `THIRD_PARTY_NOTICES.md`：Wails、React、字体与图标来源的许可清单；`PRIVACY.md`：本地数据位置、联网场景
   （模型、IMAP、WebDAV、更新检查）与关闭方式；确认无遥测。
 - 可访问性：评估 WebView AX 暴露；至少保证键盘可达主要流程；结论写进发布记录。
 - **验收**：文档进仓库；应用内「关于/隐私」入口可打开对应说明。
+
+> 0.9.0-rc1 已完成前两项：许可正文随三平台安装包分发（macOS `Contents/Resources`、
+> Linux `/usr/share/doc/knowflick/copyright`、Windows 安装目录），
+> 「版本与隐私」入口在共享工作台与应用内可访问。
+> **素材来源是 1.0 的阻塞项**：图标美术母版与 42 张底图在仓库里没有来源/授权记录，
+> 在项目所有者确认前不按 MIT 再许可——若属第三方作品必须替换或补授权。
 
 ### WP10 性能与包体基线（0.5 天）
 
@@ -123,7 +139,7 @@
 
 ### WP11 无证书分发与信任建设（0.5–1 天，0.9 必需）
 
-- CI 加构建 provenance（`actions/attest-build-provenance`）：用户可用
+- CI 加构建 provenance（`actions/attest`）：用户可用
   `gh attestation verify <产物> --repo bitterSmilezzz/knowflick` 核对该文件确实由本仓 CI 构建；
 - 新增 `docs/INSTALL_UNSIGNED.md`：macOS 右键打开 / `xattr -dr com.apple.quarantine`、
   Windows SmartScreen「更多信息 → 仍要运行」、三平台 `shasum -a 256` 校验命令；
@@ -149,7 +165,7 @@
    降低风险，并在下载页明示未签名；不承诺「双击即开」。
 2. **SmartScreen 声誉**：即使 1.0 签名，仍可能提示，需下载量积累；发布说明如实写，不承诺「零提示」。
 3. **证书申请周期（1.0 阶段）**：Developer ID 与 Windows 证书都要审核；证书到位前 1.0 不启动签名接线，避免空等。
-4. **Intel Mac runner 可用性**：`macos-13` 队列可能慢；备选自建 x64 或交叉产物（Wails 不支持交叉，需真机）。
+4. **Intel Mac runner 可用性**：`macos-15-intel` 队列可能较长。以 Intel runner 实际构建与运行结果为准。
 5. **Windows/Linux 机器**：没有机器就只能标「待验」，不能用 CI 构建冒充首启验收。
 6. **范围蔓延**：R2/R3 功能（导入向导、WebDAV 同步、OCR）不进 1.0；1.0 只收「可信安装 + 数据安全 + 现有闭环」。
 
