@@ -36,6 +36,9 @@ Windows 安装器用 NSIS 生成；这是 ADR-0042 记录的口径，不是本�
 | macOS 启动 | 本机挂载 DMG → 启动 `.app`，进程存活、窗口渲染正常（AX 树核对） |
 | Linux DEB 结构 | `control` 字段、文件清单（`/usr/bin/knowflick`、desktop、图标）已核对 |
 | Windows EXE | PE32 + Nullsoft Installer 结构已核对 |
+| 正式发布 | CI run 45316883403：三平台 + 组装上传四 job 全绿；Release 已发布（非草稿），4 个附件齐全 |
+| 下载校验 | 从 Release 下载的 3 个安装包用 `SHA256SUMS.txt` 逐项校验全部 OK |
+| macOS 首启（本机） | 挂载正式 DMG → 复制 `.app` → 以独立 HOME 启动：进程存活、窗口渲染正常、自动创建 `~/Library/Application Support/KnowFlick/store/knowflick.db`，正常退出。界面默认「只读预览」，点「启用编辑」进入编辑态 |
 
 ## 已知限制（发布时必须如实告知）
 
@@ -45,6 +48,7 @@ Windows 安装器用 NSIS 生成；这是 ADR-0042 记录的口径，不是本�
 3. **Windows/Linux 安装首启未在真机走完**：CI 只验证构建与产物结构；安装、升级、卸载与
    「导入 → 刷卡 → 测验 → 导出」待真机验收（见 R0 缺口）。
 4. **Windows/Linux 未验通知、托盘与麦克风权限**等平台行为。
+5. **首屏仍带「Go 版预览 / 只读预览」字样**：只读是安全默认（点「启用编辑」才写库），但「预览」措辞与正式版不符；已列入章程的工程卫生（去 `preview` 命名），下个小版本处理，不影响数据完整性。
 
 ## 回滚
 
