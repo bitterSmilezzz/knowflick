@@ -36,6 +36,7 @@ Windows 安装器用 NSIS 生成；这是 ADR-0042 记录的口径，不是本�
 | macOS 启动 | 本机挂载 DMG → 启动 `.app`，进程存活、窗口渲染正常（AX 树核对） |
 | Linux DEB 结构 | `control` 字段、文件清单（`/usr/bin/knowflick`、desktop、图标）已核对 |
 | Windows EXE | PE32 + Nullsoft Installer 结构已核对 |
+| main CI | PR #96 合并后 Android run 45316857925、Desktop run 45316858101、Workbench run 45316857956（尝试 2）全绿；Go job 首次被 Ubuntu apt 镜像卡住，取消重跑后通过 |
 | 正式发布 | CI run 45316883403：三平台 + 组装上传四 job 全绿；Release 已发布（非草稿），4 个附件齐全 |
 | 下载校验 | 从 Release 下载的 3 个安装包用 `SHA256SUMS.txt` 逐项校验全部 OK |
 | macOS 首启（本机） | 挂载正式 DMG → 复制 `.app` → 以独立 HOME 启动：进程存活、窗口渲染正常、自动创建 `~/Library/Application Support/KnowFlick/store/knowflick.db`，正常退出。界面默认「只读预览」，点「启用编辑」进入编辑态 |
