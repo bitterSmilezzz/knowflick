@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,7 +68,7 @@ func (s *PreviewService) saveSystemBackup(ctx context.Context, generation int, s
 	}
 	temp, err := os.CreateTemp(filepath.Dir(dest), ".knowflick-backup-*.tmp")
 	if err != nil {
-		return "", fmt.Errorf("无法创建备份文件：%w", err)
+		return "", errtext.Wrap("无法创建备份文件", err)
 	}
 	tempName := temp.Name()
 	defer os.Remove(tempName)
@@ -77,13 +78,13 @@ func (s *PreviewService) saveSystemBackup(ctx context.Context, generation int, s
 	}
 	if err := temp.Sync(); err != nil {
 		temp.Close()
-		return "", fmt.Errorf("备份没有写完整：%w", err)
+		return "", errtext.Wrap("备份没有写完整", err)
 	}
 	if err := temp.Close(); err != nil {
-		return "", fmt.Errorf("备份没有写完整：%w", err)
+		return "", errtext.Wrap("备份没有写完整", err)
 	}
 	if err := os.Rename(tempName, dest); err != nil {
-		return "", fmt.Errorf("无法保存备份文件：%w", err)
+		return "", errtext.Wrap("无法保存备份文件", err)
 	}
 	return dest, nil
 }
@@ -127,7 +128,7 @@ func (s *PreviewService) saveCardExport(ctx context.Context, generation int, des
 	dir := filepath.Dir(s.path)
 	text, err := s.current.CardsJSON(ctx, dir)
 	if err != nil {
-		return "", fmt.Errorf("读取卡片失败：%w", err)
+		return "", errtext.Wrap("读取卡片失败", err)
 	}
 	data := []byte(text)
 	if extension == ".zip" {
@@ -140,7 +141,7 @@ func (s *PreviewService) saveCardExport(ctx context.Context, generation int, des
 		return "", err
 	}
 	if err := creds.AtomicWrite(dest, data); err != nil {
-		return "", fmt.Errorf("保存导出文件失败：%w", err)
+		return "", errtext.Wrap("保存导出文件失败", err)
 	}
 	return dest, nil
 }
@@ -148,7 +149,7 @@ func (s *PreviewService) saveCardExport(ctx context.Context, generation int, des
 func packCardArchive(dir, cards string) ([]byte, error) {
 	settings, err := libfiles.ReadOptional(filepath.Join(dir, "settings.json"))
 	if err != nil {
-		return nil, fmt.Errorf("读取设置失败：%w", err)
+		return nil, errtext.Wrap("读取设置失败", err)
 	}
 	text := "{}"
 	if settings != nil {
@@ -174,7 +175,7 @@ func (s *PreviewService) RestoreSystemBackup(ctx context.Context, generation int
 	}
 	data, err := os.ReadFile(source)
 	if err != nil {
-		return counts, fmt.Errorf("无法读取备份文件：%w", err)
+		return counts, errtext.Wrap("无法读取备份文件", err)
 	}
 	backup, err := archive.ReadSystemBackup(data)
 	if err != nil {
@@ -204,7 +205,7 @@ func (s *PreviewService) UploadBackupToWebDAV(ctx context.Context, generation in
 	err := s.current.WriteSystemBackupV4(ctx, &buffer, filepath.Dir(path), time.Now())
 	s.mu.RUnlock()
 	if err != nil {
-		return result, fmt.Errorf("生成备份失败：%w", err)
+		return result, errtext.Wrap("生成备份失败", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return result, err
@@ -215,7 +216,7 @@ func (s *PreviewService) UploadBackupToWebDAV(ctx context.Context, generation in
 	}
 	if remember && secret != "" {
 		if err := creds.Write(filepath.Dir(path), "webdav.credential", secret); err != nil {
-			return result, fmt.Errorf("备份已上传，但凭据未保存：%w", err)
+			return result, errtext.Wrap("备份已上传，但凭据未保存", err)
 		}
 	}
 	return result, nil

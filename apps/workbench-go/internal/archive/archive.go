@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"knowflick.local/workbench-go/internal/errtext"
 	"strings"
 	"unicode/utf8"
 
@@ -60,7 +61,7 @@ func Read(data []byte) (Payload, error) {
 func readZIP(data []byte) (Payload, error) {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return Payload{}, fmt.Errorf("ZIP 解析失败: %v", err)
+		return Payload{}, errtext.Wrap("ZIP 解析失败", err)
 	}
 	var cards *string
 	var settings *string

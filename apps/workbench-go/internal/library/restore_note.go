@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"strconv"
 )
 
@@ -74,7 +74,7 @@ func (l *Library) RestoreNoteWithHistory(ctx context.Context, note Note, revisio
 	if scanErr == nil {
 		existing = &src
 	} else if !errors.Is(scanErr, sql.ErrNoRows) {
-		return RestoreOutcome{}, fmt.Errorf("读取本地笔记失败：%w", scanErr)
+		return RestoreOutcome{}, errtext.Wrap("读取本地笔记失败", scanErr)
 	}
 	// 历史校验：修订号有效、当前修订一致、与本地历史不冲突。
 	if history != nil {

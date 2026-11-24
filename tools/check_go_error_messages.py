@@ -13,11 +13,11 @@
 判据看的是「有没有中文」，不是「有没有英文」。）
 
 **迁移说明**（ADR-0042 删掉 Rust 壳时）：这条守卫原来扫 `src-tauri/src`，
-现在扫 `apps/workbench-go`。原 Rust 版还有第二类检查——「半中半英」
-（中文前缀后面直接拼底层错误 `{e}`），Go 侧同一写法是
-`fmt.Errorf(\"前缀：%w\", err)`。这类现有 121 处，要治理得先有
-`error_text.explain(...)` 的等价层；本轮只守「整句英文」，不在 Docstring
-里假装那一类已经守住。
+现在扫 `apps/workbench-go`。两类判据都保留：
+1. 整句英文（不含中文）；
+2. 半中半英：`fmt.Errorf(\"前缀：%w\", err)` 把底层英文直接拼进用户消息——
+   改用 `errtext.Wrap(前缀, err)`（中文原因 + 下一步，原始英文留在括号里）。
+`internal/errtext` 自身用它自己的实现，不在扫描范围。
 """
 from __future__ import annotations
 
@@ -35,6 +35,12 @@ PATTERNS = [
     re.compile(r'\berrors\.New\(\s*"([^"]*)"'),
     re.compile(r'\bfmt\.Errorf\(\s*"([^"]*)"'),
 ]
+
+# 第二类：**半中半英**——中文前缀后面直接拼底层错误（fmt.Errorf("…：%w", err)）。
+# Rust 版对应的是把 {e} 拼进消息；Go 侧要改成 errtext.Wrap(前缀, err)，
+# 中文前缀 + 原因/下一步，原始英文留在括号里。
+WRAP_FMT = re.compile(r'\bfmt\.Errorf\(\s*"([^"]*)"')
+ERR_ARG = re.compile(r',\s*(?:err|scanErr|e|err2|closeErr)\s*\)')
 
 # 这些是**内部哨兵**，不是给用户看的：唯一的调用方会包成中文。
 ALLOW = {
@@ -70,6 +76,16 @@ def problems_in(root: Path, display: str = "") -> list[str]:
                         problems.append(
                             f"{where}:{lineno} 的错误消息是英文，用户看不懂：{message!r}"
                         )
+            wrap = WRAP_FMT.search(line)
+            if wrap and "errtext." not in line:
+                fmtstr = wrap.group(1)
+                direct = "%w" in fmtstr or ("%v" in fmtstr and ERR_ARG.search(line) is not None)
+                if direct:
+                    where = f"{display}/{path.relative_to(root)}" if display else str(path.relative_to(root))
+                    problems.append(
+                        f"{where}:{lineno} 把底层错误直接拼进用户消息，会出现半中半英：{fmtstr!r}"
+                        "——改用 errtext.Wrap(前缀, err)"
+                    )
     return problems
 
 

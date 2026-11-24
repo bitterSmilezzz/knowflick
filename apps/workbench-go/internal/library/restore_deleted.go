@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"knowflick.local/workbench-go/internal/errtext"
 
 	"errors"
-	"fmt"
 	"knowflick.local/workbench-go/internal/archive"
 )
 
@@ -29,11 +29,11 @@ func restoreDeletedRecords(ctx context.Context, tx *sql.Tx, backup archive.Syste
 			}
 			continue
 		} else if !errors.Is(err, sql.ErrNoRows) {
-			return 0, 0, 0, fmt.Errorf("读取本地回收站素材失败：%w", err)
+			return 0, 0, 0, errtext.Wrap("读取本地回收站素材失败", err)
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO materials (id,source_type,title,source_url,raw_text,cleaned_markdown,content_hash,media_path,media_size_bytes,metadata_json,inbox_status,created_at,updated_at,is_deleted,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)",
 			record.Material.ID, record.Material.SourceType, record.Material.Title, record.Material.SourceURL, record.Material.RawText, record.Material.CleanedMarkdown, record.Material.ContentHash, record.Material.MediaPath, record.Material.MediaSizeBytes, record.Material.MetadataJSON, record.Material.InboxStatus, record.Material.CreatedAt, record.Material.UpdatedAt, record.DeletedAt); err != nil {
-			return 0, 0, 0, fmt.Errorf("恢复回收站素材失败：%w", err)
+			return 0, 0, 0, errtext.Wrap("恢复回收站素材失败", err)
 		}
 		counts[0]++
 	}
@@ -46,7 +46,7 @@ func restoreDeletedRecords(ctx context.Context, tx *sql.Tx, backup archive.Syste
 			}
 			continue
 		} else if !errors.Is(err, sql.ErrNoRows) {
-			return 0, 0, 0, fmt.Errorf("读取本地回收站卡片失败：%w", err)
+			return 0, 0, 0, errtext.Wrap("读取本地回收站卡片失败", err)
 		}
 		links, tags, prereq, err := encodeCardJSON(record.Card)
 		if err != nil {
@@ -54,7 +54,7 @@ func restoreDeletedRecords(ctx context.Context, tx *sql.Tx, backup archive.Syste
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO cards (id,material_id,category,headline,summary,details,links_json,tags_json,source,seen_at,swiped,is_favorite,favorited_at,review_count,mastery_level,last_reviewed_at,repetition,interval_days,ease_factor,stability,difficulty,subject,branch,level,track,order_key,prereq_json,created_at,edited_at,updated_at,is_deleted,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)",
 			record.Card.ID, record.Card.MaterialID, record.Card.Category, record.Card.Headline, record.Card.Summary, record.Card.Details, links, tags, record.Card.Source, record.Card.SeenAt, record.Card.Swiped, favoriteValue(record.Card.IsFavorite), record.Card.FavoritedAt, record.Card.ReviewCount, record.Card.MasteryLevel, record.Card.LastReviewedAt, record.Card.Repetition, record.Card.IntervalDays, record.Card.EaseFactor, record.Card.Stability, record.Card.Difficulty, record.Card.Subject, record.Card.Branch, record.Card.Level, record.Card.Track, record.Card.OrderKey, prereq, record.Card.CreatedAt, record.Card.EditedAt, record.Card.CreatedAt, record.DeletedAt); err != nil {
-			return 0, 0, 0, fmt.Errorf("恢复回收站卡片失败：%w", err)
+			return 0, 0, 0, errtext.Wrap("恢复回收站卡片失败", err)
 		}
 		counts[1]++
 	}
@@ -67,7 +67,7 @@ func restoreDeletedRecords(ctx context.Context, tx *sql.Tx, backup archive.Syste
 			}
 			continue
 		} else if !errors.Is(err, sql.ErrNoRows) {
-			return 0, 0, 0, fmt.Errorf("读取本地回收站产物失败：%w", err)
+			return 0, 0, 0, errtext.Wrap("读取本地回收站产物失败", err)
 		}
 		cardIDs, noteIDs, err := encodeArtifactIDs(artifact)
 		if err != nil {
@@ -75,7 +75,7 @@ func restoreDeletedRecords(ctx context.Context, tx *sql.Tx, backup archive.Syste
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO artifacts (id,artifact_type,title,content_markdown,source_card_ids,source_note_ids,date_scope_start,date_scope_end,created_at,updated_at,is_deleted) VALUES (?,?,?,?,?,?,?,?,?,?,1)",
 			artifact.ID, artifact.ArtifactType, artifact.Title, artifact.ContentMarkdown, cardIDs, noteIDs, artifact.DateScopeStart, artifact.DateScopeEnd, artifact.CreatedAt, artifact.UpdatedAt); err != nil {
-			return 0, 0, 0, fmt.Errorf("恢复回收站产物失败：%w", err)
+			return 0, 0, 0, errtext.Wrap("恢复回收站产物失败", err)
 		}
 		counts[2]++
 	}

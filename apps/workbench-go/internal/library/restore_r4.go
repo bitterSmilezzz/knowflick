@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"regexp"
 	"strconv"
 	"strings"
@@ -55,7 +56,7 @@ func restoreR4(ctx context.Context, tx *sql.Tx, backup archive.SystemBackup) (in
 			}
 			result, err := tx.ExecContext(ctx, "INSERT INTO "+name+" ("+joinComma(columns)+") VALUES ("+joinComma(placeholders)+") ON CONFLICT DO NOTHING", args...)
 			if err != nil {
-				return 0, fmt.Errorf("恢复项目与画像数据失败：%w", err)
+				return 0, errtext.Wrap("恢复项目与画像数据失败", err)
 			}
 			if rows, err := result.RowsAffected(); err == nil && rows > 0 {
 				inserted++

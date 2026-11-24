@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 
 	"knowflick.local/workbench-go/internal/archive"
 	"knowflick.local/workbench-go/internal/cards"
@@ -36,19 +37,19 @@ func captureDeletedRecords(ctx context.Context, tx *sql.Tx, activeMaterials []ba
 				&item.Material.MetadataJSON, &item.Material.InboxStatus, &item.Material.CreatedAt, &item.Material.UpdatedAt, &item.DeletedAt)
 		})
 	if err != nil {
-		return snapshot, fmt.Errorf("读取备份回收站素材失败：%w", err)
+		return snapshot, errtext.Wrap("读取备份回收站素材失败", err)
 	}
 	snapshot.Materials = materials
 	deletedCards, err := cards.ListDeleted(ctx, tx)
 	if err != nil {
-		return snapshot, fmt.Errorf("读取备份回收站卡片失败：%w", err)
+		return snapshot, errtext.Wrap("读取备份回收站卡片失败", err)
 	}
 	for _, item := range deletedCards {
 		snapshot.Cards = append(snapshot.Cards, deletedCardRecord{Card: item.Card, DeletedAt: item.DeletedAt})
 	}
 	artifacts, err := readBackupRows(ctx, tx, `SELECT id,artifact_type,title,content_markdown,source_card_ids,source_note_ids,date_scope_start,date_scope_end,created_at,updated_at,is_deleted FROM artifacts WHERE is_deleted=1 ORDER BY created_at DESC`, scanBackupArtifact)
 	if err != nil {
-		return snapshot, fmt.Errorf("读取备份回收站产物失败：%w", err)
+		return snapshot, errtext.Wrap("读取备份回收站产物失败", err)
 	}
 	snapshot.Artifacts = artifacts
 	available := map[string]bool{}

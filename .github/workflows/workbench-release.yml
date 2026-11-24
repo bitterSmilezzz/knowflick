@@ -60,12 +60,6 @@ jobs:
         working-directory: apps/workbench
         run: npm ci
 
-      - name: 安装 Wails v3 CLI
-        shell: bash
-        run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
       - name: Linux 系统依赖（GTK3 + WebKitGTK + dpkg）
         if: runner.os == 'Linux'
         run: |
@@ -82,6 +76,12 @@ jobs:
           done
           echo "::error::Linux 系统依赖安装失败" >&2
           exit 1
+
+      - name: 安装 Wails v3 CLI
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Windows 工具链（NSIS + MinGW）
         if: runner.os == 'Windows'

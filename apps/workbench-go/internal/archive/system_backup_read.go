@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"knowflick.local/workbench-go/internal/errtext"
 	"regexp"
 	"slices"
 	"strings"
@@ -54,7 +55,7 @@ func ReadSystemBackup(data []byte) (SystemBackup, error) {
 	}
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return backup, fmt.Errorf("备份包不是有效的 ZIP：%v", err)
+		return backup, errtext.Wrap("备份包不是有效的 ZIP", err)
 	}
 	files := make(map[string][]byte, len(reader.File))
 	for _, entry := range reader.File {
@@ -76,7 +77,7 @@ func ReadSystemBackup(data []byte) (SystemBackup, error) {
 	}
 	var manifest backupManifest
 	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
-		return backup, fmt.Errorf("备份清单无法解析：%v", err)
+		return backup, errtext.Wrap("备份清单无法解析", err)
 	}
 	if manifest.Format != "knowflick-backup" {
 		return backup, fmt.Errorf("未知备份格式: %s", manifest.Format)

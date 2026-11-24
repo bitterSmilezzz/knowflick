@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"net/url"
 	"regexp"
 )
@@ -73,14 +74,14 @@ func captureSubscriptions(ctx context.Context, tx *sql.Tx) (backupSubscriptions,
 	snapshot := backupSubscriptions{Version: 1, Items: make([]backupSubscription, 0)}
 	rows, err := tx.QueryContext(ctx, "SELECT id,type,title,target_url,interval_minutes,last_polled_at,is_active,created_at FROM subscriptions ORDER BY created_at,id")
 	if err != nil {
-		return snapshot, fmt.Errorf("读取订阅失败：%w", err)
+		return snapshot, errtext.Wrap("读取订阅失败", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item backupSubscription
 		var active int64
 		if err := rows.Scan(&item.ID, &item.Type, &item.Title, &item.TargetURL, &item.IntervalMinutes, &item.LastPolledAt, &active, &item.CreatedAt); err != nil {
-			return snapshot, fmt.Errorf("读取订阅失败：%w", err)
+			return snapshot, errtext.Wrap("读取订阅失败", err)
 		}
 		if active != 0 && active != 1 {
 			return snapshot, fmt.Errorf("订阅启用标记无效")

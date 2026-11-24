@@ -3,7 +3,7 @@ package library
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"os"
 	"path/filepath"
 	"time"
@@ -354,7 +354,7 @@ const createPragma = "mode=rwc&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1
 // 只是把「新建」与「只读打开」分成两个入口——只读入口仍然不写库。
 func Create(ctx context.Context, path string) (*Library, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, fmt.Errorf("创建资料库目录失败: %w", err)
+		return nil, errtext.Wrap("创建资料库目录失败", err)
 	}
 	lib, err := openWith(ctx, path, createPragma, true, true)
 	if err != nil {

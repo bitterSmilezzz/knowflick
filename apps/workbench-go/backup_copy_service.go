@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"os"
 	"path/filepath"
 	"time"
@@ -47,14 +48,14 @@ func (s *PreviewService) CopyBackupToDirectory(ctx context.Context, targetDir, a
 	fileName := fmt.Sprintf("knowflick-backup-%s-%02d.kfbackup", date, seq)
 	out := filepath.Join(targetDir, fileName)
 	if err := os.WriteFile(out, archiveBytes, 0o644); err != nil {
-		return BackupCopyResult{}, fmt.Errorf("备份写入失败：%w", err)
+		return BackupCopyResult{}, errtext.Wrap("备份写入失败", err)
 	}
 	digest := sha256.Sum256(archiveBytes)
 	hexDigest := hex.EncodeToString(digest[:])
 	// SHA-256 sidecar：跨设备校验用（包内 FNV 校验和保持兼容）。
 	sidecar := out + ".sha256"
 	if err := os.WriteFile(sidecar, []byte(hexDigest+"  "+fileName+"\n"), 0o644); err != nil {
-		return BackupCopyResult{}, fmt.Errorf("备份校验文件写入失败：%w", err)
+		return BackupCopyResult{}, errtext.Wrap("备份校验文件写入失败", err)
 	}
 	return BackupCopyResult{FileName: fileName, SHA256: hexDigest, Bytes: len(archiveBytes), Sidecar: sidecar}, nil
 }

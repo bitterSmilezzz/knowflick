@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 
 	"knowflick.local/workbench-go/internal/archive"
 )
@@ -34,7 +34,7 @@ func restoreMail(ctx context.Context, tx *sql.Tx, backup archive.SystemBackup) (
 		result, err := tx.ExecContext(ctx, "INSERT INTO mail_accounts (id,config_json,created_at,last_sync_at,last_error,uid_validity,last_uid) VALUES (?,?,?,?,NULL,?,?) ON CONFLICT(id) DO NOTHING",
 			account.Config.ID, string(configJSON), account.CreatedAt, account.LastSyncAt, account.UIDValidity, account.LastUID)
 		if err != nil {
-			return 0, 0, 0, 0, fmt.Errorf("恢复邮箱账号失败：%w", err)
+			return 0, 0, 0, 0, errtext.Wrap("恢复邮箱账号失败", err)
 		}
 		if rows, err := result.RowsAffected(); err == nil && rows > 0 {
 			counts[0]++
@@ -44,7 +44,7 @@ func restoreMail(ctx context.Context, tx *sql.Tx, backup archive.SystemBackup) (
 		result, err := tx.ExecContext(ctx, "INSERT INTO mail_sync_state (account_id,history_before,history_complete,last_attempt_at) VALUES (?,?,?,?) ON CONFLICT(account_id) DO NOTHING",
 			state.AccountID, state.HistoryBefore, favoriteValue(state.HistoryComplete), state.LastAttemptAt)
 		if err != nil {
-			return 0, 0, 0, 0, fmt.Errorf("恢复邮箱同步状态失败：%w", err)
+			return 0, 0, 0, 0, errtext.Wrap("恢复邮箱同步状态失败", err)
 		}
 		if rows, err := result.RowsAffected(); err == nil && rows > 0 {
 			counts[1]++
@@ -54,7 +54,7 @@ func restoreMail(ctx context.Context, tx *sql.Tx, backup archive.SystemBackup) (
 		result, err := tx.ExecContext(ctx, "INSERT INTO mail_imports (account_id,folder,uid_validity,uid,message_id,material_id) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING",
 			item.AccountID, item.Folder, item.UIDValidity, item.UID, item.MessageID, item.MaterialID)
 		if err != nil {
-			return 0, 0, 0, 0, fmt.Errorf("恢复邮件去重记录失败：%w", err)
+			return 0, 0, 0, 0, errtext.Wrap("恢复邮件去重记录失败", err)
 		}
 		if rows, err := result.RowsAffected(); err == nil && rows > 0 {
 			counts[2]++
@@ -64,7 +64,7 @@ func restoreMail(ctx context.Context, tx *sql.Tx, backup archive.SystemBackup) (
 		result, err := tx.ExecContext(ctx, "INSERT INTO mail_rejected (account_id,folder,uid_validity,uid,reason,rejected_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING",
 			item.AccountID, item.Folder, item.UIDValidity, item.UID, item.Reason, item.RejectedAt)
 		if err != nil {
-			return 0, 0, 0, 0, fmt.Errorf("恢复邮件隔离记录失败：%w", err)
+			return 0, 0, 0, 0, errtext.Wrap("恢复邮件隔离记录失败", err)
 		}
 		if rows, err := result.RowsAffected(); err == nil && rows > 0 {
 			counts[3]++

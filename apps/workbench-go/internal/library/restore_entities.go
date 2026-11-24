@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"knowflick.local/workbench-go/internal/errtext"
 
 	"database/sql"
 	"encoding/json"
@@ -29,7 +30,7 @@ func (l *Library) RestoreMaterial(ctx context.Context, protected bool, fingerpri
 		Scan(&local.ID, &local.SourceType, &local.Title, &local.SourceURL, &local.RawText, &local.CleanedMarkdown, &local.ContentHash, &local.MediaPath, &local.MediaSizeBytes, &local.MetadataJSON, &local.InboxStatus, &local.CreatedAt, &local.UpdatedAt)
 	exists := !errors.Is(err, sql.ErrNoRows)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return false, fmt.Errorf("读取本地素材失败：%w", err)
+		return false, errtext.Wrap("读取本地素材失败", err)
 	}
 	if protected {
 		current, fpErr := evidenceFingerprintTx(ctx, tx, "material", material.ID)
@@ -58,11 +59,11 @@ func (l *Library) RestoreMaterial(ctx context.Context, protected bool, fingerpri
 	_, err = tx.ExecContext(ctx, "INSERT INTO materials (id, source_type, title, source_url, raw_text, cleaned_markdown, content_hash, media_path, media_size_bytes, metadata_json, inbox_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
 		material.ID, material.SourceType, material.Title, sourceURL, material.RawText, cleaned2(material.CleanedMarkdown), material.ContentHash, material.MediaPath, material.MediaSizeBytes, material.MetadataJSON, material.InboxStatus, material.CreatedAt, material.UpdatedAt)
 	if err != nil {
-		return false, fmt.Errorf("恢复素材失败：%w", err)
+		return false, errtext.Wrap("恢复素材失败", err)
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO fts_materials (material_id, title, raw_text, source_url) VALUES (?,?,?,?)",
 		material.ID, material.Title, material.RawText, nullToEmpty(sourceURL)); err != nil {
-		return false, fmt.Errorf("恢复素材索引失败：%w", err)
+		return false, errtext.Wrap("恢复素材索引失败", err)
 	}
 	if protected {
 		current, fpErr := evidenceFingerprintTx(ctx, tx, "material", material.ID)
@@ -135,7 +136,7 @@ func (l *Library) RestoreArtifact(ctx context.Context, artifact backupArtifact) 
 	if errors.Is(err, sql.ErrNoRows) {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO artifacts (id, artifact_type, title, content_markdown, source_card_ids, source_note_ids, date_scope_start, date_scope_end, created_at, updated_at, is_deleted) VALUES (?,?,?,?,?,?,?,?,?,?,0)",
 			artifact.ID, artifact.ArtifactType, artifact.Title, artifact.ContentMarkdown, joinJSON(artifact.SourceCardIDs), joinJSON(artifact.SourceNoteIDs), artifact.DateScopeStart, artifact.DateScopeEnd, artifact.CreatedAt, artifact.UpdatedAt); err != nil {
-			return false, fmt.Errorf("恢复产物失败：%w", err)
+			return false, errtext.Wrap("恢复产物失败", err)
 		}
 		if err := tx.Commit(); err != nil {
 			return false, err
@@ -143,7 +144,7 @@ func (l *Library) RestoreArtifact(ctx context.Context, artifact backupArtifact) 
 		return true, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("读取本地产物失败，未覆盖：%w", err)
+		return false, errtext.Wrap("读取本地产物失败，未覆盖", err)
 	}
 	if currentIsDeleted != 0 {
 		return false, errors.New("本地同标识产物已删除，未覆盖或复活")
@@ -176,12 +177,12 @@ func (l *Library) RestoreSubscriptionSnapshot(ctx context.Context, snapshotJSON 
 	inserted := 0
 	for _, item := range snapshot.Items {
 		if err := ValidateSubscription(item); err != nil {
-			return 0, fmt.Errorf("订阅 %s 无效：%w", item.ID, err)
+			return 0, errtext.Wrap(fmt.Sprintf("订阅 %s 无效", item.ID), err)
 		}
 		result, err := tx.ExecContext(ctx, "INSERT INTO subscriptions (id,type,title,target_url,interval_minutes,last_polled_at,is_active,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
 			item.ID, item.Type, item.Title, item.TargetURL, item.IntervalMinutes, item.LastPolledAt, boolInt(item.IsActive), item.CreatedAt)
 		if err != nil {
-			return 0, fmt.Errorf("恢复订阅失败：%w", err)
+			return 0, errtext.Wrap("恢复订阅失败", err)
 		}
 		if changed, err := result.RowsAffected(); err == nil && changed > 0 {
 			inserted++
@@ -296,7 +297,7 @@ func (l *Library) ValidateReviewHistoryDestination(ctx context.Context, snapshot
 		return errors.New("review_history.json 结构无效")
 	}
 	if err := reviewhistory.Validate(snapshot); err != nil {
-		return fmt.Errorf("复习历史快照无效：%w", err)
+		return errtext.Wrap("复习历史快照无效", err)
 	}
 	_, err := reviewhistory.ValidateDestination(l.db, snapshot)
 	return err
@@ -382,17 +383,17 @@ func (l *Library) RestoreCard(ctx context.Context, card cards.Card) (bool, error
 		return false, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return false, fmt.Errorf("读取本地卡片失败，未覆盖：%w", err)
+		return false, errtext.Wrap("读取本地卡片失败，未覆盖", err)
 	}
 	links := mustJSON(card.Links)
 	tags := mustJSON(card.Tags)
 	prereq := mustJSON(card.Prereq)
 	if _, err := tx.ExecContext(ctx, "INSERT INTO cards (id, material_id, category, headline, summary, details, links_json, tags_json, source, seen_at, swiped, is_favorite, favorited_at, review_count, mastery_level, last_reviewed_at, repetition, interval_days, ease_factor, stability, difficulty, subject, branch, level, track, order_key, prereq_json, created_at, edited_at, updated_at, version, is_deleted, deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,NULL)",
 		card.ID, card.MaterialID, card.Category, card.Headline, card.Summary, card.Details, links, tags, card.Source, card.SeenAt, card.Swiped, boolInt(card.IsFavorite), card.FavoritedAt, card.ReviewCount, card.MasteryLevel, card.LastReviewedAt, card.Repetition, card.IntervalDays, card.EaseFactor, card.Stability, card.Difficulty, card.Subject, card.Branch, card.Level, card.Track, card.OrderKey, prereq, card.CreatedAt, card.EditedAt, card.CreatedAt); err != nil {
-		return false, fmt.Errorf("恢复卡片失败：%w", err)
+		return false, errtext.Wrap("恢复卡片失败", err)
 	}
 	if err := cards.IndexContent(ctx, tx, card.ID, cards.Content{Category: card.Category, Headline: card.Headline, Summary: card.Summary, Details: card.Details, Tags: card.Tags}); err != nil {
-		return false, fmt.Errorf("恢复卡片索引失败：%w", err)
+		return false, errtext.Wrap("恢复卡片索引失败", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return false, err

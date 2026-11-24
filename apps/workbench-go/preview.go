@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"mime"
 	"os"
 	"path/filepath"
@@ -84,12 +85,12 @@ func (s *PreviewService) open(ctx context.Context, path string, writable bool) (
 		next, err = library.Open(ctx, path)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("打开资料库失败: %w", err)
+		return nil, errtext.Wrap("打开资料库失败", err)
 	}
 	page, err := next.List(ctx, 0)
 	if err != nil {
 		next.Close()
-		return nil, fmt.Errorf("读取笔记失败: %w", err)
+		return nil, errtext.Wrap("读取笔记失败", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

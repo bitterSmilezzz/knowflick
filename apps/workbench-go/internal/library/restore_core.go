@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"strings"
 
 	"knowflick.local/workbench-go/internal/archive"
@@ -56,14 +57,14 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 	}
 	tx, err := l.db.BeginTx(ctx, nil)
 	if err != nil {
-		return counts, fmt.Errorf("打开恢复事务失败：%w", err)
+		return counts, errtext.Wrap("打开恢复事务失败", err)
 	}
 	defer tx.Rollback()
 	for _, item := range materials {
 		inserted, err := insertIgnore(ctx, tx, "INSERT INTO materials (id,source_type,title,source_url,raw_text,cleaned_markdown,content_hash,media_path,media_size_bytes,metadata_json,inbox_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
 			item.ID, item.SourceType, item.Title, item.SourceURL, item.RawText, item.CleanedMarkdown, item.ContentHash, item.MediaPath, item.MediaSizeBytes, item.MetadataJSON, item.InboxStatus, item.CreatedAt, item.UpdatedAt)
 		if err != nil {
-			return counts, fmt.Errorf("恢复素材失败：%w", err)
+			return counts, errtext.Wrap("恢复素材失败", err)
 		}
 		if inserted {
 			counts.Materials++
@@ -79,12 +80,12 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		inserted, err := insertIgnore(ctx, tx, "INSERT INTO cards (id,material_id,category,headline,summary,details,links_json,tags_json,source,seen_at,swiped,is_favorite,favorited_at,review_count,mastery_level,last_reviewed_at,repetition,interval_days,ease_factor,stability,difficulty,subject,branch,level,track,order_key,prereq_json,created_at,edited_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
 			card.ID, card.MaterialID, card.Category, card.Headline, card.Summary, card.Details, links, tags, card.Source, card.SeenAt, card.Swiped, favoriteValue(card.IsFavorite), card.FavoritedAt, card.ReviewCount, card.MasteryLevel, card.LastReviewedAt, card.Repetition, card.IntervalDays, card.EaseFactor, card.Stability, card.Difficulty, card.Subject, card.Branch, card.Level, card.Track, card.OrderKey, prereq, card.CreatedAt, card.EditedAt, card.CreatedAt)
 		if err != nil {
-			return counts, fmt.Errorf("恢复卡片失败：%w", err)
+			return counts, errtext.Wrap("恢复卡片失败", err)
 		}
 		if inserted {
 			content := cards.Content{Category: card.Category, Headline: card.Headline, Summary: card.Summary, Details: card.Details, Tags: card.Tags}
 			if err := cards.IndexContent(ctx, tx, card.ID, content); err != nil {
-				return counts, fmt.Errorf("恢复卡片索引失败：%w", err)
+				return counts, errtext.Wrap("恢复卡片索引失败", err)
 			}
 			counts.Cards++
 		} else {
@@ -99,7 +100,7 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		inserted, err := insertIgnore(ctx, tx, "INSERT INTO artifacts (id,artifact_type,title,content_markdown,source_card_ids,source_note_ids,date_scope_start,date_scope_end,created_at,updated_at,is_deleted) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
 			item.ID, item.ArtifactType, item.Title, item.ContentMarkdown, cardIDs, noteIDs, item.DateScopeStart, item.DateScopeEnd, item.CreatedAt, item.UpdatedAt, artifactDeletedValue(item.IsDeleted))
 		if err != nil {
-			return counts, fmt.Errorf("恢复产物失败：%w", err)
+			return counts, errtext.Wrap("恢复产物失败", err)
 		}
 		if inserted {
 			counts.Artifacts++
@@ -121,7 +122,7 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		inserted, err := insertIgnore(ctx, tx, "INSERT INTO notes (id,title,body_md,notebook,tags_json,is_pinned,is_favorite,archived_at,source_material_id,current_revision,created_at,updated_at,is_deleted,deleted_at,exclude_from_profile) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
 			note.ID, note.Title, note.BodyMD, note.Notebook, string(noteTags), favoriteValue(note.IsPinned), favoriteValue(note.IsFavorite), note.ArchivedAt, note.SourceMaterialID, note.CurrentRevision, note.CreatedAt, note.UpdatedAt, favoriteValue(note.IsDeleted), note.DeletedAt, favoriteValue(note.ExcludeFromProfile))
 		if err != nil {
-			return counts, fmt.Errorf("恢复笔记失败：%w", err)
+			return counts, errtext.Wrap("恢复笔记失败", err)
 		}
 		if inserted {
 			counts.Notes++
@@ -139,7 +140,7 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		inserted, err := insertIgnore(ctx, tx, "INSERT INTO note_revisions (note_id,revision,title,body_md,saved_at) VALUES (?,?,?,?,?) ON CONFLICT(note_id,revision) DO NOTHING",
 			revision.NoteID, revision.Revision, revision.Title, revision.BodyMD, revision.SavedAt)
 		if err != nil {
-			return counts, fmt.Errorf("恢复笔记历史失败：%w", err)
+			return counts, errtext.Wrap("恢复笔记历史失败", err)
 		}
 		if inserted {
 			counts.Revisions++
@@ -160,7 +161,7 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		inserted, err := insertIgnore(ctx, tx, "INSERT INTO knowledge_bases (id,name,description,created_at,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
 			base.ID, base.Name, base.Description, base.CreatedAt, base.UpdatedAt)
 		if err != nil {
-			return counts, fmt.Errorf("恢复知识库失败：%w", err)
+			return counts, errtext.Wrap("恢复知识库失败", err)
 		}
 		if inserted {
 			counts.KnowledgeBases++
@@ -176,7 +177,7 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 		inserted, err := insertIgnore(ctx, tx, "INSERT INTO kb_membership (kb_id,note_id,added_at) VALUES (?,?,?) ON CONFLICT(kb_id,note_id) DO NOTHING",
 			parts[0], parts[1], addedAt)
 		if err != nil {
-			return counts, fmt.Errorf("恢复知识库成员关系失败：%w", err)
+			return counts, errtext.Wrap("恢复知识库成员关系失败", err)
 		}
 		if inserted {
 			counts.Membership++
@@ -210,16 +211,16 @@ func (l *Library) RestoreCoreBackup(ctx context.Context, backup archive.SystemBa
 	}
 	counts.R4Rows = r4Rows
 	if err := tx.Commit(); err != nil {
-		return counts, fmt.Errorf("提交恢复事务失败：%w", err)
+		return counts, errtext.Wrap("提交恢复事务失败", err)
 	}
 	if len(backup.Settings) > 0 && string(backup.Settings) != "{}" {
 		if err := libfiles.SaveSettings(dir, string(backup.Settings)); err != nil {
-			return counts, fmt.Errorf("恢复设置失败：%w", err)
+			return counts, errtext.Wrap("恢复设置失败", err)
 		}
 	}
 	for relative, body := range backup.Media {
 		if _, err := media.Restore(dir, relative, body); err != nil {
-			return counts, fmt.Errorf("恢复附件 %s 失败：%w", relative, err)
+			return counts, errtext.Wrap(fmt.Sprintf("恢复附件 %s 失败", relative), err)
 		}
 		counts.Media++
 	}

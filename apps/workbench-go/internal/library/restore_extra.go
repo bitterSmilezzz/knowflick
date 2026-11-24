@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 
 	"knowflick.local/workbench-go/internal/archive"
 	"knowflick.local/workbench-go/internal/reviewhistory"
@@ -37,11 +38,11 @@ func restoreSubscriptions(ctx context.Context, tx *sql.Tx, backup archive.System
 			}
 			continue
 		} else if !errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("读取本地订阅失败：%w", err)
+			return 0, errtext.Wrap("读取本地订阅失败", err)
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO subscriptions (id,type,title,target_url,interval_minutes,last_polled_at,is_active,created_at) VALUES (?,?,?,?,?,?,?,?)",
 			item.ID, item.Type, item.Title, item.TargetURL, item.IntervalMinutes, item.LastPolledAt, favoriteValue(item.IsActive), item.CreatedAt); err != nil {
-			return 0, fmt.Errorf("恢复订阅失败：%w", err)
+			return 0, errtext.Wrap("恢复订阅失败", err)
 		}
 		inserted++
 	}
@@ -58,7 +59,7 @@ func restoreReviewHistory(ctx context.Context, tx *sql.Tx, backup archive.System
 		return 0, errors.New("review_history.json 结构无效")
 	}
 	if err := reviewhistory.Validate(snapshot); err != nil {
-		return 0, fmt.Errorf("复习历史快照无效：%w", err)
+		return 0, errtext.Wrap("复习历史快照无效", err)
 	}
 	inserted := 0
 	for _, event := range snapshot.Events {
@@ -69,7 +70,7 @@ func restoreReviewHistory(ctx context.Context, tx *sql.Tx, backup archive.System
 		result, err := tx.ExecContext(ctx, "INSERT INTO review_events (event_id,card_id,reviewed_at,rating,algorithm,project_ids_json,project_attribution_complete) VALUES (?,?,?,?,?,?,?) ON CONFLICT(event_id) DO NOTHING",
 			event.ID, event.CardID, event.ReviewedAt, string(event.Rating), string(event.Algorithm), string(projects), favoriteValue(event.ProjectAttributionComplete))
 		if err != nil {
-			return 0, fmt.Errorf("恢复复习历史失败：%w", err)
+			return 0, errtext.Wrap("恢复复习历史失败", err)
 		}
 		if rows, err := result.RowsAffected(); err == nil && rows > 0 {
 			inserted++
@@ -79,14 +80,14 @@ func restoreReviewHistory(ctx context.Context, tx *sql.Tx, backup archive.System
 	err := tx.QueryRowContext(ctx, "SELECT value FROM meta WHERE key = 'review_history_started_at'").Scan(&current)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("读取复习覆盖起点失败：%w", err)
+			return 0, errtext.Wrap("读取复习覆盖起点失败", err)
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO meta (key,value) VALUES ('review_history_started_at',?)", fmt.Sprintf("%d", snapshot.CoverageStartedAt)); err != nil {
-			return 0, fmt.Errorf("写入复习覆盖起点失败：%w", err)
+			return 0, errtext.Wrap("写入复习覆盖起点失败", err)
 		}
 	} else if snapshot.CoverageStartedAt > current {
 		if _, err := tx.ExecContext(ctx, "UPDATE meta SET value = ? WHERE key = 'review_history_started_at'", fmt.Sprintf("%d", snapshot.CoverageStartedAt)); err != nil {
-			return 0, fmt.Errorf("更新复习覆盖起点失败：%w", err)
+			return 0, errtext.Wrap("更新复习覆盖起点失败", err)
 		}
 	}
 	return inserted, nil

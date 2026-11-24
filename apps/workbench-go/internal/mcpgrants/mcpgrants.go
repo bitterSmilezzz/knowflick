@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"strings"
 
 	"github.com/google/uuid"
@@ -165,5 +166,5 @@ func DescribeError(operation string, err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("%s失败: %w", operation, err)
+	return errtext.Wrap(fmt.Sprintf("%s失败", operation), err)
 }

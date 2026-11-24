@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
-	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"path/filepath"
 	"time"
 
@@ -43,7 +43,7 @@ func (m *MailService) testMailAccount(ctx context.Context, config mail.Config, s
 	}
 	transport, err := imap.ConnectWithRoots(config.Host, config.Port, roots)
 	if err != nil {
-		return summary, fmt.Errorf("连接邮件服务器失败：%w", err)
+		return summary, errtext.Wrap("连接邮件服务器失败", err)
 	}
 	if closer, ok := transport.(interface{ Close() error }); ok {
 		defer func() { _ = closer.Close() }()

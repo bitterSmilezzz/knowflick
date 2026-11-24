@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,11 +35,11 @@ func (s *PreviewService) WriteTextFile(ctx context.Context, path, contents strin
 	}
 	if dir := filepath.Dir(path); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("无法创建导出目录：%w", err)
+			return errtext.Wrap("无法创建导出目录", err)
 		}
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
-		return fmt.Errorf("写入导出文件失败：%w", err)
+		return errtext.Wrap("写入导出文件失败", err)
 	}
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"knowflick.local/workbench-go/internal/errtext"
 	"net"
 	"net/http"
 	"net/url"
@@ -111,7 +112,7 @@ func FetchClip(ctx context.Context, raw string) (ClipPage, error) {
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := client.Do(req)
 	if err != nil {
-		return ClipPage{}, fmt.Errorf("抓取失败: %w", err)
+		return ClipPage{}, errtext.Wrap("抓取失败", err)
 	}
 	defer resp.Body.Close()
 	final, err := ValidateURL(resp.Request.URL.String())
@@ -154,7 +155,7 @@ func ChatComplete(ctx context.Context, endpoint, apiKey, body string) (string, e
 	}
 	resp, err := NewClient(target, 120*time.Second).Do(req)
 	if err != nil {
-		return "", fmt.Errorf("请求失败: %w", err)
+		return "", errtext.Wrap("请求失败", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxClipBytes))
@@ -188,6 +189,7 @@ func ChatComplete(ctx context.Context, endpoint, apiKey, body string) (string, e
 	}
 	return string(raw), nil
 }
+
 // chatAuthHeaders 按服务商给鉴权头：Anthropic 用 x-api-key，其余 OpenAI 兼容服务用 Bearer。
 func chatAuthHeaders(endpoint, apiKey string) map[string]string {
 	if strings.Contains(endpoint, "anthropic.com") {
@@ -258,7 +260,7 @@ func WebDAVPut(ctx context.Context, raw, username, password string, body []byte,
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("WebDAV 上传失败: %w", err)
+		return 0, nil, errtext.Wrap("WebDAV 上传失败", err)
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxClipBytes))
@@ -340,7 +342,7 @@ func RequestEmbeddings(ctx context.Context, endpoint, apiKey, model string, inpu
 	}
 	resp, err := NewClient(target, 60*time.Second).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Embedding 请求失败: %w", err)
+		return nil, errtext.Wrap("Embedding 请求失败", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
@@ -360,7 +362,7 @@ func RequestEmbeddings(ctx context.Context, endpoint, apiKey, model string, inpu
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("解析 Embedding 响应 JSON 失败: %w", err)
+		return nil, errtext.Wrap("解析 Embedding 响应 JSON 失败", err)
 	}
 	if parsed.Data == nil {
 		return nil, errors.New("Embedding 响应缺少 data 数组")

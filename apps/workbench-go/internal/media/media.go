@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"knowflick.local/workbench-go/internal/errtext"
 	"os"
 	"path/filepath"
 	"sort"
@@ -82,7 +83,7 @@ func save(dir, kind, mime string, data []byte, link func(path string) error) (st
 	if link != nil {
 		if err := link(relative); err != nil {
 			if removeErr := folder.Remove(name); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-				return "", errors.Join(err, fmt.Errorf("无法清理未关联的附件：%w", removeErr))
+				return "", errors.Join(err, errtext.Wrap("无法清理未关联的附件", removeErr))
 			}
 			return "", err
 		}
@@ -110,7 +111,7 @@ func Read(dir, relative string) ([]byte, error) {
 	}
 	libraryRoot, err := os.OpenRoot(dir)
 	if err != nil {
-		return nil, fmt.Errorf("无法打开资料库附件目录：%w", err)
+		return nil, errtext.Wrap("无法打开资料库附件目录", err)
 	}
 	defer libraryRoot.Close()
 	info, err := libraryRoot.Lstat("media")
@@ -119,7 +120,7 @@ func Read(dir, relative string) ([]byte, error) {
 	}
 	mediaRoot, err := libraryRoot.OpenRoot("media")
 	if err != nil {
-		return nil, fmt.Errorf("无法打开附件目录：%w", err)
+		return nil, errtext.Wrap("无法打开附件目录", err)
 	}
 	defer mediaRoot.Close()
 	name := filepath.FromSlash(attachment)
@@ -132,12 +133,12 @@ func Read(dir, relative string) ([]byte, error) {
 	}
 	file, err := mediaRoot.Open(name)
 	if err != nil {
-		return nil, fmt.Errorf("无法读取附件：%w", err)
+		return nil, errtext.Wrap("无法读取附件", err)
 	}
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, MaxAudio+1))
 	if err != nil {
-		return nil, fmt.Errorf("无法读取附件：%w", err)
+		return nil, errtext.Wrap("无法读取附件", err)
 	}
 	if len(data) > MaxAudio {
 		return nil, errors.New("附件过大，无法读取")

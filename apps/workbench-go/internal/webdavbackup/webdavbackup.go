@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"strings"
 	"time"
 
@@ -40,7 +41,7 @@ func Upload(ctx context.Context, baseURL, username, secret string, archive []byt
 		}
 		status, body, err := httpx.WebDAVPut(ctx, base+"/"+name, user, pass, archive, "application/zip")
 		if err != nil {
-			return result, fmt.Errorf("WebDAV 上传失败：%w", err)
+			return result, errtext.Wrap("WebDAV 上传失败", err)
 		}
 		if status == 200 || status == 201 || status == 204 {
 			uploaded = name
@@ -56,7 +57,7 @@ func Upload(ctx context.Context, baseURL, username, secret string, archive []byt
 	sidecar := fmt.Sprintf("%s  %s\n", hash, uploaded)
 	status, body, err := httpx.WebDAVPut(ctx, base+"/"+uploaded+".sha256", user, pass, []byte(sidecar), "text/plain")
 	if err != nil {
-		return result, fmt.Errorf("WebDAV 校验文件上传失败：%w", err)
+		return result, errtext.Wrap("WebDAV 校验文件上传失败", err)
 	}
 	if status != 200 && status != 201 && status != 204 {
 		return result, fmt.Errorf("WebDAV 校验文件上传失败：HTTP %d %s", status, string(body[:min(len(body), 200)]))

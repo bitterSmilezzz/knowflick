@@ -40,9 +40,17 @@ class GoErrorMessageTest(unittest.TestCase):
             [],
         )
 
-    def test_wrapped_chinese_prefix_is_accepted(self):
+    def test_half_chinese_wrap_is_reported(self):
+        problems = self.scan(
+            "db.go",
+            'package workbench\n\nvar err = fmt.Errorf("打开资料库失败：%w", io.EOF)\n',
+        )
+        self.assertEqual(len(problems), 1)
+        self.assertIn("errtext.Wrap", problems[0])
+
+    def test_errtext_wrap_is_accepted(self):
         self.assertEqual(
-            self.scan("db.go", 'package workbench\n\nvar err = fmt.Errorf("打开资料库失败：%w", io.EOF)\n'),
+            self.scan("db.go", 'package workbench\n\nvar err = errtext.Wrap("打开资料库失败", io.EOF)\n'),
             [],
         )
 

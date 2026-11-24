@@ -5,7 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -79,7 +79,7 @@ func openWith(ctx context.Context, path, query string, migrate, create bool) (*L
 	if migrate {
 		if err := ensureSchema(ctx, db); err != nil {
 			db.Close()
-			return nil, fmt.Errorf("初始化资料库结构失败: %w", err)
+			return nil, errtext.Wrap("初始化资料库结构失败", err)
 		}
 	}
 	for _, statement := range []string{
@@ -89,7 +89,7 @@ func openWith(ctx context.Context, path, query string, migrate, create bool) (*L
 		rows, err := db.QueryContext(ctx, statement)
 		if err != nil {
 			db.Close()
-			return nil, fmt.Errorf("无法读取 KnowFlick 笔记结构: %w", err)
+			return nil, errtext.Wrap("无法读取 KnowFlick 笔记结构", err)
 		}
 		rows.Close()
 	}

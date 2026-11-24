@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"strings"
 
 	"knowflick.local/workbench-go/internal/mail"
@@ -71,7 +72,7 @@ var mailSchemas = map[string][][4]any{
 func mailTablePresent(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
 	var present bool
 	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", name).Scan(&present); err != nil {
-		return false, fmt.Errorf("检查邮箱备份结构失败：%w", err)
+		return false, errtext.Wrap("检查邮箱备份结构失败", err)
 	}
 	return present, nil
 }
@@ -80,7 +81,7 @@ func verifyMailSchema(ctx context.Context, tx *sql.Tx, name string) error {
 	expected := mailSchemas[name]
 	rows, err := tx.QueryContext(ctx, "PRAGMA table_info("+name+")")
 	if err != nil {
-		return fmt.Errorf("检查邮箱表结构失败：%w", err)
+		return errtext.Wrap("检查邮箱表结构失败", err)
 	}
 	defer rows.Close()
 	var actual [][4]any
@@ -89,7 +90,7 @@ func verifyMailSchema(ctx context.Context, tx *sql.Tx, name string) error {
 		var column, kind string
 		var dflt any
 		if err := rows.Scan(&cid, &column, &kind, &notNull, &dflt, &pk); err != nil {
-			return fmt.Errorf("检查邮箱表结构失败：%w", err)
+			return errtext.Wrap("检查邮箱表结构失败", err)
 		}
 		actual = append(actual, [4]any{column, kind, notNull != 0, pk})
 	}
@@ -162,7 +163,7 @@ type storedMaterial struct {
 func mailMaterialRecord(ctx context.Context, tx *sql.Tx, id string) (*storedMaterial, error) {
 	rows, err := tx.QueryContext(ctx, "SELECT id,source_type,title,source_url,raw_text,cleaned_markdown,content_hash,media_path,media_size_bytes,metadata_json,inbox_status,created_at,updated_at,is_deleted FROM materials WHERE id=?", id)
 	if err != nil {
-		return nil, fmt.Errorf("读取邮件来源素材失败：%w", err)
+		return nil, errtext.Wrap("读取邮件来源素材失败", err)
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -172,7 +173,7 @@ func mailMaterialRecord(ctx context.Context, tx *sql.Tx, id string) (*storedMate
 	if err := rows.Scan(&record.Item.ID, &record.Item.SourceType, &record.Item.Title, &record.Item.SourceURL, &record.Item.RawText,
 		&record.Item.CleanedMarkdown, &record.Item.ContentHash, &record.Item.MediaPath, &record.Item.MediaSizeBytes, &record.Item.MetadataJSON,
 		&record.Item.InboxStatus, &record.Item.CreatedAt, &record.Item.UpdatedAt, &record.Deleted); err != nil {
-		return nil, fmt.Errorf("读取邮件来源素材失败：%w", err)
+		return nil, errtext.Wrap("读取邮件来源素材失败", err)
 	}
 	return &record, nil
 }
@@ -229,14 +230,14 @@ func captureMailSnapshot(ctx context.Context, tx *sql.Tx, materials []backupMate
 	}
 	rows, err := tx.QueryContext(ctx, "SELECT account_id,history_before,history_complete,last_attempt_at FROM mail_sync_state ORDER BY account_id")
 	if err != nil {
-		return snapshot, fmt.Errorf("读取邮箱同步状态失败：%w", err)
+		return snapshot, errtext.Wrap("读取邮箱同步状态失败", err)
 	}
 	for rows.Next() {
 		var state backupMailSyncState
 		var complete int64
 		if err := rows.Scan(&state.AccountID, &state.HistoryBefore, &complete, &state.LastAttemptAt); err != nil {
 			rows.Close()
-			return snapshot, fmt.Errorf("读取邮箱同步状态失败：%w", err)
+			return snapshot, errtext.Wrap("读取邮箱同步状态失败", err)
 		}
 		if complete != 0 && complete != 1 {
 			rows.Close()
@@ -248,14 +249,14 @@ func captureMailSnapshot(ctx context.Context, tx *sql.Tx, materials []backupMate
 	rows.Close()
 	rows, err = tx.QueryContext(ctx, "SELECT id,config_json,created_at,last_sync_at,uid_validity,last_uid FROM mail_accounts ORDER BY created_at,id")
 	if err != nil {
-		return snapshot, fmt.Errorf("读取邮箱账号失败：%w", err)
+		return snapshot, errtext.Wrap("读取邮箱账号失败", err)
 	}
 	for rows.Next() {
 		var id, configJSON string
 		var account backupMailAccount
 		if err := rows.Scan(&id, &configJSON, &account.CreatedAt, &account.LastSyncAt, &account.UIDValidity, &account.LastUID); err != nil {
 			rows.Close()
-			return snapshot, fmt.Errorf("读取邮箱账号失败：%w", err)
+			return snapshot, errtext.Wrap("读取邮箱账号失败", err)
 		}
 		config, err := mailConfigFromJSON(configJSON)
 		if err != nil {
@@ -272,26 +273,26 @@ func captureMailSnapshot(ctx context.Context, tx *sql.Tx, materials []backupMate
 	rows.Close()
 	rows, err = tx.QueryContext(ctx, "SELECT account_id,folder,uid_validity,uid,message_id,material_id FROM mail_imports ORDER BY account_id,folder,uid_validity,uid")
 	if err != nil {
-		return snapshot, fmt.Errorf("读取邮件去重记录失败：%w", err)
+		return snapshot, errtext.Wrap("读取邮件去重记录失败", err)
 	}
 	for rows.Next() {
 		var item backupMailImport
 		if err := rows.Scan(&item.AccountID, &item.Folder, &item.UIDValidity, &item.UID, &item.MessageID, &item.MaterialID); err != nil {
 			rows.Close()
-			return snapshot, fmt.Errorf("读取邮件去重记录失败：%w", err)
+			return snapshot, errtext.Wrap("读取邮件去重记录失败", err)
 		}
 		snapshot.Imports = append(snapshot.Imports, item)
 	}
 	rows.Close()
 	rows, err = tx.QueryContext(ctx, "SELECT account_id,folder,uid_validity,uid,reason,rejected_at FROM mail_rejected ORDER BY account_id,folder,uid_validity,uid")
 	if err != nil {
-		return snapshot, fmt.Errorf("读取邮件隔离记录失败：%w", err)
+		return snapshot, errtext.Wrap("读取邮件隔离记录失败", err)
 	}
 	for rows.Next() {
 		var item backupMailRejected
 		if err := rows.Scan(&item.AccountID, &item.Folder, &item.UIDValidity, &item.UID, &item.Reason, &item.RejectedAt); err != nil {
 			rows.Close()
-			return snapshot, fmt.Errorf("读取邮件隔离记录失败：%w", err)
+			return snapshot, errtext.Wrap("读取邮件隔离记录失败", err)
 		}
 		snapshot.Rejected = append(snapshot.Rejected, item)
 	}

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"knowflick.local/workbench-go/internal/errtext"
 	"net/http"
 	"os"
 	"os/exec"
@@ -125,7 +126,7 @@ func Download(ctx context.Context, url, target string, onProgress func(done, tot
 	client := httpx.NewClient(targetURL, 600*time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("下载失败: %w", err)
+		return 0, errtext.Wrap("下载失败", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
@@ -157,7 +158,7 @@ func Download(ctx context.Context, url, target string, onProgress func(done, tot
 		if readErr != nil {
 			file.Close()
 			_ = os.Remove(partial)
-			return 0, fmt.Errorf("下载中断: %w", readErr)
+			return 0, errtext.Wrap("下载中断", readErr)
 		}
 	}
 	if err := file.Sync(); err != nil {
@@ -181,7 +182,7 @@ func Download(ctx context.Context, url, target string, onProgress func(done, tot
 func ReadWAVMonoF32(path string) ([]float32, error) {
 	bytes, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取音频失败: %w", err)
+		return nil, errtext.Wrap("读取音频失败", err)
 	}
 	if len(bytes) < 12 || string(bytes[0:4]) != "RIFF" || string(bytes[8:12]) != "WAVE" {
 		return nil, errors.New("不是合法的 WAV 文件")

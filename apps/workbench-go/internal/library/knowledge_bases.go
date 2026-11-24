@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"knowflick.local/workbench-go/internal/errtext"
 	"strings"
 )
 
@@ -38,11 +39,11 @@ func readKnowledgeBases(ctx context.Context, tx *sql.Tx) (KnowledgeBaseSnapshot,
 			return rows.Scan(&base.ID, &base.Name, &base.Description, &base.CreatedAt, &base.UpdatedAt)
 		})
 	if err != nil {
-		return KnowledgeBaseSnapshot{}, fmt.Errorf("读取知识库失败：%w", err)
+		return KnowledgeBaseSnapshot{}, errtext.Wrap("读取知识库失败", err)
 	}
 	rows, err := tx.QueryContext(ctx, "SELECT kb_id,note_id,added_at FROM kb_membership")
 	if err != nil {
-		return KnowledgeBaseSnapshot{}, fmt.Errorf("读取知识库成员关系失败：%w", err)
+		return KnowledgeBaseSnapshot{}, errtext.Wrap("读取知识库成员关系失败", err)
 	}
 	defer rows.Close()
 	membership := make(map[string]int64)
@@ -71,7 +72,7 @@ func (l *Library) CreateKnowledgeBase(ctx context.Context, id, name, description
 	result, err := l.db.ExecContext(ctx, "INSERT INTO knowledge_bases (id,name,description,created_at,updated_at) "+
 		"SELECT ?1,?2,?3,?4,?4 WHERE NOT EXISTS (SELECT 1 FROM knowledge_bases WHERE name = ?2)", id, name, description, now)
 	if err != nil {
-		return fmt.Errorf("创建知识库失败：%w", err)
+		return errtext.Wrap("创建知识库失败", err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {

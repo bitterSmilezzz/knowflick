@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"knowflick.local/workbench-go/internal/errtext"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -110,12 +111,12 @@ func (l *Library) WriteSystemBackupV4(ctx context.Context, dst io.Writer, dir st
 	} {
 		*item.dest, err = json.Marshal(item.data)
 		if err != nil {
-			return fmt.Errorf("无法编码备份快照：%w", err)
+			return errtext.Wrap("无法编码备份快照", err)
 		}
 	}
 	settings, err := libfiles.ReadOptional(filepath.Join(dir, "settings.json"))
 	if err != nil {
-		return fmt.Errorf("无法读取备份设置：%w", err)
+		return errtext.Wrap("无法读取备份设置", err)
 	}
 	if settings != nil {
 		snapshot.Settings = *settings
@@ -137,27 +138,27 @@ func (l *Library) WriteSystemBackupV4(ctx context.Context, dst io.Writer, dir st
 func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, error) {
 	tx, err := l.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return backupDatabase{}, fmt.Errorf("无法打开备份快照：%w", err)
+		return backupDatabase{}, errtext.Wrap("无法打开备份快照", err)
 	}
 	defer tx.Rollback()
 	materials, err := readBackupRows(ctx, tx, `SELECT id,source_type,title,source_url,raw_text,cleaned_markdown,
 		content_hash,media_path,media_size_bytes,metadata_json,inbox_status,created_at,updated_at
 		FROM materials WHERE is_deleted=0 ORDER BY created_at DESC`, scanBackupMaterial)
 	if err != nil {
-		return backupDatabase{}, fmt.Errorf("读取备份素材失败：%w", err)
+		return backupDatabase{}, errtext.Wrap("读取备份素材失败", err)
 	}
 	activeCards, err := cards.ListForBackup(ctx, tx)
 	if err != nil {
-		return backupDatabase{}, fmt.Errorf("读取备份卡片失败：%w", err)
+		return backupDatabase{}, errtext.Wrap("读取备份卡片失败", err)
 	}
 	notes, err := readBackupRows(ctx, tx, "SELECT "+noteColumns+" FROM notes n ORDER BY n.is_pinned DESC, n.updated_at DESC", scanBackupNote)
 	if err != nil {
-		return backupDatabase{}, fmt.Errorf("读取备份笔记失败：%w", err)
+		return backupDatabase{}, errtext.Wrap("读取备份笔记失败", err)
 	}
 	artifacts, err := readBackupRows(ctx, tx, `SELECT id,artifact_type,title,content_markdown,source_card_ids,source_note_ids,
 		date_scope_start,date_scope_end,created_at,updated_at,is_deleted FROM artifacts WHERE is_deleted=0 ORDER BY created_at DESC`, scanBackupArtifact)
 	if err != nil {
-		return backupDatabase{}, fmt.Errorf("读取备份产物失败：%w", err)
+		return backupDatabase{}, errtext.Wrap("读取备份产物失败", err)
 	}
 	knowledgeBases, err := readKnowledgeBases(ctx, tx)
 	if err != nil {
@@ -168,7 +169,7 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 			return rows.Scan(&item.NoteID, &item.Revision, &item.Title, &item.BodyMD, &item.SavedAt)
 		})
 	if err != nil {
-		return backupDatabase{}, fmt.Errorf("读取笔记历史失败：%w", err)
+		return backupDatabase{}, errtext.Wrap("读取笔记历史失败", err)
 	}
 	if err := validateRevisions(revisions, notes); err != nil {
 		return backupDatabase{}, err
@@ -183,7 +184,7 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 	}
 	reviewHistory, err := reviewhistory.CaptureTx(tx)
 	if err != nil {
-		return backupDatabase{}, fmt.Errorf("读取复习历史失败：%w", err)
+		return backupDatabase{}, errtext.Wrap("读取复习历史失败", err)
 	}
 	reviewJSON, err := json.Marshal(reviewHistory)
 	if err != nil {
@@ -198,7 +199,7 @@ func (l *Library) captureBackupDatabase(ctx context.Context) (backupDatabase, er
 		return backupDatabase{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return backupDatabase{}, fmt.Errorf("读取备份快照失败：%w", err)
+		return backupDatabase{}, errtext.Wrap("读取备份快照失败", err)
 	}
 	return backupDatabase{
 		cards: activeCards, materials: materials, artifacts: artifacts, notes: notes,
@@ -227,7 +228,7 @@ func captureR4(ctx context.Context, tx *sql.Tx) (json.RawMessage, error) {
 		expected := r4Schemas[name]
 		rows, err := tx.QueryContext(ctx, "PRAGMA table_info("+name+")")
 		if err != nil {
-			return nil, fmt.Errorf("读取项目与画像表结构失败：%w", err)
+			return nil, errtext.Wrap("读取项目与画像表结构失败", err)
 		}
 		var actual [][4]any
 		for rows.Next() {
@@ -236,7 +237,7 @@ func captureR4(ctx context.Context, tx *sql.Tx) (json.RawMessage, error) {
 			var defaultValue any
 			if err := rows.Scan(&cid, &colName, &kind, &notNull, &defaultValue, &pk); err != nil {
 				rows.Close()
-				return nil, fmt.Errorf("读取项目与画像表结构失败：%w", err)
+				return nil, errtext.Wrap("读取项目与画像表结构失败", err)
 			}
 			actual = append(actual, [4]any{colName, kind, notNull != 0, pk})
 		}
@@ -275,7 +276,7 @@ func captureR4(ctx context.Context, tx *sql.Tx) (json.RawMessage, error) {
 			return nil
 		})
 		if err != nil {
-			return nil, fmt.Errorf("读取项目与画像数据失败：%w", err)
+			return nil, errtext.Wrap("读取项目与画像数据失败", err)
 		}
 		tables[name] = items
 	}
@@ -397,7 +398,7 @@ func fingerprintRow(ctx context.Context, tx *sql.Tx, query, id string) (string, 
 func readSearchHistory(dir string) (json.RawMessage, error) {
 	text, err := libfiles.ReadOptional(filepath.Join(dir, "search_history.json"))
 	if err != nil {
-		return nil, fmt.Errorf("读取搜索历史失败：%w", err)
+		return nil, errtext.Wrap("读取搜索历史失败", err)
 	}
 	if text == nil {
 		return nil, nil
@@ -481,7 +482,7 @@ func scanBackupNote(rows *sql.Rows, item *backupNote) error {
 	}
 	tags, err := jsonx.DecodeArray[string](note.TagsJSON)
 	if err != nil {
-		return fmt.Errorf("笔记标签数据损坏：%w", err)
+		return errtext.Wrap("笔记标签数据损坏", err)
 	}
 	*item = backupNote{
 		ID: note.ID, Title: note.Title, BodyMD: note.Body, Notebook: note.Notebook, Tags: tags,
@@ -501,11 +502,11 @@ func scanBackupArtifact(rows *sql.Rows, item *backupArtifact) error {
 	var err error
 	item.SourceCardIDs, err = jsonx.DecodeArray[string](cardIDs)
 	if err != nil {
-		return fmt.Errorf("产物引用的卡片数据损坏：%w", err)
+		return errtext.Wrap("产物引用的卡片数据损坏", err)
 	}
 	item.SourceNoteIDs, err = jsonx.DecodeArray[string](noteIDs)
 	if err != nil {
-		return fmt.Errorf("产物引用的笔记数据损坏：%w", err)
+		return errtext.Wrap("产物引用的笔记数据损坏", err)
 	}
 	return nil
 }
@@ -547,7 +548,7 @@ func (snapshot backupDatabase) readBackupMedia(ctx context.Context, dir string) 
 		}
 		data, err := media.Read(dir, path)
 		if err != nil {
-			return nil, fmt.Errorf("读取备份附件 %s 失败：%w", path, err)
+			return nil, errtext.Wrap(fmt.Sprintf("读取备份附件 %s 失败", path), err)
 		}
 		attachments[path] = data
 	}
