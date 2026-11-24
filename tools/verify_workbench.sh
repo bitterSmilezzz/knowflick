@@ -67,9 +67,9 @@ fi
 if [ "$SCOPE" != web ]; then
   cd "$ROOT/apps/workbench-go"
   # 分片只守后端本身；前端与守卫仍走 web 分片，CI 两 job 并行。
-  run_step "Go 静态检查" go vet ./...
+  run_step "Go 静态检查" go vet -p "${KF_GO_PARALLEL:-2}" ./...
   # 限并发：整棵服务代码的测试并行跑会同时吃 CPU 与内存（本机曾把可用内存压到几百 MB）。
-  run_step "Go 单测" go test ./... -p "${KF_GO_PARALLEL:-2}"
+  run_step "Go 单测" go test -p "${KF_GO_PARALLEL:-2}" -parallel "${KF_GO_PARALLEL:-2}" ./...
   # 回环判定要与 TypeScript 逐条对拍：这一条要 Go + 前端 node_modules 两套都在。
   # 它在 go 分片里，因为主要成本是编译 Go；CI 的 go-checks job 先跑过 npm ci。
   cd "$ROOT"
@@ -109,11 +109,11 @@ fi
   # 此前它只在本地跑，界面退化不会被 CI 拦住。
   # 缺 agent-browser 时脚本自己 SKIP（CI 环境没有那个工具）——守卫用 promisify 过的 exec，
   # 原始 execFile 回调版不抛错，守卫会永远返回 true。
-  node tools/taste_usability_gate.mjs
+  node tools/browser_resource_guard.mjs run node tools/taste_usability_gate.mjs
 
   # 来源矩阵：每种来源都要能进收件箱、被搜到、转成卡并回溯。
   # 此前每类来源各有一套冒烟，但没有一套覆盖全部来源——这条线是拼起来的，不是验过的。
-  node tools/source_matrix_smoke.mjs
+  node tools/browser_resource_guard.mjs run node tools/source_matrix_smoke.mjs
 
 
   # 文档一致性：描述「当前状态」的文档里的数字与命令要和实际相符。
