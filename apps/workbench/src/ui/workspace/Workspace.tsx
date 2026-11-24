@@ -549,7 +549,7 @@ export function Workspace() {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [dir]);
 
-  // Native menu events arrive as DOM CustomEvents (see src-tauri/src/lib.rs).
+  // 原生菜单事件以 DOM CustomEvent 形式到达（Rust 时代留下的协议，Go 侧同样使用）。
   useEffect(() => {
     const onMenu = (event: Event) => {
       const id = (event as CustomEvent<string>).detail;
