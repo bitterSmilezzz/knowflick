@@ -42,6 +42,7 @@ import {
   saveMedia,
   pickAudioFile,
   pickExportPath,
+  writeFileBytes,
   type Artifact,
   type DbStats,
   type Project,
@@ -72,7 +73,7 @@ import {
 } from "./repository";
 import { downloadAnkiTsv, downloadMarkdownVault } from "../../domain/markdownExport";
 import { projectFactMembership } from "../../domain/reviewFacts";
-import { BACKUP_BROWSER_FORMAT_GAP, BACKUP_FORMAT_GAP, BACKUP_V5_FORMAT_GAP, BACKUP_V6_FORMAT_GAP, BACKUP_V6_NO_R4_GAP, BACKUP_V7_FORMAT_GAP, BACKUP_V7_NO_R4_GAP, BACKUP_V8_FORMAT_GAP, BACKUP_V8_NO_R4_GAP, BACKUP_V9_FORMAT_GAP, BACKUP_V9_NO_R4_GAP, BACKUP_V10_FORMAT_GAP, BACKUP_V10_NO_R4_GAP, BACKUP_V11_FORMAT_GAP, BACKUP_V11_NO_R4_GAP, downloadKfBackup, mailSourcesWithoutOriginal, r4SourceBinding, restoreKfBackup } from "../../domain/systemBackup";
+import { BACKUP_BROWSER_FORMAT_GAP, BACKUP_FORMAT_GAP, BACKUP_V5_FORMAT_GAP, BACKUP_V6_FORMAT_GAP, BACKUP_V6_NO_R4_GAP, BACKUP_V7_FORMAT_GAP, BACKUP_V7_NO_R4_GAP, BACKUP_V8_FORMAT_GAP, BACKUP_V8_NO_R4_GAP, BACKUP_V9_FORMAT_GAP, BACKUP_V9_NO_R4_GAP, BACKUP_V10_FORMAT_GAP, BACKUP_V10_NO_R4_GAP, BACKUP_V11_FORMAT_GAP, BACKUP_V11_NO_R4_GAP, downloadKfBackup, kfBackupBytes, mailSourcesWithoutOriginal, r4SourceBinding, restoreKfBackup } from "../../domain/systemBackup";
 import { backupCompleteness, backupReceipt, backupVersion, collectBackupSnapshot, readCurrentSettings } from "./backupCollect";
 import { highlightText, extractSnippet } from "./HighlightText";
 import { Icon, sourceLabel, useSystemAppearance } from "./Icon";
@@ -301,6 +302,23 @@ export function Workspace() {
   const searchRef = useRef<HTMLInputElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  // 桌面壳里没有「浏览器下载」这回事：Blob 下载在 WebView 里不会落盘。
+  // 所以壳内走 Go 的备份导出 + 原生保存框，浏览器体验保留原下载路径。
+  const exportBackup = async (detailed: boolean) => {
+    if (inShell()) {
+      const dest = await pickExportPath(`KnowFlick-备份-${new Date().toISOString().slice(0, 10)}.kfbackup`);
+      if (!dest) return;
+      const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);
+      const bytes = kfBackupBytes(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership, snapshot.r4, snapshot.noteRevisions, snapshot.subscriptions, snapshot.mail, backupVersion(snapshot) >= 9 && backupVersion(snapshot) < 12 ? snapshot.reviewHistory : null, backupVersion(snapshot) >= 10 && backupVersion(snapshot) < 12 ? snapshot.searchHistory : null, backupVersion(snapshot) === 11 ? snapshot.deletedRecords : null, backupVersion(snapshot) === 12 ? snapshot.searchHistory : null);
+      await writeFileBytes(dest, bytes);
+      setNotice(`已导出备份：${dest}`);
+      return;
+    }
+    // 附件字节必须随包带走，所以导出是异步的；取附件失败只丢附件，不能让整份备份导不出来。
+    const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);
+    downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership, snapshot.r4, snapshot.noteRevisions, snapshot.subscriptions, snapshot.mail, backupVersion(snapshot) >= 9 && backupVersion(snapshot) < 12 ? snapshot.reviewHistory : null, backupVersion(snapshot) >= 10 && backupVersion(snapshot) < 12 ? snapshot.searchHistory : null, backupVersion(snapshot) === 11 ? snapshot.deletedRecords : null, backupVersion(snapshot) === 12 ? snapshot.searchHistory : null);
+    setNotice(backupReceipt(snapshot, detailed ? { detailed: true } : undefined));
+  };
   // 「笔记转知识卡」与「导入文件」是两种意图：前者把攒下的笔记变成可复习的卡，
   // 后者把文件收进收件箱。分开入口，用户不必猜。
   const notesRef = useRef<HTMLInputElement>(null);
@@ -1858,14 +1876,7 @@ export function Workspace() {
               title="导出备份包 (.kfbackup)"
               disabled={loading || busy}
               onClick={() => {
-                // 附件字节必须随包带走，所以导出是异步的；取附件失败只丢附件，
-                // 不能让整份备份导不出来。
-                void (async () => {
-                  // 权威仓储采集（T03）：不依赖界面是否打开过笔记页，含回收站与分页全量
-                  const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);
-                  downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership, snapshot.r4, snapshot.noteRevisions, snapshot.subscriptions, snapshot.mail, backupVersion(snapshot) >= 9 && backupVersion(snapshot) < 12 ? snapshot.reviewHistory : null, backupVersion(snapshot) >= 10 && backupVersion(snapshot) < 12 ? snapshot.searchHistory : null, backupVersion(snapshot) === 11 ? snapshot.deletedRecords : null, backupVersion(snapshot) === 12 ? snapshot.searchHistory : null);
-                  setNotice(backupReceipt(snapshot));
-                })().catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
+                void exportBackup(false).catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
               }}
             >
               <Icon name="download" />
@@ -2694,12 +2705,8 @@ export function Workspace() {
                   onBack={() => navigate("inbox")}
                   onExportMarkdown={() => downloadMarkdownVault(materials, cards)}
                   onExportKfBackup={() => {
-                    // 认知产物（Layer 3）只在桌面端的 SQLite 里有；浏览器体验模式跳过。
-                    void (async () => {
-                      const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);
-                      downloadKfBackup(snapshot.materials, snapshot.cards, currentFile, snapshot.artifacts, snapshot.media, snapshot.notes, snapshot.knowledgeBases, snapshot.membership, snapshot.r4, snapshot.noteRevisions, snapshot.subscriptions, snapshot.mail, backupVersion(snapshot) >= 9 && backupVersion(snapshot) < 12 ? snapshot.reviewHistory : null, backupVersion(snapshot) >= 10 && backupVersion(snapshot) < 12 ? snapshot.searchHistory : null, backupVersion(snapshot) === 11 ? snapshot.deletedRecords : null, backupVersion(snapshot) === 12 ? snapshot.searchHistory : null);
-                      setNotice(backupReceipt(snapshot, { detailed: true }));
-                    })().catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
+                    // 壳内导出走保存对话框（见 exportBackup）；浏览器体验模式跳过。
+                    void exportBackup(true).catch((err) => setError(`导出备份失败：${err instanceof Error ? err.message : String(err)}`));
                   }}
                   onRestoreKfBackup={() => restoreRef.current?.click()}
                   onBackupToDirectory={inShell() ? () => {

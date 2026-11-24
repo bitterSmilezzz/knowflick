@@ -897,6 +897,28 @@ export function stripSecrets(settingsJson: string): string {
   return JSON.stringify(out);
 }
 
+/** 生成系统级备份包的字节（壳内写盘与浏览器下载共用）。 */
+export function kfBackupBytes(
+  materials: RawMaterial[],
+  cards: KnowledgeCard[],
+  settingsFile: SettingsFile,
+  artifacts: Artifact[] = [],
+  media: Map<string, Uint8Array> = new Map(),
+  notes: Note[] = [],
+  knowledgeBases: KnowledgeBase[] = [],
+  kbMembership: Record<string, number> = {},
+  r4: unknown = null,
+  noteRevisions: NoteRevision[] | null = null,
+  subscriptions: SubscriptionSnapshot | null = null,
+  mail: MailSnapshot | null = null,
+  reviewHistory: ReviewHistorySnapshot | null = null,
+  searchHistory: string[] | null = null,
+  deletedRecords: DeletedRecordsSnapshot | null = null,
+  browserSearchHistory: string[] | null = null
+): Uint8Array {
+  return createKfBackupArchive(materials, cards, settingsFile, artifacts, media, notes, knowledgeBases, kbMembership, r4, noteRevisions, subscriptions, mail, reviewHistory, searchHistory, deletedRecords, browserSearchHistory);
+}
+
 /** 触发浏览器下载系统级备份包 */
 export function downloadKfBackup(
   materials: RawMaterial[],
@@ -916,7 +938,7 @@ export function downloadKfBackup(
   deletedRecords: DeletedRecordsSnapshot | null = null,
   browserSearchHistory: string[] | null = null
 ): void {
-  const bytes = createKfBackupArchive(materials, cards, settingsFile, artifacts, media, notes, knowledgeBases, kbMembership, r4, noteRevisions, subscriptions, mail, reviewHistory, searchHistory, deletedRecords, browserSearchHistory);
+  const bytes = kfBackupBytes(materials, cards, settingsFile, artifacts, media, notes, knowledgeBases, kbMembership, r4, noteRevisions, subscriptions, mail, reviewHistory, searchHistory, deletedRecords, browserSearchHistory);
   // 复制到独立的 ArrayBuffer：createZipArchive 返回的缓冲区类型是 ArrayBufferLike，
   // 在 TS 的 BlobPart 约束下不能直接当 BlobPart 用（SharedArrayBuffer 不兼容）。
   const copy = new Uint8Array(bytes.length);
