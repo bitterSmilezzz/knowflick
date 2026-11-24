@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=4",
     "gate:taste": "node ../../tools/taste_usability_gate.mjs && node ../../tools/usability_journey_smoke.mjs"
   },
   "dependencies": {
