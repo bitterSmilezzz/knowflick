@@ -44,6 +44,7 @@ func TestPreviewReviewOnRustLibrary(t *testing.T) {
 		ID: "33333333-3333-4333-8333-333333333333", CardID: card.ID, ReviewedAt: 1700000000200,
 		Rating: reviewhistory.RatingGood, Algorithm: reviewhistory.AlgorithmFsrs, ProjectIDs: []string{},
 	}
+	// 线上契约是 state（学习字段）+ event；这里按前端映射后的样子构造。
 	state := reviewhistory.CardState{
 		ID: card.ID, ReviewCount: card.ReviewCount + 1, MasteryLevel: 1, LastReviewedAt: &event.ReviewedAt,
 		Repetition: 1, IntervalDays: 3, EaseFactor: 2.46, Stability: 3.1, Difficulty: 4,
@@ -63,7 +64,7 @@ func TestPreviewReviewOnRustLibrary(t *testing.T) {
 	}
 	deck, err = service.LoadReviewDeck(ctx, writable.Generation)
 	if err != nil || len(deck.Cards) != 1 || deck.Cards[0].ReviewCount != state.ReviewCount || deck.Cards[0].Stability != state.Stability {
-		t.Fatalf("review state: %+v, %v", deck, err)
+		t.Fatalf("review card: %+v, %v", deck, err)
 	}
 	history, err := service.ReadReviewHistoryPeriod(writable.Generation, event.ReviewedAt, event.ReviewedAt)
 	if err != nil || len(history.Events) != 1 || history.Events[0].ID != event.ID || history.Events[0].ProjectAttributionComplete {

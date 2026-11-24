@@ -49,6 +49,7 @@ export const COMMANDS: Record<string, BridgeEntry> = {
   "db_update_material_status": {"service": "PreviewService","method": "UpdateMaterialStatus","args": ["generation","id","status"]},
   "db_upsert_card": {"service": "PreviewService","method": "SaveCardContent","args": ["generation","card"]},
   "export_archive": {"service": "PreviewService","method": "ExportArchive","args": ["generation","dest"]},
+  "write_file_bytes": {"service": "PreviewService","method": "SaveFileBytes","args": ["dest","dataB64"]},
   "export_cards_json": {"service": "PreviewService","method": "ExportCardsJSON","args": ["generation"]},
   "fetch_clip": {"service": "PreviewService","method": "FetchClipPage","args": ["generation","url"]},
   "get_shortcut_status": {"service": "PreviewService","method": "GetShortcutStatus","args": []},

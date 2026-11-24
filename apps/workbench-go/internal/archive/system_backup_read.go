@@ -94,12 +94,17 @@ func ReadSystemBackup(data []byte) (SystemBackup, error) {
 	if isBrowserV12 {
 		contentVersion = 4
 	}
+	// 旧 Go 导出在从未搜索过的库中会生成 v11，但不声明或写入搜索历史。
+	_, hasSearchFile := files["search_history.json"]
+	_, hasSearchChecksum := manifest.Checksums["search_history.json"]
+	_, hasSearchCount := manifest.Stats["searchHistory"]
+	legacyMissingSearch := contentVersion == 11 && !hasSearchFile && !hasSearchChecksum && !hasSearchCount
 	core := []string{"cards.json", "materials.json", "settings.json", "artifacts.json", "notes.json", "knowledge_bases.json"}
 	for _, threshold := range []struct {
 		version int
 		name    string
 	}{{5, "r4.json"}, {6, "note_revisions.json"}, {7, "subscriptions.json"}, {8, "mail.json"}, {9, "review_history.json"}, {10, "search_history.json"}, {11, "deleted_records.json"}} {
-		if contentVersion >= threshold.version {
+		if contentVersion >= threshold.version && !(threshold.version == 10 && legacyMissingSearch) {
 			core = append(core, threshold.name)
 		}
 	}

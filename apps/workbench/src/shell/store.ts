@@ -190,6 +190,11 @@ export function exportArchive(dir: string, dest: string): Promise<void> {
   return invoke("export_archive", { dir, dest });
 }
 
+/** 把前端生成的字节写到用户选定路径（壳内备份导出；WebView 里没有浏览器下载）。 */
+export async function writeFileBytes(dest: string, data: Uint8Array): Promise<string> {
+  return invoke("write_file_bytes", { dest, dataB64: await bytesToBase64(data) });
+}
+
 export function exportCardsJson(dir: string, dest: string): Promise<void> {
   return invoke("export_cards_json", { dir, dest });
 }
@@ -271,8 +276,23 @@ export function reviewHistoryPeriod(from: number, to: number, dir?: string): Pro
   return invoke("review_history_period", { from, to, dir: dir ?? null });
 }
 
+/** 评分只持久化学习字段与这条历史；线上参数是 state + event（不是整张卡）。 */
 export function reviewRecord(card: KnowledgeCard, event: import("../domain/reviewHistory").ReviewEvent, dir?: string): Promise<boolean> {
-  return invoke("review_record", { card, event, dir: dir ?? null });
+  return invoke("review_record", {
+    state: {
+      id: card.id,
+      reviewCount: card.reviewCount,
+      masteryLevel: card.masteryLevel,
+      lastReviewedAt: card.lastReviewedAt,
+      repetition: card.repetition,
+      intervalDays: card.intervalDays,
+      easeFactor: card.easeFactor,
+      stability: card.stability,
+      difficulty: card.difficulty,
+    },
+    event,
+    dir: dir ?? null,
+  });
 }
 
 export function backupValidateReviewHistory(snapshot: unknown, dir?: string): Promise<void> {

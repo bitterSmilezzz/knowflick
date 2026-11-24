@@ -759,6 +759,18 @@ describe("备份包 v2：笔记与知识库随包无损往返", () => {
     expect(restored.manifest.stats.deletedMaterials).toBe(1);
     expect(restored.manifest.stats.deletedCards).toBe(1);
     expect(restored.manifest.stats.deletedArtifacts).toBe(1);
+
+    const legacyFiles = unpackZipStoreBinary(archive);
+    legacyFiles.delete("search_history.json");
+    const packLegacyFiles = () => createZipArchive([...legacyFiles].map(([path, data]) => ({ path, data })));
+    expect(() => restoreKfBackup(packLegacyFiles())).toThrow(/search_history[.]json/);
+    const legacyManifest = JSON.parse(new TextDecoder().decode(legacyFiles.get("manifest.json")!));
+    delete legacyManifest.checksums["search_history.json"];
+    delete legacyManifest.stats.searchHistory;
+    legacyFiles.set("manifest.json", new TextEncoder().encode(JSON.stringify(legacyManifest)));
+    const legacy = restoreKfBackup(packLegacyFiles());
+    expect(legacy.searchHistory).toBeUndefined();
+    expect(legacy.deletedRecords?.materials[0].material.id).toBe("deleted-material");
     expect(restored.manifest.limitations?.join("；")).not.toContain("已删除的素材");
 
     const deletedMaterial = deletedRecords.materials[0].material;

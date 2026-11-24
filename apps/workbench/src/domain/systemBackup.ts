@@ -695,7 +695,10 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
   if (contentVersion >= 7) coreFiles.push("subscriptions.json");
   if (contentVersion >= 8) coreFiles.push("mail.json");
   if (contentVersion >= 9) coreFiles.push("review_history.json");
-  if (contentVersion >= 10) coreFiles.push("search_history.json");
+  // 旧 Go 导出在没有搜索历史时生成 v11，且文件、校验和、条数均不声明。
+  const legacyMissingSearch = contentVersion === 11 && !rawFiles.has("search_history.json") &&
+    !Object.hasOwn(manifest.checksums ?? {}, "search_history.json") && !Object.hasOwn(manifest.stats ?? {}, "searchHistory");
+  if (contentVersion >= 10 && !legacyMissingSearch) coreFiles.push("search_history.json");
   if (contentVersion >= 11) coreFiles.push("deleted_records.json");
   if (isBrowserV12) coreFiles.push("browser_search_history.json");
   const isMedia = (name: string) => /^media\/(audio|image|ink)\/[A-Za-z0-9._-]+$/.test(name);
@@ -737,7 +740,7 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
   const reviewHistory = contentVersion >= 9 ? validateReviewHistory(JSON.parse(files.get("review_history.json")!)) : undefined;
   const searchHistory = isBrowserV12
     ? parseSearchHistoryJson(files.get("browser_search_history.json")!)
-    : contentVersion >= 10 ? parseSearchHistoryJson(files.get("search_history.json")!) : undefined;
+    : contentVersion >= 10 && !legacyMissingSearch ? parseSearchHistoryJson(files.get("search_history.json")!) : undefined;
   const rawActiveMaterials = JSON.parse(files.get("materials.json") ?? "[]") as unknown;
   const rawActiveCards = JSON.parse(files.get("cards.json") ?? "[]") as unknown;
   const rawActiveArtifacts = JSON.parse(files.get("artifacts.json") ?? "[]") as unknown;
@@ -894,6 +897,28 @@ export function stripSecrets(settingsJson: string): string {
   return JSON.stringify(out);
 }
 
+/** 生成系统级备份包的字节（壳内写盘与浏览器下载共用）。 */
+export function kfBackupBytes(
+  materials: RawMaterial[],
+  cards: KnowledgeCard[],
+  settingsFile: SettingsFile,
+  artifacts: Artifact[] = [],
+  media: Map<string, Uint8Array> = new Map(),
+  notes: Note[] = [],
+  knowledgeBases: KnowledgeBase[] = [],
+  kbMembership: Record<string, number> = {},
+  r4: unknown = null,
+  noteRevisions: NoteRevision[] | null = null,
+  subscriptions: SubscriptionSnapshot | null = null,
+  mail: MailSnapshot | null = null,
+  reviewHistory: ReviewHistorySnapshot | null = null,
+  searchHistory: string[] | null = null,
+  deletedRecords: DeletedRecordsSnapshot | null = null,
+  browserSearchHistory: string[] | null = null
+): Uint8Array {
+  return createKfBackupArchive(materials, cards, settingsFile, artifacts, media, notes, knowledgeBases, kbMembership, r4, noteRevisions, subscriptions, mail, reviewHistory, searchHistory, deletedRecords, browserSearchHistory);
+}
+
 /** 触发浏览器下载系统级备份包 */
 export function downloadKfBackup(
   materials: RawMaterial[],
@@ -913,7 +938,7 @@ export function downloadKfBackup(
   deletedRecords: DeletedRecordsSnapshot | null = null,
   browserSearchHistory: string[] | null = null
 ): void {
-  const bytes = createKfBackupArchive(materials, cards, settingsFile, artifacts, media, notes, knowledgeBases, kbMembership, r4, noteRevisions, subscriptions, mail, reviewHistory, searchHistory, deletedRecords, browserSearchHistory);
+  const bytes = kfBackupBytes(materials, cards, settingsFile, artifacts, media, notes, knowledgeBases, kbMembership, r4, noteRevisions, subscriptions, mail, reviewHistory, searchHistory, deletedRecords, browserSearchHistory);
   // 复制到独立的 ArrayBuffer：createZipArchive 返回的缓冲区类型是 ArrayBufferLike，
   // 在 TS 的 BlobPart 约束下不能直接当 BlobPart 用（SharedArrayBuffer 不兼容）。
   const copy = new Uint8Array(bytes.length);
