@@ -239,7 +239,7 @@ gh release create android-v0.8.5 --title "..." --notes-file <正文> \
 tag 一律打**注解 tag**：`android-v0.1.0`–`android-v0.8.4` 历史上是轻量 tag，自 `android-v0.8.5` 起统一为注解 tag（与 mac 的 `v4.2.0` 一致），以便把发布说明随 tag 保存；`git describe` 默认也只认注解 tag。
 
 **哪条 tag 会自己产出云端产物**：`workbench-v*` → [workbench-release.yml](../.github/workflows/workbench-release.yml)
-（三平台 matrix 各出一档：macOS DMG / Linux DEB / Windows NSIS EXE；成功后由
+（四档产物：Apple Silicon DMG、Intel DMG、Linux amd64 DEB、Windows x64 NSIS EXE。成功后由
 `tools/assemble_workbench_release.sh` 校验命名与版本、生成 `SHA256SUMS.txt` 并上传 Release）；
 `desktop-v*` → [desktop.yml](../.github/workflows/desktop.yml)（三系统 matrix 各出一个安装包，统一命名后附到同一个
 Release，并附 `SHA256SUMS.txt`）；`android-v*` 不触发任何 workflow，签名 APK 必须本地 `./tools/build_android.sh`
@@ -292,12 +292,12 @@ macOS 的 MAJOR>0 别名）统一成产品版本名 → 生成 `SHA256SUMS.txt` 
 
 第一套桌面的对应实现是 `tools/assemble_workbench_release.sh`（tag `workbench-v*`，产物
 `KnowFlick-Workbench-<版本>-<系统>-<架构>.<扩展名>`）。同一条纪律：校验 tag 与
-`apps/workbench/package.json` 一致 → 校验 dmg / deb / exe 三类产物命名 → 生成 `SHA256SUMS.txt` →
-（`--publish` 时）上传 Release：
+`apps/workbench/package.json` 一致 → 校验四档安装包文件名 → 生成 `SHA256SUMS.txt` →
+（`--publish` 时）上传 Release。下载 CI 附件时将各目录放在同一个目录下，再运行：
 
 ```sh
-mkdir -p dryrun/workbench-{dmg,deb,exe} && cp … dmg deb exe 各一份
-bash tools/assemble_workbench_release.sh --tag workbench-v0.1.0 --artifacts-dir dryrun --out dryrun-out
+VERSION=$(node -p 'require("./apps/workbench/package.json").version')
+bash tools/assemble_workbench_release.sh --tag "workbench-v$VERSION" --artifacts-dir artifacts --out out
 ```
 
 ## 环境要求

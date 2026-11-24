@@ -32,7 +32,10 @@ fi
 # macOS 的 CFBundleShortVersionString 与 NSIS 的 VIProductVersion 只接受数字段，
 # DEB 则用 ~ 表示 RC（0.9.0~rc1），保证 apt 排序正确。
 VERSION_NUM="${VERSION%%-*}"
-DEB_VERSION="${VERSION/-/~}"
+DEB_VERSION="$VERSION"
+if [[ "$VERSION" == *-* ]]; then
+  DEB_VERSION="$VERSION_NUM~${VERSION#*-}"
+fi
 
 if [ -z "$OUT" ]; then OUT="$ROOT/dist/workbench"; fi
 mkdir -p "$OUT"
