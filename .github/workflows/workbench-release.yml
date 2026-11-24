@@ -77,7 +77,7 @@ jobs:
                  librsvg2-dev patchelf xdg-utils dpkg-dev; then
               exit 0
             fi
-            echo "第 ${{ attempt }} 次安装失败，等 15 秒重试" >&2
+            echo "第 $attempt 次安装失败，等 15 秒重试" >&2
             sleep 15
           done
           echo "::error::Linux 系统依赖安装失败" >&2
