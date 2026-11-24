@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { openExternalUrl } from "../../shell/store";
 import { DESKTOP_DOWNLOAD_URL } from "./DesktopOnlyHint";
-import { listen } from "@tauri-apps/api/event";
+import { listen } from "../../shell/bridge/events";
 import {
   ASR_MODELS,
   DEFAULT_ASR_MODEL,

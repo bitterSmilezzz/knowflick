@@ -1,6 +1,8 @@
-/** Tauri invoke() 在 Wails 预览里的兼容入口。
- *  共享前端的 store/repository 仍用 invoke(name, args) 调原生；这里按生成好的
- *  命令表把它转成 Wails 的 Call.ByName，并把桌面端的 dir 换成当前资料库代号。 */
+/** 原生调用桥：共享前端用 invoke(命令名, 参数) 调壳，这里按命令表转成 Wails 的 Call.ByName。
+ *
+ * 浏览器模式下没有 Wails 运行时，调用会 reject；桌面入口（go-preview）会设置
+ * __TAURI_INTERNALS__ 标记供 inShell 判定。测试若仍注入 __TAURI_INTERNALS__.invoke，
+ * 优先走它，保持既有 mock 行为。 */
 import { COMMANDS } from "./commandTable.ts";
 
 type BridgeArgs = Record<string, unknown>;
@@ -27,6 +29,13 @@ function snakeToCamel(value: string): string {
 }
 
 export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): Promise<T> {
+  // 测试与旧注入方式：window.__TAURI_INTERNALS__.invoke(name, args)。
+  // 生产环境 Go 构建只设标记对象（没有 invoke），因此会落到下面的 Wails 调度。
+  const legacy = typeof window === "undefined"
+    ? undefined
+    : (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (n: string, a: BridgeArgs, options?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+  // 第三个参数是 Tauri internals 的 options；测试按旧接口断言过它，传 undefined 保持形状一致。
+  if (typeof legacy?.invoke === "function") return legacy.invoke(name, args, undefined) as Promise<T>;
   const entry = COMMANDS[name];
   if (!(name in COMMANDS)) throw new Error("未知的原生命令：" + name);
   if (entry === null) throw new Error("Go 预览还没有实现命令：" + name);
@@ -66,7 +75,7 @@ export async function invoke<T = unknown>(name: string, args: BridgeArgs = {}): 
   });
   const dispatch: Dispatcher = customDispatcher ?? (async (fullName, ...rest) => {
     // @ts-expect-error: Wails 构建时注入的虚拟模块，类型只存在于运行时
-    const runtime = await import("/wails/runtime.js");
+    const runtime = await import(/* @vite-ignore */ "/wails/runtime.js");
     return runtime.Call.ByName(fullName, ...rest);
   });
   const result = await dispatch("main." + entry.service + "." + entry.method, ...values);

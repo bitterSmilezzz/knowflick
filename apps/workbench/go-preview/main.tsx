@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { setBridgeGeneration } from "./tauriCoreShim";
+import { setBridgeGeneration } from "../src/shell/bridge/invoke";
 import { PreviewMailbox } from "./PreviewMailbox";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";

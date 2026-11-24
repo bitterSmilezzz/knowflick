@@ -11,9 +11,6 @@
     "gate:taste": "node ../../tools/taste_usability_gate.mjs && node ../../tools/usability_journey_smoke.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-notification": "^2.8.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

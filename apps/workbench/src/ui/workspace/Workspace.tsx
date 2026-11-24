@@ -1690,7 +1690,7 @@ export function Workspace() {
 
   const requestReviewNotificationPermission = async (): Promise<boolean> => {
     if (!inShell()) return false;
-    const notifications = await import("@tauri-apps/plugin-notification");
+    const notifications = await import("../../shell/bridge/notifications");
     if (await notifications.isPermissionGranted()) return true;
     return (await notifications.requestPermission()) === "granted";
   };
@@ -1750,7 +1750,7 @@ export function Workspace() {
 
       notificationCheckInFlight.current = true;
       try {
-        const { isPermissionGranted, sendNotification } = await import("@tauri-apps/plugin-notification");
+        const { isPermissionGranted, sendNotification } = await import("../../shell/bridge/notifications");
         if (!active || isDocumentVisible()) return;
         const current = notificationSnapshot.current;
         const now = Date.now();
@@ -2705,7 +2705,7 @@ export function Workspace() {
                   onBackupToDirectory={inShell() ? () => {
                     void (async () => {
                       // 挑目录（dialog 插件）——用户自选存储，无我方云依赖（R3 第一步）
-                      const { open } = await import("@tauri-apps/plugin-dialog");
+                      const { open } = await import("../../shell/bridge/dialog");
                       const selected = await open({ multiple: false, directory: true });
                       if (typeof selected !== "string") return;
                       const [snapshot, currentFile] = await Promise.all([collectBackupSnapshot(dir), readCurrentSettings(dir)]);

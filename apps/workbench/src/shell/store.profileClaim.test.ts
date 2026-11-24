@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(1) }));
+vi.mock("./bridge/invoke", () => ({ invoke: vi.fn().mockResolvedValue(1) }));
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./bridge/invoke";
 import { profileClaimAdd } from "./store";
 
 describe("profileClaimAdd", () => {

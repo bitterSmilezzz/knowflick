@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./bridge/invoke";
 
 /** Account metadata only. Passwords are passed to Rust and never returned to the UI. */
 export interface MailAccountConfig {

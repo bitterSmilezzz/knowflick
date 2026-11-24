@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "./bridge/invoke";
+import { open } from "./bridge/dialog";
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import type { KnowledgeCard } from "../domain/card";
 
@@ -93,7 +93,7 @@ export function writeTextFile(path: string, contents: string): Promise<void> {
 
 /** 保存对话框：Markdown 单篇导出。文件类型写 md，别让用户以为导出的是备份包。 */
 export async function pickMarkdownSavePath(defaultName = "笔记.md"): Promise<string | null> {
-  const { save } = await import("@tauri-apps/plugin-dialog");
+  const { save } = await import("./bridge/dialog");
   const selected = await save({
     defaultPath: defaultName,
     filters: [{ name: "Markdown 笔记", extensions: ["md", "markdown", "txt"] }],
@@ -203,7 +203,7 @@ export async function openExternalUrl(url: string): Promise<void> {
 }
 
 export async function pickExportPath(defaultName = "knowflick-backup.zip"): Promise<string | null> {
-  const { save } = await import("@tauri-apps/plugin-dialog");
+  const { save } = await import("./bridge/dialog");
   const selected = await save({
     defaultPath: defaultName,
     filters: [
@@ -876,7 +876,7 @@ export async function readMedia(relative: string, dir?: string): Promise<Uint8Ar
 }
 
 export async function pickAudioFile(): Promise<string | null> {
-  const { open } = await import("@tauri-apps/plugin-dialog");
+  const { open } = await import("./bridge/dialog");
   const selected = await open({
     multiple: false,
     filters: [{ name: "音频", extensions: ["wav", "m4a", "mp3", "aiff", "aif", "caf", "flac"] }],

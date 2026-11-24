@@ -14,7 +14,7 @@ import {
 import { inShell } from "../../shell/store";
 import { Icon } from "./Icon";
 import { buildProjectSkillPackage } from "../../domain/projectSkill";
-import { getVersion } from "@tauri-apps/api/app";
+import { getVersion } from "../../shell/bridge/app";
 
 /**
  * 项目记忆视图（R4/D06 的 UI 入口）。

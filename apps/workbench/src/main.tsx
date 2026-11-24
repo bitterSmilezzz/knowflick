@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./shell/bridge/invoke";
 import { inShell } from "./shell/store";
 import { makeMaterial } from "./ui/workspace/model";
 import { storeMaterial } from "./ui/workspace/repository";

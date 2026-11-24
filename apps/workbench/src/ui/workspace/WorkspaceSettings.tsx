@@ -17,7 +17,7 @@ import type { KnowledgeCard } from "../../domain/card";
 import { SourceInsightPanel } from "./SourceInsightPanel";
 import { Icon } from "./Icon";
 import { DesktopOnlyHint } from "./DesktopOnlyHint";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../../shell/bridge/invoke";
 import { userError } from "./userError";
 import { webdavBackupReceipt } from "./backupCollect";
 import { BACKUP_BROWSER_FORMAT_GAP, BACKUP_V11_FORMAT_GAP } from "../../domain/systemBackup";
