@@ -159,6 +159,14 @@
 
 依赖关系：WP1/WP5 先行；WP6 依赖 M0 产物与机器；WP7/WP8 可立即开始；WP9/WP10/WP11 在 0.9 前收口；WP3/WP4 只在 1.0 前接线，不阻塞 0.9。
 
+> **M0 已完成（2026-11-24）**：`workbench-v0.9.0-rc1` 与 `workbench-v0.9.0-rc2` 均已发布为预发布版，
+> 各含 macos-arm64.dmg、macos-x64.dmg、linux-amd64.deb、windows-x64.exe 与 `SHA256SUMS.txt`；
+> 下载后校验与 `gh attestation verify` 全部通过。
+> `rc2` 已修掉真机复验发现的三个缺陷（无搜索历史时备份不可恢复、复习评分不落库、桌面壳导出不落盘），
+> 四平台流水线（含 macOS 复制安装首启、Linux/Windows 安装首启卸载）全绿。
+> **M1 仍未开始**，阻塞项就是表里的四样：Windows 真机、Linux VM、真实邮箱账号；
+> 麦克风一项已在本机 macOS 完成。
+
 ## 4. 风险与应对
 
 1. **无证书的安装摩擦（已接受）**：所有者决定等商用可行性再申请证书。0.9 用「安装指南 + SHA256 + GitHub provenance」
