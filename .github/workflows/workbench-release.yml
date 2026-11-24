@@ -118,6 +118,48 @@ jobs:
         shell: bash
         run: ./tools/package_workbench_go.sh --out dist/workbench
 
+      - name: macOS 安装与首启
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/workbench/package.json').version")
+          case "$(uname -m)" in
+            arm64) arch=arm64 ;;
+            x86_64) arch=x64 ;;
+            *) exit 1 ;;
+          esac
+          smoke=$(mktemp -d "$RUNNER_TEMP/knowflick-smoke.XXXXXX")
+          mkdir "$smoke/mount" "$smoke/install"
+          app_pid=""
+          cleanup() {
+            if [ -n "$app_pid" ]; then
+              kill "$app_pid" 2>/dev/null || true
+              wait "$app_pid" 2>/dev/null || true
+            fi
+            hdiutil detach "$smoke/mount" -quiet 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          hdiutil attach "dist/workbench/KnowFlick-Workbench-$version-macos-$arch.dmg" -readonly -nobrowse -mountpoint "$smoke/mount"
+          app="$smoke/install/KnowFlick.app"
+          ditto "$smoke/mount/KnowFlick.app" "$app"
+          hdiutil detach "$smoke/mount" -quiet
+          codesign --verify --deep --strict "$app"
+          test -s "$app/Contents/Resources/KnowFlick-Licenses.txt"
+          export KNOWFLICK_DEBUG_DATA_ROOT="$smoke/data"
+          "$app/Contents/MacOS/KnowFlick" &
+          app_pid=$!
+          for attempt in {1..30}; do
+            kill -0 "$app_pid"
+            if [ -s "$KNOWFLICK_DEBUG_DATA_ROOT/store/knowflick.db" ]; then
+              sleep 2
+              kill -0 "$app_pid"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::安装后的应用未创建资料库"
+          exit 1
+
       - name: Linux 安装、首启与卸载
         if: runner.os == 'Linux'
         shell: bash

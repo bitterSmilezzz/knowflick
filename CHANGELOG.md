@@ -6,6 +6,11 @@
 
 排序：按发布日期倒序，同一天的条目按端相邻排列。mac 与 android 是两条独立版本序列，版本号不跨端比较大小（规则见 [多端协作规范](docs/MULTI_PLATFORM.md)）。
 
+## [Workbench 0.9.0-rc2]
+
+- 修复从未使用搜索的新库导出备份后无法恢复的问题。已生成的同类备份可以在新版读取。
+- 回收站笔记在整库恢复后保持不可搜索。Apple Silicon 和 Intel DMG 增加复制安装与首启检查。详见[候选版发布记录](docs/workbench_RELEASE_0.9.0-rc2.md)。
+
 ## [Workbench 0.9.0-rc1]
 
 - 桌面标题统一为 KnowFlick，「版本与隐私」与发布元数据使用同一版本来源。

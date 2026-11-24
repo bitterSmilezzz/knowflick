@@ -401,7 +401,7 @@ func readSearchHistory(dir string) (json.RawMessage, error) {
 		return nil, errtext.Wrap("读取搜索历史失败", err)
 	}
 	if text == nil {
-		return nil, nil
+		return json.RawMessage("[]"), nil
 	}
 	var history []string
 	if json.Unmarshal([]byte(*text), &history) != nil || history == nil {

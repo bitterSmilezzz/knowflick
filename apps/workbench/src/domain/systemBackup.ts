@@ -695,7 +695,10 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
   if (contentVersion >= 7) coreFiles.push("subscriptions.json");
   if (contentVersion >= 8) coreFiles.push("mail.json");
   if (contentVersion >= 9) coreFiles.push("review_history.json");
-  if (contentVersion >= 10) coreFiles.push("search_history.json");
+  // 旧 Go 导出在没有搜索历史时生成 v11，且文件、校验和、条数均不声明。
+  const legacyMissingSearch = contentVersion === 11 && !rawFiles.has("search_history.json") &&
+    !Object.hasOwn(manifest.checksums ?? {}, "search_history.json") && !Object.hasOwn(manifest.stats ?? {}, "searchHistory");
+  if (contentVersion >= 10 && !legacyMissingSearch) coreFiles.push("search_history.json");
   if (contentVersion >= 11) coreFiles.push("deleted_records.json");
   if (isBrowserV12) coreFiles.push("browser_search_history.json");
   const isMedia = (name: string) => /^media\/(audio|image|ink)\/[A-Za-z0-9._-]+$/.test(name);
@@ -737,7 +740,7 @@ export function restoreKfBackup(input: Uint8Array | string): RestoredBackup {
   const reviewHistory = contentVersion >= 9 ? validateReviewHistory(JSON.parse(files.get("review_history.json")!)) : undefined;
   const searchHistory = isBrowserV12
     ? parseSearchHistoryJson(files.get("browser_search_history.json")!)
-    : contentVersion >= 10 ? parseSearchHistoryJson(files.get("search_history.json")!) : undefined;
+    : contentVersion >= 10 && !legacyMissingSearch ? parseSearchHistoryJson(files.get("search_history.json")!) : undefined;
   const rawActiveMaterials = JSON.parse(files.get("materials.json") ?? "[]") as unknown;
   const rawActiveCards = JSON.parse(files.get("cards.json") ?? "[]") as unknown;
   const rawActiveArtifacts = JSON.parse(files.get("artifacts.json") ?? "[]") as unknown;
