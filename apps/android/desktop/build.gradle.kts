@@ -4,8 +4,10 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 // :desktop —— 桌面宿主（Kotlin JVM + Compose Multiplatform 1.8.2）。
 //
-// 定位：**同一份代码在 Windows / macOS / Linux 三处发布**（第一原则）。它与 Android 端共用
+// 定位（ADR-0001 时代的活计划）：同一份代码在 Windows / macOS / Linux 三处发布，与 Android 端共用
 // :domain（逻辑）与 :shared-ui（界面），自己只负责「在桌面把共享界面跑起来 + 打成安装包」。
+// **ADR-0002 之后本模块已冻住**：桌面第一套改走 `apps/workbench`（Web + Tauri），这里不再加功能，
+// 等第一套闭环跑通前也不删。
 //
 // 三端安装包同一份配置声明（jpackage 不支持交叉编译，所以要**在各自系统上各构建一次**，
 // 这正是 .github/workflows/desktop.yml 的 matrix 在做的事——不是三份配置，是三台机器跑同一份配置）。

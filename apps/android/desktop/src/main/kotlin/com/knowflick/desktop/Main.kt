@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -18,7 +19,14 @@ import androidx.compose.ui.window.application
 import com.knowflick.app.data.AppModel
 import com.knowflick.app.data.CardStorage
 import com.knowflick.app.domain.RelatedCards
+import com.knowflick.app.data.WebClipFetcher
+import com.knowflick.app.ui.BackupExportSheet
+import com.knowflick.app.data.NoteImport
+import com.knowflick.app.ui.ClipSheet
+import com.knowflick.app.ui.HelpSheet
+import com.knowflick.app.ui.NotesImportSheet
 import com.knowflick.app.ui.DeckScreen
+import com.knowflick.app.ui.common.LocalArchiveExporter
 import com.knowflick.app.ui.DetailScreen
 import com.knowflick.app.ui.CardFollowUpChatSheet
 import com.knowflick.app.ui.ImportRestoreDialog
@@ -49,6 +57,8 @@ fun main() = application {
                 Item("全局搜索…", onClick = { state.openSearch() })
                 Item("学习地图…", onClick = { state.openMap() })
                 Item("设置…", onClick = { state.openSettings() })
+                Item("导入笔记…", onClick = { state.openNotes() })
+                Item("快捷键", onClick = { state.openHelp() })
                 Separator()
                 Item("知识测验（10 张）", onClick = { state.startQuiz() })
                 Item("只测今天到期", onClick = { state.startDueReview() })
@@ -101,6 +111,9 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
         }
     }
 
+    val archiveExporter = remember(owner) { DesktopArchiveExporter(owner = { owner }) }
+
+    CompositionLocalProvider(LocalArchiveExporter provides archiveExporter) {
     Box(Modifier.fillMaxSize()) {
         when {
             quizSession != null -> key(state.version) {
@@ -261,6 +274,7 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     )
                 },
                 onPickImportFile = pickAndImport,
+                onOpenBackupExport = state::openBackupExport,
             )
 
             else -> key(state.version) {
@@ -282,15 +296,71 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
                     onOpenMap = state::openMap,
                     studyScopeLabel = state.studyScope.describe(),
                     onOpenSync = { state.showNotice("局域网同步尚未在桌面端接线") },
-                    onOpenClip = { state.showNotice("网页剪藏尚未在桌面端接线") },
+                    onOpenClip = { state.openClip() },
+                    onOpenNotesImport = { state.openNotes() },
+                    onOpenHelp = { state.openHelp() },
                     // AI 生成：与 Android 端同一份 :domain `AiService`，密钥来自桌面凭据文件
                     onGenerateRequest = { state.generateNewCards() },
                     isGenerating = state.isGenerating,
-                    onOpenBackupExport = { state.showNotice("备份导出面板尚未在桌面端接线") },
+                    onOpenBackupExport = state::openBackupExport,
                     onPickImportFile = pickAndImport,
                     // 微件与海报导出是 Android 能力：桌面不传槽位，菜单项与面板自然不出现
                 )
             }
+        }
+
+        if (state.showingNotes) {
+            NotesImportSheet(
+                aiConfigured = state.aiSettings.isConfigured,
+                existingCards = model.store.cards,
+                incomingFileName = state.notesFileName,
+                incomingFileText = state.notesFileText,
+                onParseRules = { text, fileName -> NoteImport.parse(text, fileName) },
+                onTransform = { note -> state.transformClipNote(note) },
+                onImport = { cards, insertAtTop -> state.importClippedCards(cards, insertAtTop) },
+                onPickFile = {
+                    val file = DesktopFileDialogs.openFile(
+                        owner = owner,
+                        title = "导入笔记",
+                        extensions = listOf(".md", ".markdown", ".txt", ".json"),
+                    )
+                    if (file != null) {
+                        runCatching {
+                            if (file.length() > NoteImport.MAX_BYTES) {
+                                error("导入文件过大，当前最多支持 ${NoteImport.MAX_BYTES / 1024 / 1024} MB。")
+                            }
+                            file.readText()
+                        }.fold(
+                            onSuccess = { text -> state.acceptNotesFile(file.name, text) },
+                            onFailure = { error -> state.showNotice(error.message ?: "读取文件失败") },
+                        )
+                    }
+                },
+                onClose = state::closeNotes,
+            )
+        }
+        if (state.showingHelp) {
+            HelpSheet(onClose = state::closeHelp)
+        }
+        if (state.showingClip) {
+            ClipSheet(
+                initialText = state.clipSeed,
+                aiConfigured = state.aiSettings.isConfigured,
+                onFetch = { text -> WebClipFetcher.clip(text) },
+                onTransform = { note -> state.transformClipNote(note) },
+                onImport = { cards, insertAtTop -> state.importClippedCards(cards, insertAtTop) },
+                onClose = state::closeClip,
+            )
+        }
+
+        if (state.showingBackupExport) {
+            BackupExportSheet(
+                allCards = model.store.cards,
+                favoriteCards = model.store.favorites,
+                historyCards = model.store.history,
+                settingsJson = state.aiSettings.toJson(),
+                onClose = state::closeBackupExport,
+            )
         }
 
         // 导入预览：与 Android 端同一份 ImportRestoreDialog，也是同一份交互（先预览再确认）
@@ -317,4 +387,5 @@ fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
             }
         }
     }
+    } // LocalArchiveExporter
 }

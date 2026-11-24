@@ -1,0 +1,262 @@
+name: Workbench (Web + Go)
+
+# ADR-0002 第一套桌面：apps/workbench 的前端单测与 apps/workbench-go（Wails v3 单一二进制）后端单测。
+# Rust/Tauri 壳已随 ADR-0042 移除，这条 workflow 只剩两半：前端（web-checks）与 Go 后端（go-checks）。
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/workbench/**'
+      - 'apps/workbench-go/**'
+      - 'apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/WebClipEngine.kt'
+      - 'shared/assets/**'
+      - 'tools/verify_workbench.sh'
+      # Go 版的构建入口：它产出的 assets/dist 是 go test 的嵌入产物，改了必须重跑 go-checks。
+      - 'tools/build_workbench_go.sh'
+      - 'tools/check_clip_parity.py'
+      - 'tools/check_loopback_parity.mjs'
+      - 'tools/test_check_loopback_parity.mjs'
+      - 'tools/check_go_error_messages.py'
+      - 'tools/test_check_go_error_messages.py'
+      # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
+      # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
+      - 'tools/check_doc_consistency.py'
+      - 'tools/check_test_assertions.mjs'
+      - 'tools/test_check_frontend_error_text.py'
+      - 'tools/check_frontend_error_text.py'
+      - 'tools/test_check_user_facing_content.py'
+      - 'tools/test_check_destructive_confirm.py'
+      - 'tools/test_check_test_assertions.py'
+      - 'tools/test_check_source_labels.py'
+      - 'tools/check_user_facing_content.py'
+      - 'tools/check_destructive_confirm.py'
+      - 'tools/destructive_confirm_reverse_test.py'
+      - 'tools/check_test_assertions.py'
+      - 'tools/check_source_labels.py'
+      - 'tools/test_windows_console.py'
+      - 'tools/windows_console.py'
+      - 'tools/test_check_doc_consistency.py'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/run_all_smokes.sh'
+      - 'tools/workflow_paths.py'
+      - 'tools/test_workflow_paths.py'
+      - 'tools/test_desktop_ci_triggers.py'
+      - 'tools/workspace_ui_smoke.mjs'
+      - 'tools/brain_ui_smoke.mjs'
+      - 'tools/import_ui_smoke.mjs'
+      - 'tools/notes_ui_smoke.mjs'
+      - 'tools/notes_editor_smoke.mjs'
+      - 'tools/note_retrieval_smoke.mjs'
+      - 'tools/creative_smoke.mjs'
+      - 'tools/review_reminder_smoke.mjs'
+      - 'tools/mailbox_ui_smoke.mjs'
+      - 'tools/review_ui_smoke.mjs'
+      - 'tools/scale_ui_smoke.mjs'
+      - 'tools/settings_plugins_smoke.mjs'
+      - 'tools/goal_scope_smoke.mjs'
+      - 'tools/subscriptions_ui_smoke.mjs'
+      - 'tools/usability_journey_smoke.mjs'
+      - 'tools/desktop_interaction_smoke.mjs'
+      - 'tools/desktop_external_write_smoke.mjs'
+      - 'tools/mcp_server_smoke.mjs'
+      - 'tools/mcp-access.mjs'
+      - 'tools/mcp_access_test.mjs'
+      - 'tools/mcp_scoped_server_test.mjs'
+      - 'tools/knowflick-mcp/**'
+      - 'tools/mcp_material_search_reverse_test.mjs'
+      - 'tools/mcp-server.mjs'
+      - 'tools/ci_run_browser_smokes.sh'
+      - '.github/workflows/android.yml'
+      - '.github/workflows/workbench.yml'
+  pull_request:
+    paths:
+      - 'apps/workbench/**'
+      - 'apps/workbench-go/**'
+      - 'apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/WebClipEngine.kt'
+      - 'shared/assets/**'
+      - 'tools/verify_workbench.sh'
+      - 'tools/build_workbench_go.sh'
+      - 'tools/check_clip_parity.py'
+      - 'tools/check_loopback_parity.mjs'
+      - 'tools/test_check_loopback_parity.mjs'
+      - 'tools/check_go_error_messages.py'
+      - 'tools/test_check_go_error_messages.py'
+      # 门禁实际调用的脚本——改了它们却不触发 CI，等于改完没人验。
+      # （不写 'tools/**'：那会让任何工具改动都烧这条 workflow 的额度。）
+      - 'tools/check_doc_consistency.py'
+      - 'tools/check_source_labels.py'
+      - 'tools/test_check_source_labels.py'
+      - 'tools/check_test_assertions.py'
+      - 'tools/check_test_assertions.mjs'
+      - 'tools/test_check_test_assertions.py'
+      - 'tools/test_check_doc_consistency.py'
+      - 'tools/mcp_smoke.mjs'
+      - 'tools/source_matrix_smoke.mjs'
+      - 'tools/taste_usability_gate.mjs'
+      - 'tools/run_all_smokes.sh'
+      - 'tools/workspace_ui_smoke.mjs'
+      - 'tools/brain_ui_smoke.mjs'
+      - 'tools/import_ui_smoke.mjs'
+      - 'tools/notes_ui_smoke.mjs'
+      - 'tools/notes_editor_smoke.mjs'
+      - 'tools/note_retrieval_smoke.mjs'
+      - 'tools/creative_smoke.mjs'
+      - 'tools/review_reminder_smoke.mjs'
+      - 'tools/mailbox_ui_smoke.mjs'
+      - 'tools/review_ui_smoke.mjs'
+      - 'tools/scale_ui_smoke.mjs'
+      - 'tools/settings_plugins_smoke.mjs'
+      - 'tools/goal_scope_smoke.mjs'
+      - 'tools/subscriptions_ui_smoke.mjs'
+      - 'tools/usability_journey_smoke.mjs'
+      - 'tools/desktop_interaction_smoke.mjs'
+      - 'tools/mcp_server_smoke.mjs'
+      - 'tools/mcp-server.mjs'
+      - 'tools/mcp-access.mjs'
+      - 'tools/mcp_access_test.mjs'
+      - 'tools/mcp_scoped_server_test.mjs'
+      - 'tools/knowflick-mcp/**'
+      - 'tools/mcp_material_search_reverse_test.mjs'
+      - 'tools/ci_run_browser_smokes.sh'
+      - '.github/workflows/workbench.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web-checks:
+    name: 前端单测 + 类型检查 + 守卫
+    runs-on: ubuntu-latest
+    # 与 go-checks 分开：前端这半通常 2～4 分钟出结果；Go 那半要编译 Wails/GTK 依赖，
+    # 慢了不该把「门禁过没过」的信号一起拖住。
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
+      - name: 前端门禁（单测 + 类型检查 + 守卫）
+        run: ./tools/verify_workbench.sh web
+
+      - name: 校验剪藏规则表跨端一致
+        # 前端这份 `clipEngine.ts` 与 Android 的 `WebClipEngine.kt` 服务同一篇文章，规则表必须同源。
+        run: python3 tools/check_clip_parity.py
+
+  go-checks:
+    name: Go 单测
+    runs-on: ubuntu-latest
+    # 与 web-checks 分开：go vet / go test 要编译 Wails v3 + GTK/WebKitGTK 依赖与整棵服务代码，
+    # 慢了不该连累前端那半的信号。
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/workbench-go
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 配置 Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.x'
+          cache: true
+          cache-dependency-path: apps/workbench-go/go.sum
+
+      # Wails v3 在 Linux 上走 GTK3 + WebKitGTK（cgo）：少了 dev 包，go vet 会在类型检查阶段
+      # 找不到头文件、go test 会在链接阶段失败，报错离原因很远。清单沿用此前 Linux 打包的那份，
+      # 补上 libgtk-3-dev（Wails v3 除了 WebKitGTK 还要 GTK3 本身）。
+      - name: 安装 Linux 系统依赖（GTK3 + WebKitGTK）
+        run: |
+          # apt 的默认超时太长：源响应慢时它会一直挂着，把整个 job 拖到超时上限。
+          for attempt in 1 2 3; do
+            if sudo DEBIAN_FRONTEND=noninteractive timeout 300 apt-get \
+                 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=1 update \
+               && sudo DEBIAN_FRONTEND=noninteractive timeout 420 apt-get \
+                 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+                 -o Acquire::Retries=1 install -y \
+                 cmake libgtk-3-dev libgtk-4-dev libwebkit2gtk-4.1-dev libwebkitgtk-6.0-dev \
+                 libappindicator3-dev librsvg2-dev patchelf xdg-utils; then
+              echo "系统依赖安装成功（第 ${attempt} 次尝试）"
+              exit 0
+            fi
+            echo "第 ${attempt} 次安装失败，等 15 秒再试" >&2
+            sleep 15
+          done
+          echo "::error::安装 Linux 系统依赖失败（已重试 3 次）" >&2
+          exit 1
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
+      # 版本必须与 apps/workbench-go/go.mod 的 wails v3 一致：tools/build_workbench_go.sh
+      # 先检查 `wails3 version`，对不上就直接退出。
+      - name: 安装 Wails v3 CLI
+        working-directory: .
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+
+      # main.go 用 `//go:embed all:assets` 嵌入前端产物，而 assets/dist 是 gitignore 的构建
+      # 产物：干净 checkout 直接 go test 会在 TestEmbeddedBundleIsCurrent 上红（不是代码坏，
+      # 是缺产物）。所以先按同一份脚本构建一次 bundle——它也是本地唯一的 Go 版构建入口。
+      - name: 构建 Go 版前端 bundle（go test 依赖嵌入产物）
+        working-directory: .
+        run: ./tools/build_workbench_go.sh
+
+      - name: Go 门禁（go vet + go test）
+        run: ./tools/verify_workbench.sh go
+        working-directory: .
+
+  browser-smokes:
+    name: 浏览器冒烟
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 配置 Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/workbench/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: apps/workbench
+
+      - name: 装 agent-browser（含浏览器二进制）
+        # 少装浏览器二进制时，冒烟会在开页面那一步失败，报错离原因很远。
+        run: |
+          npm install -g agent-browser
+          agent-browser install
+
+      - name: 跑全部浏览器冒烟
+        # 不用 run_all_smokes.sh：它缺 agent-browser 时 exit 0，在 CI 上会变成
+        # 「什么都没跑也算成功」。这个脚本自己遍历，缺任何一套都算失败。
+        run: ./tools/ci_run_browser_smokes.sh

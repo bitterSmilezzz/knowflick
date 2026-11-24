@@ -1,0 +1,230 @@
+{
+  "date": "2026-10-25",
+  "timezone": "Asia/Shanghai",
+  "initialCommit": "65e11184bf3de86298d2df04ea164bb387dd8e4a",
+  "finalSourceCommit": "9e8331c323d0695d8e96c4f50b03f0932729f86e",
+  "testData": "Synthetic samples only",
+  "sourceSha256": {
+    "apps/workbench/src/ui/workspace/NotesView.tsx": "b6fe11e00db672f97e1b51a137719135bb1f6fec62dc9ede2983ce689a200be6",
+    "apps/workbench/src/ui/workspace/Workspace.tsx": "c0894f2e54853e41dc538bc261dcf3a43b15dac2224b84b509798d6776442099",
+    "apps/workbench/src/ui/workspace/repository.ts": "d4151bef14b019a4ded0eb3b13b86a9899914de2804a6c0a3f0fced0b6cc98cf",
+    "apps/workbench/src/ui/workspace/notesRestore.ts": "5b272b3bc6225c46bded4557136c1ec736c7c0c3874b466a2d271b9783f452f7",
+    "apps/workbench/src/domain/note.ts": "1a35b02fd880b264eabfb829035778572c20bd2cb76c97003970dad698c7498c",
+    "apps/workbench/src/domain/systemBackup.ts": "3d0f709b56dd54affb88a5ec99dc9d2d7fb53587137e106a1ca6879b65183c34",
+    "apps/workbench/src/domain/embeddingEngine.ts": "7ef1c2d7774132eef0e018c1471a5fa0813640205fed4f4ff77fd80b7668c29c",
+    "apps/workbench/src-tauri/src/notes.rs": "cd9b4725f87faf853226d68df5bfb64f708c6a1cd3cdbfb3e158eecea59ba5d0",
+    "apps/workbench/src-tauri/src/db.rs": "402fc3a383d1e3d678ddf3929ae866777f4f4534c8cd9d51967630a2e54131a4"
+  },
+  "exportWithoutOpeningNotes": {
+    "notesInBrowserStorage": 1,
+    "manifestStats": {
+      "cards": 0,
+      "materials": 0,
+      "artifacts": 0,
+      "media": 0,
+      "notes": 0,
+      "knowledgeBases": 0
+    },
+    "notesInArchive": []
+  },
+  "metadataOverwrite": {
+    "before": {
+      "currentRevision": 1,
+      "notebook": "项目甲",
+      "bodyMd": "初始正文"
+    },
+    "after": {
+      "id": "503bae50-b138-4c37-a321-eaf12214853a",
+      "title": "审查样本 A",
+      "bodyMd": "初始正文，新增一段内容",
+      "notebook": null,
+      "tags": [],
+      "isPinned": false,
+      "isFavorite": false,
+      "archivedAt": null,
+      "sourceMaterialId": null,
+      "currentRevision": 2,
+      "createdAt": 1792859291539,
+      "updatedAt": 1792859292666,
+      "isDeleted": false,
+      "deletedAt": null
+    }
+  },
+  "conflictOverwrite": {
+    "conflict": {
+      "draft": "本地旧草稿",
+      "stored": {
+        "id": "2ef91b96-069e-4015-a9ba-a50e35430cab",
+        "title": "并发审查样本",
+        "bodyMd": "外部窗口的新内容",
+        "notebook": null,
+        "tags": [],
+        "isPinned": false,
+        "isFavorite": false,
+        "archivedAt": null,
+        "sourceMaterialId": null,
+        "currentRevision": 2,
+        "createdAt": 1792859503561,
+        "updatedAt": 1792859503730,
+        "isDeleted": false,
+        "deletedAt": null
+      }
+    },
+    "after": {
+      "id": "2ef91b96-069e-4015-a9ba-a50e35430cab",
+      "title": "并发审查样本",
+      "bodyMd": "本地旧草稿继续写",
+      "notebook": null,
+      "tags": [],
+      "isPinned": false,
+      "isFavorite": false,
+      "archivedAt": null,
+      "sourceMaterialId": null,
+      "currentRevision": 3,
+      "createdAt": 1792859503561,
+      "updatedAt": 1792859505327,
+      "isDeleted": false,
+      "deletedAt": null
+    }
+  },
+  "restoreAndIntegrity": {
+    "restore": {
+      "expected": {
+        "id": "audit-restored-note",
+        "title": "审查恢复样本",
+        "bodyMd": "原始正文",
+        "notebook": "项目",
+        "tags": [
+          "审查"
+        ],
+        "isPinned": true,
+        "isFavorite": true,
+        "archivedAt": null,
+        "sourceMaterialId": null,
+        "currentRevision": 9,
+        "createdAt": 1000,
+        "updatedAt": 2000,
+        "isDeleted": true,
+        "deletedAt": 3000
+      },
+      "actual": {
+        "id": "audit-restored-note",
+        "title": "审查恢复样本",
+        "bodyMd": "原始正文",
+        "notebook": "项目",
+        "tags": [
+          "审查"
+        ],
+        "isPinned": true,
+        "isFavorite": true,
+        "archivedAt": null,
+        "sourceMaterialId": null,
+        "currentRevision": 1,
+        "createdAt": 1792859381671,
+        "updatedAt": 1792859381671,
+        "isDeleted": false,
+        "deletedAt": null
+      }
+    },
+    "tamperedResult": {
+      "accepted": true,
+      "body": "被篡改的正文"
+    },
+    "kbCollision": {
+      "reportedCount": 2,
+      "knowledgeBases": [
+        {
+          "id": "audit-local-kb",
+          "name": "同名审查库",
+          "description": "",
+          "createdAt": 1792859381672,
+          "updatedAt": 1792859381672
+        }
+      ],
+      "membership": {}
+    }
+  },
+  "nativeProbe": {
+    "embeddingAfterContentEdit": {
+      "remaining": 1,
+      "staleSameDim": [],
+      "unembedded": []
+    },
+    "listFalse": 0,
+    "listTrue": 1,
+    "restored": {
+      "archivedAt": null,
+      "bodyMd": "待恢复正文",
+      "createdAt": 4000,
+      "currentRevision": 1,
+      "deletedAt": null,
+      "id": "audit-native-note",
+      "isDeleted": false,
+      "isFavorite": false,
+      "isPinned": false,
+      "notebook": null,
+      "sourceMaterialId": null,
+      "tagsJson": "[]",
+      "title": "审查原生笔记",
+      "updatedAt": 4000
+    }
+  },
+  "dependencyAudit": {
+    "all": {
+      "info": 0,
+      "low": 0,
+      "moderate": 1,
+      "high": 0,
+      "critical": 2,
+      "total": 3
+    },
+    "omitDev": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  },
+  "validation": {
+    "frontend": {
+      "filesPassed": 72,
+      "testsPassed": 447
+    },
+    "rust": {
+      "passed": 111,
+      "ignored": 3
+    },
+    "rustProxyHttp": {
+      "passed": 13
+    },
+    "pythonTools": {
+      "passed": 91
+    },
+    "legacyJsonMcp": {
+      "passed": 24
+    },
+    "frontendBuild": "PASS",
+    "initialWorkbenchGate": "FAIL: browser subprocess timeout and test service unavailable",
+    "frozenBrowserSmokes": {
+      "sourceCommit": "9e8331c323d0695d8e96c4f50b03f0932729f86e",
+      "suitesPassed": 14,
+      "suitesFailed": 0,
+      "desktopInteractionAssertions": 22,
+      "nativeExternalWrite": "SKIP: native app not running"
+    },
+    "kotlinSharedCachedResults": {
+      "tests": 300,
+      "failures": 0,
+      "execution": "UP-TO-DATE; not freshly executed"
+    },
+    "androidAppUnit": {
+      "tests": 98,
+      "failures": 0,
+      "execution": "Executed this run"
+    },
+    "androidDebugLint": "PASS",
+    "androidReleaseAssemblySignatureAlignment": "PASS"
+  }
+}

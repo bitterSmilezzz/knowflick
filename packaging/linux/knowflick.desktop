@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KnowFlick
+Comment=多端学习工作台：剪藏、提炼、复习
+Exec=knowflick %U
+Icon=knowflick
+Terminal=false
+Categories=Education;Office;
+StartupWMClass=KnowFlick

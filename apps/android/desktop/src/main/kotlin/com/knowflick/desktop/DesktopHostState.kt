@@ -157,6 +157,89 @@ class DesktopHostState(
      */
     private val searchEngine = KnowledgeSearchEngine()
 
+    var showingBackupExport by mutableStateOf(false)
+        private set
+
+    fun openBackupExport() {
+        showingBackupExport = true
+        version++
+    }
+
+    fun closeBackupExport() {
+        showingBackupExport = false
+        version++
+    }
+
+    var showingClip by mutableStateOf(false)
+        private set
+    var clipSeed by mutableStateOf("")
+        private set
+
+    fun openClip(sharedText: String? = null) {
+        clipSeed = sharedText.orEmpty()
+        showingClip = true
+        version++
+    }
+
+    fun closeClip() {
+        showingClip = false
+        clipSeed = ""
+        version++
+    }
+
+    suspend fun transformClipNote(note: String): List<KnowledgeCard> {
+        if (!aiSettings.isConfigured) error("请先在设置里配置 AI 服务")
+        return aiService.transformNoteToCards(
+            settings = aiSettings,
+            apiKey = currentApiKey(),
+            note = note,
+        )
+    }
+
+    fun importClippedCards(cards: List<KnowledgeCard>, insertAtTop: Boolean): String {
+        val added = model.store.addCards(cards, insertAtTop = insertAtTop)
+        model.persistNow()
+        version++
+        return "导入完成：新增 $added 张，跳过重复卡 ${cards.size - added} 张。"
+    }
+
+    var showingNotes by mutableStateOf(false)
+        private set
+    var notesFileName by mutableStateOf<String?>(null)
+        private set
+    var notesFileText by mutableStateOf<String?>(null)
+        private set
+    var showingHelp by mutableStateOf(false)
+        private set
+
+    fun openNotes() {
+        showingNotes = true
+        version++
+    }
+
+    fun closeNotes() {
+        showingNotes = false
+        notesFileName = null
+        notesFileText = null
+        version++
+    }
+
+    fun acceptNotesFile(name: String, text: String) {
+        notesFileName = name
+        notesFileText = text
+        version++
+    }
+
+    fun openHelp() {
+        showingHelp = true
+        version++
+    }
+
+    fun closeHelp() {
+        showingHelp = false
+        version++
+    }
+
     var showingSearch by mutableStateOf(false)
         private set
     var searchQuery by mutableStateOf("")

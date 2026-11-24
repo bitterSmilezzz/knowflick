@@ -1,0 +1,1 @@
+{"extends":"../tsconfig.json","include":["main.tsx","../src/shell/bridge/**/*.ts"]}

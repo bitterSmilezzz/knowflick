@@ -18,12 +18,14 @@ on:
       - main
     paths:
       - 'apps/android/**'
+      - 'apps/workbench/src/domain/clipEngine.ts'
       - 'shared/**'
       - 'tools/**'
       - '.github/workflows/android.yml'
   pull_request:
     paths:
       - 'apps/android/**'
+      - 'apps/workbench/src/domain/clipEngine.ts'
       - 'shared/**'
       - 'tools/**'
       - '.github/workflows/android.yml'
@@ -43,6 +45,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      - name: 配置 Node.js（MCP 授权使用 node:sqlite）
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
 
       - name: 配置 JDK 17
         uses: actions/setup-java@v6
@@ -73,6 +80,17 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('apps/android/**/*.gradle.kts', 'apps/android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      # CI runner 在美国，wrapper 却要去撞国内镜像——2026-10-23 真出过
+      # 「Verification of Gradle distribution failed」（镜像字节与官方校验和不符）。
+      # 依赖源已经按 CI 环境分流（settings.gradle.kts），wrapper 这层补上。
+      # 校验和保持不变：官方源被篡改一样会被 wrapper 拒绝。
+      - name: Gradle wrapper 改用官方源
+        # 必须显式指定 bash：Windows runner 默认 shell 是 PowerShell，
+        # 而 .sh 脚本在 PowerShell 里**不会报错也不会执行**——步骤照样「成功」，
+        # 改写没发生，CI 继续用国内镜像。静默少跑，最坑的一种。
+        shell: bash
+        run: ./tools/ci_gradle_official_source.sh
+
       - name: 显示工具链版本
         run: |
           java -version
@@ -82,34 +100,62 @@ jobs:
         run: ./tools/lint_shell_vars.sh
 
       - name: 校验 MCP server
-        # 与 macos.yml 同一步：本 workflow 的路径过滤包含 tools/**，改 MCP 只会让
-        # Android job 触发构建——若这里不验，「Agent 接不上」要等下次 mac 端有改动才暴露。
+        # 本 workflow 的路径过滤包含 tools/**，改 MCP 只会让 Android job 触发构建——
+        # 若这里不验，「Agent 接不上」要等下次碰 Android 时才暴露。
         run: node --test tools/knowflick-mcp/test.mjs
 
       - name: 校验学科契约与内容
-        # 学科体系有三处事实来源：shared/assets/taxonomy_map.json、mac 与 Android 各自内嵌的
-        # SubjectRegistry。这里先做契约自洽 + 种子内容合法 + 三处一致的粗校验，
-        # 双端逐字段的等价性仍由各自的单测保证（那两层缺一不可）。
+        # 学科体系有两处事实来源：shared/assets/taxonomy_map.json（契约）与 :domain 内嵌的
+        # SubjectRegistry.kt。这里做契约自洽 + 内容合法（给了内容库才查）+ 两处一致的粗校验，
+        # 逐字段的等价性仍由各自的单测保证（那两层缺一不可）。Swift 那份随 apps/mac 删除。
         run: python3 tools/check_taxonomy.py
 
+      - name: 校验剪藏规则表跨端一致
+        # Kotlin 与 TypeScript 各有一份剪藏规则表，服务的是同一篇文章；改一端不改另一端会在这里红。
+        # 实测教训：Kotlin 侧曾有三条 token 写成大写，而比对前整行已 lowercase()，于是永不命中。
+        run: python3 tools/check_clip_parity.py
+
       - name: 校验课程导入管线
-        # 与 macos.yml 同一步：import_lessons.py 与 check_taxonomy.py 共享 tools/taxonomy.py
+        # import_lessons.py 与 check_taxonomy.py 共享 tools/taxonomy.py
         # 契约库，SUBJECT_MAP / make_card 的分类映射此前只在手动流程里跑过。
         run: python3 tools/test_import_lessons.py
 
       - name: 单元测试与 Lint
+        shell: bash
         run: |
           cd apps/android
           # :domain（KMP 领域层）、:shared-ui（跨端共享界面）与 :desktop（CMP 桌面宿主）都必须
           # 显式点名——它们不在 :app 的依赖图里，漏点名不会有任何提示，只是测试总数静默减少。
           TASKS=":app:testDebugUnitTest :domain:jvmTest :shared-ui:jvmTest :shared-data:jvmTest :desktop:test :app:lintDebug"
+          # 失败时把现场写成注解。
+          #
+          # 为什么：公开仓库的 job 日志要 admin 权限才拿得到，这个 job 红过两次，
+          # 每次都只看到「进程退出码 1」，连是单元测试红还是 Lint 红都分不出来——
+          # 而这两者的排查方向完全不同。这里把最后 20 行打进注解，一次就能看出。
+          LOG="$(mktemp -t kf-android.XXXXXX.log)"
           # :desktop 的 Compose 测试走离屏渲染（测试内已设 java.awt.headless=true）；
           # Linux runner 没有 X11，若镜像带 xvfb 就用它兜底，避免渲染路径偶发依赖显示服务。
-          if command -v xvfb-run >/dev/null 2>&1; then
-            xvfb-run -a ./gradlew --console=plain $TASKS
-          else
-            ./gradlew --console=plain $TASKS
+          # 这里**故意不加引号**：TASKS 是空格分隔的多个任务名，要按词拆开传给 gradlew。
+          # 加了引号整串会变成一个任务名，Gradle 报「':app:testDebugUnitTest ...' not found
+          # in project ':app'」——注解里那句话就是引号造成的，不是任务写错。
+          # shellcheck disable=SC2086
+          run_tasks() {
+            if command -v xvfb-run >/dev/null 2>&1; then
+              xvfb-run -a ./gradlew --console=plain $TASKS
+            else
+              ./gradlew --console=plain $TASKS
+            fi
+          }
+          if run_tasks 2>&1 | tee "$LOG"; then
+            rm -f "$LOG"
+            exit 0
           fi
+          echo "::error::Android 单元测试或 Lint 失败；最后 20 行如下" >&2
+          tail -20 "$LOG" | while IFS= read -r line; do
+            echo "::error::现场：${line}" >&2
+          done
+          rm -f "$LOG"
+          exit 1
 
       - name: 汇总测试结果
         if: always()
@@ -118,6 +164,9 @@ jobs:
           python3 - <<'PY'
           import glob, sys, xml.etree.ElementTree as ET
           total = failed = skipped = 0
+          # 失败用例名要打进注解：拿不到 job 日志时，「38/98 失败」这句话等于没说——
+          # 不知道是哪一类用例，就没法判断是环境问题还是真的坏了。
+          failed_cases = []
           # 四个测试任务的结果目录都要收：模块拆出去之后，只扫 app 会漏报。
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml') + \
                       glob.glob('domain/build/test-results/jvmTest/*.xml') + \
@@ -128,7 +177,17 @@ jobs:
               total += int(root.get('tests', 0))
               failed += int(root.get('failures', 0)) + int(root.get('errors', 0))
               skipped += int(root.get('skipped', 0))
+              for case in root.iter('testcase'):
+                  for bad in list(case.findall('failure')) + list(case.findall('error')):
+                      detail = (bad.get('message') or bad.text or '').strip().splitlines()
+                      first = detail[0][:160] if detail else ''
+                      failed_cases.append(f"{case.get('classname','?')}#{case.get('name','?')}: {first}")
           print(f'JVM 测试：{total} 项，失败 {failed}，跳过 {skipped}')
+          # 注解每步只留 10 条：先打总览，再打前 9 条失败用例。
+          if failed_cases:
+              print(f'::error::失败用例共 {len(failed_cases)} 条，前 9 条如下')
+              for line in failed_cases[:9]:
+                  print(f'::error::用例：{line}')
           sys.exit(1 if failed else 0)
           PY
 
