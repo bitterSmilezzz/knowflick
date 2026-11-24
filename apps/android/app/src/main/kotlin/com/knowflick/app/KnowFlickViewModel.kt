@@ -1,5 +1,7 @@
 package com.knowflick.app
 
+import com.knowflick.app.data.ChatStateHolder
+
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
@@ -102,10 +104,19 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     private var apiKeySessionOverride by mutableStateOf<String?>(null)
 
-    /** 测验会话（null = 未在测验） */
+    /**
+     * 测验会话（null = 未在测验）。
+     * 轮次编排（起一轮 / 下一轮 / 弱项重测 / 评分驱动 SM-2）在共享的
+     * [com.knowflick.app.domain.QuizCycle] 里——桌面端接同一个测验界面，用的是同一份编排。
+     * 这里只把它同步成 Compose 状态供界面读取。
+     */
     var quizSession: com.knowflick.app.domain.QuizSession? by mutableStateOf(null)
         private set
-    private val quizCycleRatedIds = LinkedHashSet<String>()
+    private val quizCycle = com.knowflick.app.domain.QuizCycle(model.store)
+
+    private fun syncQuizSession() {
+        quizSession = quizCycle.session
+    }
 
     /** 卡片追问会话：状态与流式编排自 2026-09-30 起在 [ChatStateHolder]（与 macOS ChatSessionStore 同构），
      *  这里只做同名转发保持 API 不变；聊天域的新增逻辑请落在 holder，不再增长本文件。 */
@@ -117,21 +128,18 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         apiKeyProvider = { currentApiKey() },
     )
     val chatStorage: ChatSessionStorage get() = chat.storage
-    var activeChatCard: KnowledgeCard?
-        get() = chat.activeCard
-        private set(value) { chat.activeCard = value }
+
+    // 以下五个只读转发：状态转移由 ChatStateHolder 自己负责（它已搬到 :shared-data）。
+    // 原先还带 setter，但全仓无人赋值——留着会迫使 :shared-data 把 setter 开成 public，
+    // 等于把「谁能改会话状态」这条边界交出去。删掉比放宽可见性更对。
+    val activeChatCard: KnowledgeCard? get() = chat.activeCard
     var currentChatSession: CardChatSession?
         get() = chat.currentSession
-        internal set(value) { chat.currentSession = value }
-    var isChatStreaming: Boolean
-        get() = chat.isStreaming
-        private set(value) { chat.isStreaming = value }
-    var chatErrorMessage: String?
-        get() = chat.errorMessage
-        private set(value) { chat.errorMessage = value }
-    var savedChatMessageIds: Set<String>
-        get() = chat.savedMessageIds
-        private set(value) { chat.savedMessageIds = value }
+        // 转发给 holder 的 restoreSession：字段级 setter 仍不对宿主开放（见其 KDoc）
+        internal set(value) { chat.restoreSession(value) }
+    val isChatStreaming: Boolean get() = chat.isStreaming
+    val chatErrorMessage: String? get() = chat.errorMessage
+    val savedChatMessageIds: Set<String> get() = chat.savedMessageIds
 
     private var persistJob: Job? = null
     private val persistenceQueue = CardPersistenceQueue(model.storage, ::handlePersistenceResult)
@@ -577,7 +585,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /** 导入归档文件探测结果预览（null = 未在预览） */
-    var importPreview by mutableStateOf<com.knowflick.app.data.ArchivePreview?>(null)
+    var importPreview by mutableStateOf<com.knowflick.app.domain.ArchivePreview?>(null)
         private set
 
     var isInspectingArchive by mutableStateOf(false)
@@ -595,7 +603,7 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
             isInspectingArchive = true
             generateNotice = "正在解析归档文件…"
             val result = withContext(Dispatchers.IO) {
-                com.knowflick.app.data.ArchiveImportManager.inspectArchive(getApplication(), uri)
+                com.knowflick.app.data.AndroidArchiveReader.inspectArchive(getApplication(), uri)
             }
             isInspectingArchive = false
             result.fold(
@@ -614,15 +622,18 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
      * 应用恢复策略将归档载入卡库并持久化保存
      */
     fun applyArchiveRestore(
-        preview: com.knowflick.app.data.ArchivePreview,
-        strategy: com.knowflick.app.data.RestoreStrategy,
+        preview: com.knowflick.app.domain.ArchivePreview,
+        strategy: com.knowflick.app.domain.RestoreStrategy,
     ) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 com.knowflick.app.data.ArchiveImportManager.applyRestore(model.store, preview, strategy)
             }
-            if (strategy == com.knowflick.app.data.RestoreStrategy.OVERWRITE && preview.settingsJson != null) {
-                val loadedSettings = AiSettings.fromJson(preview.settingsJson)
+            // 跨模块后 ArchivePreview 的公开属性不再允许 smart cast（Kotlin 跨模块限制），
+            // 先落局部变量——与 :domain 迁移时 CardStore 的处理同一原因。
+            val archivedSettings = preview.settingsJson
+            if (strategy == com.knowflick.app.domain.RestoreStrategy.OVERWRITE && archivedSettings != null) {
+                val loadedSettings = AiSettings.fromJson(archivedSettings)
                 if (loadedSettings != null) {
                     settings = loadedSettings
                     applySettings(loadedSettings)
@@ -630,10 +641,10 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
             generateNotice = when (strategy) {
-                com.knowflick.app.data.RestoreStrategy.MERGE -> {
+                com.knowflick.app.domain.RestoreStrategy.MERGE -> {
                     "已增量恢复：${result.accepted} 张（新增 ${result.added}，更新 ${result.restored}）✓"
                 }
-                com.knowflick.app.data.RestoreStrategy.OVERWRITE -> {
+                com.knowflick.app.domain.RestoreStrategy.OVERWRITE -> {
                     "已全量覆盖恢复：${preview.totalCards} 张卡片 ✓"
                 }
             }
@@ -696,130 +707,73 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // ---------- 网页剪藏（浏览时随手把文章收进知识库） ----------
-
-    /** 剪藏面板的四个阶段：面板上的按钮可用性与文案都由它驱动 */
-    enum class ClipStage { INPUT, FETCHING, READY, EXTRACTING }
+    // ---------- 网页剪藏 ----------
+    // 三步交互在共享 `ClipSheet` 里。这里只提供打开面板、AI 提炼和确认后的入库。
 
     var showClipSheet by mutableStateOf(false)
         private set
 
-    /** 用户粘贴或从浏览器分享来的文本（可能是「正文 + 链接」混排） */
-    var clipInput by mutableStateOf("")
+    /** 分享进来的原始文本。面板打开时若非空会自动抓取一次。 */
+    var clipSeed by mutableStateOf("")
         private set
 
-    var clipStage by mutableStateOf(ClipStage.INPUT)
-        private set
-
-    var clipDigest by mutableStateOf<com.knowflick.app.domain.WebClipDigest?>(null)
-        private set
-
-    var clipNotice by mutableStateOf<String?>(null)
-        private set
-
-    /** 失败原因与提示分开：提示是信息（灰色），失败要显眼（橙色），混在一个字段里小屏上会被读成同一种东西 */
-    var clipError by mutableStateOf<String?>(null)
-        private set
-
-    private var clipJob: kotlinx.coroutines.Job? = null
-
-    /** 打开剪藏面板；带 `sharedText` 时直接开始抓取（分享入口的默认期望是「不用我再点一次」） */
     fun openClipSheet(sharedText: String? = null) {
+        clipSeed = sharedText.orEmpty()
         showClipSheet = true
-        clipNotice = null
-        clipError = null
-        clipDigest = null
-        clipStage = ClipStage.INPUT
-        if (!sharedText.isNullOrBlank()) {
-            clipInput = sharedText
-            runClipFetch()
-        }
     }
 
     fun closeClipSheet() {
-        clipJob?.cancel()
-        clipJob = null
         showClipSheet = false
-        clipStage = ClipStage.INPUT
-        clipDigest = null
-        clipNotice = null
-        clipError = null
+        clipSeed = ""
     }
 
-    fun updateClipInput(text: String) {
-        clipInput = text
-        if (clipStage == ClipStage.FETCHING || clipStage == ClipStage.EXTRACTING) return
-        clipStage = ClipStage.INPUT
-        clipDigest = null
-        clipNotice = null
-        clipError = null
+    suspend fun transformClipNote(note: String): List<KnowledgeCard> {
+        if (!settings.isConfigured) error("请先在设置里配置 AI 服务")
+        return aiService.transformNoteToCards(
+            settings = settings,
+            apiKey = currentApiKey(),
+            note = note,
+        )
     }
 
-    /** 抓取并抽正文。网络与解析都在 IO 线程，面板不阻塞 */
-    fun runClipFetch() {
-        val text = clipInput.trim()
-        if (text.isEmpty()) {
-            clipError = "先粘贴或分享一个网页链接"
-            return
-        }
-        clipJob?.cancel()
-        clipStage = ClipStage.FETCHING
-        clipDigest = null
-        clipNotice = null
-        clipError = null
-        clipJob = viewModelScope.launch {
-            try {
-                val digest = com.knowflick.app.data.WebClipFetcher.clip(text)
-                clipDigest = digest
-                clipStage = ClipStage.READY
-                clipNotice = if (digest.truncated) "正文较长，已按行截取前 ${digest.text.length} 字用于提炼" else null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: com.knowflick.app.domain.WebClipException) {
-                clipStage = ClipStage.INPUT
-                clipError = e.message
-            } catch (e: Exception) {
-                clipStage = ClipStage.INPUT
-                clipError = "取不到这个页面：${e.message ?: "网络异常"}"
-            }
-        }
+    /** 确认导入选中的卡片。返回给面板展示的结果文案。 */
+    fun importClippedCards(cards: List<KnowledgeCard>, insertAtTop: Boolean): String {
+        var added = 0
+        mutate { added = model.store.addCards(cards, insertAtTop = insertAtTop) }
+        val skipped = cards.size - added
+        return "导入完成：新增 $added 张，跳过重复卡 $skipped 张。"
     }
 
-    /** 用 AI 把剪藏正文提炼成卡片并置顶入堆（人工确认这一步之后才写库） */
-    fun clipToCards() {
-        val digest = clipDigest ?: return
-        if (clipStage == ClipStage.EXTRACTING) return
-        if (!settings.isConfigured) {
-            clipError = "请先在设置里配置 AI 服务"
-            return
-        }
-        clipJob?.cancel()
-        clipStage = ClipStage.EXTRACTING
-        clipNotice = null
-        clipError = null
-        clipJob = viewModelScope.launch {
-            try {
-                val transformedCards = aiService.transformNoteToCards(
-                    settings = settings,
-                    apiKey = currentApiKey(),
-                    note = digest.aiNote,
-                )
-                val cards = digest.attributing(transformedCards)
-                mutate { model.store.addCards(cards, insertAtTop = true) }
-                generateNotice = "已剪藏《${digest.siteName}》并生成 ${cards.size} 张卡片 ✓"
-                showClipSheet = false
-                clipStage = ClipStage.INPUT
-                clipDigest = null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: AiError) {
-                clipStage = ClipStage.READY
-                clipError = e.message
-            } catch (e: Exception) {
-                clipStage = ClipStage.READY
-                clipError = "提炼失败：${e.message}"
-            }
-        }
+    var showNotesImport by mutableStateOf(false)
+        private set
+    var notesFileName by mutableStateOf<String?>(null)
+        private set
+    var notesFileText by mutableStateOf<String?>(null)
+        private set
+    var showHelp by mutableStateOf(false)
+        private set
+
+    fun openNotesImport() {
+        showNotesImport = true
+    }
+
+    fun closeNotesImport() {
+        showNotesImport = false
+        notesFileName = null
+        notesFileText = null
+    }
+
+    fun acceptNotesFile(name: String, text: String) {
+        notesFileName = name
+        notesFileText = text
+    }
+
+    fun openHelp() {
+        showHelp = true
+    }
+
+    fun closeHelp() {
+        showHelp = false
     }
 
     // ---------- 卡片 AI 伴学与深度追问 ----------
@@ -858,52 +812,33 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // ---------- 知识测验 ----------
+    // 编排在共享的 QuizCycle 里（桌面端复用同一份）；这里只做「同步 Compose 状态 + 推进 version + 落盘」。
 
     /** 开始/刷新测验：到期复习优先，其后收藏与历史，单轮 10 张 */
     fun startQuiz(category: String? = null) {
-        quizCycleRatedIds.clear()
-        quizSession = com.knowflick.app.domain.QuizSession.build(
-            cards = model.store.cards,
-            today = java.time.LocalDate.now(),
-            limit = 10,
-            category = category,
-        )
+        quizCycle.start(today = java.time.LocalDate.now(), category = category)
+        syncQuizSession()
         version++
     }
 
     /** 开始纯到期复习：以到期队列为准，最多 10 张 */
     fun startDueReview() {
-        quizCycleRatedIds.clear()
-        quizSession = com.knowflick.app.domain.QuizSession.buildDueReview(
-            cards = model.store.cards,
-            today = java.time.LocalDate.now(),
-            limit = 10,
-        )
+        quizCycle.startDueReview(today = java.time.LocalDate.now())
+        syncQuizSession()
         version++
     }
 
     /** 针对性弱项重测：提取上一轮中评分不为熟练掌握（FORGOT/HESITANT）的卡片进行即时巩固 */
     fun retestWeakCards(ratings: Map<String, com.knowflick.app.domain.QuizRating>) {
-        quizCycleRatedIds.clear()
-        quizSession = com.knowflick.app.domain.QuizSession.buildWeakCards(
-            cards = model.store.cards,
-            ratings = ratings,
-        )
+        quizCycle.retestWeak(ratings)
+        syncQuizSession()
         version++
     }
 
     /** 再测一组：剔除本轮已评卡，剩余不足则回到全部（与 macOS 到期队列刷新同精神） */
     fun nextQuizRound() {
-        var pool = model.store.cards.filter { it.id !in quizCycleRatedIds }
-        if (pool.isEmpty()) {
-            quizCycleRatedIds.clear()
-            pool = model.store.cards
-        }
-        quizSession = com.knowflick.app.domain.QuizSession.build(
-            cards = pool,
-            today = java.time.LocalDate.now(),
-            limit = 10,
-        )
+        quizCycle.nextRound(today = java.time.LocalDate.now())
+        syncQuizSession()
         version++
     }
 
@@ -970,22 +905,17 @@ class KnowFlickViewModel(application: Application) : AndroidViewModel(applicatio
         schedulePersist()
     }
 
-    /** 提交测验评分：驱动 SM-2 间隔演进并记账，到期队列随之刷新 */
+    /** 提交测验评分：驱动 SM-2 间隔演进并记账，到期队列随之刷新（编排在共享 QuizCycle） */
     fun rateQuiz(rating: com.knowflick.app.domain.QuizRating) {
-        val session = quizSession ?: return
-        val card = session.current ?: return
-        if (!session.rate(rating)) return
-        quizCycleRatedIds += card.id
-        val spacedRating = com.knowflick.app.domain.spaced.SpacedRating.fromQuizRating(rating)
-        val result = com.knowflick.app.domain.spaced.SpacedRepetitionEngine.calculate(card, spacedRating)
-        model.store.recordReviewResult(card.id, result)
+        if (!quizCycle.rate(rating)) return
+        syncQuizSession()
         version++
         schedulePersist()
     }
 
     fun exitQuiz() {
-        quizSession = null
-        quizCycleRatedIds.clear()
+        quizCycle.exit()
+        syncQuizSession()
         version++
     }
 

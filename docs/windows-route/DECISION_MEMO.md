@@ -3,6 +3,15 @@
 > 双机并行 agent 开发的配套调研。两份完整报告：
 > [资源占用 × 复用度对比](RESOURCE-REPORT.md)（含一手实测与来源标注）· [CMP 抽取可行性](CMP-FEASIBILITY.md)（逐文件纯度与工作量）。
 > 本文件只记**结论与决策树**，细节看两份报告。
+>
+> **2026-10-11 更新：决策树「先做 domain 探针」已完成并合回**——`apps/android/domain`（`:domain`，
+> androidTarget + jvm）承载全部 19 文件领域层，171 项测试在桌面 JVM 上跑通，且**无需 Android SDK**。
+> 实测结论（含 `java.*` 落位、工具链告警、遗留项）见 [KMP domain 探针结果](KMP_PROBE_RESULT.md)。
+>
+> **同日第二波：CMP 工具链对齐实验也已完成**——三条版本路线全部实测通过（编译 + 运行 + 离屏渲染），
+> 推荐「同一构建 + Kotlin 2.1.21 + CMP 1.8.2 + BOM 2025.06.00 不动」；独立构建路线（桌面端上现代版本、
+> Android 端完全不动）也已验证可行。见 [CMP 工具链对齐实验](CMP_TOOLCHAIN_ALIGNMENT.md)。
+> 拍板项随之收敛为「桌面 UI 要不要共享」与「Windows 机器就位时间」。
 
 ## 背景
 
@@ -40,16 +49,22 @@ domain 层事实：19 文件 4141 行 **零 `android.*` import、零 coroutines�
 └─ 要
    ├─ 接受「Windows UI 与 Android 不共享」？ → 路线 B/C（资源更省但等于第三个 App）
    └─ 要复用 Android 代码
-      ├─ 先做 domain 探针（8-14 人日，验证工具链与 java.* 放行）→ 推荐
+      ├─ 先做 domain 探针（8-14 人日）→ ✅ 已完成（2026-10-11，见 KMP_PROBE_RESULT.md）
       │   └─ 探针成功 → 再决定全量 CMP（+14-21 人日）还是仅 domain 共享 + 另写 UI
       └─ 直接全量 CMP（30-52 人日，工具链风险前置）
 ```
 
 ## 已知需拍板项（第二轮弹窗）
 
-1. **Windows 路线定版**：CMP 全量 / domain 探针先行 / 换 B・C / 暂缓。
-2. 若 CMP：**工具链对齐策略**（保 Kotlin 2.0.21 降 BOM vs 升 Kotlin 2.1+/2.2+ 保 BOM）。
-3. （后续）Windows 机器到位时间，决定探针在哪台机器做。
+1. **下一步走哪条**：全量 CMP（UI 也共享，22–35 人日）／ 仅 domain 共享 + 另写 Windows UI ／ 换 B・C ／ 暂缓。
+   domain 探针已于 2026-10-11 完成，四条路的分叉点只剩「UI 要不要共享」。
+2. ~~若 CMP：工具链对齐策略~~ → **已解答**（2026-10-11）：
+   推荐 Kotlin 2.1.21 + CMP 1.8.2 + **BOM 2025.06.00 不动**（BOM 锁的 `androidx.compose.*` 正是 1.8.2，
+   与 CMP 1.8.2 对应的 Jetpack 版本逐号相同）；若不想动 Android 端，独立构建路线可让桌面端直接上
+   Kotlin 2.4.21 + CMP 1.12.1（实测现代消费者能读 Kotlin 2.0.21 编译的 `:domain` 产物）。
+   矩阵与依据见 [CMP 工具链对齐实验](CMP_TOOLCHAIN_ALIGNMENT.md)。
+3. （后续）Windows 机器到位时间，决定 UI 波次在哪台机器做——**领域层不挑机器**（只需 JDK 17）；
+   Windows 目标的编译在 macOS 上已验证可行，**运行与 MSI 打包仍需 Windows**。
 
 ## 附：本次调研的两处事实修正
 

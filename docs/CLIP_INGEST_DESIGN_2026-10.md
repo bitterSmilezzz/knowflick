@@ -1,9 +1,14 @@
 # 剪藏 → 提炼 → 复习 · 设计规格（2026-10-05）
 
+> **2026-10-13 搁置（覆盖下文的平台条款和未落地模型）。** 活计划已改为 [ADR-0002](adr/0002-desktop-web-split-from-android.md)：桌面三端加网页一套，安卓单独一套。`apps/mac` 已删除。
+> 仍有效、且已经发生的只有一件：**预置库退役，知识来自用户自己的剪藏与导入。**
+> 条目（Entry）、wiki、暂存队列、问答式卡面、`kf_ingest` 不进第一套第一版，也不写进 [`CONTEXT.md`](../CONTEXT.md)。
+> 下文是 2026-10-05 至 10-06 的逐题记录，留作归档；与本段冲突时以本段为准。
+
 > 面向决策与实现的单一文档。**本文件定规格，不含实现**。已确认的转向：放弃预置知识卡（`shared/assets/seed_cards.json` 214 张），
 > 改为「你丢地址 → AI 解析成条目与知识点 → 在 App 里复习」。
 > 决策全部经逐题确认（2026-10-05 至 10-06），不接受的条目请在本文件上直接改，不要另开一份。
-> 术语落地后需同步进 [`CONTEXT.md`](../CONTEXT.md)（§1）。
+> 术语落地后需同步进 [`CONTEXT.md`](../CONTEXT.md)（§1）。条目模型搁置期间不要执行这句。
 
 ---
 
@@ -86,7 +91,7 @@ Fact { key, value, origin: api | page | manual, asOf(取数日期), verification
 | 端 | 位置 | 处理 |
 |---|---|---|
 | mac | `apps/mac/Sources/KnowFlickCore/Models/KnowledgeCard.swift` + 新增 `Entry.swift` | 读写双方 |
-| Android | `apps/android/app/src/main/kotlin/com/knowflick/app/domain/Card.kt`（冻结）+ `Entry.kt`（只解不写） | 新字段解出 nil 即忽略 |
+| Android | `apps/android/domain/src/jvmAndAndroidMain/kotlin/com/knowflick/app/domain/Card.kt`（冻结，2026-10-10 随 KMP 探针迁入 `:domain` 模块）+ `Entry.kt`（只解不写） | 新字段解出 nil 即忽略 |
 | MCP | `tools/knowflick-mcp/lib.mjs`（现 313-352 行的校验） | `kf_ingest` 的入参校验，非法值拒收 |
 
 契约夹具放 `shared/assets/`（与 `taxonomy_map.json` 同批风格），双端各加一条 parity 测试逐字段比对，

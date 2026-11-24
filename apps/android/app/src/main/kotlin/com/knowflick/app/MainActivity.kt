@@ -55,6 +55,41 @@ class MainActivity : ComponentActivity() {
     private var detailCardId by mutableStateOf<String?>(null)
     private var detailReturnScreen by mutableStateOf(Screen.DECK)
 
+    /** 笔记导入：读入文本后交给共享面板解析，不在这里写库。 */
+    private val notesFilePicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        lifecycleScope.launch {
+            val loaded = runCatching {
+                withContext(Dispatchers.IO) {
+                    val name = uri.lastPathSegment ?: "note"
+                    val text = contentResolver.openInputStream(uri)?.use { input ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        val max = com.knowflick.app.data.NoteImport.MAX_BYTES
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > max) error("导入文件过大，当前最多支持 ${max / 1024 / 1024} MB。")
+                            out.write(buffer, 0, read)
+                        }
+                        out.toString(Charsets.UTF_8.name())
+                    } ?: error("无法读取文件")
+                    name to text
+                }
+            }
+            loaded.fold(
+                onSuccess = { (name, text) -> viewModel.acceptNotesFile(name, text) },
+                onFailure = { error ->
+                    android.widget.Toast.makeText(this@MainActivity, error.message ?: "读取文件失败", android.widget.Toast.LENGTH_SHORT).show()
+                },
+            )
+        }
+    }
+
     /** 知识库导入：选择 ZIP 备份包 / JSON 镜像文件并执行智能探测与预览 */
     private val importFilePicker = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -82,6 +117,11 @@ class MainActivity : ComponentActivity() {
         maybeRequestNotificationPermission()
         enableEdgeToEdge()
         setContent {
+            // 共享界面里的「轻量提示」走宿主提供的实现：Android = 系统 Toast，
+            // 与迁移前共享屏里直接 Toast 的用户可见行为完全一致（不提供则静默）。
+            com.knowflick.app.ui.common.ProvideToastNotifier {
+            // 导出面板的落地方式（写 Downloads / 系统分享）也由宿主提供
+            com.knowflick.app.data.ProvideAndroidArchiveExporter {
             KnowFlickTheme(paperTheme = viewModel.currentPaperTheme) {
                 val libraryState = rememberSaveableStateHolder()
                 Box(
@@ -114,6 +154,8 @@ class MainActivity : ComponentActivity() {
                                 onOpenGraph = { screen = Screen.GRAPH },
                                 onOpenMap = { screen = Screen.MAP },
                                 onOpenClip = { viewModel.openClipSheet() },
+                                onOpenNotesImport = { viewModel.openNotesImport() },
+                                onOpenHelp = { viewModel.openHelp() },
                                 studyScopeLabel = viewModel.studyScope.describe(),
                                 onOpenSync = { viewModel.openSyncSheet() },
                                 isGenerating = viewModel.isGenerating,
@@ -142,6 +184,27 @@ class MainActivity : ComponentActivity() {
                                     viewModel.submitReviewRating(card, rating)
                                 },
                                 reviewSessionCount = viewModel.reviewSessionCount,
+                                // 桌面上没有的两项能力由宿主注入（迁进共享层时改成的槽位）：
+                                // 微件是 Android 独有；海报导出要 Bitmap 光栅化。
+                                onAddWidget = {
+                                    val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(this@MainActivity)
+                                    if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                                        val component = android.content.ComponentName(
+                                            this@MainActivity,
+                                            com.knowflick.app.widget.DailyCardGlanceWidgetReceiver::class.java,
+                                        )
+                                        appWidgetManager.requestPinAppWidget(component, null, null)
+                                    } else {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "当前桌面启动器不支持直接锁定添加微件，请长按桌面手动添加",
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                },
+                                posterSheet = { card, onClose ->
+                                    com.knowflick.app.ui.CardPosterExportSheet(card = card, onClose = onClose)
+                                },
                             )
                         }
                         Screen.DETAIL -> {
@@ -152,21 +215,10 @@ class MainActivity : ComponentActivity() {
                                 screen = detailReturnScreen
                             } else {
                                 val isFavorite = card.isFavorite
+                                // 相关卡片推荐：算法在共享的 :domain `RelatedCards`（桌面详情页用同一份，
+                                // 不再把打分逻辑抄在宿主里）
                                 val relatedCards = remember(card.id, viewModel.version) {
-                                    viewModel.model.store.cards
-                                        .filter { it.id != card.id }
-                                        .map { other ->
-                                            var score = 0
-                                            if (other.category == card.category) score += 5
-                                            val cardKeywords = card.headline.chunked(2).toSet()
-                                            val otherKeywords = other.headline.chunked(2).toSet()
-                                            score += (cardKeywords intersect otherKeywords).size * 2
-                                            other to score
-                                        }
-                                        .filter { it.second > 0 }
-                                        .sortedByDescending { it.second }
-                                        .take(3)
-                                        .map { it.first }
+                                    com.knowflick.app.domain.RelatedCards.pick(card, viewModel.model.store.cards)
                                 }
                                 DetailScreen(
                                     card = card,
@@ -214,10 +266,44 @@ class MainActivity : ComponentActivity() {
                                         viewModel.closeChat()
                                         detailCardId = related.id
                                     },
+                                    // 两个 Sheet 由宿主提供（共享屏只负责「什么时候显示」）
+                                    chatSheet = { onClose ->
+                                        com.knowflick.app.ui.CardFollowUpChatSheet(
+                                            card = card,
+                                            session = viewModel.currentChatSession,
+                                            isStreaming = viewModel.isChatStreaming,
+                                            errorMessage = viewModel.chatErrorMessage,
+                                            savedMessageIds = viewModel.savedChatMessageIds,
+                                            onSendMessage = { prompt -> viewModel.sendChatMessage(prompt) },
+                                            onCancelStreaming = { viewModel.cancelChatStreaming() },
+                                            onClearSession = { viewModel.clearCurrentChatSession() },
+                                            onSpeakMessage = { text -> viewModel.speech.speakText(text) },
+                                            onDeriveCard = { messageId, content ->
+                                                viewModel.deriveAndSaveCardFromChat(messageId, content, card)
+                                                Toast.makeText(this@MainActivity, "已将洞见沉淀为新卡片并置顶插入卡堆", Toast.LENGTH_SHORT).show()
+                                            },
+                                            onExportMarkdown = {
+                                                val markdown = viewModel.exportCurrentChatMarkdown()
+                                                if (!markdown.isNullOrBlank()) {
+                                                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    val clip = ClipData.newPlainText("KnowFlick 追问笔记", markdown)
+                                                    clipboard.setPrimaryClip(clip)
+                                                    Toast.makeText(this@MainActivity, "已复制追问 Markdown 笔记到剪贴板", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(this@MainActivity, "当前无追问内容可导出", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            onClose = onClose,
+                                        )
+                                    },
+                                    posterSheet = { onClose ->
+                                        com.knowflick.app.ui.CardPosterExportSheet(card = card, onClose = onClose)
+                                    },
                                 )
                             }
                         }
-                        Screen.STATS -> StatsScreen(
+                        Screen.STATS -> {
+                            StatsScreen(
                             cards = viewModel.model.store.cards,
                             onBack = { screen = Screen.DECK },
                             onStartDueReview = {
@@ -229,8 +315,10 @@ class MainActivity : ComponentActivity() {
                                 detailReturnScreen = Screen.STATS
                                 screen = Screen.DETAIL
                             },
-                        )
-                        Screen.SETTINGS -> com.knowflick.app.ui.SettingsScreen(
+                            )
+                        }
+                        Screen.SETTINGS -> {
+                            com.knowflick.app.ui.SettingsScreen(
                             initial = viewModel.settings,
                             initialApiKey = viewModel.currentApiKey(),
                             initialSpeech = viewModel.speechSettings,
@@ -253,7 +341,8 @@ class MainActivity : ComponentActivity() {
                             onSelectPaperTheme = viewModel::setPaperTheme,
                             soundEffectsEnabled = viewModel.settings.soundEffectsEnabled,
                             onToggleSoundEffects = viewModel::setSoundEffectsEnabled,
-                        )
+                            )
+                        }
                         Screen.QUIZ -> {
                             val session = viewModel.quizSession
                             if (session == null) {
@@ -420,8 +509,33 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // 网页剪藏面板（分享链接与手动粘贴同一条路径）
+                    if (viewModel.showNotesImport) {
+                        com.knowflick.app.ui.NotesImportSheet(
+                            aiConfigured = viewModel.settings.isConfigured,
+                            existingCards = viewModel.model.store.cards,
+                            incomingFileName = viewModel.notesFileName,
+                            incomingFileText = viewModel.notesFileText,
+                            onParseRules = { text, fileName -> com.knowflick.app.data.NoteImport.parse(text, fileName) },
+                            onTransform = { note -> viewModel.transformClipNote(note) },
+                            onImport = { cards, insertAtTop -> viewModel.importClippedCards(cards, insertAtTop) },
+                            onPickFile = {
+                                notesFilePicker.launch(arrayOf("text/*", "application/json", "*/*"))
+                            },
+                            onClose = viewModel::closeNotesImport,
+                        )
+                    }
+                    if (viewModel.showHelp) {
+                        com.knowflick.app.ui.HelpSheet(onClose = viewModel::closeHelp)
+                    }
                     if (viewModel.showClipSheet) {
-                        com.knowflick.app.ui.clip.ClipSheet(viewModel = viewModel)
+                        com.knowflick.app.ui.ClipSheet(
+                            initialText = viewModel.clipSeed,
+                            aiConfigured = viewModel.settings.isConfigured,
+                            onFetch = { text -> com.knowflick.app.data.WebClipFetcher.clip(text) },
+                            onTransform = { note -> viewModel.transformClipNote(note) },
+                            onImport = { cards, insertAtTop -> viewModel.importClippedCards(cards, insertAtTop) },
+                            onClose = viewModel::closeClipSheet,
+                        )
                     }
 
                     if (viewModel.showSyncSheet) {
@@ -451,6 +565,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            }
+            } // ProvideAndroidArchiveExporter
         }
     }
 

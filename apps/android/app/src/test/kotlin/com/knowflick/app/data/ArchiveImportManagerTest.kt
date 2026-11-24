@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.knowflick.app.domain.CardSource
 import com.knowflick.app.domain.CardStore
 import com.knowflick.app.domain.KnowledgeCard
+import com.knowflick.app.domain.RestoreStrategy
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -51,7 +52,7 @@ class ArchiveImportManagerTest {
         val uri = Uri.fromFile(tempZip)
 
         // 2. 探测归档
-        val previewResult = ArchiveImportManager.inspectArchive(context, uri)
+        val previewResult = AndroidArchiveReader.inspectArchive(context, uri)
         assertTrue(previewResult.isSuccess)
 
         val preview = previewResult.getOrThrow()
@@ -94,7 +95,7 @@ class ArchiveImportManagerTest {
         val uri = Uri.fromFile(tempJson)
 
         // 2. 探测归档
-        val previewResult = ArchiveImportManager.inspectArchive(context, uri)
+        val previewResult = AndroidArchiveReader.inspectArchive(context, uri)
         assertTrue(previewResult.isSuccess)
 
         val preview = previewResult.getOrThrow()

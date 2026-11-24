@@ -72,6 +72,21 @@ android {
 }
 
 dependencies {
+    // 领域层（卡片模型 / 卡库状态机 / 学科与学习范围 / 统计 / 搜索 / 图谱 / 间隔重复 / 剪藏抽取）
+    // 2026-10-10 迁入 KMP 模块 :domain（androidTarget + jvm），包名保持 com.knowflick.app.domain
+    // 不变，装配层（data / ui / 根包）经此依赖消费，源码 import 零改动。
+    // 探针结论见 docs/windows-route/KMP_PROBE_RESULT.md。
+    implementation(project(":domain"))
+
+    // 跨端共享界面层（CMP）：主题令牌等界面基础已迁入，包名同样保持 com.knowflick.app.ui
+    // 不变——所以 :app 这边只是本文件少一个文件、多一行依赖，调用方 import 零改动。
+    // 后续按 docs/windows-route/CMP-FEASIBILITY.md §4.1 的 A 档分批迁移屏幕。
+    implementation(project(":shared-ui"))
+
+    // 跨端共享持久化层：卡库落盘（原子写 + 备份轮转 + 损坏回退）与持久化队列。
+    // 宿主注入数据目录（Android 这里是 filesDir/store），目录以下的逻辑四端共用。
+    implementation(project(":shared-data"))
+
     // Compose BOM 随工具链升级：2024.10.01 → 2025.06.00（compileSdk 36 配套；
     // material3/ui 的 API 变更由 265 项 JVM 测试 + 34 项仪器测试兜底）。
     val composeBom = platform("androidx.compose:compose-bom:2025.06.00")

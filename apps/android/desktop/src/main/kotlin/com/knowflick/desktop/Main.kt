@@ -1,0 +1,391 @@
+package com.knowflick.desktop
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.MenuBar
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.application
+import com.knowflick.app.data.AppModel
+import com.knowflick.app.data.CardStorage
+import com.knowflick.app.domain.RelatedCards
+import com.knowflick.app.data.WebClipFetcher
+import com.knowflick.app.ui.BackupExportSheet
+import com.knowflick.app.data.NoteImport
+import com.knowflick.app.ui.ClipSheet
+import com.knowflick.app.ui.HelpSheet
+import com.knowflick.app.ui.NotesImportSheet
+import com.knowflick.app.ui.DeckScreen
+import com.knowflick.app.ui.common.LocalArchiveExporter
+import com.knowflick.app.ui.DetailScreen
+import com.knowflick.app.ui.CardFollowUpChatSheet
+import com.knowflick.app.ui.ImportRestoreDialog
+import com.knowflick.app.ui.KnowFlickTheme
+import com.knowflick.app.ui.LibraryScreen
+import com.knowflick.app.ui.map.LearningMapScreen
+import com.knowflick.app.ui.PaperTheme
+import com.knowflick.app.ui.QuizScreen
+import com.knowflick.app.ui.SearchSheet
+import com.knowflick.app.ui.SettingsScreen
+import com.knowflick.app.ui.StatsScreen
+import java.awt.Frame
+
+fun main() = application {
+    Window(onCloseRequest = ::exitApplication, title = "KnowFlick") {
+        // 真实卡库：与 Android 端同一份落盘实现（:shared-data），这里只注入桌面数据目录。
+        // 空库是正常起点（预置知识库已退役，内容由用户剪藏/导入产生）。
+        val state = remember {
+            DesktopHostState(AppModel(CardStorage.shared(DesktopPaths.storeDir())).apply { bootstrap() })
+        }
+
+        // 桌面原生的入口放菜单栏（而不是另造一套界面）：屏幕与编排都是共享模块的
+        MenuBar {
+            Menu("学习", mnemonic = 'L') {
+                Item("刷卡（主页）", onClick = { state.goHome() })
+                Item("收藏阁", onClick = { state.openLibrary() })
+                Item("学习统计", onClick = { state.openStats() })
+                Item("全局搜索…", onClick = { state.openSearch() })
+                Item("学习地图…", onClick = { state.openMap() })
+                Item("设置…", onClick = { state.openSettings() })
+                Item("导入笔记…", onClick = { state.openNotes() })
+                Item("快捷键", onClick = { state.openHelp() })
+                Separator()
+                Item("知识测验（10 张）", onClick = { state.startQuiz() })
+                Item("只测今天到期", onClick = { state.startDueReview() })
+                Separator()
+                Item("退出测验", enabled = state.quizSession != null, onClick = { state.exitQuiz() })
+            }
+        }
+
+        // 共享界面的「轻量提示」走宿主通知条（Android 那边对应系统 Toast）
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.knowflick.app.ui.common.LocalNotifier provides
+                com.knowflick.app.ui.common.Notifier { message -> state.showNotice(message) },
+        ) {
+            KnowFlickTheme(paperTheme = PaperTheme.fromName(state.aiSettings.paperTheme)) {
+                // window 是 ComposeWindow（Frame），交给原生文件对话框做 owner，保证模态行为正确
+                DesktopHost(state = state, owner = window)
+            } // KnowFlickTheme
+        } // CompositionLocalProvider
+    } // Window
+}
+
+/**
+ * 桌面宿主：**界面全部来自共享模块**——卡库是 `:shared-data`，五个整屏（刷卡 / 收藏阁 / 详情 /
+ * 测验 / 统计）与全部编排（`QuizCycle` / `RelatedCards` / `StatsCalculator`）都在 `:shared-ui` / `:domain`。
+ * 自己只负责平台边界：数据目录、原生文件对话框、菜单栏，以及桌面没有的能力（微件 / 海报导出 / 语音）。
+ *
+ * 当前能力：刷卡（含收藏、撤销之外的全部手势与音效接缝）、收藏阁、卡片详情、知识测验、学习统计、
+ * 导入归档、导出 Markdown/JSON、三系统安装包。
+ */
+@Composable
+fun DesktopHost(state: DesktopHostState, owner: Frame? = null) {
+    val model = state.model
+    val quizSession = state.quizSession
+    val detailCard = state.detailCard
+
+    // 导入归档：对话框取字节 → 共享引擎解析合并（刷卡页与收藏阁共用同一入口）
+    val pickAndImport: () -> Unit = {
+        val file = DesktopFileDialogs.openFile(
+            owner = owner,
+            title = "导入知识库归档（.zip / .json）",
+            extensions = listOf(".zip", ".json"),
+        )
+        if (file == null) {
+            state.dismissNotice()
+        } else {
+            runCatching { DesktopArchiveActions.readArchiveBytes(file) }.fold(
+                onSuccess = { bytes -> state.beginImport(file.name, bytes) },
+                onFailure = { error -> state.showNotice("导入失败：${error.message ?: "无法读取文件"}") },
+            )
+        }
+    }
+
+    val archiveExporter = remember(owner) { DesktopArchiveExporter(owner = { owner }) }
+
+    CompositionLocalProvider(LocalArchiveExporter provides archiveExporter) {
+    Box(Modifier.fillMaxSize()) {
+        when {
+            quizSession != null -> key(state.version) {
+                // key(version)：评分只改动**同一个** QuizSession 实例的内部进度（实例不变），
+                // 所以必须靠 version 触发重组；key 同时完成「订阅 version」与「重建这棵子树」，
+                // 与 Android 宿主对版本驱动屏幕的处理同一手法（MainActivity 的 key(viewModel.version)）。
+                QuizScreen(
+                    session = quizSession,
+                    onRate = state::rateQuiz,
+                    onNextRound = state::nextQuizRound,
+                    onRetestWeakCards = state::retestWeak,
+                    onOpenChat = { state.showNotice("卡片追问尚未在桌面端接线") },
+                    onPromoteCardToDeck = { state.showNotice("置顶到卡堆尚未在桌面端接线") },
+                    onExit = state::exitQuiz,
+                )
+            }
+
+            detailCard != null -> key(state.version) {
+                // 详情页：与 Android 端同一份。聊天/海报 Sheet 传 null——桌面暂未接
+                //（聊天要 AI 供应商配置、海报要光栅化），但屏本体是共享的。
+                DetailScreen(
+                    card = detailCard,
+                    isFavorite = detailCard.isFavorite,
+                    showAIMark = true,
+                    isSpeakingState = false,
+                    onToggleFavorite = { state.toggleFavorite(detailCard) },
+                    onToggleSpeech = { state.showNotice("语音朗读尚未在桌面端接线") },
+                    onBack = state::closeDetail,
+                    relatedCards = RelatedCards.pick(detailCard, model.store.cards),
+                    onSelectRelatedCard = { related -> state.openDetail(related.id) },
+                    onOpenChat = { state.openChat(detailCard) },
+                    // 追问面板：与 Android 端同一份 CardFollowUpChatSheet，会话状态也同一份 ChatStateHolder
+                    chatSheet = { onClose ->
+                        CardFollowUpChatSheet(
+                            card = detailCard,
+                            session = state.chatSession,
+                            isStreaming = state.isChatStreaming,
+                            errorMessage = state.chatErrorMessage,
+                            savedMessageIds = state.savedChatMessageIds,
+                            onSendMessage = state::sendChatMessage,
+                            onCancelStreaming = state::cancelChatStreaming,
+                            onClearSession = state::clearCurrentChatSession,
+                            onSpeakMessage = { state.showNotice("语音朗读尚未在桌面端接线") },
+                            onDeriveCard = { messageId, content ->
+                                state.deriveCardFromChat(messageId, content, detailCard)
+                                state.showNotice("已将洞见沉淀为新卡片并置顶插入卡堆")
+                            },
+                            onExportMarkdown = {
+                                val markdown = state.exportCurrentChatMarkdown()
+                                if (markdown.isNullOrBlank()) {
+                                    state.showNotice("当前无追问内容可导出")
+                                } else {
+                                    state.saveText(
+                                        owner = owner,
+                                        title = "导出追问笔记",
+                                        defaultName = "KnowFlick 追问笔记.md",
+                                        text = markdown,
+                                    )
+                                }
+                            },
+                            onClose = onClose,
+                        )
+                    },
+                )
+            }
+
+            state.showingMap -> key(state.version) {
+                // 学习地图：与 Android 端同一份 LearningMapScreen（范围状态也在共享 CardStore 里）
+                LearningMapScreen(
+                    cards = model.store.cards,
+                    scope = state.studyScope,
+                    onBack = state::closeMap,
+                    onApplyScope = state::applyStudyScope,
+                )
+            }
+
+            state.showingSearch -> key(state.version) {
+                // 全局搜索：与 Android 端同一份 SearchSheet；检索与历史都在共享层
+                SearchSheet(
+                    query = state.searchQuery,
+                    onQueryChange = state::updateSearchQuery,
+                    selectedCategory = state.searchCategory,
+                    onCategoryChange = state::updateSearchCategory,
+                    selectedSource = state.searchSource,
+                    onSourceChange = state::updateSearchSource,
+                    allCards = model.store.cards,
+                    searchResults = state.searchResults,
+                    searchHistory = state.searchHistory,
+                    onAddSearchHistory = state::addSearchHistory,
+                    onRemoveSearchHistory = state::removeSearchHistory,
+                    onClearSearchHistory = state::clearSearchHistory,
+                    onOpenDetail = { card -> state.openDetail(card.id) },
+                    onOpenChat = { state.showNotice("卡片追问尚未在桌面端接线") },
+                    onPromoteToDeck = state::promoteToDeckTop,
+                    onToggleFavorite = state::toggleFavorite,
+                    onResetFilters = state::resetSearchFilters,
+                    onClose = state::closeSearch,
+                )
+            }
+
+            state.showingSettings -> key(state.version) {
+                // 设置页：与 Android 端同一份 SettingsScreen；设置走共享存储（同一份 settings.json 线格式），
+                // 密钥走桌面凭据文件（0600）——所以 credentialsEncrypted = false，如实提示明文存储。
+                SettingsScreen(
+                    initial = state.aiSettings,
+                    initialApiKey = state.currentApiKey(),
+                    initialSpeech = state.speechSettings,
+                    initialSpeechKey = state.currentSpeechApiKey(),
+                    onBack = state::closeSettings,
+                    onTestConnection = state::testAiConnection,
+                    onSave = state::saveAiSettings,
+                    onSaveSpeech = state::saveSpeechSettings,
+                    isSavingSettings = false,
+                    isSavingAiSettings = false,
+                    isSavingSpeechSettings = false,
+                    aiSaveNotice = state.aiSaveNotice,
+                    aiSaveSucceeded = state.aiSaveSucceeded,
+                    speechSaveNotice = state.speechSaveNotice,
+                    speechSaveSucceeded = state.speechSaveSucceeded,
+                    onClearAiSaveNotice = state::clearAiSaveNotice,
+                    onClearSpeechSaveNotice = state::clearSpeechSaveNotice,
+                    credentialsEncrypted = false,
+                    currentPaperTheme = PaperTheme.fromName(state.aiSettings.paperTheme),
+                    onSelectPaperTheme = state::selectPaperTheme,
+                    soundEffectsEnabled = state.aiSettings.soundEffectsEnabled,
+                    onToggleSoundEffects = state::setSoundEffectsEnabled,
+                )
+            }
+
+            state.showingStats -> key(state.version) {
+                StatsScreen(
+                    cards = model.store.cards,
+                    onBack = state::goHome,
+                    onStartDueReview = state::startDueReviewFromStats,
+                    onOpenCardDetail = { cardId -> state.openDetail(cardId) },
+                )
+            }
+
+            state.showingLibrary -> LibraryScreen(
+                cards = model.store.cards,
+                version = state.version,
+                onOpenDetail = { card -> state.openDetail(card.id) },
+                onBack = state::goHome,
+                onShareFavorites = { favorites ->
+                    state.saveText(
+                        owner = owner,
+                        title = "导出收藏笔记",
+                        defaultName = "KnowFlick 收藏笔记.md",
+                        text = DesktopArchiveActions.exportMarkdown(favorites, "KnowFlick 知识收藏阁"),
+                    )
+                },
+                onShareArchive = { cards ->
+                    state.saveText(
+                        owner = owner,
+                        title = "导出知识库镜像",
+                        defaultName = "knowflick-cards.json",
+                        text = DesktopArchiveActions.exportJson(cards),
+                    )
+                },
+                onPickImportFile = pickAndImport,
+                onOpenBackupExport = state::openBackupExport,
+            )
+
+            else -> key(state.version) {
+                // 刷卡页：Android 的主屏，桌面同为首页（产品对齐，而不是另造一套导航）
+                DeckScreen(
+                    store = model.store,
+                    deck = model.store.deck,
+                    version = state.version,
+                    showAIMark = true,
+                    onMutate = state::mutate,
+                    notice = state.notice,
+                    onOpenDetail = { card -> state.openDetail(card.id) },
+                    onOpenStats = state::openStats,
+                    onOpenFavorites = state::openLibrary,
+                    onOpenQuiz = state::startQuiz,
+                    onOpenSearch = state::openSearch,
+                    onOpenSettings = state::openSettings,
+                    onOpenGraph = { state.showNotice("知识图谱尚未迁入共享模块") },
+                    onOpenMap = state::openMap,
+                    studyScopeLabel = state.studyScope.describe(),
+                    onOpenSync = { state.showNotice("局域网同步尚未在桌面端接线") },
+                    onOpenClip = { state.openClip() },
+                    onOpenNotesImport = { state.openNotes() },
+                    onOpenHelp = { state.openHelp() },
+                    // AI 生成：与 Android 端同一份 :domain `AiService`，密钥来自桌面凭据文件
+                    onGenerateRequest = { state.generateNewCards() },
+                    isGenerating = state.isGenerating,
+                    onOpenBackupExport = state::openBackupExport,
+                    onPickImportFile = pickAndImport,
+                    // 微件与海报导出是 Android 能力：桌面不传槽位，菜单项与面板自然不出现
+                )
+            }
+        }
+
+        if (state.showingNotes) {
+            NotesImportSheet(
+                aiConfigured = state.aiSettings.isConfigured,
+                existingCards = model.store.cards,
+                incomingFileName = state.notesFileName,
+                incomingFileText = state.notesFileText,
+                onParseRules = { text, fileName -> NoteImport.parse(text, fileName) },
+                onTransform = { note -> state.transformClipNote(note) },
+                onImport = { cards, insertAtTop -> state.importClippedCards(cards, insertAtTop) },
+                onPickFile = {
+                    val file = DesktopFileDialogs.openFile(
+                        owner = owner,
+                        title = "导入笔记",
+                        extensions = listOf(".md", ".markdown", ".txt", ".json"),
+                    )
+                    if (file != null) {
+                        runCatching {
+                            if (file.length() > NoteImport.MAX_BYTES) {
+                                error("导入文件过大，当前最多支持 ${NoteImport.MAX_BYTES / 1024 / 1024} MB。")
+                            }
+                            file.readText()
+                        }.fold(
+                            onSuccess = { text -> state.acceptNotesFile(file.name, text) },
+                            onFailure = { error -> state.showNotice(error.message ?: "读取文件失败") },
+                        )
+                    }
+                },
+                onClose = state::closeNotes,
+            )
+        }
+        if (state.showingHelp) {
+            HelpSheet(onClose = state::closeHelp)
+        }
+        if (state.showingClip) {
+            ClipSheet(
+                initialText = state.clipSeed,
+                aiConfigured = state.aiSettings.isConfigured,
+                onFetch = { text -> WebClipFetcher.clip(text) },
+                onTransform = { note -> state.transformClipNote(note) },
+                onImport = { cards, insertAtTop -> state.importClippedCards(cards, insertAtTop) },
+                onClose = state::closeClip,
+            )
+        }
+
+        if (state.showingBackupExport) {
+            BackupExportSheet(
+                allCards = model.store.cards,
+                favoriteCards = model.store.favorites,
+                historyCards = model.store.history,
+                settingsJson = state.aiSettings.toJson(),
+                onClose = state::closeBackupExport,
+            )
+        }
+
+        // 导入预览：与 Android 端同一份 ImportRestoreDialog，也是同一份交互（先预览再确认）
+        state.importPreview?.let { preview ->
+            ImportRestoreDialog(
+                preview = preview,
+                onConfirm = { strategy -> state.confirmImport(strategy) },
+                onDismiss = state::cancelImport,
+            )
+        }
+
+        // 刷卡页自带 notice 区域（DeckScreen 的 notice 参数），宿主不再重复弹一条
+        val onDeck = quizSession == null && detailCard == null && !state.showingSettings &&
+            !state.showingStats && !state.showingLibrary && !state.showingSearch && !state.showingMap
+        state.notice?.takeIf { !onDeck }?.let { message ->
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp),
+                color = MaterialTheme.colorScheme.inverseSurface,
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                shape = MaterialTheme.shapes.medium,
+                tonalElevation = 3.dp,
+            ) {
+                Text(message, Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            }
+        }
+    }
+    } // LocalArchiveExporter
+}

@@ -62,7 +62,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
@@ -79,8 +78,8 @@ import com.knowflick.app.domain.graph.KnowledgeGraphData
 import com.knowflick.app.domain.graph.KnowledgeGraphEngine
 import com.knowflick.app.domain.graph.RelationKind
 import com.knowflick.app.ui.EditorialColor
-import com.knowflick.app.ui.common.AudioEffectHelper
-import com.knowflick.app.ui.common.HapticFeedbackHelper
+import com.knowflick.app.ui.common.rememberPlatformHaptics
+import com.knowflick.app.ui.common.rememberPlatformSounds
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlinx.coroutines.Dispatchers
@@ -97,7 +96,8 @@ fun KnowledgeGraphScreen(
     onPromoteToTop: (KnowledgeCard) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    val haptics = rememberPlatformHaptics()
+    val sounds = rememberPlatformSounds()
     var graphData by remember { mutableStateOf(KnowledgeGraphData(emptyList(), emptyList())) }
     var selectedNode by remember { mutableStateOf<GraphNode?>(null) }
     var shard by remember { mutableStateOf<GraphShard>(GraphShard.All) }
@@ -220,8 +220,8 @@ fun KnowledgeGraphScreen(
                                 viewHeight = size.height.toFloat(),
                             )
                             if (hit >= 0) {
-                                HapticFeedbackHelper.click(context)
-                                AudioEffectHelper.playClick(context)
+                                haptics.click()
+                                sounds.playClick()
                                 selectedNode = graphData.nodes[hit]
                             } else {
                                 selectedNode = null
@@ -421,7 +421,7 @@ fun KnowledgeGraphScreen(
                     selectedNode = null
                     shard = GraphShard.All
                     searchQuery = ""
-                    HapticFeedbackHelper.tick(context)
+                    haptics.tick()
                 }) {
                     Icon(
                         Icons.Default.Refresh,
@@ -462,7 +462,7 @@ fun KnowledgeGraphScreen(
                     isSelected = shard is GraphShard.All,
                     onClick = {
                         shard = GraphShard.All
-                        HapticFeedbackHelper.tick(context)
+                        haptics.tick()
                     },
                 )
                 for (summary in shards) {
@@ -473,7 +473,7 @@ fun KnowledgeGraphScreen(
                         onClick = {
                             // 再点一次回到全景，与 mac 端一致
                             shard = if (shard == option) GraphShard.All else option
-                            HapticFeedbackHelper.tick(context)
+                            haptics.tick()
                         },
                     )
                 }
@@ -567,7 +567,7 @@ fun KnowledgeGraphScreen(
                         ) {
                             TextButton(
                                 onClick = {
-                                    HapticFeedbackHelper.click(context)
+                                    haptics.click()
                                     onPromoteToTop(card)
                                 },
                                 colors = ButtonDefaults.textButtonColors(
@@ -579,7 +579,7 @@ fun KnowledgeGraphScreen(
                             Spacer(Modifier.width(8.dp))
                             TextButton(
                                 onClick = {
-                                    HapticFeedbackHelper.click(context)
+                                    haptics.click()
                                     onSelectCard(card)
                                 },
                                 shape = RoundedCornerShape(8.dp),

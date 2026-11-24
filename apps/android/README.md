@@ -15,10 +15,49 @@ sdk.dir=/absolute/path/to/Android/sdk
 在 `apps/android` 目录运行：
 
 ```sh
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+./gradlew :app:testDebugUnitTest :domain:jvmTest :shared-ui:jvmTest :desktop:test :app:lintDebug :app:assembleDebug
 # 先启动安卓模拟器或连接允许 USB 调试的测试手机
 ./gradlew :app:connectedDebugAndroidTest
 ```
+
+`:domain:jvmTest` / `:shared-ui:jvmTest` / `:desktop:test` 必须显式点名：它们不在 `:app` 的依赖图里，
+只跑 `:app:testDebugUnitTest` 不会带上它们，也不会报错（`./tools/build_android.sh` 已同步）。
+
+### :shared-ui 模块（跨端共享界面层）
+
+`shared-ui/` 是 Compose Multiplatform 的共享界面层，**Android 与已冻住的 JVM 桌面宿主 `:desktop` 共用
+同一份界面代码**。注意 [ADR-0002](../../docs/adr/0002-desktop-web-split-from-android.md) 之后，
+「桌面三端 + Android 共用一份 Kotlin 界面」不再是活计划：Windows / Linux / macOS 与稍后的网页走
+`apps/workbench` 的 Web 界面；已落地的共享代码不因这个决定删除。
+已迁入 8 个生产文件 2578 行：主题令牌（4 套纸质主题 + `EditorialColor`）、**`QuizScreen`(833) 与
+`LibraryScreen`(326) 两个整屏**、`LearningHeatmap`(214)、`AppIcons`(668)、`MarkdownTextRenderer`(297)、
+`CategoryStampColor`(27)。
+
+迁移约定：**包名保持原样**（`com.knowflick.app.*`），因此 app 侧 import 零改动。
+平台边界处理（系统返回外移宿主、多平台 Material 图标停更于 1.7.3、`java.*` 走 `jvmAndAndroidMain`）
+与分档进度见 [界面共享迁移](../../docs/windows-route/UI_EXTRACTION.md)。
+
+### :desktop 模块（已冻住的 JVM 桌面宿主）
+
+`desktop/` 是 Kotlin JVM + Compose Multiplatform 宿主，用 `project(":domain")` 与
+`project(":shared-ui")` 复用同一份逻辑与界面，**主界面直接渲染 `LibraryScreen`**。
+`./gradlew :desktop:test` 与 `./gradlew :desktop:run` **都只需 JDK 17，不需要 Android SDK**。
+
+[ADR-0002](../../docs/adr/0002-desktop-web-split-from-android.md) 把桌面第一套定为 `apps/workbench`
+（Web + Tauri），所以这里**冻住不加功能**，等第一套闭环跑通前也不删。定位与沿革见
+[desktop/README.md](desktop/README.md)。
+
+### :domain 模块（KMP 领域层）
+
+`domain/` 是 2026-10 抽出的 Kotlin Multiplatform 模块（`androidTarget` + `jvm`），承载与 Android
+框架无关的领域逻辑：卡片模型、卡库状态机、学科与学习范围、统计、搜索、图谱、间隔重复、网页剪藏抽取
+（19 文件 4149 行，包名仍是 `com.knowflick.app.domain`）。`:app` 经 `project(":domain")` 消费。
+
+- 源集约定：平台无关代码放 `commonMain`；**含 `java.time` / `java.util` 的文件放 `jvmAndAndroidMain`**
+  （手建中间源集），不要放 `commonMain`。
+- **`./gradlew :domain:jvmTest` 不需要 Android SDK**，只需 JDK 17——桌面/无法装 SDK 的机器也能开发与回归
+  这份逻辑，这正是它存在的理由（Windows 端路线探针，结论见
+  [docs/windows-route/KMP_PROBE_RESULT.md](../../docs/windows-route/KMP_PROBE_RESULT.md)）。
 
 设备测试安装的是 Debug 签名包，建议使用独立测试 AVD；已安装 Release 的设备无法直接覆盖安装 Debug。
 
