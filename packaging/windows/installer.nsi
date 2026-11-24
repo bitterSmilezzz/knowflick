@@ -7,6 +7,9 @@ Unicode true
 !ifndef VERSION
   !define VERSION "0.0.0"
 !endif
+!ifndef VERSION_NUM
+  !define VERSION_NUM "${VERSION}"
+!endif
 !ifndef OUT
   !error "OUT 未定义"
 !endif
@@ -16,6 +19,9 @@ Unicode true
 !ifndef ICON
   !error "ICON 未定义"
 !endif
+!ifndef LICENSES
+  !error "LICENSES 未定义"
+!endif
 
 Name "${APPNAME}"
 OutFile "${OUT}"
@@ -24,7 +30,7 @@ InstallDirRegKey HKLM "${UNINSTKEY}" "InstallLocation"
 RequestExecutionLevel admin
 Icon "${ICON}"
 UninstallIcon "${ICON}"
-VIProductVersion "${VERSION}.0"
+VIProductVersion "${VERSION_NUM}.0"
 VIAddVersionKey "ProductName" "${APPNAME}"
 VIAddVersionKey "CompanyName" "${COMPANY}"
 VIAddVersionKey "FileVersion" "${VERSION}"
@@ -39,6 +45,7 @@ UninstPage instfiles
 Section "Install"
   SetOutPath "$INSTDIR"
   File "${BIN}"
+  File "${LICENSES}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   WriteRegStr HKLM "${UNINSTKEY}" "DisplayName" "${APPNAME}"
   WriteRegStr HKLM "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
@@ -52,6 +59,7 @@ SectionEnd
 
 Section "Uninstall"
   Delete "$INSTDIR\KnowFlick.exe"
+  Delete "$INSTDIR\KnowFlick-Licenses.txt"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk"

@@ -28,6 +28,12 @@ if [ "$VERSION" != "$PKG_VERSION" ]; then
   exit 1
 fi
 
+# 预发布版本（如 0.9.0-rc1）：产物名保留完整版本（便于识别 RC），但
+# macOS 的 CFBundleShortVersionString 与 NSIS 的 VIProductVersion 只接受数字段，
+# DEB 则用 ~ 表示 RC（0.9.0~rc1），保证 apt 排序正确。
+VERSION_NUM="${VERSION%%-*}"
+DEB_VERSION="${VERSION/-/~}"
+
 if [ -z "$OUT" ]; then OUT="$ROOT/dist/workbench"; fi
 mkdir -p "$OUT"
 # 统一成绝对路径：CI 里 --out 传的是相对路径，NSIS 的 File 会按脚本目录解析相对路径而找不到产物。
@@ -36,7 +42,7 @@ OUT="$(cd "$OUT" && pwd)"
 if [ "$SKIP_BUILD" = 0 ]; then
   "$ROOT/tools/build_workbench_go.sh"
 fi
-BIN="$ROOT/apps/workbench-go/bin/knowflick-go-preview"
+BIN="$ROOT/apps/workbench-go/bin/knowflick"
 if [ ! -x "$BIN" ]; then echo "::error::没有可执行文件：${BIN}（先跑 tools/build_workbench_go.sh）" >&2; exit 1; fi
 
 OS="$(go env GOOS)"
@@ -47,6 +53,10 @@ case "$ARCH_RAW" in
   *) ARCH="$ARCH_RAW" ;;
 esac
 
+NOTICE_DIR="$(mktemp -d)"
+trap 'rm -rf -- "$NOTICE_DIR"' EXIT
+node "$ROOT/tools/collect_workbench_notices.mjs" > "$NOTICE_DIR/KnowFlick-Licenses.txt"
+
 case "$OS" in
   darwin)
     APP="$OUT/KnowFlick.app"
@@ -54,13 +64,15 @@ case "$OS" in
     mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
     cp "$BIN" "$APP/Contents/MacOS/KnowFlick"
     cp "$ROOT/shared/icons/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+    cp "$NOTICE_DIR/KnowFlick-Licenses.txt" "$APP/Contents/Resources/"
     BUILD_NUMBER="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 0)"
-    sed -e "s/__VERSION__/$VERSION/g" -e "s/__BUILD__/$BUILD_NUMBER/g" \
+    sed -e "s/__VERSION__/$VERSION_NUM/g" -e "s/__BUILD__/$BUILD_NUMBER/g" \
       "$ROOT/packaging/macos/Info.plist" > "$APP/Contents/Info.plist"
     chmod +x "$APP/Contents/MacOS/KnowFlick"
     plutil -lint "$APP/Contents/Info.plist" >/dev/null
     # ad-hoc 签名：本机可运行；正式分发仍需 Developer ID 与公证（未接入）。
-    codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
+    codesign --force --deep --sign - "$APP"
+    codesign --verify --deep --strict "$APP"
     STAGE="$(mktemp -d)"
     cp -R "$APP" "$STAGE/"
     ln -s /Applications "$STAGE/Applications"
@@ -79,8 +91,10 @@ case "$OS" in
     install -m 755 "$BIN" "$PKGDIR/usr/bin/knowflick"
     install -m 644 "$ROOT/packaging/linux/knowflick.desktop" "$PKGDIR/usr/share/applications/knowflick.desktop"
     install -m 644 "$ROOT/shared/icons/AppIcon.png" "$PKGDIR/usr/share/icons/hicolor/512x512/apps/knowflick.png"
+    install -d "$PKGDIR/usr/share/doc/knowflick"
+    install -m 644 "$NOTICE_DIR/KnowFlick-Licenses.txt" "$PKGDIR/usr/share/doc/knowflick/copyright"
     SIZE_KB="$(du -sk "$PKGDIR/usr" | cut -f1)"
-    sed -e "s/__VERSION__/$VERSION/g" -e "s/__ARCH__/$DEB_ARCH/g" -e "s/__SIZE__/$SIZE_KB/g" \
+    sed -e "s/__VERSION__/$DEB_VERSION/g" -e "s/__ARCH__/$DEB_ARCH/g" -e "s/__SIZE__/$SIZE_KB/g" \
       "$ROOT/packaging/linux/control" > "$PKGDIR/DEBIAN/control"
     chmod 644 "$PKGDIR/DEBIAN/control"
     DEB="$OUT/KnowFlick-Workbench-$VERSION-linux-$ARCH_RAW.deb"
@@ -96,12 +110,14 @@ case "$OS" in
     if command -v cygpath >/dev/null 2>&1; then
       WIN_EXE="$(cygpath -w "$EXE")"
       WIN_ICON="$(cygpath -w "$ROOT/shared/icons/AppIcon.ico")"
+      WIN_LICENSE="$(cygpath -w "$NOTICE_DIR/KnowFlick-Licenses.txt")"
       WIN_OUT="$(cygpath -w "$OUT/KnowFlick-Workbench-$VERSION-windows-$ARCH.exe")"
     else
       WIN_EXE="$EXE"; WIN_ICON="$ROOT/shared/icons/AppIcon.ico"
+      WIN_LICENSE="$NOTICE_DIR/KnowFlick-Licenses.txt"
       WIN_OUT="$OUT/KnowFlick-Workbench-$VERSION-windows-$ARCH.exe"
     fi
-    ( cd "$ROOT" && makensis -V1 -DVERSION="$VERSION" -DOUT="$WIN_OUT" -DBIN="$WIN_EXE" -DICON="$WIN_ICON" packaging/windows/installer.nsi >/dev/null )
+    ( cd "$ROOT" && makensis -V1 -DVERSION="$VERSION" -DVERSION_NUM="$VERSION_NUM" -DOUT="$WIN_OUT" -DBIN="$WIN_EXE" -DICON="$WIN_ICON" -DLICENSES="$WIN_LICENSE" packaging/windows/installer.nsi >/dev/null )
     rm -f "$EXE"
     echo "✓ $WIN_OUT"
     ;;

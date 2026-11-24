@@ -85,7 +85,7 @@
 
 ### WP5 平台矩阵补全（0.5–1 天）
 
-- macOS x64：加 `macos-13`（或 x64 runner）出 `macos-x64` DMG；arm64 保持。
+- macOS x64：加 `macos-15-intel`出 `macos-x64` DMG；arm64 保持。
 - Linux：amd64 已有；如要 arm64 另加 runner，非 1.0 必需。
 - **验收**：四档产物（mac arm64 / mac x64 / win x64 / linux amd64）都能装、都能启动。
 
@@ -123,7 +123,7 @@
 
 ### WP11 无证书分发与信任建设（0.5–1 天，0.9 必需）
 
-- CI 加构建 provenance（`actions/attest-build-provenance`）：用户可用
+- CI 加构建 provenance（`actions/attest`）：用户可用
   `gh attestation verify <产物> --repo bitterSmilezzz/knowflick` 核对该文件确实由本仓 CI 构建；
 - 新增 `docs/INSTALL_UNSIGNED.md`：macOS 右键打开 / `xattr -dr com.apple.quarantine`、
   Windows SmartScreen「更多信息 → 仍要运行」、三平台 `shasum -a 256` 校验命令；
@@ -149,7 +149,7 @@
    降低风险，并在下载页明示未签名；不承诺「双击即开」。
 2. **SmartScreen 声誉**：即使 1.0 签名，仍可能提示，需下载量积累；发布说明如实写，不承诺「零提示」。
 3. **证书申请周期（1.0 阶段）**：Developer ID 与 Windows 证书都要审核；证书到位前 1.0 不启动签名接线，避免空等。
-4. **Intel Mac runner 可用性**：`macos-13` 队列可能慢；备选自建 x64 或交叉产物（Wails 不支持交叉，需真机）。
+4. **Intel Mac runner 可用性**：`macos-15-intel` 队列可能较长。以 Intel runner 实际构建与运行结果为准。
 5. **Windows/Linux 机器**：没有机器就只能标「待验」，不能用 CI 构建冒充首启验收。
 6. **范围蔓延**：R2/R3 功能（导入向导、WebDAV 同步、OCR）不进 1.0；1.0 只收「可信安装 + 数据安全 + 现有闭环」。
 

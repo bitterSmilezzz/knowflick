@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { setBridgeGeneration } from "../src/shell/bridge/invoke";
+import { appVersion } from "../src/shell/bridge/app";
 import { PreviewMailbox } from "./PreviewMailbox";
 import type { FormEvent } from "react";
 import { createRoot } from "react-dom/client";
@@ -51,6 +52,20 @@ import { KnowledgeBasePicker, NoteKnowledgeBases } from "./KnowledgeBases";
 import { CreateKnowledgeBase, GetStats, ImportAttachment, ListAttachments, PickOpenPath, ReadKnowledgeBases, SearchKnowledgeBaseChunks, SearchKnowledgeBaseNotes, SetKnowledgeBaseMembership } from "./bindings/knowflick.local/workbench-go/previewservice";
 import type { Stats } from "./bindings/knowflick.local/workbench-go/internal/stats/models";
 import type { KnowledgeBaseSnapshot } from "./bindings/knowflick.local/workbench-go/internal/library/models";
+
+function WorkbenchAbout() {
+  return (
+    <details className="preview-confirm">
+      <summary>版本与隐私</summary>
+      <p>KnowFlick Workbench {appVersion}</p>
+      <p>
+        <a href="https://github.com/bitterSmilezzz/knowflick/blob/main/docs/PRIVACY.md" target="_blank" rel="noreferrer">隐私与数据说明</a>
+        {" · "}
+        <a href="https://github.com/bitterSmilezzz/knowflick/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noreferrer">第三方组件与许可</a>
+      </p>
+    </details>
+  );
+}
 
 function WailsCapsule() {
   const [shortcut, setShortcut] = useState<string>();
@@ -672,13 +687,14 @@ function Preview() {
 
   if (sharedWorkspaceOpen) {
     return (
-      <section className="preview-shared-shell" aria-label="共享工作台预览">
+      <section className="preview-shared-shell" aria-label="共享工作台">
         <div className="preview-shared-bar">
-          <button type="button" onClick={() => setSharedWorkspaceOpen(false)}>返回 Go 预览</button>
+          <button type="button" onClick={() => setSharedWorkspaceOpen(false)}>返回</button>
           <button type="button" disabled={busy} onClick={() => void choose()}>打开资料库</button>
           {lib && !lib.writable ? <button type="button" disabled={busy} onClick={() => void enableEditing()}>启用编辑</button> : null}
           <span>{lib ? lib.name + (lib.writable ? "" : "（只读）") : "未打开资料库"}</span>
         </div>
+        <WorkbenchAbout />
         {lib ? <WorkspaceBoundary><Workspace key={lib.generation} /></WorkspaceBoundary> : <p className="preview-count">先打开一个资料库。</p>}
       </section>
     );
@@ -687,7 +703,7 @@ function Preview() {
     <main className="preview-app" aria-busy={busy}>
       <header className="preview-header">
         <div>
-          <h1>KnowFlick <small>Go 版预览</small></h1>
+          <h1>KnowFlick</h1>
           <p>{lib ? lib.name : "未打开资料库"}{lib && !lib.writable ? "（只读）" : ""}</p>
         </div>
         <div className="preview-actions">
@@ -723,8 +739,8 @@ function Preview() {
                 <button type="button" aria-pressed={settingsOpen} disabled={busy} onClick={() => { setSettingsOpen(!settingsOpen); setMaintenanceOpen(false); setMoreOpen(false); }}>设置与本地文件</button>
                 <button type="button" aria-pressed={maintenanceOpen} disabled={busy} onClick={() => { setMaintenanceOpen(!maintenanceOpen); setSettingsOpen(false); setMoreOpen(false); }}>向量与维护</button>
                 <button type="button" aria-pressed={statsOpen} disabled={busy} onClick={() => { setStatsOpen(!statsOpen); setMoreOpen(false); }}>统计</button>
-                <button type="button" aria-pressed={notesPreviewOpen} disabled={busy} onClick={() => { setNotesPreviewOpen(!notesPreviewOpen); setStatsOpen(false); setMoreOpen(false); }}>共享笔记（预览）</button>
-                <button type="button" aria-pressed={sharedWorkspaceOpen} disabled={busy} onClick={() => { setSharedWorkspaceOpen(!sharedWorkspaceOpen); setMoreOpen(false); }}>共享工作台（预览）</button>
+                <button type="button" aria-pressed={notesPreviewOpen} disabled={busy} onClick={() => { setNotesPreviewOpen(!notesPreviewOpen); setStatsOpen(false); setMoreOpen(false); }}>共享笔记</button>
+                <button type="button" aria-pressed={sharedWorkspaceOpen} disabled={busy} onClick={() => { setSharedWorkspaceOpen(!sharedWorkspaceOpen); setMoreOpen(false); }}>共享工作台</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("json"); setMoreOpen(false); }}>导出卡片</button>
                 <button type="button" disabled={busy} onClick={() => { void exportCards("zip"); setMoreOpen(false); }}>导出卡片与设置（ZIP）</button>
                 <button type="button" disabled={busy} onClick={() => { void exportSystemBackup(); setMoreOpen(false); }}>导出基础备份</button>
@@ -748,6 +764,7 @@ function Preview() {
         <label><input type="checkbox" checked={webdavRemember} onChange={(event) => setWebdavRemember(event.target.checked)} /> 记住密码（写入库目录凭据文件）</label>
         <button type="button" disabled={busy} onClick={() => void uploadToWebdav()}>上传备份到 WebDAV</button>
       </section>}
+      <WorkbenchAbout />
       {restorePending && <section className="preview-confirm" aria-label="确认恢复">
         <p>恢复会把备份里的素材、卡片、笔记、知识库、历史与邮箱记录合并进当前库。同标识但内容不同的记录会被拒绝，且不会覆盖现有内容。</p>
         <button type="button" disabled={busy} onClick={() => void restoreBackup()}>确认恢复</button>
@@ -794,11 +811,11 @@ function Preview() {
       />}
       {lib && view === "cards" && <CardLibrary key={"CardLibrary:" + lib.generation} generation={lib.generation} writable={lib.writable} busy={busy} onBusy={setBusy} onEditing={setCardEditing} />}
       {statsOpen && <StatsView stats={stats} onBack={() => setStatsOpen(false)} />}
-      {sharedWorkspaceOpen && <section className="preview-shared-workspace" aria-label="共享工作台预览">
+      {sharedWorkspaceOpen && <section className="preview-shared-workspace" aria-label="共享工作台">
         <button type="button" className="ws-bordered" onClick={() => setSharedWorkspaceOpen(false)}>返回</button>
         <Workspace />
       </section>}
-      {notesPreviewOpen && lib && <section className="preview-shared-notes" aria-label="共享笔记预览">
+      {notesPreviewOpen && lib && <section className="preview-shared-notes" aria-label="共享笔记">
         <button type="button" className="ws-bordered" onClick={() => setNotesPreviewOpen(false)}>返回</button>
         <NotesView dir={lib.path} attachableMedia={attachableMedia} onStateChange={handleNotesChange} openNoteId={selectedId} materials={[]} onOpenMaterial={(id) => { setOpenedMaterialId(id); setView("materials"); setNotesPreviewOpen(false); }} onAddAttachment={async () => {
           const chosen = await PickOpenPath("选择图片或录音", "png;jpg;jpeg;webp;gif;heic;wav;m4a;webm;ogg");

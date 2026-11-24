@@ -53,7 +53,7 @@ KnowFlick 把「你收藏的内容」变成「你能复习的卡片」。知识�
 
 ### 下载安装
 
-`workbench-v*` tag 会触发三平台构建并附到 Release：macOS `.dmg`、Linux `.deb`、Windows `.exe`（NSIS 安装器）。产物名 `KnowFlick-Workbench-<版本>-<系统>-<架构>.<扩展名>`，Release 同时附 `SHA256SUMS.txt`。Go 版**没有 MSI**：Wails v3 的打包命令只支持 deb / rpm / archlinux / dmg，Windows 安装器用 NSIS 生成。
+`workbench-v*` tag 会触发三平台构建并附到 Release：macOS `.dmg`（Apple Silicon 和 Intel）、Linux `.deb`（amd64）、Windows `.exe`（x64，NSIS 安装器）。产物名 `KnowFlick-Workbench-<版本>-<系统>-<架构>.<扩展名>`，Release 同时附 `SHA256SUMS.txt`。Go 版**没有 MSI**：Wails v3 的打包命令只支持 deb / rpm / archlinux / dmg，Windows 安装器用 NSIS 生成。
 
 > 未签名应用首次打开可能被系统拦下：macOS 在「系统设置 → 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine /Applications/KnowFlick.app`；Windows 在 SmartScreen 提示里选「更多信息 → 仍要运行」。完整步骤与校验方法见 [无签名安装指南](docs/INSTALL_UNSIGNED.md)。
 
@@ -65,7 +65,7 @@ KnowFlick 把「你收藏的内容」变成「你能复习的卡片」。知识�
 cd apps/workbench && npm ci          # 前端依赖（go-preview 构建也要用）
 
 ./tools/build_workbench_go.sh        # 一次构建：Wails bindings + 前端 bundle + Go 二进制
-./apps/workbench-go/bin/knowflick-go-preview   # 本机启动
+./apps/workbench-go/bin/knowflick   # 本机启动
 
 ./tools/verify_workbench.sh          # 门禁：npm test + tsc + 静态守卫 + go vet/go test + 回环对拍
 ./tools/verify_workbench.sh web      # 只跑前端那半

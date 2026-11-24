@@ -1,6 +1,9 @@
-/** 应用元信息。打包时版本由 apps/workbench/package.json 决定；这里保持与发布版本一致。 */
+import { version } from "../../../package.json";
+
+export const appVersion = version;
+
 export async function getVersion(): Promise<string> {
-  return "0.1.0";
+  return appVersion;
 }
 
 export async function getName(): Promise<string> {

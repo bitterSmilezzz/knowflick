@@ -50,7 +50,7 @@ func main() {
 	// 订阅服务单独一个：列表只要求库已打开，写操作自己检查可写。
 	subscriptionService := &SubscriptionService{preview: service}
 	app := application.New(application.Options{
-		Name:     "KnowFlick Go Preview",
+		Name:     "KnowFlick",
 		Services: []application.Service{application.NewService(service), application.NewService(mailService), application.NewService(subscriptionService)},
 		Assets:   application.AssetOptions{Handler: application.BundledAssetFileServer(frontend)},
 		Mac:      application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
@@ -69,7 +69,7 @@ func main() {
 
 	service.app = app
 	service.window = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "KnowFlick · Go 版只读预览", Width: 1080, Height: 720, MinWidth: 380, MinHeight: 440, URL: "/",
+		Title: "KnowFlick", Width: 1080, Height: 720, MinWidth: 380, MinHeight: 440, URL: "/",
 	})
 	// 与旧桌面端使用同一快捷键，避免占用输入法的 Control+Space。
 	if err := app.GlobalShortcut.Register(capsuleAccelerator, func() {

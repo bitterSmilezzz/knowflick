@@ -32,5 +32,5 @@ fi
     export CGO_LDFLAGS="-mmacosx-version-min=13.0 ${CGO_LDFLAGS:-}"
     link_flags+=' -extldflags=-Wl,-sectcreate,__TEXT,__info_plist,Info.plist'
   fi
-  go build -tags production -trimpath -ldflags="$link_flags" -o bin/knowflick-go-preview .
+  go build -tags production -trimpath -ldflags="$link_flags" -o bin/knowflick .
 )
